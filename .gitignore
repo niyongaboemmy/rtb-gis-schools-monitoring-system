@@ -1,0 +1,14 @@
+node_modules/
+**/node_modules/
+server/node_modules/
+client/node_modules/
+server/public/uploads/
+documentations/*.kmz
+server/dist/
+server/temp/
+client/dist/
+.env
+*.log
+.DS_Store
+*.kmz
+node_modules
