@@ -149,6 +149,7 @@ export class AnalyticsService {
 
     const priorityLevel = this.scoreToPriorityLevel(overallScore);
     const recommendations = this.generateRecommendations(
+      school,
       overallScore,
       infraScore,
       ageScore,
@@ -193,7 +194,7 @@ export class AnalyticsService {
   }
 
   private calculateInfrastructureScore(buildings: SchoolBuilding[]): number {
-    if (buildings.length === 0) return 50;
+    if (!buildings || buildings.length === 0) return 0;
     const conditionMap = {
       [BuildingCondition.CRITICAL]: 90,
       [BuildingCondition.POOR]: 70,
@@ -201,7 +202,7 @@ export class AnalyticsService {
       [BuildingCondition.GOOD]: 15,
     };
     const avg =
-      buildings.reduce((s, b) => s + (conditionMap[b.condition] || 50), 0) /
+      buildings.reduce((s, b) => s + (conditionMap[b.condition] || 0), 0) /
       buildings.length;
     return Math.round(avg);
   }
@@ -244,6 +245,7 @@ export class AnalyticsService {
   }
 
   private generateRecommendations(
+    school: School,
     overall: number,
     infra: number,
     age: number,
@@ -251,26 +253,68 @@ export class AnalyticsService {
     facility: number,
   ): string[] {
     const recs: string[] = [];
-    if (facility > 70)
-      recs.push('Critical: Multiple facility compliance issues need attention');
-    if (infra > 70)
+    const buildings = school.buildings || [];
+    const totalCapacity =
+      school.educationPrograms?.reduce(
+        (sum, p) => sum + (parseFloat(String(p.capacity)) || 0),
+        0,
+      ) || 0;
+    const totalStudents = parseFloat(String(school.totalStudents)) || 0;
+
+    // 1. Structural & Safety (High Urgency)
+    const criticalBuildings = buildings.filter(
+      (b) =>
+        b.condition === BuildingCondition.CRITICAL ||
+        b.condition === BuildingCondition.POOR,
+    );
+    if (criticalBuildings.length > 0) {
       recs.push(
-        'Urgent structural renovation required for deteriorating buildings',
+        `[URGENT] Structural renovation required for ${criticalBuildings.length} building(s) in poor/critical condition.`,
       );
-    if (age > 65)
+    }
+
+    // 2. Capacity & Overcrowding (Critical)
+    if (totalCapacity > 0 && totalStudents > totalCapacity * 1.1) {
+      const excess = totalStudents - totalCapacity;
+      const classroomsNeeded = Math.ceil(excess / 40); // Assuming 40 students per classroom
       recs.push(
-        'Buildings exceed expected lifespan - full replacement recommended',
+        `[CRITICAL] School is over capacity by ${Math.round((totalStudents / totalCapacity - 1) * 100)}%. Recommended addition of ${classroomsNeeded} classrooms.`,
       );
-    if (pop > 65)
+    }
+
+    // 3. Facility Standards (Strategic)
+    const missingFacilities: string[] = [];
+    if (!school.hasLaboratory) missingFacilities.push('Science Laboratory');
+    if (!school.hasLibrary) missingFacilities.push('Library');
+    if (!school.hasComputerLab) missingFacilities.push('Computer Lab');
+
+    if (missingFacilities.length > 0) {
       recs.push(
-        'High population pressure - school expansion or new facility needed',
+        `[STRATEGIC] Facility Gap: ${missingFacilities.join(', ')} required to meet TVET excellence standards.`,
       );
-    if (overall >= 75)
-      recs.push('Priority budget allocation required in next fiscal year');
-    if (overall >= 55 && overall < 75)
-      recs.push('Schedule comprehensive facility assessment within 6 months');
-    if (recs.length === 0)
-      recs.push('Continue routine maintenance and monitoring');
+    }
+
+    // 4. Utilities & Basic Rights
+    if (!school.hasElectricity) {
+      recs.push(
+        `[CRITICAL] Utility Gap: No reliable electricity. Grid or Solar connection required.`,
+      );
+    }
+    if (!school.hasWater) {
+      recs.push(`[URGENT] Utility Gap: No clean water source detected.`);
+    }
+
+    // 5. Compliance
+    if (facility > 70) {
+      recs.push(
+        `[URGENT] Compliance: Severe facility survey failures. Immediate administrative intervention required.`,
+      );
+    }
+
+    if (recs.length === 0) {
+      recs.push('Continue routine maintenance and monitoring.');
+    }
+
     return recs;
   }
 

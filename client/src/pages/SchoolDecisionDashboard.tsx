@@ -8,7 +8,6 @@ import {
   Box,
   Building2,
   Calendar,
-  ChevronRight,
   ClipboardCheck,
   Clock,
   Coffee,
@@ -17,7 +16,6 @@ import {
   Globe,
   GraduationCap,
   GraduationCap as TeacherIcon,
-  History,
   Home,
   Image as LucideImage,
   Layers,
@@ -28,10 +26,11 @@ import {
   Maximize,
   Minus,
   Monitor,
+  Plus,
   Pencil,
   Phone,
-  Plus,
   Shield,
+  Sparkles,
   Target,
   TrendingUp,
   Trophy,
@@ -39,9 +38,9 @@ import {
   Users,
   Wifi,
   Wrench,
-  X,
   XCircle,
   Zap,
+  CheckCircle2,
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -158,12 +157,16 @@ export default function SchoolDecisionDashboard() {
             schoolData.hasWater ? 100 : 0,
             schoolData.hasInternet ? 100 : 0,
             schoolData.hasSolarPanel ? 100 : 0,
-            parseFloat(String(schoolData.roadStatusPercentage)) || 50,
+            parseFloat(String(schoolData.roadStatusPercentage)) || 0,
           ];
-          const infrastructureScore = Math.round(
-            infrastructureItems.reduce((a, b) => a + b, 0) /
-              infrastructureItems.length,
-          );
+          const infrastructureScore =
+            schoolData.buildings?.length > 0 ||
+            infrastructureItems.some((v) => v > 0)
+              ? Math.round(
+                  infrastructureItems.reduce((a, b) => a + b, 0) /
+                    infrastructureItems.length,
+                )
+              : 0;
 
           // Calculate population: students from trades + staff
           const totalStudentsInPrograms =
@@ -305,9 +308,6 @@ export default function SchoolDecisionDashboard() {
   const femaleSupportStaff =
     parseFloat(String(schoolData?.femaleSupportStaff)) || 0;
 
-  const totalMaleStaff = maleTeachers + maleAdminStaff + maleSupportStaff;
-  const totalFemaleStaff =
-    femaleTeachers + femaleAdminStaff + femaleSupportStaff;
   const totalTeachers = maleTeachers + femaleTeachers;
   const totalAdminStaff = maleAdminStaff + femaleAdminStaff; // Total admin staff (male + female)
   const totalSupportStaff = maleSupportStaff + femaleSupportStaff; // Total support staff (male + female)
@@ -934,29 +934,119 @@ export default function SchoolDecisionDashboard() {
                         ))}
                       </div>
 
-                      {/* Recommendations */}
+                      {/* Enhanced Recommendations */}
                       <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 1.2 }}
-                        className="p-4 bg-amber-50/50 dark:bg-amber-950/10 border border-amber-100/50 dark:border-amber-900/20 rounded-2xl"
+                        className="p-5 bg-card/40 border border-border/10 rounded-3xl backdrop-blur-md"
                       >
-                        <h4 className="text-sm font-black text-amber-800 dark:text-amber-500 flex items-center gap-2 mb-2 uppercase tracking-widest">
-                          <Wrench className="w-3 h-3" />
-                          Priority Action Items
-                        </h4>
-                        <div className="space-y-1.5">
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="text-xs font-black text-primary flex items-center gap-2 uppercase tracking-[0.2em]">
+                            <Sparkles className="w-3.5 h-3.5" />
+                            Intelligence Suggestions
+                          </h4>
+                          <Badge
+                            variant="outline"
+                            className="rounded-full text-[9px] font-black uppercase tracking-widest bg-primary/5 text-primary border-primary/20"
+                          >
+                            Live Analysis
+                          </Badge>
+                        </div>
+                        <div className="space-y-3">
                           {assessment.recommendations
-                            ?.slice(0, 3)
-                            .map((rec: string, i: number) => (
-                              <div
-                                key={i}
-                                className="text-xs font-medium text-amber-900/80 dark:text-amber-200/70 flex items-start gap-2"
-                              >
-                                <div className="w-1 h-1 rounded-full bg-amber-400 mt-1.5 shrink-0" />
-                                {rec}
-                              </div>
-                            ))}
+                            ?.slice(0, 4)
+                            .map((rec: string, i: number) => {
+                              const isUrgent = rec.includes("[URGENT]");
+                              const isCritical = rec.includes("[CRITICAL]");
+                              const isStrategic = rec.includes("[STRATEGIC]");
+                              const cleanRec = rec
+                                .replace("[URGENT]", "")
+                                .replace("[CRITICAL]", "")
+                                .replace("[STRATEGIC]", "")
+                                .trim();
+
+                              return (
+                                <motion.div
+                                  initial={{ opacity: 0, x: -10 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  transition={{ delay: 1.3 + i * 0.1 }}
+                                  key={i}
+                                  className={cn(
+                                    "flex items-start gap-4 p-3.5 rounded-2xl border transition-all hover:scale-[1.01]",
+                                    isUrgent
+                                      ? "bg-red-500/5 border-red-500/20 shadow-red-500/5"
+                                      : isCritical
+                                        ? "bg-amber-500/5 border-amber-500/20 shadow-amber-500/5"
+                                        : isStrategic
+                                          ? "bg-emerald-500/5 border-emerald-500/20 shadow-emerald-500/5"
+                                          : "bg-primary/5 border-primary/20 shadow-primary/5",
+                                  )}
+                                >
+                                  <div
+                                    className={cn(
+                                      "p-2 rounded-xl shrink-0",
+                                      isUrgent
+                                        ? "bg-red-500 text-white shadow-lg shadow-red-500/30"
+                                        : isCritical
+                                          ? "bg-amber-500 text-white shadow-lg shadow-amber-500/30"
+                                          : isStrategic
+                                            ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/30"
+                                            : "bg-primary text-white shadow-lg shadow-primary/30",
+                                    )}
+                                  >
+                                    {isUrgent ? (
+                                      <AlertTriangle className="w-3.5 h-3.5" />
+                                    ) : isCritical ? (
+                                      <Wrench className="w-3.5 h-3.5" />
+                                    ) : isStrategic ? (
+                                      <Sparkles className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span
+                                        className={cn(
+                                          "text-[9px] font-black uppercase tracking-wider",
+                                          isUrgent
+                                            ? "text-red-500"
+                                            : isCritical
+                                              ? "text-amber-600"
+                                              : isStrategic
+                                                ? "text-emerald-600"
+                                                : "text-primary",
+                                        )}
+                                      >
+                                        {isUrgent
+                                          ? "Urgent Refactor"
+                                          : isCritical
+                                            ? "Critical Need"
+                                            : isStrategic
+                                              ? "Strategic Goal"
+                                              : "System Note"}
+                                      </span>
+                                      <div
+                                        className={cn(
+                                          "h-1 w-1 rounded-full",
+                                          isUrgent
+                                            ? "bg-red-500"
+                                            : isCritical
+                                              ? "bg-amber-500"
+                                              : isStrategic
+                                                ? "bg-emerald-500"
+                                                : "bg-primary",
+                                        )}
+                                      />
+                                    </div>
+                                    <p className="text-xs font-bold leading-relaxed text-foreground/90">
+                                      {cleanRec}
+                                    </p>
+                                  </div>
+                                </motion.div>
+                              );
+                            })}
                         </div>
                       </motion.div>
                     </div>
