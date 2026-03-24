@@ -165,7 +165,7 @@ export function AppLayout() {
                 />
                 <div className="overflow-hidden">
                   <p className="text-sm font-semibold text-foreground whitespace-nowrap leading-none">
-                    GIS System
+                    RTB Monitoring Platform
                   </p>
                   <p className="text-[10px] text-muted-foreground whitespace-nowrap mt-0.5">
                     Control center
@@ -387,7 +387,7 @@ export function AppLayout() {
                     className="w-7 h-auto object-contain shrink-0"
                   />
                   <span className="text-sm font-semibold text-foreground whitespace-nowrap">
-                    GIS System
+                    RTB Monitoring Platform
                   </span>
                 </motion.div>
               )}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import {
   Activity,
   AlertTriangle,
@@ -66,7 +66,6 @@ type BuildingCondition = "good" | "fair" | "poor" | "critical";
 
 export default function SchoolDecisionDashboard() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const [school, setSchool] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [is3DViewOpen, setIs3DViewOpen] = useState(false);
@@ -688,7 +687,9 @@ export default function SchoolDecisionDashboard() {
                   schoolData.kmzFilePath) && (
                   <Button
                     variant="outline"
-                    onClick={() => id && navigate(`/schools/${id}/3dview`)}
+                    onClick={() =>
+                      id && window.open(`/schools/${id}/3dview`, "_blank")
+                    }
                     className="rounded-full h-10 px-5 font-black uppercase text-[10px] border-primary/30 bg-primary/5 text-primary shadow-none hover:bg-primary/10 tracking-widest transition-all outline-none"
                   >
                     <Box className="mr-2 h-3.5 w-3.5" />
@@ -1157,7 +1158,9 @@ export default function SchoolDecisionDashboard() {
                           position={schoolPos}
                           icon={createCustomIcon("#3b82f6")}
                           eventHandlers={{
-                            click: () => setIs3DViewOpen(true),
+                            click: () =>
+                              id &&
+                              window.open(`/schools/${id}/3dview`, "_blank"),
                           }}
                         >
                           <Popup closeButton={false} className="custom-popup">
@@ -1196,12 +1199,13 @@ export default function SchoolDecisionDashboard() {
                         <Button
                           size="sm"
                           onClick={() =>
-                            id && navigate(`/schools/${id}/3dview`)
+                            id &&
+                            window.open(`/schools/${id}/3dview`, "_blank")
                           }
                           className="rounded-full shadow-lg bg-primary/90 hover:bg-primary text-[10px] font-black uppercase border border-white/20 h-8 px-4"
                         >
                           <Box className="w-3.5 h-3.5 mr-2" />
-                          Explore 3D
+                          Explore School Map
                         </Button>
                       </div>
                     </div>
@@ -1225,7 +1229,8 @@ export default function SchoolDecisionDashboard() {
                         <div
                           className="w-full h-full relative group cursor-pointer"
                           onClick={() =>
-                            id && navigate(`/schools/${id}/3dview`)
+                            id &&
+                            window.open(`/schools/${id}/3dview`, "_blank")
                           }
                         >
                           <img
@@ -1268,6 +1273,10 @@ export default function SchoolDecisionDashboard() {
                             <Button
                               size="sm"
                               className="rounded-full bg-primary/90 hover:bg-primary text-white shadow-lg"
+                              onClick={() =>
+                                id &&
+                                window.open(`/schools/${id}/3dview`, "_blank")
+                              }
                             >
                               <Box className="w-4 h-4 mr-1" />
                               School Map
@@ -2671,7 +2680,9 @@ export default function SchoolDecisionDashboard() {
                   <Button
                     size="lg"
                     className="rounded-full px-10 py-7 bg-linear-to-r from-blue-600 via-blue-600 to-blue-600 hover:from-blue-700 hover:via-blue-700 hover:to-blue-700 text-white font-bold text-lg shadow-2xl shadow-blue-500/40 hover:shadow-blue-500/60 transition-all duration-300 transform hover:scale-110"
-                    onClick={() => navigate(`/schools/${id}/3dview`)}
+                    onClick={() =>
+                      id && window.open(`/schools/${id}/3dview`, "_blank")
+                    }
                   >
                     <Box className="w-6 h-6 mr-3" />
                     Open School Map

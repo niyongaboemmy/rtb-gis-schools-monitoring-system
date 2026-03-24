@@ -47,7 +47,7 @@ export default function Login() {
         </div>
 
         <div className="relative z-10 text-white max-w-lg">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
@@ -55,7 +55,7 @@ export default function Login() {
           >
             <Globe className="w-10 h-10 text-white animate-spin-slow" />
           </motion.div>
-          
+
           <motion.div
             initial={{ opacity: 0, x: -30 }}
             animate={{ opacity: 1, x: 0 }}
@@ -71,7 +71,7 @@ export default function Login() {
             </p>
           </motion.div>
 
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 1 }}
@@ -79,13 +79,17 @@ export default function Login() {
           >
             <div className="flex -space-x-3">
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="w-10 h-10 rounded-full border-2 border-white/10 bg-white/5 backdrop-blur-md flex items-center justify-center text-[10px] font-bold">
+                <div
+                  key={i}
+                  className="w-10 h-10 rounded-full border-2 border-white/10 bg-white/5 backdrop-blur-md flex items-center justify-center text-[10px] font-bold"
+                >
                   JS
                 </div>
               ))}
             </div>
             <p className="text-sm text-blue-200/60 font-medium">
-              Trusted by 500+ <br />Institutions nationwide
+              Trusted by 500+ <br />
+              Institutions nationwide
             </p>
           </motion.div>
         </div>
@@ -98,8 +102,8 @@ export default function Login() {
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-background relative">
         {/* Subtle background pattern for light mode */}
         <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-size-[20px_20px] bg-[radial-gradient(#000_1px,transparent_1px)]" />
-        
-        <motion.div 
+
+        <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5 }}
@@ -123,7 +127,7 @@ export default function Login() {
           </div>
 
           {error && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               className="p-4 rounded-xl bg-destructive/10 text-destructive text-sm font-semibold border border-destructive/20 text-center"
@@ -155,7 +159,10 @@ export default function Login() {
                   <label className="text-sm font-bold text-foreground/80">
                     Password
                   </label>
-                  <a href="#" className="text-xs text-primary font-bold hover:underline">
+                  <a
+                    href="#"
+                    className="text-xs text-primary font-bold hover:underline"
+                  >
                     Forgot Password?
                   </a>
                 </div>
@@ -193,7 +200,7 @@ export default function Login() {
 
           <div className="pt-6 border-t border-border/20 text-center">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Rwanda TVET Board GIS System &copy; 2026. <br />
+              Rwanda TVET Board Monitoring Platform &copy; 2026. <br />
               Authorized personnel only. Data usage is monitored.
             </p>
           </div>
