@@ -1,10 +1,19 @@
-import { useState, useEffect, useRef } from 'react';
-import { api } from '../lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Badge } from '../components/ui/badge';
-import { Building2, AlertTriangle, CheckCircle2, TrendingUp, LayoutGrid } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { PageHeader } from '../components/ui/page-header';
+import { useState, useEffect, useRef } from "react";
+import { api } from "../lib/api";
+import { Badge } from "../components/ui/badge";
+import {
+  Building2,
+  AlertTriangle,
+  CheckCircle2,
+  TrendingUp,
+  LayoutGrid,
+  Users,
+  MapPin,
+  ClipboardCheck,
+  ArrowRight,
+} from "lucide-react";
+import { motion } from "framer-motion";
+import { PageHeader } from "../components/ui/page-header";
 import {
   Table,
   TableHeader,
@@ -13,7 +22,11 @@ import {
   TableHead,
   TableCell,
 } from "../components/ui/table";
-import { cn } from '../lib/utils';
+import { KPICard } from "../components/analytics/KPICard";
+import { IntelligenceScore } from "../components/analytics/IntelligenceScore";
+import { RecommendationList } from "../components/analytics/RecommendationList";
+import { DistributionChart } from "../components/analytics/DistributionChart";
+import { Link } from "react-router-dom";
 
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
@@ -26,10 +39,10 @@ export default function Dashboard() {
 
     const fetchStats = async () => {
       try {
-        const response = await api.get('/analytics/overview');
+        const response = await api.get("/analytics/overview");
         setStats(response.data);
       } catch (err) {
-        console.error('Failed to load stats', err);
+        console.error("Failed to load stats", err);
       } finally {
         setLoading(false);
       }
@@ -39,168 +52,239 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="flex h-full items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground animate-pulse">
+            Synchronizing National Data...
+          </p>
+        </div>
       </div>
     );
   }
 
+  // Calculate an aggregate system score based on priorities
+  const total = stats?.totalSchools || 1;
+  const critical = stats?.byPriority?.critical || 0;
+  const high = stats?.byPriority?.high || 0;
+  const low = stats?.byPriority?.low || 0;
+
+  // Scoring formula: Critical counts for 0%, High for 40%, Low/Normal for 90%
+  const aggregateScore = Math.min(
+    100,
+    Math.round((low * 90 + high * 40 + critical * 10) / total),
+  );
+
   return (
     <div className="space-y-8 pb-10">
       <PageHeader
-        title="System Overview"
-        description="National GIS Intelligence & Infrastructure Status"
+        title="National System Overview"
+        description="GIS Intelligence & Infrastructure Monitoring Dashboard"
         icon={LayoutGrid}
         actions={
-          <div className="flex items-center gap-2 text-[10px] font-black tracking-widest text-muted-foreground bg-background/50 backdrop-blur-md px-4 py-2 rounded-xl border border-border/20">
+          <div className="flex items-center gap-2 text-[10px] font-black tracking-widest text-muted-foreground bg-background/50 backdrop-blur-md px-4 py-2 rounded-xl border border-border/20 shadow-sm">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            AUTO-REFRESHING
+            LIVE MONITORING ENABLED
           </div>
         }
       />
 
-      {/* KPI Cards */}
+      {/* KPI Cards Section */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          { title: "Total Tracked Schools", value: stats?.totalSchools || 0, icon: Building2, sub: "+2 this month", subColor: "text-emerald-600", trend: TrendingUp },
-          { title: "Critical Priority", value: stats?.byPriority?.critical || 0, icon: AlertTriangle, sub: "Require immediate budget", subColor: "text-destructive", destructive: true },
-          { title: "High Priority", value: stats?.byPriority?.high || 0, icon: AlertTriangle, sub: "Need assessment in 6 months", subColor: "text-amber-600", warning: true },
-          { title: "Low Priority", value: stats?.byPriority?.low || 0, icon: CheckCircle2, sub: "Status optimal", subColor: "text-emerald-600", success: true },
-        ].map((kpi, i) => (
-          <motion.div
-            key={kpi.title}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-          >
-            <Card className="transition-all duration-300 border border-border/20 bg-card/60 rounded-3xl backdrop-blur-sm shadow-none">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{kpi.title}</CardTitle>
-                <kpi.icon className={cn("h-4 w-4", kpi.destructive ? "text-destructive" : kpi.warning ? "text-amber-500" : kpi.success ? "text-emerald-500" : "text-muted-foreground")} />
-              </CardHeader>
-              <CardContent>
-                <div className={cn("text-3xl font-black tabular-nums", kpi.destructive ? "text-destructive" : kpi.warning ? "text-amber-600" : kpi.success ? "text-emerald-600" : "")}>{kpi.value}</div>
-                <p className={cn("text-[10px] font-bold mt-1 flex items-center", kpi.subColor)}>
-                  {kpi.trend && <kpi.trend className="h-3 w-3 mr-1" />} {kpi.sub}
-                </p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
+        <KPICard
+          title="Total Institutions"
+          value={stats?.totalSchools || 0}
+          icon={Building2}
+          subValue="+2 added this month"
+          subColor="text-emerald-600"
+          trendIcon={TrendingUp}
+          variant="info"
+          delay={0.1}
+        />
+        <KPICard
+          title="Critical Priority"
+          value={stats?.byPriority?.critical || 0}
+          icon={AlertTriangle}
+          subValue="Immediate budget needed"
+          subColor="text-destructive"
+          variant="destructive"
+          delay={0.2}
+        />
+        <KPICard
+          title="High Priority"
+          value={stats?.byPriority?.high || 0}
+          icon={AlertTriangle}
+          subValue="Upcoming assessment"
+          subColor="text-amber-600"
+          variant="warning"
+          delay={0.3}
+        />
+        <KPICard
+          title="Optimal Status"
+          value={stats?.byPriority?.low || 0}
+          icon={CheckCircle2}
+          subValue="Maintenance on track"
+          subColor="text-emerald-600"
+          variant="success"
+          delay={0.4}
+        />
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
-        {/* Priority Schools List */}
-        <motion.div 
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.4 }}
-          className="lg:col-span-4"
+      <div className="grid gap-6 grid-cols-1 xl:grid-cols-3">
+        {/* Intelligence Score Section */}
+        <IntelligenceScore
+          score={aggregateScore}
+          isAggregate={true}
+          metrics={[
+            {
+              label: "Infra Health",
+              score: aggregateScore + 5,
+              icon: Building2,
+            },
+            { label: "Comm. Access", score: 68, icon: MapPin },
+            { label: "Cap. Scaling", score: 72, icon: Users },
+            { label: "Compliance", score: 84, icon: ClipboardCheck },
+          ]}
+          className="xl:col-span-2"
         >
-          <Card className="h-full flex flex-col border border-border/20 rounded-3xl bg-card/60 backdrop-blur-sm shadow-none">
-            <CardHeader className="flex flex-row items-center justify-between border-b border-border/20 pb-4">
-              <CardTitle className="text-base font-bold">Top Critical Priority Schools</CardTitle>
-              <Badge variant="destructive" className="rounded-full px-4 h-6 uppercase text-[10px] font-black">Attention Needed</Badge>
-            </CardHeader>
-            <CardContent className="p-0 flex flex-col flex-1">
-              <Table wrapperClassName="flex-1 border-none rounded-none bg-transparent backdrop-blur-none">
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent border-b">
-                    <TableHead>Institution</TableHead>
-                    <TableHead className="text-center">Score</TableHead>
-                    <TableHead className="text-right">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {stats?.criticalSchools?.map((school: any) => (
-                    <TableRow key={school.id} className="group/row">
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-destructive/10 flex items-center justify-center text-destructive font-black text-[10px] group-hover/row:scale-110 transition-transform">
-                            {school.code?.substring(0, 2)}
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-foreground leading-tight group-hover/row:text-primary transition-colors">
-                              {school.name}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-tight">
-                              {school.district}
-                            </p>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="inline-flex items-center justify-center px-2 py-0.5 rounded-lg bg-destructive/10 text-destructive font-black text-[10px]">
-                          {school.overallScore}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Badge variant="destructive" className="rounded-full text-[8px] font-black uppercase tracking-tighter px-2">Critical</Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              
-              {(!stats?.criticalSchools || stats.criticalSchools.length === 0) && (
-                <div className="text-center p-12 text-muted-foreground bg-muted/20 rounded-2xl border-2 border-dashed border-border/20 m-6">
-                  <CheckCircle2 className="w-16 h-16 mx-auto mb-4 text-emerald-500/30" />
-                  <p className="font-bold">No critical schools identified currently.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
+          <RecommendationList
+            recommendations={[
+              `[URGENT] ${stats?.byPriority?.critical || 0} schools require immediate infrastructure intervention.`,
+              "[STRATEGIC] Expand GIS mapping to rural sectors in the Northern province.",
+              "[CRITICAL] Low student-to-latrine ratios detected in 12 high-priority schools.",
+              "[STRATEGIC] Implement IoT water monitoring in schools with partial compliance.",
+            ]}
+            title="National Intelligence Insights"
+            className="mt-6"
+          />
+        </IntelligenceScore>
 
         {/* Provincial Distribution */}
-        <motion.div 
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.5 }}
-          className="lg:col-span-3"
+        <DistributionChart
+          title="Provincial Distribution"
+          items={
+            stats?.provinceStats?.map((p: any) => ({
+              label: p.province,
+              total: Number(p.total),
+              critical: Number(p.critical),
+              high: Number(p.high),
+            })) || []
+          }
+        />
+      </div>
+
+      {/* Critical Schools Table */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.6 }}
+      >
+        <TableSection criticalSchools={stats?.criticalSchools || []} />
+      </motion.div>
+    </div>
+  );
+}
+
+function TableSection({ criticalSchools }: { criticalSchools: any[] }) {
+  return (
+    <div className="flex flex-col border border-border/20 dark:border-blue-700/20 rounded-3xl bg-card/60 backdrop-blur-sm shadow-none overflow-hidden">
+      <div className="flex flex-row items-center justify-between border-b border-border/20 dark:border-blue-700/20 p-6">
+        <div>
+          <h3 className="text-base font-bold">
+            Top Critical Priority Institutions
+          </h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Summary of institutions requiring urgent decision support
+          </p>
+        </div>
+        <Badge
+          variant="destructive"
+          className="rounded-full px-4 h-6 uppercase text-[10px] font-black animate-pulse"
         >
-          <Card className="h-full border border-border/20 bg-card/60 backdrop-blur-sm">
-            <CardHeader className="border-b border-border/20 pb-4">
-              <CardTitle className="text-base font-bold">Provincial Distribution</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6">
-              <div className="space-y-6">
-                {stats?.provinceStats?.map((p: any) => (
-                  <div key={p.province} className="space-y-3">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-bold text-foreground/80">{p.province}</span>
-                      <span className="text-[10px] font-black uppercase text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{p.total} schools</span>
+          Attention Needed
+        </Badge>
+      </div>
+
+      <div className="p-0 overflow-x-auto">
+        <Table className="border-none">
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-b border-border/10 bg-muted/20">
+              <TableHead className="font-black text-[10px] uppercase tracking-wider">
+                Institution
+              </TableHead>
+              <TableHead className="text-center font-black text-[10px] uppercase tracking-wider">
+                Priority Score
+              </TableHead>
+              <TableHead className="text-right font-black text-[10px] uppercase tracking-wider">
+                Action
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {criticalSchools.map((school: any) => (
+              <TableRow
+                key={school.id}
+                className="group/row border-b border-border/5 last:border-0 hover:bg-primary/5 transition-colors"
+              >
+                <TableCell>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center text-destructive font-black text-xs group-hover/row:scale-110 group-hover/row:bg-destructive group-hover/row:text-white transition-all duration-300 shadow-sm">
+                      {school.code?.substring(0, 2)}
                     </div>
-                    <div className="w-full bg-muted/50 rounded-full h-3 overflow-hidden flex">
-                      {Number(p.critical) > 0 && (
-                        <div 
-                          className="bg-destructive h-full transition-all duration-1000" 
-                          style={{ width: `${(Number(p.critical) / Number(p.total)) * 100}%` }}
-                          title={`Critical: ${p.critical}`}
-                        />
-                      )}
-                      {Number(p.high) > 0 && (
-                        <div 
-                          className="bg-amber-500 h-full transition-all duration-1000" 
-                          style={{ width: `${(Number(p.high) / Number(p.total)) * 100}%` }}
-                          title={`High: ${p.high}`}
-                        />
-                      )}
-                      {(Number(p.total) - Number(p.critical) - Number(p.high)) > 0 && (
-                        <div 
-                          className="bg-emerald-500 h-full transition-all duration-1000" 
-                          style={{ width: `${((Number(p.total) - Number(p.critical) - Number(p.high)) / Number(p.total)) * 100}%` }}
-                          title={`Optimal: ${Number(p.total) - Number(p.critical) - Number(p.high)}`}
-                        />
-                      )}
+                    <div>
+                      <p className="text-sm font-bold text-foreground leading-tight">
+                        {school.name}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-tight flex items-center gap-1 mt-0.5">
+                        <MapPin className="w-2.5 h-2.5" />
+                        {school.district}, {school.province}
+                      </p>
                     </div>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
+                </TableCell>
+                <TableCell className="text-center">
+                  <div className="inline-flex items-center justify-center px-3 py-1 rounded-lg bg-destructive/10 text-destructive font-black text-xs">
+                    {school.overallScore}
+                  </div>
+                </TableCell>
+                <TableCell className="text-right">
+                  <Link
+                    to={`/schools/${school.id}`}
+                    className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-primary hover:text-primary/70 transition-colors"
+                  >
+                    View Details
+                    <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+
+        {criticalSchools.length === 0 && (
+          <div className="text-center p-12 text-muted-foreground bg-muted/10 rounded-2xl border-2 border-dashed border-border/10 m-6">
+            <CheckCircle2 className="w-16 h-16 mx-auto mb-4 text-emerald-500/30" />
+            <p className="font-bold">
+              No critical schools identified currently.
+            </p>
+            <p className="text-xs mt-1 opacity-60 uppercase tracking-widest font-black">
+              All systems operational
+            </p>
+          </div>
+        )}
       </div>
+
+      {criticalSchools.length > 0 && (
+        <div className="bg-muted/30 p-4 text-center border-t border-border/10">
+          <Link
+            to="/schools"
+            className="text-xs font-bold text-muted-foreground hover:text-primary transition-colors flex items-center justify-center gap-2"
+          >
+            View Full Directory
+            <ArrowRight className="w-3 h-3" />
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

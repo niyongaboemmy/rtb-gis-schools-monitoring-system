@@ -62,8 +62,10 @@ export default function Login() {
             transition={{ duration: 0.8, delay: 0.2 }}
           >
             <h1 className="text-6xl font-black tracking-tighter mb-8 leading-[1.1]">
-              RTB GIS <br />
-              <span className="text-primary-foreground/80">Intelligence</span>
+              RTB Schools <br />
+              <span className="text-primary-foreground/80">
+                Monitoring Platform Intelligence
+              </span>
             </h1>
             <p className="text-xl text-blue-100/80 font-medium leading-relaxed mb-12">
               National platform for data-driven decisions on school
@@ -88,8 +90,8 @@ export default function Login() {
               ))}
             </div>
             <p className="text-sm text-blue-200/60 font-medium">
-              Trusted by 500+ <br />
-              Institutions nationwide
+              More than 500+ <br />
+              schools monitored
             </p>
           </motion.div>
         </div>
@@ -148,7 +150,7 @@ export default function Login() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="flex h-12 w-full rounded-xl border border-input bg-background/50 backdrop-blur-sm pl-12 pr-4 py-2 text-sm transition-all focus:bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    className="flex h-12 w-full rounded-xl border border-input dark:border-blue-700/30 bg-background/50 backdrop-blur-sm pl-12 pr-4 py-2 text-sm transition-all focus:bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                     placeholder="admin@rtb.gov.rw"
                     required
                   />
@@ -172,7 +174,7 @@ export default function Login() {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="flex h-12 w-full rounded-xl border border-input bg-background/50 backdrop-blur-sm pl-12 pr-4 py-2 text-sm transition-all focus:bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    className="flex h-12 w-full rounded-xl border border-input dark:border-blue-700/30 bg-background/50 backdrop-blur-sm pl-12 pr-4 py-2 text-sm transition-all focus:bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                     placeholder="••••••••"
                     required
                   />
@@ -198,7 +200,7 @@ export default function Login() {
             </motion.button>
           </form>
 
-          <div className="pt-6 border-t border-border/20 text-center">
+          <div className="pt-6 border-t border-border/20 dark:border-blue-700/30 text-center">
             <p className="text-xs text-muted-foreground leading-relaxed">
               Rwanda TVET Board Monitoring Platform &copy; 2026. <br />
               Authorized personnel only. Data usage is monitored.

@@ -165,7 +165,7 @@ export function AppLayout() {
                 />
                 <div className="overflow-hidden">
                   <p className="text-sm font-semibold text-foreground whitespace-nowrap leading-none">
-                    RTB Monitoring Platform
+                    RTB Monitoring
                   </p>
                   <p className="text-[10px] text-muted-foreground whitespace-nowrap mt-0.5">
                     Control center
