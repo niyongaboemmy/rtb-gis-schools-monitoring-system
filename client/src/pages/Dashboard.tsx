@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import { api } from "../lib/api";
-import { Badge } from "../components/ui/badge";
 import {
   Building2,
   AlertTriangle,
@@ -13,7 +12,6 @@ import {
   ArrowRight,
   TrendingDown,
 } from "lucide-react";
-import { motion } from "framer-motion";
 import { PageHeader } from "../components/ui/page-header";
 import {
   Table,

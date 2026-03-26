@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 import { api } from "../lib/api";
-import { Lock, Mail, Loader2, Globe, ShieldCheck } from "lucide-react";
+import { Lock, Mail, Loader2, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function Login() {
@@ -39,21 +39,27 @@ export default function Login() {
   return (
     <div className="min-h-screen w-full flex bg-background overflow-hidden font-sans">
       {/* Left panel - Branding with Imigongo */}
-      <div className="hidden lg:flex w-1/2 bg-imigongo-dark relative overflow-hidden items-center justify-center p-12">
+      <div className="hidden lg:flex w-1/2 bg-[#001D3D] relative overflow-hidden items-center justify-center p-12">
         {/* Animated Background Elements */}
-        <div className="absolute inset-0 opacity-30">
-          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 blur-[120px] rounded-full animate-pulse" />
-          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/20 blur-[120px] rounded-full animate-pulse delay-700" />
+        <div className="absolute inset-0">
+          <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-blue-600/30 blur-[150px] rounded-full animate-pulse" />
+          <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] bg-indigo-600/20 blur-[150px] rounded-full animate-pulse delay-1000" />
+          <div className="absolute top-[30%] right-[10%] w-[150px] h-[150px] bg-primary/20 blur-[80px] rounded-full animate-bounce-slow" />
         </div>
 
         <div className="relative z-10 text-white max-w-lg">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: -30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="w-20 h-20 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center mb-10 border border-white/20"
+            transition={{ duration: 1, type: "spring" }}
+            className="w-32 h-32 bg-white/10 backdrop-blur-2xl rounded-[2.5rem] flex items-center justify-center mb-12 border border-white/20 shadow-2xl relative group"
           >
-            <Globe className="w-10 h-10 text-white animate-spin-slow" />
+            <div className="absolute inset-0 bg-white/5 rounded-[2.5rem] opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+            <img
+              src="/logortb.png"
+              alt="RTB Logo"
+              className="w-20 h-20 object-contain drop-shadow-2xl brightness-110"
+            />
           </motion.div>
 
           <motion.div
@@ -61,15 +67,15 @@ export default function Login() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.8, delay: 0.2 }}
           >
-            <h1 className="text-6xl font-black tracking-tighter mb-8 leading-[1.1]">
-              RTB Schools <br />
-              <span className="text-primary-foreground/80">
-                Monitoring Platform Intelligence
+            <h1 className="text-7xl font-black tracking-tighter mb-10 leading-none text-transparent bg-clip-text bg-linear-to-br from-white via-white to-blue-300">
+              National GIS <br />
+              <span className="text-primary-foreground/90 font-bold italic text-5xl">
+                Infrastructure
               </span>
             </h1>
-            <p className="text-xl text-blue-100/80 font-medium leading-relaxed mb-12">
-              National platform for data-driven decisions on school
-              infrastructure and geospatial analysis.
+            <p className="text-xl text-blue-100/70 font-medium leading-relaxed mb-14 max-w-md border-l-2 border-primary/40 pl-6">
+              Empowering TVET transformation through advanced geospatial
+              intelligence and data-driven infrastructure monitoring.
             </p>
           </motion.div>
 
@@ -106,26 +112,38 @@ export default function Login() {
         <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-size-[20px_20px] bg-[radial-gradient(#000_1px,transparent_1px)]" />
 
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5 }}
-          className="w-full max-w-md space-y-10 relative z-10"
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          className="w-full max-w-md space-y-8 relative z-10"
         >
-          <div className="text-center lg:text-left space-y-2">
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-widest mb-4"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" /> Secure Access
-            </motion.div>
-            <h2 className="text-4xl font-extrabold tracking-tight text-foreground">
-              Welcome Back
-            </h2>
-            <p className="text-muted-foreground font-medium">
-              Securely sign in to the GIS dashboard
-            </p>
+          <div className="flex flex-col items-center lg:items-start space-y-6">
+            <motion.img
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.2, type: "spring" }}
+              src="/logortb.png"
+              alt="RTB Logo"
+              className="w-24 h-24 object-contain lg:hidden mb-2"
+            />
+            
+            <div className="space-y-3">
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3 }}
+                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest mb-2 border border-primary/10 shadow-sm"
+              >
+                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                SYSTEM ACCESS PORTAL
+              </motion.div>
+              <h2 className="text-5xl font-black tracking-tight text-foreground leading-tight">
+                Authentification
+              </h2>
+              <p className="text-muted-foreground font-medium text-lg">
+                Enter your credentials to manage the platform
+              </p>
+            </div>
           </div>
 
           {error && (
@@ -141,9 +159,11 @@ export default function Login() {
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-5">
               <div className="space-y-2.5">
-                <label className="text-sm font-bold text-foreground/80 ml-1">
-                  Email Address
-                </label>
+                <div className="pb-1">
+                  <label className="text-sm font-bold text-foreground/80 ml-1">
+                    Email Address
+                  </label>
+                </div>
                 <div className="relative group">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
                   <input
@@ -183,19 +203,22 @@ export default function Login() {
             </div>
 
             <motion.button
-              whileHover={{ scale: 1.01 }}
+              whileHover={{ scale: 1.02, translateY: -2 }}
               whileTap={{ scale: 0.98 }}
               type="submit"
               disabled={isLoading}
-              className="w-full h-12 rounded-full bg-primary px-6 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full h-14 rounded-2xl bg-primary px-6 text-base font-bold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center justify-center gap-3 shadow-[0_10px_30px_-10px_rgba(var(--primary),0.5)] group"
             >
               {isLoading ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Verifying Identity...
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  Authenticating...
                 </>
               ) : (
-                "Sign In to Account"
+                <>
+                  Access GIS Dashboard
+                  <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                </>
               )}
             </motion.button>
           </form>
