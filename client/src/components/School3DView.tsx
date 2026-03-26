@@ -45,8 +45,7 @@ import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
 import { Card } from "./ui/card";
 
-Ion.defaultAccessToken =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJmNjg4OTk1Ny0wYTIyLTRjZjctOTBkNy0wMDkyYjQzZTYxMDgiLCJpZCI6NDA2NzM5LCJpYXQiOjE3NzQwMjIyNTN9.flvXN2VpKL845yW0GBl6sFHn07mEs68l7_d18xgsFOE";
+Ion.defaultAccessToken = import.meta.env.VITE_CESIUM_ION_TOKEN;
 
 type ViewMode = "2D" | "3D";
 
