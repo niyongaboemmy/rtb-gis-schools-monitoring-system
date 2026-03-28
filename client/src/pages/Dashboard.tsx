@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { api } from "../lib/api";
 import {
   Building2,
@@ -28,6 +28,7 @@ import { DistributionChart } from "../components/analytics/DistributionChart";
 import { Link } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { ImigongoPattern } from "../components/ui/ImigongoPattern";
+import { useSchoolsStore } from "../store/schoolsStore";
 
 interface DashboardSchool {
   id: string;
@@ -103,9 +104,14 @@ const calculateDeepScore = (school: any) => {
 
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
-  const [schools, setSchools] = useState<DashboardSchool[]>([]);
   const [loading, setLoading] = useState(true);
   const fetchedRef = useRef(false);
+
+  const { allSchools, allSchoolsLoading, fetchAllSchools } = useSchoolsStore();
+
+  useEffect(() => {
+    fetchAllSchools();
+  }, [fetchAllSchools]);
 
   useEffect(() => {
     if (fetchedRef.current) return;
@@ -113,22 +119,8 @@ export default function Dashboard() {
 
     const fetchData = async () => {
       try {
-        const [statsRes, schoolsRes] = await Promise.all([
-          api.get("/analytics/overview"),
-          api.get("/schools", { params: { limit: 1000 } }), // Fetch a large sample for ranking
-        ]);
-
+        const statsRes = await api.get("/analytics/overview");
         setStats(statsRes.data);
-
-        // Calculate scores for all schools and sort
-        const processedSchools = (schoolsRes.data.data || [])
-          .map((s: any) => ({
-            ...s,
-            calculatedScore: calculateDeepScore(s),
-          }))
-          .sort((a: any, b: any) => b.calculatedScore - a.calculatedScore);
-
-        setSchools(processedSchools);
       } catch (err) {
         console.error("Failed to load data", err);
       } finally {
@@ -138,7 +130,15 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
-  if (loading) {
+  const schools = useMemo(
+    () =>
+      allSchools
+        .map((s) => ({ ...s, calculatedScore: calculateDeepScore(s) }))
+        .sort((a, b) => b.calculatedScore - a.calculatedScore),
+    [allSchools],
+  );
+
+  if (loading || allSchoolsLoading) {
     return (
       <div className="flex h-full items-center justify-center min-h-[400px]">
         <div className="flex flex-col items-center gap-4">

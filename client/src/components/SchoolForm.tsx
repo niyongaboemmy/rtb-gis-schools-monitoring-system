@@ -77,6 +77,8 @@ export interface SchoolFormData {
   roadStatusPercentage: string;
   usedLandArea: string;
   unusedLandArea: string;
+  kmz2dFilePath: string;
+  tifFilePath: string;
 }
 
 interface SchoolFormProps {
@@ -196,8 +198,9 @@ const defaultFormData: SchoolFormData = {
   roadState: "",
   roadStatusPercentage: "",
   usedLandArea: "",
-
   unusedLandArea: "",
+  kmz2dFilePath: "",
+  tifFilePath: "",
 } as SchoolFormData;
 
 export function SchoolForm({
@@ -421,6 +424,8 @@ export function SchoolForm({
             latitude: b.geolocation.latitude ?? null,
             longitude: b.geolocation.longitude ?? null,
           })),
+        kmz2dFilePath: formData.kmz2dFilePath || null,
+        tifFilePath: formData.tifFilePath || null,
       };
 
       if (mode === "edit" && schoolId) {
@@ -486,6 +491,9 @@ export function SchoolForm({
             onAdministrativeChange={handleInputChange}
             onAddressChange={(value) => handleInputChange("address", value)}
             onElevationChange={(value) => handleInputChange("elevation", value)}
+            kmz2dFilePath={formData.kmz2dFilePath}
+            tifFilePath={formData.tifFilePath}
+            onGisChange={handleInputChange}
           />
         );
       case 3:

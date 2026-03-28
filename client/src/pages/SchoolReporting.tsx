@@ -1,6 +1,9 @@
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect, useRef, Fragment, useMemo } from "react";
 import { useAuthStore } from "../store/authStore";
+import { useSchoolsStore } from "../store/schoolsStore";
 import { api } from "../lib/api";
+import { hasPermission, Permission } from "../lib/permissions";
+import { AdminReportingDashboard } from "../components/reports/AdminReportingDashboard";
 import {
   Building2,
   ChevronRight,
@@ -21,6 +24,7 @@ import {
   Calendar,
   ChevronLeft,
   Edit2,
+  Search,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -68,11 +72,6 @@ interface Building {
   }>;
 }
 
-interface School {
-  id: string;
-  name: string;
-}
-
 interface IssueEntry {
   category: string[];
   description: string;
@@ -89,15 +88,39 @@ export default function SchoolReporting({
   hideHeader,
 }: SchoolReportingProps) {
   const { user } = useAuthStore();
+
+  // Refs to prevent duplicate / stale API calls
+  const historyAbortRef = useRef<AbortController | null>(null);
+  const analyticsAbortRef = useRef<AbortController | null>(null);
+  // Track which target school ID was last used to initialize, so auth-store
+  // hydration (undefined → value) does not trigger a duplicate fetch.
+  // undefined = not yet initialized (sentinel distinct from null = "no school")
+  const initTargetRef = useRef<string | null | undefined>(undefined);
+
+  // Derive admin permission
+  const isAdmin = hasPermission(
+    user,
+    Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD,
+  );
+
   const [activeTab, setActiveTab] = useState<
-    "report" | "history" | "analytics"
-  >("report");
+    "overview" | "report" | "history" | "analytics"
+  >(isAdmin ? "overview" : "report");
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
+  // ── Shared store (schools list + facility definitions) ─────────────────
+  const {
+    schools,
+    meta: schoolsMeta,
+    schoolsLoading,
+    fetchSchools: fetchSchoolsFromStore,
+    facilities: storeFacilities,
+    fetchFacilities,
+  } = useSchoolsStore();
+
   // Selection state
-  const [schools, setSchools] = useState<School[]>([]);
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>(
     propSchoolId || user?.location?.schoolId || "",
   );
@@ -105,9 +128,8 @@ export default function SchoolReporting({
   const [selectedBuilding, setSelectedBuilding] = useState<Building | null>(
     null,
   );
-  const [facilitiesDefinitions, setFacilitiesDefinitions] = useState<
-    Facility[]
-  >([]);
+  // Facilities come from the shared store (cast for backward-compat)
+  const facilitiesDefinitions = storeFacilities as Facility[];
   const [selectedFacility, setSelectedFacility] = useState<Facility | null>(
     null,
   );
@@ -122,6 +144,10 @@ export default function SchoolReporting({
     description: "",
     files: [],
   });
+  const [formErrors, setFormErrors] = useState<{
+    description?: string;
+    category?: string;
+  }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState<{
     message: string;
@@ -155,6 +181,12 @@ export default function SchoolReporting({
   >(null);
   const [selectedReport, setSelectedReport] = useState<any | null>(null);
 
+  // School list pagination & search (delegated to store)
+  const [schoolsPage, setSchoolsPage] = useState(1);
+  const schoolsTotal = schoolsMeta.total;
+  const [schoolsSearch, setSchoolsSearch] = useState("");
+  const schoolsLimit = 15;
+
   // History Pagination & Filtering
   const [historyPage, setHistoryPage] = useState(1);
   const [historyTotal, setHistoryTotal] = useState(0);
@@ -165,26 +197,51 @@ export default function SchoolReporting({
     end: Date | null;
   }>({ start: null, end: null });
 
+  // History search
+  const [historySearch, setHistorySearch] = useState("");
+
   // Delete & Edit State
   const [reportToDelete, setReportToDelete] = useState<any | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState<string | false>(false);
   const [isStatusUpdating, setIsStatusUpdating] = useState(false);
 
+  const filteredHistory = useMemo(() => {
+    if (!historySearch.trim()) return history;
+    const q = historySearch.toLowerCase();
+    return history.filter(
+      (r) =>
+        r.description?.toLowerCase().includes(q) ||
+        r.facilityId?.toLowerCase().includes(q) ||
+        r.itemId?.toLowerCase().includes(q),
+    );
+  }, [history, historySearch]);
+
   useEffect(() => {
-    fetchFacilitiesDefinitions();
-    const targetSchoolId = propSchoolId || user?.location?.schoolId;
+    const targetSchoolId = propSchoolId || user?.location?.schoolId || null;
+
+    // Skip when the resolved target hasn't actually changed (e.g. auth-store hydration
+    // changes the user object but the schoolId stays the same / undefined)
+    if (initTargetRef.current === targetSchoolId) return;
+    initTargetRef.current = targetSchoolId;
+
+    // Fetch facilities from shared store (no-op if already loaded)
+    fetchFacilities();
+
     if (targetSchoolId) {
       setSelectedSchoolId(targetSchoolId);
       fetchSchoolBuildings(targetSchoolId);
       setStep(2);
     } else {
-      fetchSchools();
+      fetchSchoolsLocal(1, "");
     }
   }, [propSchoolId, user?.location?.schoolId]);
 
   useEffect(() => {
-    if (activeTab === "history") fetchHistory();
+    if (activeTab === "history") {
+      setHistoryLoading(true); // prevent empty-state flash before fetch starts
+      fetchHistory();
+    }
     if (activeTab === "analytics") fetchAnalyticsData();
   }, [
     activeTab,
@@ -197,24 +254,33 @@ export default function SchoolReporting({
 
   const fetchAnalyticsData = async () => {
     if (!selectedSchoolId) return;
+
+    // Cancel any in-flight request before starting a new one
+    analyticsAbortRef.current?.abort();
+    const controller = new AbortController();
+    analyticsAbortRef.current = controller;
+
     setAnalyticsLoading(true);
     try {
       const params: any = {
         schoolId: selectedSchoolId,
-        limit: 1000, // Get a larger set for analytics trend calculation
+        limit: 1000,
       };
       if (analyticsRange.startDate)
         params.startDate = analyticsRange.startDate.toISOString();
       if (analyticsRange.endDate)
         params.endDate = analyticsRange.endDate.toISOString();
 
-      const res = await api.get("/reports", { params });
-      // Extract data array from paginated response { data: [], total: x }
+      const res = await api.get("/reports", {
+        params,
+        signal: controller.signal,
+      });
       const reportsArray = res.data.data || res.data || [];
       setAllReports(Array.isArray(reportsArray) ? reportsArray : []);
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") return;
       console.error("Failed to fetch analytics", err);
-      setAllReports([]); // Safety fallback
+      setAllReports([]);
     } finally {
       setAnalyticsLoading(false);
     }
@@ -252,30 +318,38 @@ export default function SchoolReporting({
   };
 
   const fetchHistory = async () => {
-    if (!user?.id) return;
+    if (!user?.id && !selectedSchoolId) return;
+
+    // Cancel any in-flight request before starting a new one
+    historyAbortRef.current?.abort();
+    const controller = new AbortController();
+    historyAbortRef.current = controller;
+
     setHistoryLoading(true);
     try {
       const params: any = {
-        reportedBy: user.id,
         page: historyPage,
         limit: historyLimit,
       };
 
-      if (statusFilter !== "ALL") {
-        params.status = statusFilter;
+      // Scope history to the selected school when available; otherwise show current user's reports
+      if (selectedSchoolId) {
+        params.schoolId = selectedSchoolId;
+      } else if (user?.id) {
+        params.reportedBy = user.id;
       }
 
-      if (historyDateRange.start) {
+      if (statusFilter !== "ALL") params.status = statusFilter;
+      if (historyDateRange.start)
         params.startDate = historyDateRange.start.toISOString();
-      }
-
-      if (historyDateRange.end) {
+      if (historyDateRange.end)
         params.endDate = historyDateRange.end.toISOString();
-      }
 
-      const res = await api.get("/reports", { params });
+      const res = await api.get("/reports", {
+        params,
+        signal: controller.signal,
+      });
 
-      // Backend now returns { data, total }
       if (res.data && res.data.data) {
         setHistory(res.data.data);
         setHistoryTotal(res.data.total);
@@ -283,7 +357,8 @@ export default function SchoolReporting({
         setHistory(res.data || []);
         setHistoryTotal(res.data?.length || 0);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") return;
       console.error("Failed to load history", err);
     } finally {
       setHistoryLoading(false);
@@ -346,7 +421,7 @@ export default function SchoolReporting({
       setActiveTab("report");
       setStep(5);
 
-      showToast("Edit mode: Update incident details", "success");
+      showToast("Edit mode active – update the details below.", "success");
     } catch (err) {
       console.error("Failed to prepare edit mode", err);
       showToast("Failed to enter edit mode", "warning");
@@ -357,13 +432,17 @@ export default function SchoolReporting({
 
   const setIsHistoryLoading = (val: boolean) => setHistoryLoading(val); // simple wrapper
 
-  const fetchSchools = async () => {
-    try {
-      const res = await api.get("/schools");
-      setSchools(res.data.data || []);
-    } catch (err) {
-      console.error("Failed to load schools", err);
-    }
+  // Wrapper that delegates to the shared store
+  const fetchSchoolsLocal = async (
+    page = schoolsPage,
+    search = schoolsSearch,
+  ) => {
+    setSchoolsPage(page);
+    await fetchSchoolsFromStore({
+      page,
+      limit: schoolsLimit,
+      search: search.trim() || "",
+    });
   };
 
   const fetchSchoolBuildings = async (schoolId: string) => {
@@ -379,20 +458,14 @@ export default function SchoolReporting({
     }
   };
 
-  const fetchFacilitiesDefinitions = async () => {
-    try {
-      const res = await api.get("/schools/facilities");
-      setFacilitiesDefinitions(res.data || []);
-    } catch (err) {
-      console.error("Failed to load facility definitions", err);
-    }
-  };
-
   const handleSchoolSelect = (id: string) => {
     setSelectedSchoolId(id);
     fetchSchoolBuildings(id);
     setStep(2);
   };
+
+  // ── Admin overview tab fetch ──────────────────────────────────────────────
+  // Admin dashboard fetches its own data internally (all schools, no schoolId filter)
 
   const handleBuildingSelect = (building: Building) => {
     setSelectedBuilding(building);
@@ -417,7 +490,24 @@ export default function SchoolReporting({
   };
 
   const addIssue = () => {
-    if (currentIssue.category.length === 0 && !currentIssue.description) return;
+    const errors: { description?: string; category?: string } = {};
+    if (
+      !currentIssue.description ||
+      currentIssue.description.trim().length < 20
+    ) {
+      errors.description = "Description must be at least 20 characters.";
+    }
+    if (currentIssue.description.trim().length > 1000) {
+      errors.description = "Description cannot exceed 1000 characters.";
+    }
+    if (currentIssue.category.length === 0) {
+      errors.category = "Please select at least one issue category.";
+    }
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+    setFormErrors({});
     setIssues([...issues, { ...currentIssue }]);
     setCurrentIssue({ category: [], description: "", files: [] });
   };
@@ -544,14 +634,14 @@ export default function SchoolReporting({
           initial={{ scale: 0.9, opacity: 0, y: 20 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.9, opacity: 0, y: 20 }}
-          className="relative bg-card p-10 rounded-[50px] border border-border/10 shadow-[0_32px_128px_-16px_rgba(0,0,0,0.3)] max-w-md w-full text-center overflow-hidden"
+          className="relative bg-card p-10 rounded-2xl border border-border/10 shadow-[0_32px_128px_-16px_rgba(0,0,0,0.3)] max-w-md w-full text-center overflow-hidden"
         >
           <ImigongoPattern className="absolute inset-0 text-primary pointer-events-none opacity-[0.03]" />
 
           <div className="relative z-10 space-y-6">
             <div
               className={cn(
-                "w-24 h-24 rounded-[40px] mx-auto flex items-center justify-center",
+                "w-24 h-24 rounded-2xl mx-auto flex items-center justify-center",
                 isSuccess
                   ? "bg-emerald-500/10 text-emerald-500"
                   : "bg-rose-500/10 text-rose-500",
@@ -566,7 +656,7 @@ export default function SchoolReporting({
 
             <div className="space-y-2">
               <h3 className="text-3xl font-black uppercase tracking-tighter">
-                {isSuccess ? "Transmission Confirmed" : "Transmission Fault"}
+                {isSuccess ? "Report Submitted" : "Submission Failed"}
               </h3>
               <p className="text-xs font-bold text-muted-foreground uppercase opacity-60 leading-relaxed">
                 {isSuccess
@@ -588,7 +678,7 @@ export default function SchoolReporting({
                     : "bg-rose-500 hover:bg-rose-600 shadow-rose-500/20",
                 )}
               >
-                {isSuccess ? "Continue Reporting" : "Retry Submission"}
+                {isSuccess ? "Submit Another" : "Retry Submission"}
               </Button>
 
               {isSuccess && (
@@ -600,7 +690,7 @@ export default function SchoolReporting({
                   }}
                   className="rounded-full h-12 text-[10px] font-black uppercase tracking-widest opacity-60 hover:opacity-100 hover:bg-primary/5 transition-all"
                 >
-                  View Transmission Log
+                  View History
                 </Button>
               )}
             </div>
@@ -612,46 +702,51 @@ export default function SchoolReporting({
 
   const renderSubmissionReview = () => (
     <div className="space-y-6">
-      <div className="bg-primary/5 p-8 rounded-[40px] border border-primary/10 relative overflow-hidden group">
+      <div className="bg-primary/5 p-8 rounded-2xl border border-primary/10 relative overflow-hidden group">
         <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
           <ClipboardList className="w-24 h-24 text-primary" />
         </div>
         <div className="relative z-10">
           <Badge className="bg-primary/20 text-primary border-none text-[8px] font-black uppercase rounded-full px-3 py-1 mb-4">
-            Validation Phase
+            Review
           </Badge>
-          <h3 className="text-3xl font-black uppercase tracking-tighter leading-none mb-2">
-            Final Reporting Authority
+          <h3 className="text-3xl font-black uppercase tracking-tighter leading-none mb-2 flex items-center gap-4">
+            Review & Confirm
+            {selectedSchoolDetails?.tifFilePath && (
+              <Badge className="bg-blue-500/20 text-blue-500 border-blue-500/20 text-[8px] font-black uppercase rounded-full px-3 py-1">
+                High-Res Mapping Active
+              </Badge>
+            )}
           </h3>
           <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest opacity-80">
-            Verify all critical signatures before dispatching dispatch
+            Review all issues before submitting.
           </p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
         <div className="lg:col-span-4 order-2 lg:order-1 space-y-4">
-          <Card className="p-8 rounded-[40px] border border-border/10 bg-card/30 backdrop-blur-xl relative overflow-hidden shadow-2xl">
+          <Card className="p-8 rounded-2xl border border-border/10 bg-card relative overflow-hidden shadow-2xl">
             <div className="absolute top-0 left-0 w-full h-1.5 bg-linear-to-r from-primary/50 to-transparent"></div>
             <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-8 flex items-center gap-3">
               <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              Deployment Context
+              Report Context
             </h4>
 
             <div className="space-y-6">
               {[
                 {
-                  label: "Mission School",
+                  label: "School",
                   value: schools.find((s) => s.id === selectedSchoolId)?.name,
                   icon: <SchoolIcon className="w-4 h-4" />,
                 },
                 {
-                  label: "Target Block/Building",
+                  label: "Building / Block",
                   value: selectedBuilding?.name,
                   icon: <Building2 className="w-4 h-4" />,
                 },
                 {
-                  label: "Operations Unit",
+                  label: "Facility & Item",
                   value: `${selectedFacility?.title || "N/A"} • ${selectedItem?.label || "General"}`,
                   icon: <Layers className="w-4 h-4" />,
                 },
@@ -677,7 +772,7 @@ export default function SchoolReporting({
               onClick={() => setStep(2)}
               className="w-full mt-8 rounded-full h-12 text-[9px] font-black uppercase tracking-widest border-2 border-border/10 hover:border-primary/40 hover:bg-primary/5 transition-all"
             >
-              Modify Location
+              Change Location
             </Button>
           </Card>
         </div>
@@ -685,7 +780,7 @@ export default function SchoolReporting({
         <div className="lg:col-span-8 order-1 lg:order-2 space-y-6">
           <div className="flex items-center justify-between px-2">
             <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-3">
-              Incidents Catalog ({issues.length})
+              Issues ({issues.length})
             </h4>
             <Button
               variant="ghost"
@@ -693,7 +788,7 @@ export default function SchoolReporting({
               onClick={() => setStep(5)}
               className="text-[9px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-primary/10 hover:text-primary transition-all rounded-full h-8"
             >
-              <Plus className="w-3 h-3" /> Add More
+              <Plus className="w-3 h-3" /> Add Issue
             </Button>
           </div>
 
@@ -706,7 +801,7 @@ export default function SchoolReporting({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                 >
-                  <Card className="p-6 rounded-[35px] border border-border/10 bg-card/40 backdrop-blur-md hover:border-primary/30 transition-all flex gap-5 group relative overflow-hidden">
+                  <Card className="p-6 rounded-2xl border border-border/10 bg-card hover:border-primary/30 transition-all flex gap-5 group relative overflow-hidden">
                     <div className="w-12 h-12 rounded-2xl bg-background/50 border border-border/5 flex items-center justify-center shrink-0 text-xs font-black text-muted-foreground group-hover:bg-primary group-hover:text-white group-hover:border-primary transition-all">
                       {idx + 1}
                     </div>
@@ -765,17 +860,17 @@ export default function SchoolReporting({
               {isSubmitting ? (
                 <div className="flex items-center gap-4">
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  Dispatching Authority...
+                  Submitting...
                 </div>
               ) : (
                 <div className="flex items-center gap-3">
-                  <CheckCircle2 className="w-5 h-5" /> Secure Submission
+                  <CheckCircle2 className="w-5 h-5" /> Submit Report
                 </div>
               )}
             </Button>
             <p className="text-center text-[8px] font-black uppercase tracking-widest text-muted-foreground mt-4 opacity-40">
-              Confirming this action will create a permanent audit log in the
-              RTB Intelligence engine.
+              This report will be logged and reviewed by the central monitoring
+              team.
             </p>
           </div>
         </div>
@@ -789,13 +884,13 @@ export default function SchoolReporting({
       animate={{ opacity: 1, scale: 1 }}
       className="max-w-xl mx-auto py-20 text-center space-y-8"
     >
-      <div className="w-24 h-24 bg-green-500/10 rounded-[35px] flex items-center justify-center mx-auto border border-green-500/20 shadow-2xl shadow-green-500/20 relative">
-        <div className="absolute inset-0 bg-green-500/20 rounded-[35px] animate-ping opacity-20" />
+      <div className="w-24 h-24 bg-green-500/10 rounded-2xl flex items-center justify-center mx-auto border border-green-500/20 shadow-2xl shadow-green-500/20 relative">
+        <div className="absolute inset-0 bg-green-500/20 rounded-2xl animate-ping opacity-20" />
         <CheckCircle2 className="w-12 h-12 text-green-500" />
       </div>
       <div className="space-y-3">
         <h3 className="text-4xl font-black uppercase tracking-tighter">
-          Transmission Confirmed
+          Report Submitted
         </h3>
         <p className="text-sm font-black text-muted-foreground uppercase tracking-widest opacity-60">
           Report Reference:{" "}
@@ -804,7 +899,7 @@ export default function SchoolReporting({
           </span>
         </p>
       </div>
-      <Card className="bg-card/30 backdrop-blur-xl p-8 rounded-[40px] border border-border/10 shadow-2xl overflow-hidden relative group text-left">
+      <Card className="bg-card p-8 rounded-2xl border border-border/10 shadow-2xl overflow-hidden relative group text-left">
         <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
           <ImigongoPattern className="w-32 h-32" />
         </div>
@@ -814,13 +909,12 @@ export default function SchoolReporting({
         <div className="flex items-center gap-4 mb-6">
           <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse shadow-blue-500/50" />
           <p className="text-sm font-black uppercase tracking-tight">
-            Queued for HQ Intelligence Review
+            Pending Review
           </p>
         </div>
         <p className="text-xs font-bold text-muted-foreground opacity-80 leading-relaxed">
-          This report has been successfully dispatched to the regional
-          monitoring authority. You will be notified of its categorization once
-          reviewed by the centralized structural intelligence team.
+          Your report has been successfully submitted. The monitoring team will
+          review it and update the status accordingly.
         </p>
       </Card>
       <div className="flex gap-4 pt-4">
@@ -884,12 +978,12 @@ export default function SchoolReporting({
                     isActive
                       ? "bg-primary text-primary-foreground shadow-primary/20"
                       : isCompleted
-                        ? "bg-white dark:bg-green-700/20 text-green-600 border border-green-600/60"
+                        ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 border border-emerald-500/50"
                         : "bg-muted dark:bg-muted/50 text-muted-foreground",
                   )}
                 >
                   {isCompleted ? (
-                    <Check className="w-4 h-4 md:w-5 md:h-5 text-green-600" />
+                    <Check className="w-4 h-4 md:w-5 md:h-5 text-emerald-600" />
                   ) : (
                     s.id
                   )}
@@ -974,32 +1068,50 @@ export default function SchoolReporting({
           icon={ClipboardList}
           actions={
             <div className="bg-muted/50 backdrop-blur-md p-1 rounded-full border border-border/5 flex gap-1">
-              {[
-                { id: "report", label: "New Report", count: null },
-                { id: "history", label: "History", count: history.length },
-                { id: "analytics", label: "Analytics", count: null },
-              ].map((tab) => (
+              {/* Admin-only overview tab */}
+              {isAdmin && (
                 <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => setActiveTab("overview")}
                   className={cn(
                     "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all",
-                    activeTab === tab.id
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-primary hover:bg-primary/5",
+                    activeTab === "overview"
+                      ? "bg-amber-500 text-white"
+                      : "text-amber-600 hover:text-amber-600 hover:bg-amber-500/10",
                   )}
                 >
-                  {tab.label}
+                  ⚡ Overview
                 </button>
-              ))}
+              )}
+              {step > 1 &&
+                [
+                  { id: "report", label: "New Report", count: null },
+                  { id: "history", label: "History", count: history.length },
+                  { id: "analytics", label: "Analytics", count: null },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id as any)}
+                    className={cn(
+                      "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all",
+                      activeTab === tab.id
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-primary hover:bg-primary/5",
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
             </div>
           }
         />
       )}
 
       <div className="relative z-10">
+        {/* ── Admin Overview Tab ─────────────────────────────────────────── */}
+        {activeTab === "overview" && isAdmin && <AdminReportingDashboard />}
+
         {activeTab === "report" ? (
-          <div className="max-w-6xl mx-auto">
+          <div className="">
             {step < 7 && <div className="mb-5">{renderStepIndicator()}</div>}
 
             <AnimatePresence mode="wait">
@@ -1010,489 +1122,723 @@ export default function SchoolReporting({
                   initial={{ x: 30, opacity: 0 }}
                   animate={{ x: 0, opacity: 1 }}
                   exit={{ x: -30, opacity: 0 }}
-                  className="space-y-6"
+                  className="space-y-4"
                 >
-                  <div className="text-center mb-6">
-                    <h3 className="text-base font-bold uppercase tracking-tighter">
-                      Identify Your School
-                    </h3>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {schools.map((s) => (
-                      <motion.div
-                        key={s.id}
-                        whileHover={{ y: -2 }}
-                        onClick={() => handleSchoolSelect(s.id)}
-                      >
-                        <Card
-                          className={cn(
-                            "cursor-pointer group relative overflow-hidden h-24 flex items-center justify-between px-5 rounded-3xl border-2 transition-all",
-                            selectedSchoolId === s.id
-                              ? "border-primary bg-primary/5"
-                              : "border-border/10 hover:border-primary/20",
-                          )}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center group-hover:bg-primary group-hover:text-white transition-all">
-                              <SchoolIcon className="w-5 h-5" />
-                            </div>
-                            <div className="font-black text-sm truncate pr-6">
-                              {s.name}
-                            </div>
-                          </div>
-                          <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                        </Card>
-                      </motion.div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-
-              {/* STEP 2: Building Selection */}
-              {step === 2 && (
-                <motion.div
-                  key="step2"
-                  initial={{ x: 30, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: -30, opacity: 0 }}
-                  className="space-y-6"
-                >
-                  <div className="flex flex-col md:flex-row md:items-center gap-6 mb-6">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setStep(1)}
-                      className="rounded-full h-10 w-10 p-0 font-black uppercase text-[9px] bg-white dark:bg-gray-900 hover:bg-primary hover:text-white shrink-0 border border-border/10"
-                    >
-                      <ArrowLeft className="w-4 h-4" />
-                    </Button>
-                    <div className="flex-1">
-                      <h3 className="text-base font-bold uppercase tracking-tighter">
-                        Locate Block
+                  {/* Header + Search */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-base font-bold tracking-tight">
+                        Select Your School
                       </h3>
-                      <p className="text-[10px] text-muted-foreground font-bold uppercase opacity-60">
-                        {selectedSchoolDetails?.name || "School Infrastructure"}{" "}
-                        · Step 2 of 6
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {schoolsTotal} school{schoolsTotal !== 1 ? "s" : ""}{" "}
+                        available
                       </p>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="bg-muted/50 p-1 rounded-full flex gap-1 border border-border/10">
+                    <div className="relative w-full sm:w-72">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
+                      <input
+                        type="text"
+                        className="w-full pl-9 pr-4 py-2 text-sm rounded-xl border border-border/40 bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
+                        placeholder="Search schools..."
+                        value={schoolsSearch}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSchoolsSearch(val);
+                          setSchoolsPage(1);
+                          fetchSchoolsLocal(1, val);
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Table */}
+                  <div className="rounded-3xl border border-border/30 overflow-hidden bg-card">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="hover:bg-transparent border-b border-border/20 bg-muted/30 dark:bg-muted/20 dark:border-gray-100">
+                          <TableHead className="text-xs font-semibold text-muted-foreground">
+                            School Name
+                          </TableHead>
+                          <TableHead className="text-xs font-semibold text-muted-foreground hidden sm:table-cell">
+                            Code
+                          </TableHead>
+                          <TableHead className="text-xs font-semibold text-muted-foreground hidden md:table-cell">
+                            Type
+                          </TableHead>
+                          <TableHead className="text-xs font-semibold text-muted-foreground hidden lg:table-cell">
+                            District
+                          </TableHead>
+                          <TableHead className="text-xs font-semibold text-muted-foreground hidden lg:table-cell">
+                            Province
+                          </TableHead>
+                          <TableHead className="text-xs font-semibold text-muted-foreground">
+                            Status
+                          </TableHead>
+                          <TableHead />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {schoolsLoading ? (
+                          Array.from({ length: 6 }).map((_, i) => (
+                            <TableRow key={i} className="pointer-events-none">
+                              <TableCell>
+                                <div className="flex items-center gap-3">
+                                  <Skeleton className="w-8 h-8 rounded-lg shrink-0" />
+                                  <Skeleton className="h-4 w-40 rounded" />
+                                </div>
+                              </TableCell>
+                              <TableCell className="hidden sm:table-cell">
+                                <Skeleton className="h-4 w-16 rounded" />
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell">
+                                <Skeleton className="h-4 w-16 rounded" />
+                              </TableCell>
+                              <TableCell className="hidden lg:table-cell">
+                                <Skeleton className="h-4 w-20 rounded" />
+                              </TableCell>
+                              <TableCell className="hidden lg:table-cell">
+                                <Skeleton className="h-4 w-20 rounded" />
+                              </TableCell>
+                              <TableCell>
+                                <Skeleton className="h-5 w-14 rounded-full" />
+                              </TableCell>
+                              <TableCell />
+                            </TableRow>
+                          ))
+                        ) : schools.length === 0 ? (
+                          <TableRow>
+                            <td
+                              colSpan={7}
+                              className="py-12 text-center text-sm text-muted-foreground"
+                            >
+                              {schoolsSearch
+                                ? `No schools match "${schoolsSearch}"`
+                                : "No schools found"}
+                            </td>
+                          </TableRow>
+                        ) : (
+                          schools.map((s) => (
+                            <TableRow
+                              key={s.id}
+                              onClick={() => handleSchoolSelect(s.id)}
+                              className={cn(
+                                "cursor-pointer transition-colors hover:bg-primary/5 border-border/10",
+                                selectedSchoolId === s.id && "bg-primary/5",
+                              )}
+                            >
+                              <TableCell>
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                                    <SchoolIcon className="w-4 h-4 text-muted-foreground" />
+                                  </div>
+                                  <span className="font-semibold text-sm">
+                                    {s.name}
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="hidden sm:table-cell">
+                                <span className="text-xs font-mono text-muted-foreground">
+                                  {s.code || "—"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="hidden md:table-cell">
+                                <span className="text-xs text-muted-foreground capitalize">
+                                  {s.type?.toLowerCase() || "—"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="hidden lg:table-cell">
+                                <span className="text-xs text-muted-foreground">
+                                  {s.district || "—"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="hidden lg:table-cell">
+                                <span className="text-xs text-muted-foreground">
+                                  {s.province || "—"}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "rounded-full text-[9px] font-semibold px-2 border capitalize",
+                                    s.status === "ACTIVE"
+                                      ? "border-emerald-500/30 text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20"
+                                      : s.status === "UNDER_RENOVATION"
+                                        ? "border-amber-500/30 text-amber-600 bg-amber-50 dark:bg-amber-900/20"
+                                        : "border-border/30 text-muted-foreground",
+                                  )}
+                                >
+                                  {s.status?.toLowerCase().replace(/_/g, " ") ||
+                                    "—"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right pr-4">
+                                <ChevronRight className="w-4 h-4 text-muted-foreground/50 inline-block" />
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Pagination */}
+                  {schoolsTotal > schoolsLimit && (
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-xs text-muted-foreground">
+                        Page {schoolsPage} of{" "}
+                        {Math.ceil(schoolsTotal / schoolsLimit)}
+                      </span>
+                      <div className="flex items-center gap-1">
                         <Button
-                          variant={step2Tab === "list" ? "default" : "ghost"}
+                          variant="outline"
                           size="sm"
-                          onClick={() => setStep2Tab("list")}
-                          className="rounded-full h-8 px-4 text-[9px] font-black uppercase tracking-widest transition-all"
+                          disabled={schoolsPage <= 1}
+                          onClick={() => {
+                            const p = Math.max(1, schoolsPage - 1);
+                            fetchSchoolsLocal(p, schoolsSearch);
+                          }}
+                          className="h-8 w-8 p-0 rounded-lg"
                         >
-                          <List className="w-3.5 h-3.5 mr-2" /> List
+                          <ChevronLeft className="w-4 h-4" />
                         </Button>
                         <Button
-                          variant={step2Tab === "map" ? "default" : "ghost"}
+                          variant="outline"
                           size="sm"
-                          onClick={() => setStep2Tab("map")}
-                          className="rounded-full h-8 px-4 text-[9px] font-black uppercase tracking-widest transition-all"
+                          disabled={
+                            schoolsPage >=
+                            Math.ceil(schoolsTotal / schoolsLimit)
+                          }
+                          onClick={() => {
+                            const p = schoolsPage + 1;
+                            fetchSchoolsLocal(p, schoolsSearch);
+                          }}
+                          className="h-8 w-8 p-0 rounded-lg"
                         >
-                          <MapIcon className="w-3.5 h-3.5 mr-2" /> Map
+                          <ChevronRight className="w-4 h-4" />
                         </Button>
                       </div>
                     </div>
-                  </div>
-
-                  {loading ? (
-                    <div className="py-10 text-center space-y-4">
-                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto"></div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                        Loading school data...
-                      </p>
-                    </div>
-                  ) : step2Tab === "map" ? (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="rounded-3xl overflow-hidden border-2 border-border/10 h-[600px] relative bg-card/20 backdrop-blur-md"
-                    >
-                      {selectedSchoolDetails ? (
-                        <SchoolMap
-                          school={selectedSchoolDetails}
-                          buildings={buildings}
-                          isEmbed
-                          onSelectBuilding={(b) => handleBuildingSelect(b)}
-                        />
-                      ) : (
-                        <div className="h-full flex items-center justify-center">
-                          <AlertCircle className="w-5 h-5 text-muted-foreground mr-2" />
-                          <span className="text-[10px] font-black uppercase tracking-widest opacity-50">
-                            GIS data unavailable
-                          </span>
-                        </div>
-                      )}
-                    </motion.div>
-                  ) : buildings.length === 0 ? (
-                    <Card className="bg-card/30 backdrop-blur-md p-10 rounded-3xl text-center border-dashed border-2 border-border/20">
-                      <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-4" />
-                      <h4 className="text-lg font-black mb-2 uppercase">
-                        No Infrastructure Data
-                      </h4>
-                      <p className="text-muted-foreground text-xs max-w-sm mx-auto mb-6">
-                        GIS verification pending for this location.
-                      </p>
+                  )}
+                </motion.div>
+              )}
+              <div className="max-w-6xl mx-auto">
+                {/* STEP 2: Building Selection */}
+                {step === 2 && (
+                  <motion.div
+                    key="step2"
+                    initial={{ x: 30, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -30, opacity: 0 }}
+                    className="space-y-6"
+                  >
+                    <div className="flex flex-col md:flex-row md:items-center gap-6 mb-6">
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => setStep(1)}
-                        className="rounded-full h-10 px-6 font-black uppercase text-[10px] transition-all hover:bg-primary/10"
+                        className="rounded-full h-10 w-10 p-0 font-black uppercase text-[9px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
                       >
-                        Go Back
+                        <ArrowLeft className="w-4 h-4" />
                       </Button>
-                    </Card>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {buildings.map((b) => (
-                        <Card
-                          key={b.id}
-                          onClick={() => handleBuildingSelect(b)}
-                          className={cn(
-                            "group cursor-pointer p-5 rounded-3xl border-2 transition-all active:scale-95 flex items-center justify-between",
-                            selectedBuilding?.id === b.id
-                              ? "bg-primary/5 border-primary shadow-primary/10"
-                              : "bg-white dark:bg-card/40 border-slate-100 dark:border-border/5 hover:border-primary/20 hover:bg-primary/5",
-                          )}
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 bg-muted/50 rounded-2xl flex items-center justify-center shrink-0 group-hover:bg-primary group-hover:text-white transition-all shadow-inner">
-                              <Building2 className="w-7 h-7" />
-                            </div>
-                            <div className="text-left">
-                              <div className="font-black text-sm mb-1 uppercase tracking-tight line-clamp-2">
-                                {b.name}
-                              </div>
-                              <div className="text-[9px] font-black text-muted-foreground uppercase opacity-50 tracking-widest flex items-center gap-2">
-                                <MapPin className="w-2.5 h-2.5" />{" "}
-                                {b.facilities?.length || 0} Critical Facilities
-                              </div>
-                            </div>
-                          </div>
-                          <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-all" />
-                        </Card>
-                      ))}
-                    </div>
-                  )}
-                </motion.div>
-              )}
-
-              {/* STEP 3: Facility Selection */}
-              {step === 3 && selectedBuilding && (
-                <motion.div
-                  key="step3"
-                  initial={{ x: 30, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: -30, opacity: 0 }}
-                  className="space-y-6"
-                >
-                  <div className="flex items-center gap-4 mb-6">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setStep(2)}
-                      className="rounded-full h-10 w-10 p-0 font-black uppercase text-[9px] bg-white dark:bg-gray-900 hover:bg-primary hover:text-white shrink-0 border border-border/10"
-                    >
-                      <ArrowLeft className="w-4 h-4" />
-                    </Button>
-                    <div>
-                      <h3 className="text-base font-bold uppercase tracking-tighter">
-                        Locate Facility
-                      </h3>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
-                        {selectedBuilding?.name} · Step 3 of 6
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {selectedBuilding.facilities?.map((f: any) => (
-                      <Card
-                        key={f.facility_id}
-                        className="cursor-pointer group bg-card dark:bg-card/40 rounded-[28px] border-2 border-border/10 hover:border-primary/40 transition-all p-5 flex items-center gap-4 active:scale-[0.98]"
-                        onClick={() => handleFacilitySelect(f)}
-                      >
-                        <div className="w-12 h-12 rounded-2xl bg-primary/5 text-primary flex items-center justify-center shrink-0 group-hover:bg-primary group-hover:text-white transition-all">
-                          <Layers className="w-6 h-6" />
-                        </div>
-                        <div className="flex-1">
-                          <div className="font-black uppercase text-[10px] tracking-widest truncate">
-                            {f.facility_name}
-                          </div>
-                          <div className="text-[8px] font-bold text-muted-foreground uppercase opacity-50">
-                            Engineering Unit
-                          </div>
-                        </div>
-                        <ChevronRight className="w-4 h-4 text-muted-foreground opacity-40 group-hover:opacity-100 transition-all" />
-                      </Card>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-
-              {/* STEP 4: Item/Target Selection */}
-              {step === 4 && selectedFacility && (
-                <motion.div
-                  key="step4"
-                  initial={{ x: 30, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: -30, opacity: 0 }}
-                  className="space-y-6"
-                >
-                  <div className="flex items-center gap-4 mb-6">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setStep(3)}
-                      className="rounded-full h-10 w-10 p-0 font-black uppercase text-[9px] bg-white dark:bg-gray-900 hover:bg-primary hover:text-white shrink-0 border border-border/10"
-                    >
-                      <ArrowLeft className="w-4 h-4" />
-                    </Button>
-                    <div>
-                      <h3 className="text-base font-bold uppercase tracking-tighter">
-                        Select Target
-                      </h3>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
-                        {(selectedFacility as any)?.facility_name || "Facility"}{" "}
-                        · Step 4 of 6
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {selectedFacility.items.map((item) => (
-                      <Card
-                        key={item.id}
-                        className="cursor-pointer group bg-card dark:bg-card/40 rounded-[28px] border-2 border-border/10 hover:border-primary/40 transition-all p-5 flex items-center gap-4 active:scale-[0.98]"
-                        onClick={() => handleItemSelect(item)}
-                      >
-                        <div className="w-12 h-12 rounded-2xl bg-primary/5 text-primary flex items-center justify-center shrink-0 group-hover:bg-primary group-hover:text-white transition-all">
-                          <Check className="w-6 h-6" />
-                        </div>
-                        <div className="flex-1">
-                          <div className="font-black uppercase text-[10px] tracking-widest truncate">
-                            {item.label}
-                          </div>
-                          <div className="text-[8px] font-bold text-muted-foreground uppercase opacity-50">
-                            Structural Point
-                          </div>
-                        </div>
-                        <ChevronRight className="w-4 h-4 text-muted-foreground opacity-40 group-hover:opacity-100 transition-all" />
-                      </Card>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-
-              {/* STEP 5: Details/Evidence */}
-              {step === 5 && selectedItem && (
-                <motion.div
-                  key="step5"
-                  initial={{ x: 30, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: -30, opacity: 0 }}
-                  className="space-y-6"
-                >
-                  <div className="flex items-center gap-4 mb-6">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setStep(4)}
-                      className="rounded-full h-10 w-10 p-0 font-black uppercase text-[9px] bg-white dark:bg-gray-900 hover:bg-primary hover:text-white shrink-0 border border-border/10"
-                    >
-                      <ArrowLeft className="w-4 h-4" />
-                    </Button>
-                    <div>
-                      <h3 className="text-base font-bold uppercase tracking-tighter">
-                        {isEditing ? "Modify Incident" : "Incident Details"}
-                      </h3>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
-                        {selectedItem.label} ·{" "}
-                        {isEditing ? "Update Logic" : "Final Step"}
-                      </p>
-                    </div>
-                  </div>
-
-                  {isEditing && (
-                    <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-3xl mb-6 flex items-center justify-between">
+                      <div className="flex-1">
+                        <h3 className="text-base font-bold uppercase tracking-tighter">
+                          Select Building
+                        </h3>
+                        <p className="text-[10px] text-muted-foreground font-bold uppercase opacity-60">
+                          {selectedSchoolDetails?.name ||
+                            "School Infrastructure"}{" "}
+                          · Step 2 of 6
+                        </p>
+                      </div>
                       <div className="flex items-center gap-3">
-                        <AlertCircle className="w-5 h-5 text-amber-500" />
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-tighter text-amber-500">
-                            Edit Mode Active
-                          </p>
-                          <p className="text-[8px] font-bold uppercase text-amber-500/60">
-                            You are modifying a submitted report. Submit to save
-                            changes.
-                          </p>
+                        <div className="bg-muted/50 p-1 rounded-full flex gap-1 border border-border/10">
+                          <Button
+                            variant={step2Tab === "list" ? "default" : "ghost"}
+                            size="sm"
+                            onClick={() => setStep2Tab("list")}
+                            className="rounded-full h-8 px-4 text-[9px] font-black uppercase tracking-widest transition-all"
+                          >
+                            <List className="w-3.5 h-3.5 mr-2" /> List
+                          </Button>
+                          <Button
+                            variant={step2Tab === "map" ? "default" : "ghost"}
+                            size="sm"
+                            onClick={() => setStep2Tab("map")}
+                            className="rounded-full h-8 px-4 text-[9px] font-black uppercase tracking-widest transition-all"
+                          >
+                            <MapIcon className="w-3.5 h-3.5 mr-2" /> Map
+                          </Button>
                         </div>
                       </div>
+                    </div>
+
+                    {loading ? (
+                      <div className="py-10 text-center space-y-4">
+                        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto"></div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                          Loading school data...
+                        </p>
+                      </div>
+                    ) : step2Tab === "map" ? (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.98 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="rounded-2xl overflow-hidden border-2 border-border/10 h-[600px] relative bg-card/20 backdrop-blur-md"
+                      >
+                        {selectedSchoolDetails ? (
+                          <SchoolMap
+                            school={selectedSchoolDetails}
+                            buildings={buildings}
+                            isEmbed
+                            onSelectBuilding={(b) => handleBuildingSelect(b)}
+                          />
+                        ) : (
+                          <div className="h-full flex items-center justify-center">
+                            <AlertCircle className="w-5 h-5 text-muted-foreground mr-2" />
+                            <span className="text-[10px] font-black uppercase tracking-widest opacity-50">
+                              GIS data unavailable
+                            </span>
+                          </div>
+                        )}
+                      </motion.div>
+                    ) : buildings.length === 0 ? (
+                      <Card className="bg-card p-10 rounded-2xl text-center border-dashed border-2 border-border/20">
+                        <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-4" />
+                        <h4 className="text-lg font-black mb-2 uppercase">
+                          No Infrastructure Data
+                        </h4>
+                        <p className="text-muted-foreground text-xs max-w-sm mx-auto mb-6">
+                          No buildings found for this school. Please check back
+                          later or contact your administrator.
+                        </p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setStep(1)}
+                          className="rounded-full h-10 px-6 font-black uppercase text-[10px] transition-all hover:bg-primary/10"
+                        >
+                          Go Back
+                        </Button>
+                      </Card>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {buildings.map((b) => (
+                          <Card
+                            key={b.id}
+                            onClick={() => handleBuildingSelect(b)}
+                            className={cn(
+                              "group cursor-pointer p-5 rounded-2xl border-2 transition-all active:scale-95 flex items-center justify-between",
+                              selectedBuilding?.id === b.id
+                                ? "bg-primary/5 border-primary shadow-primary/10"
+                                : "bg-card border-border/20 hover:border-primary/20 hover:bg-primary/5",
+                            )}
+                          >
+                            <div className="flex items-center gap-4">
+                              <div className="w-14 h-14 bg-muted/50 text-gray-400 dark:text-gray-500 rounded-2xl flex items-center justify-center shrink-0 group-hover:bg-primary group-hover:text-white transition-all shadow-inner">
+                                <Building2 className="w-7 h-7" />
+                              </div>
+                              <div className="text-left">
+                                <div className="font-black text-sm mb-1 uppercase tracking-tight line-clamp-2">
+                                  {b.name}
+                                </div>
+                                <div className="text-[9px] font-black text-muted-foreground uppercase opacity-50 tracking-widest flex items-center gap-2">
+                                  <MapPin className="w-2.5 h-2.5" />{" "}
+                                  {b.facilities?.length || 0} Facilities
+                                </div>
+                              </div>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-all" />
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+
+                {/* STEP 3: Facility Selection */}
+                {step === 3 && selectedBuilding && (
+                  <motion.div
+                    key="step3"
+                    initial={{ x: 30, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -30, opacity: 0 }}
+                    className="space-y-6"
+                  >
+                    <div className="flex items-center gap-4 mb-6">
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => {
-                          setIsEditing(false);
-                          resetForm();
-                        }}
-                        className="rounded-full h-8 px-4 text-[9px] font-black uppercase tracking-widest text-amber-500 hover:bg-amber-500/10"
+                        onClick={() => setStep(2)}
+                        className="rounded-full h-10 w-10 p-0 font-black uppercase text-[9px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
                       >
-                        Cancel Edit
+                        <ArrowLeft className="w-4 h-4" />
                       </Button>
+                      <div>
+                        <h3 className="text-base font-bold uppercase tracking-tighter">
+                          Select Facility
+                        </h3>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
+                          {selectedBuilding?.name} · Step 3 of 6
+                        </p>
+                      </div>
                     </div>
-                  )}
 
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-                    <div className="space-y-6">
-                      <Card className="bg-card/40 backdrop-blur-md p-6 rounded-[35px] border border-border/10 relative overflow-hidden group">
-                        <ImigongoPattern
-                          className="absolute inset-0 text-primary pointer-events-none"
-                          opacity={0.03}
-                        />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {selectedBuilding.facilities?.map((f: any) => (
+                        <Card
+                          key={f.facility_id}
+                          className="cursor-pointer group bg-card rounded-xl border-2 border-border/10 hover:border-primary/40 transition-all p-5 flex items-center gap-4 active:scale-[0.98]"
+                          onClick={() => handleFacilitySelect(f)}
+                        >
+                          <div className="w-12 h-12 rounded-2xl bg-primary/5 text-primary flex items-center justify-center shrink-0 group-hover:bg-primary group-hover:text-white transition-all">
+                            <Layers className="w-6 h-6" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-black uppercase text-[10px] tracking-widest truncate">
+                              {f.facility_name}
+                            </div>
+                            <div className="text-[8px] font-bold text-muted-foreground uppercase opacity-50">
+                              Facility
+                            </div>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-muted-foreground opacity-40 group-hover:opacity-100 transition-all" />
+                        </Card>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
 
-                        <div className="space-y-4 relative z-10">
-                          <div className="space-y-2">
-                            <div className="space-y-4">
-                              <div className="bg-primary/5 p-4 rounded-3xl border border-primary/10">
-                                <h4 className="text-[11px] font-black uppercase tracking-widest text-primary flex items-center gap-3 mb-2">
-                                  <AlertCircle className="w-4 h-4" /> Critical:
-                                  Choose Issue Type
-                                </h4>
-                                <p className="text-[9px] font-bold text-muted-foreground opacity-80 uppercase leading-snug">
-                                  Every incident must be categorized to alert
-                                  the correct engineering response team. Please
-                                  select one below:
-                                </p>
-                              </div>
+                {/* STEP 4: Item/Target Selection */}
+                {step === 4 && selectedFacility && (
+                  <motion.div
+                    key="step4"
+                    initial={{ x: 30, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -30, opacity: 0 }}
+                    className="space-y-6"
+                  >
+                    <div className="flex items-center gap-4 mb-6">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setStep(3)}
+                        className="rounded-full h-10 w-10 p-0 font-black uppercase text-[9px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                      </Button>
+                      <div>
+                        <h3 className="text-base font-bold uppercase tracking-tighter">
+                          Select Item
+                        </h3>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
+                          {(selectedFacility as any)?.facility_name ||
+                            "Facility"}{" "}
+                          · Step 4 of 6
+                        </p>
+                      </div>
+                    </div>
 
-                              <div className="flex flex-wrap gap-2.5 pt-2">
-                                {selectedItem.issueCategories?.map(
-                                  (cat: string) => (
-                                    <button
-                                      key={cat}
-                                      type="button"
-                                      onClick={() => {
-                                        const isSelected =
-                                          currentIssue.category.includes(cat);
-                                        setCurrentIssue({
-                                          ...currentIssue,
-                                          category: isSelected
-                                            ? currentIssue.category.filter(
-                                                (c) => c !== cat,
-                                              )
-                                            : [...currentIssue.category, cat],
-                                        });
-                                      }}
-                                      className={cn(
-                                        "px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border-2",
-                                        currentIssue.category.includes(cat)
-                                          ? "bg-primary border-primary text-white shadow-primary/20 scale-[1.05]"
-                                          : "bg-white dark:bg-gray-900 border-border text-muted-foreground hover:border-primary/30 hover:bg-primary/5",
-                                      )}
-                                    >
-                                      {cat}
-                                    </button>
-                                  ),
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {selectedFacility.items.map((item) => (
+                        <Card
+                          key={item.id}
+                          className="cursor-pointer group bg-card rounded-xl border-2 border-border/10 hover:border-primary/40 transition-all p-5 flex items-center gap-4 active:scale-[0.98]"
+                          onClick={() => handleItemSelect(item)}
+                        >
+                          <div className="w-12 h-12 rounded-2xl bg-primary/5 text-primary flex items-center justify-center shrink-0 group-hover:bg-primary group-hover:text-white transition-all">
+                            <Check className="w-6 h-6" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-black uppercase text-[10px] tracking-widest truncate">
+                              {item.label}
+                            </div>
+                            <div className="text-[8px] font-bold text-muted-foreground uppercase opacity-50">
+                              Component
+                            </div>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-muted-foreground opacity-40 group-hover:opacity-100 transition-all" />
+                        </Card>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* STEP 5: Details/Evidence */}
+                {step === 5 && selectedItem && (
+                  <motion.div
+                    key="step5"
+                    initial={{ x: 30, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -30, opacity: 0 }}
+                    className="space-y-6"
+                  >
+                    <div className="flex items-center gap-4 mb-6">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setStep(4)}
+                        className="rounded-full h-10 w-10 p-0 font-black uppercase text-[9px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
+                      >
+                        <ArrowLeft className="w-4 h-4" />
+                      </Button>
+                      <div>
+                        <h3 className="text-base font-bold uppercase tracking-tighter">
+                          {isEditing
+                            ? "Edit Issue Details"
+                            : "Incident Details"}
+                        </h3>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
+                          {selectedItem.label} ·{" "}
+                          {isEditing ? "Editing" : "Final Step"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {isEditing && (
+                      <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl mb-6 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <AlertCircle className="w-5 h-5 text-amber-500" />
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-tighter text-amber-500">
+                              Editing Report
+                            </p>
+                            <p className="text-[8px] font-bold uppercase text-amber-500/60">
+                              You are modifying a submitted report. Submit to
+                              save changes.
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setIsEditing(false);
+                            resetForm();
+                          }}
+                          className="rounded-full h-8 px-4 text-[9px] font-black uppercase tracking-widest text-amber-500 hover:bg-amber-500/10"
+                        >
+                          Cancel Edit
+                        </Button>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+                      <div className="space-y-6">
+                        <Card className="bg-card p-6 rounded-2xl border border-border/10 relative overflow-hidden group">
+                          <ImigongoPattern
+                            className="absolute inset-0 text-primary pointer-events-none"
+                            opacity={0.03}
+                          />
+
+                          <div className="space-y-4 relative z-10">
+                            <div className="space-y-2">
+                              <div className="space-y-4">
+                                <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10">
+                                  <h4 className="text-[11px] font-black uppercase tracking-widest text-primary flex items-center gap-3 mb-2">
+                                    <AlertCircle className="w-4 h-4" /> Select
+                                    Issue Type
+                                  </h4>
+                                  <p className="text-[9px] font-bold text-muted-foreground opacity-80 uppercase leading-snug">
+                                    Select the type of issue to help route it to
+                                    the right team.
+                                  </p>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2.5 pt-2">
+                                  {selectedItem.issueCategories?.map(
+                                    (cat: string) => (
+                                      <button
+                                        key={cat}
+                                        type="button"
+                                        onClick={() => {
+                                          const isSelected =
+                                            currentIssue.category.includes(cat);
+                                          setCurrentIssue({
+                                            ...currentIssue,
+                                            category: isSelected
+                                              ? currentIssue.category.filter(
+                                                  (c) => c !== cat,
+                                                )
+                                              : [...currentIssue.category, cat],
+                                          });
+                                        }}
+                                        className={cn(
+                                          "px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border-2",
+                                          currentIssue.category.includes(cat)
+                                            ? "bg-primary border-primary text-white shadow-primary/20 scale-[1.05]"
+                                            : "bg-background border-border/50 text-muted-foreground hover:border-primary/40 hover:bg-primary/5",
+                                        )}
+                                      >
+                                        {cat}
+                                      </button>
+                                    ),
+                                  )}
+                                </div>
+                                {formErrors.category && (
+                                  <p className="text-[10px] font-semibold text-rose-500 flex items-center gap-1 mt-1">
+                                    <AlertCircle className="w-3 h-3" />{" "}
+                                    {formErrors.category}
+                                  </p>
                                 )}
                               </div>
                             </div>
-                          </div>
 
-                          <Textarea
-                            className="min-h-[140px] text-[13px] rounded-2xl bg-background/30 border-2 border-border focus:border-primary/40"
-                            placeholder="Problem description... be as specific as possible"
-                            value={currentIssue.description}
-                            onChange={(e) =>
-                              setCurrentIssue({
-                                ...currentIssue,
-                                description: e.target.value,
-                              })
+                            <Textarea
+                              className="min-h-[140px] text-[13px] rounded-2xl bg-background/30 border-2 border-border focus:border-primary/40"
+                              placeholder="Problem description... be as specific as possible"
+                              value={currentIssue.description}
+                              onChange={(e) =>
+                                setCurrentIssue({
+                                  ...currentIssue,
+                                  description: e.target.value,
+                                })
+                              }
+                            />
+                            <div className="flex items-center justify-between px-1 mt-1">
+                              {formErrors.description ? (
+                                <p className="text-[10px] font-semibold text-rose-500 flex items-center gap-1">
+                                  <AlertCircle className="w-3 h-3" />{" "}
+                                  {formErrors.description}
+                                </p>
+                              ) : (
+                                <span />
+                              )}
+                              <span
+                                className={cn(
+                                  "text-[9px] font-semibold",
+                                  currentIssue.description.length > 900
+                                    ? "text-rose-500"
+                                    : "text-muted-foreground/60",
+                                )}
+                              >
+                                {currentIssue.description.length}/1000
+                              </span>
+                            </div>
+                          </div>
+                        </Card>
+                      </div>
+
+                      <div className="space-y-4">
+                        <Card className="bg-card p-6 rounded-2xl border border-border/10 space-y-3">
+                          <h4 className="text-[10px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
+                            <Camera className="w-3.5 h-3.5" /> Visual Evidence
+                          </h4>
+                          <FileUploader
+                            maxFiles={3}
+                            onFilesSelected={(files) =>
+                              setCurrentIssue({ ...currentIssue, files })
                             }
                           />
-                        </div>
-                      </Card>
-                    </div>
+                        </Card>
 
-                    <div className="space-y-4">
-                      <Card className="bg-card/40 backdrop-blur-md p-6 rounded-[35px] border border-border/10 space-y-3">
-                        <h4 className="text-[10px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
-                          <Camera className="w-3.5 h-3.5" /> Visual Evidence
-                        </h4>
-                        <FileUploader
-                          maxFiles={3}
-                          onFilesSelected={(files) =>
-                            setCurrentIssue({ ...currentIssue, files })
-                          }
-                        />
-                      </Card>
-
-                      <div className="flex gap-3 pt-2">
-                        <Button
-                          variant="outline"
-                          className="flex-1 rounded-full h-12 text-[10px] font-black uppercase tracking-widest border-2 hover:bg-primary/5 transition-all"
-                          onClick={() => {
-                            addIssue();
-                            showToast("Issue added to list", "success");
-                          }}
-                          disabled={
-                            !currentIssue.description ||
-                            currentIssue.category.length === 0
-                          }
-                        >
-                          <Plus className="mr-2 w-3.5 h-3.5 text-primary" /> Add
-                          To List
-                        </Button>
-                        <Button
-                          className="flex-1 rounded-full h-12 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20 bg-primary group"
-                          onClick={() => {
-                            if (
-                              currentIssue.description &&
-                              currentIssue.category
-                            )
+                        <div className="flex gap-3 pt-2">
+                          <Button
+                            variant="outline"
+                            className="flex-1 rounded-full h-12 text-[10px] font-black uppercase tracking-widest border-2 hover:bg-primary/5 transition-all"
+                            onClick={() => {
                               addIssue();
-                            setStep(6);
-                          }}
-                          disabled={
-                            isSubmitting ||
-                            (issues.length === 0 &&
-                              (!currentIssue.description ||
-                                !currentIssue.category))
-                          }
-                        >
-                          Review & Submit
-                        </Button>
+                              showToast("Issue added to list", "success");
+                            }}
+                            disabled={
+                              !currentIssue.description ||
+                              currentIssue.category.length === 0
+                            }
+                          >
+                            <Plus className="mr-2 w-3.5 h-3.5 text-primary" />{" "}
+                            Add To List
+                          </Button>
+                          <Button
+                            className="flex-1 rounded-full h-12 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20 bg-primary group"
+                            onClick={() => {
+                              const errors: {
+                                description?: string;
+                                category?: string;
+                              } = {};
+                              if (
+                                currentIssue.description &&
+                                currentIssue.description.trim().length < 20
+                              ) {
+                                errors.description =
+                                  "Description must be at least 20 characters.";
+                              }
+                              if (
+                                currentIssue.description &&
+                                currentIssue.description.trim().length > 1000
+                              ) {
+                                errors.description =
+                                  "Description cannot exceed 1000 characters.";
+                              }
+                              if (
+                                currentIssue.description &&
+                                currentIssue.category.length === 0
+                              ) {
+                                errors.category =
+                                  "Please select at least one issue category.";
+                              }
+                              if (Object.keys(errors).length > 0) {
+                                setFormErrors(errors);
+                                return;
+                              }
+                              setFormErrors({});
+                              if (
+                                currentIssue.description &&
+                                currentIssue.category.length > 0
+                              )
+                                addIssue();
+                              if (
+                                issues.length === 0 &&
+                                !currentIssue.description
+                              ) {
+                                showToast(
+                                  "Please add at least one issue before reviewing.",
+                                  "warning",
+                                );
+                                return;
+                              }
+                              setStep(6);
+                            }}
+                            disabled={
+                              isSubmitting ||
+                              (issues.length === 0 &&
+                                (!currentIssue.description ||
+                                  !currentIssue.category))
+                            }
+                          >
+                            Review & Submit
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </motion.div>
-              )}
+                  </motion.div>
+                )}
 
-              {/* STEP 6: Review & Approve */}
-              {step === 6 && (
-                <motion.div
-                  key="step6"
-                  initial={{ x: 30, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: -30, opacity: 0 }}
-                  className="space-y-6"
-                >
-                  {renderSubmissionReview()}
-                </motion.div>
-              )}
+                {/* STEP 6: Review & Approve */}
+                {step === 6 && (
+                  <motion.div
+                    key="step6"
+                    initial={{ x: 30, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -30, opacity: 0 }}
+                    className="space-y-6"
+                  >
+                    {renderSubmissionReview()}
+                  </motion.div>
+                )}
 
-              {/* STEP 7: Success View */}
-              {step === 7 && (
-                <motion.div
-                  key="step7"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0 }}
-                >
-                  {renderSuccessView()}
-                </motion.div>
-              )}
+                {/* STEP 7: Success View */}
+                {step === 7 && (
+                  <motion.div
+                    key="step7"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0 }}
+                  >
+                    {renderSuccessView()}
+                  </motion.div>
+                )}
+              </div>
             </AnimatePresence>
           </div>
         ) : activeTab === "history" ? (
@@ -1501,6 +1847,32 @@ export default function SchoolReporting({
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
           >
+            {/* History Search */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
+                <Input
+                  className="pl-9 rounded-xl h-10 text-sm bg-card border-border/30"
+                  placeholder="Search reports..."
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                />
+              </div>
+              {historySearch && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setHistorySearch("")}
+                  className="rounded-full h-9 px-3 text-xs text-muted-foreground"
+                >
+                  Clear
+                </Button>
+              )}
+              <span className="text-xs text-muted-foreground/60 ml-auto">
+                {historyTotal} total
+              </span>
+            </div>
+
             {/* History Filter Bar */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end mb-4">
               <div className="md:col-span-4 space-y-2">
@@ -1520,7 +1892,7 @@ export default function SchoolReporting({
                     setStatusFilter(val);
                     setHistoryPage(1);
                   }}
-                  className="rounded-3xl"
+                  className="rounded-2xl"
                 />
               </div>
 
@@ -1550,6 +1922,18 @@ export default function SchoolReporting({
                     }
                   />
                 </div>
+                {(historyDateRange.start || historyDateRange.end) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setHistoryDateRange({ start: null, end: null })
+                    }
+                    className="h-9 px-3 text-xs rounded-xl text-muted-foreground hover:text-foreground"
+                  >
+                    Clear dates
+                  </Button>
+                )}
               </div>
 
               <div className="md:col-span-4 flex justify-end pb-0.5">
@@ -1587,7 +1971,7 @@ export default function SchoolReporting({
                 {[1, 2, 3, 4].map((n) => (
                   <Card
                     key={n}
-                    className="bg-card/30 rounded-[35px] border-2 border-border/10 p-8 space-y-4"
+                    className="bg-card rounded-2xl border-2 border-border/10 p-8 space-y-4"
                   >
                     <div className="flex justify-between">
                       <Skeleton className="h-6 w-20 rounded-full" />
@@ -1602,8 +1986,8 @@ export default function SchoolReporting({
                   </Card>
                 ))}
               </div>
-            ) : history.length === 0 ? (
-              <Card className="bg-card/30 backdrop-blur-md p-20 rounded-[40px] text-center border-dashed border-2 border-border/20">
+            ) : filteredHistory.length === 0 ? (
+              <Card className="bg-card p-20 rounded-2xl text-center border-dashed border-2 border-border/20">
                 <ClipboardList className="w-16 h-16 text-muted-foreground/30 mx-auto mb-6" />
                 <h3 className="text-base font-bold uppercase tracking-tighter mb-2">
                   No Reports Yet
@@ -1621,12 +2005,13 @@ export default function SchoolReporting({
             ) : (
               <div className="space-y-6">
                 {/* Desktop Table View */}
-                <div className="hidden md:block rounded-3xl border-2 border-border/10 overflow-hidden bg-card/30 backdrop-blur-md">
+                <div className="hidden md:block rounded-2xl border-2 border-border/10 overflow-hidden bg-card">
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-transparent border-dashed">
                         <TableHead>Date</TableHead>
                         <TableHead>Asset / Target</TableHead>
+                        <TableHead>Building</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Log Summary</TableHead>
                         <TableHead>Status</TableHead>
@@ -1634,7 +2019,7 @@ export default function SchoolReporting({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {history.map((record) => (
+                      {filteredHistory.map((record) => (
                         <TableRow
                           key={record.id}
                           className="group/row hover:bg-primary/5 cursor-pointer transition-colors border-border/5"
@@ -1653,6 +2038,11 @@ export default function SchoolReporting({
                               <div className="text-[9px] font-bold text-primary opacity-70">
                                 {record.itemId}
                               </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-[11px] font-semibold text-muted-foreground truncate max-w-[120px]">
+                              {record.building?.name || "—"}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -1744,29 +2134,32 @@ export default function SchoolReporting({
 
                 {/* Mobile Card View */}
                 <div className="md:hidden space-y-4">
-                  {history.map((record) => (
+                  {filteredHistory.map((record) => (
                     <Card
                       key={record.id}
                       onClick={() => setSelectedReport(record)}
-                      className="p-5 rounded-[28px] border-2 border-border/5 bg-card/40 active:scale-[0.98] transition-all space-y-4"
+                      className="p-5 rounded-2xl border border-border/20 bg-card active:scale-[0.98] transition-all space-y-3 cursor-pointer hover:border-primary/30"
                     >
+                      {/* Header row */}
                       <div className="flex justify-between items-start">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
-                            <ClipboardList className="w-5 h-5" />
+                          <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                            <ClipboardList className="w-4 h-4" />
                           </div>
                           <div>
-                            <div className="text-[10px] font-black text-muted-foreground uppercase tracking-widest opacity-60">
-                              Ref: #{record.id.split("-").pop()}
+                            <div className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest">
+                              #{record.id.split("-").pop()}
                             </div>
-                            <div className="text-xs font-black uppercase tracking-tight">
-                              {record.facilityId || "Main Structure"}
+                            <div className="text-xs font-bold uppercase tracking-tight">
+                              {record.facilityId
+                                ?.replace(/_/g, " ")
+                                .replace(/-/g, " ") || "General Report"}
                             </div>
                           </div>
                         </div>
                         <Badge
                           className={cn(
-                            "rounded-full font-black text-[7px] px-2 py-0.5 border capitalize",
+                            "rounded-full font-semibold text-[9px] px-2.5 py-0.5 border capitalize",
                             getStatusColor(record.status),
                           )}
                         >
@@ -1774,71 +2167,75 @@ export default function SchoolReporting({
                         </Badge>
                       </div>
 
-                      <div className="flex flex-wrap gap-1">
-                        {Array.isArray(record.issueCategory) ? (
-                          record.issueCategory.map((cat: string) => (
-                            <Badge
-                              key={cat}
-                              variant="outline"
-                              className="rounded-full text-[7px] font-black uppercase px-2 border-primary/20 text-primary"
-                            >
-                              {cat}
-                            </Badge>
-                          ))
-                        ) : (
-                          <Badge
-                            variant="outline"
-                            className="rounded-full text-[7px] font-black uppercase px-2 border-primary/20 text-primary"
-                          >
-                            {record.issueCategory || "Uncategorized"}
-                          </Badge>
-                        )}
-                        <div className="flex items-center justify-between pt-2 border-t border-border/5">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEditReport(record);
-                              }}
-                            >
-                              <Edit2 className="w-3 h-3 text-primary" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setReportToDelete(record);
-                              }}
-                            >
-                              <Trash2 className="w-3 h-3 text-rose-500" />
-                            </Button>
-                          </div>
+                      {/* Description snippet */}
+                      {record.description && (
+                        <p className="text-xs text-muted-foreground line-clamp-2 pl-12">
+                          {record.description}
+                        </p>
+                      )}
+
+                      {/* Categories */}
+                      <div className="pl-12 flex flex-wrap gap-1">
+                        {Array.isArray(record.issueCategory)
+                          ? record.issueCategory.map((cat: string) => (
+                              <Badge
+                                key={cat}
+                                variant="outline"
+                                className="rounded-full text-[8px] font-semibold uppercase px-2 border-primary/20 text-primary"
+                              >
+                                {cat}
+                              </Badge>
+                            ))
+                          : record.issueCategory && (
+                              <Badge
+                                variant="outline"
+                                className="rounded-full text-[8px] font-semibold uppercase px-2 border-primary/20 text-primary"
+                              >
+                                {record.issueCategory}
+                              </Badge>
+                            )}
+                      </div>
+
+                      {/* Footer actions */}
+                      <div className="flex items-center justify-between pt-2 border-t border-border/10 pl-12">
+                        <div className="text-[9px] text-muted-foreground/50 font-semibold">
+                          {new Date(record.createdAt).toLocaleDateString()}
+                        </div>
+                        <div
+                          className="flex items-center gap-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-8 px-4 text-[9px] font-black uppercase tracking-widest text-primary hover:bg-primary/5 rounded-full"
+                            className="h-8 w-8 p-0 rounded-full hover:bg-primary/10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditReport(record);
+                            }}
                           >
-                            Details <ChevronRight className="ml-1 w-3 h-3" />
+                            <Edit2 className="w-3.5 h-3.5 text-primary" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 rounded-full hover:bg-rose-500/10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReportToDelete(record);
+                            }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                           </Button>
                         </div>
                       </div>
                     </Card>
                   ))}
-                  <div className="p-10 text-center border-t border-dashed border-border/10">
-                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
-                      End of history log · Total {history.length} records
-                    </p>
-                  </div>
                 </div>
               </div>
             )}
           </motion.div>
-        ) : (
+        ) : activeTab === "analytics" ? (
           <ReportAnalytics
             reports={allReports}
             buildings={buildings}
@@ -1848,7 +2245,7 @@ export default function SchoolReporting({
             onRangeChange={setAnalyticsRange}
             onUpdateStatus={handleUpdateReportStatus}
           />
-        )}
+        ) : null}
       </div>
 
       {/* Gallery Modal */}
@@ -1866,7 +2263,7 @@ export default function SchoolReporting({
               initial={{ scale: 0.9, opacity: 0, rotate: -2 }}
               animate={{ scale: 1, opacity: 1, rotate: 0 }}
               exit={{ scale: 0.9, opacity: 0, rotate: 2 }}
-              className="relative bg-card p-4 rounded-[40px] border border-border/20 shadow-2xl max-w-4xl w-full z-10"
+              className="relative bg-card p-4 rounded-2xl border border-border/20 shadow-2xl max-w-4xl w-full z-10"
             >
               <ImigongoPattern
                 className="absolute inset-0 text-primary pointer-events-none"
@@ -1889,7 +2286,7 @@ export default function SchoolReporting({
                 {selectedGalleryImages.map((img: string, idx: number) => (
                   <div
                     key={idx}
-                    className="rounded-3xl overflow-hidden border border-border/10 aspect-video relative group"
+                    className="rounded-2xl overflow-hidden border border-border/10 aspect-video relative group"
                   >
                     <img
                       src={img}
