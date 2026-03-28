@@ -44,6 +44,7 @@ import {
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
 import { Card } from "./ui/card";
+import { FILE_SERVER_URL } from "../lib/api";
 
 Ion.defaultAccessToken = import.meta.env.VITE_CESIUM_ION_TOKEN;
 
@@ -393,20 +394,20 @@ const School3DView: React.FC<School3DViewProps> = ({
   const kmzUrl = school.kmzFilePath
     ? school.kmzFilePath.startsWith("/")
       ? school.kmzFilePath
-      : `/files/schools/${school.id}/kmz/${school.kmzFilePath}`
+      : `${FILE_SERVER_URL}/schools/${school.id}/kmz/${school.kmzFilePath}`
     : undefined;
 
   const masterKmlUrl = school.kmzMasterKmlPath
     ? school.kmzMasterKmlPath.startsWith("/") ||
       school.kmzMasterKmlPath.startsWith("http")
       ? school.kmzMasterKmlPath
-      : `/files/schools/${school.id}/kmz_content/${school.kmzMasterKmlPath}`
+      : `${FILE_SERVER_URL}/schools/${school.id}/kmz_content/${school.kmzMasterKmlPath}`
     : undefined;
 
   const placesOverlayUrl = school.placesOverlayFilePath
     ? school.placesOverlayFilePath.startsWith("/")
       ? school.placesOverlayFilePath
-      : `/files/schools/${school.id}/places-overlay/${school.placesOverlayFilePath}`
+      : `${FILE_SERVER_URL}/schools/${school.id}/places-overlay/${school.placesOverlayFilePath}`
     : undefined;
 
   const fallbackLocation = {

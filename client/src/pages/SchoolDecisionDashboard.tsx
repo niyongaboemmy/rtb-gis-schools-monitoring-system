@@ -57,7 +57,7 @@ import {
 import { PageHeader } from "../components/ui/page-header";
 import { motion } from "framer-motion";
 import { cn } from "../lib/utils";
-import { api } from "../lib/api";
+import { api, FILE_SERVER_URL } from "../lib/api";
 import { useAuthorization } from "../hooks/useAuthorization";
 import { Permission } from "../lib/permissions";
 import { SchoolForm } from "../components/SchoolForm";
@@ -1179,8 +1179,7 @@ export default function SchoolDecisionDashboard() {
                             position={schoolPos}
                             icon={createCustomIcon("#3b82f6")}
                             eventHandlers={{
-                              click: () =>
-                                id && setIsMapModalOpen(true),
+                              click: () => id && setIsMapModalOpen(true),
                             }}
                           >
                             <Popup closeButton={false} className="custom-popup">
@@ -1219,9 +1218,7 @@ export default function SchoolDecisionDashboard() {
                         <div className="absolute bottom-3 left-3 z-1001">
                           <Button
                             size="sm"
-                            onClick={() =>
-                              id && setIsMapModalOpen(true)
-                            }
+                            onClick={() => id && setIsMapModalOpen(true)}
                             className="rounded-full shadow-lg bg-primary/90 hover:bg-primary text-[10px] font-black uppercase border border-white/20 h-8 px-4"
                           >
                             <Box className="w-3.5 h-3.5 mr-2" />
@@ -1248,28 +1245,24 @@ export default function SchoolDecisionDashboard() {
                           id ? (
                           <div
                             className="w-full h-full relative group cursor-pointer"
-                            onClick={() =>
-                              id && setIsMapModalOpen(true)
-                            }
+                            onClick={() => id && setIsMapModalOpen(true)}
                           >
-                            <img
-                              src={`/files/schools/${id}/kmz_content/b0.png`}
-                              alt="School Structure"
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                const img = e.target as HTMLImageElement;
-                                if (img.src.includes("b0.png")) {
-                                  img.src = `/files/schools/${id}/kmz_content/model.jpg`;
-                                } else if (img.src.includes("model.jpg")) {
-                                  img.src = `/files/schools/${id}/kmz_content/a.png`;
-                                } else if (img.src.includes("a.png")) {
-                                  img.src = `/files/schools/${id}/kmz_content/b2.png`;
-                                } else {
-                                  img.src =
-                                    "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjRjNGNEY2Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM5Qzk2QTkiIGZvbnQtd2lkdGg9IjE2IiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zdHlsZT0iYm9sZCI+T0xEIFNBTVBMRTwvdGV4dD48L3N2Zz4=";
-                                }
-                              }}
-                            />
+                            {schoolData.thumbnailUrl ? (
+                              <img
+                                src={schoolData.thumbnailUrl}
+                                alt="School Structure"
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-slate-900/50 flex flex-col items-center justify-center p-4">
+                                <div className="w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center mb-2">
+                                  <LucideMap className="w-6 h-6 text-blue-400" />
+                                </div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-blue-400">
+                                  2D Map View Available
+                                </p>
+                              </div>
+                            )}
                             <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                             <div className="absolute bottom-0 left-0 right-0 p-4 text-white opacity-0 group-hover:opacity-100 transition-opacity">
                               <p className="font-bold text-sm">
@@ -1296,9 +1289,7 @@ export default function SchoolDecisionDashboard() {
                               <Button
                                 size="sm"
                                 className="rounded-full bg-primary/90 hover:bg-primary text-white shadow-lg"
-                                onClick={() =>
-                                  id && setIsMapModalOpen(true)
-                                }
+                                onClick={() => id && setIsMapModalOpen(true)}
                               >
                                 <Box className="w-4 h-4 mr-1" />
                                 School Map
@@ -2701,17 +2692,29 @@ export default function SchoolDecisionDashboard() {
                 ></div>
                 {/* Main Content */}
                 <div className="absolute inset-0 flex items-center justify-center">
-                  {id && (
-                    <img
-                      src={`/files/schools/${id}/kmz_content/b0.png`}
-                      alt="School Structure"
-                      className="max-w-full max-h-full object-contain p-8 drop-shadow-2xl"
-                      onError={(e) => {
-                        const img = e.target as HTMLImageElement;
-                        img.src = `/files/schools/${id}/kmz_content/a.png`;
-                      }}
-                    />
-                  )}
+                  {id &&
+                    (schoolData.thumbnailUrl ? (
+                      <img
+                        src={schoolData.thumbnailUrl}
+                        alt="School Structure"
+                        className="max-w-full max-h-full object-contain p-8 drop-shadow-2xl"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-6 p-12 text-center text-white/90">
+                        <div className="w-24 h-24 bg-blue-500/20 rounded-full flex items-center justify-center border border-blue-500/30">
+                          <LucideMap className="w-12 h-12 text-blue-400" />
+                        </div>
+                        <div className="space-y-4">
+                          <h3 className="text-2xl font-black uppercase tracking-widest">
+                            2D View Mode
+                          </h3>
+                          <p className="text-muted-foreground/80 max-w-md mx-auto">
+                            A high-accuracy 2D spatial map is available for this
+                            school. 3D modeling data has not yet been processed.
+                          </p>
+                        </div>
+                      </div>
+                    ))}
                 </div>
 
                 {/* Floating 3D View Button */}
@@ -2719,9 +2722,7 @@ export default function SchoolDecisionDashboard() {
                   <Button
                     size="lg"
                     className="rounded-full px-10 py-7 bg-linear-to-r from-blue-600 via-blue-600 to-blue-600 hover:from-blue-700 hover:via-blue-700 hover:to-blue-700 text-white font-bold text-lg shadow-2xl shadow-blue-500/40 hover:shadow-blue-500/60 transition-all duration-300 transform hover:scale-110"
-                    onClick={() =>
-                      id && setIsMapModalOpen(true)
-                    }
+                    onClick={() => id && setIsMapModalOpen(true)}
                   >
                     <Box className="w-6 h-6 mr-3" />
                     Open School Map

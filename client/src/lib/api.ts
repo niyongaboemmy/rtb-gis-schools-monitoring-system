@@ -9,6 +9,8 @@ export const api = axios.create({
   },
 });
 
+export const FILE_SERVER_URL = import.meta.env.VITE_FILE_SERVER_URL || "/files";
+
 api.interceptors.request.use(
   (config) => {
     const token = useAuthStore.getState().token;

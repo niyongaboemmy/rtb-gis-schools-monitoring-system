@@ -198,7 +198,8 @@ export class KmzService {
           const initialView = rootInitialView || allViews[0] || null;
           const overlaysMetadata = allOverlays;
 
-          const assetsBaseUrl = `/files/schools/${schoolId}/kmz_content`;
+          const fileServerBase = process.env.FILE_SERVER_BASE_URL || '/files';
+          const assetsBaseUrl = `${fileServerBase}/schools/${schoolId}/kmz_content`;
 
           const updatedGeoJson = {
             type: 'FeatureCollection',
