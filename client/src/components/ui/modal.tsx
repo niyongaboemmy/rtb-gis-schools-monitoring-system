@@ -56,7 +56,7 @@ export function Modal({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.15, delay: 0.1 } }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
         >
           {/* Backdrop */}
           <motion.div
@@ -70,12 +70,14 @@ export function Modal({
 
           {/* Modal Container */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            initial={{ opacity: 0, scale: 0.97, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            exit={{ opacity: 0, scale: 0.97, y: 20 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
             className={cn(
-              "relative w-full bg-background border border-border overflow-hidden rounded-3xl shadow-none",
+              "relative w-full bg-background border border-border rounded-t-3xl sm:rounded-3xl shadow-none",
+              "flex flex-col",
+              "max-h-[92dvh] sm:max-h-[88dvh]",
               maxWidth,
               className,
             )}
@@ -84,9 +86,9 @@ export function Modal({
             aria-modal="true"
             aria-labelledby={title ? "modal-title" : undefined}
           >
-            {/* Header */}
+            {/* Header — fixed */}
             {(title || description || !hideCloseButton) && (
-              <div className="flex flex-col gap-1.5 px-6 py-5 border-b border-border/20">
+              <div className="shrink-0 flex flex-col gap-1.5 px-6 py-5 border-b border-border/20">
                 <div className="flex items-start justify-between gap-4">
                   {title && (
                     <h2
@@ -112,12 +114,14 @@ export function Modal({
               </div>
             )}
 
-            {/* Body */}
-            <div className="px-6 py-4 overflow-y-auto h-full">{children}</div>
+            {/* Body — scrollable */}
+            <div className="flex-1 overflow-y-auto overscroll-contain px-6 py-4">
+              {children}
+            </div>
 
-            {/* Footer */}
+            {/* Footer — fixed */}
             {footer && (
-              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border/20 bg-muted/20">
+              <div className="shrink-0 flex items-center justify-end gap-3 px-6 py-4 border-t border-border/20 bg-muted/20">
                 {footer}
               </div>
             )}

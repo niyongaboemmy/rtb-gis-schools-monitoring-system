@@ -5,7 +5,6 @@ export { AcademicStep } from "./AcademicStep";
 export { ProgramsStep } from "./ProgramsStep";
 export type { EducationProgram } from "./ProgramsStep";
 export { StaffStep } from "./StaffStep";
-export { FacilitiesStep } from "./FacilitiesStep";
 export { BuildingsStep } from "./BuildingsStep";
 export { LandStep } from "./LandStep";
-export type { BuildingData } from "./BuildingsStep";
+export type { BuildingData, FacilityItem, BuildingGeoLocation } from "./BuildingsStep";

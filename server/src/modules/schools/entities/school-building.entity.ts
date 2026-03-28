@@ -18,8 +18,10 @@ export enum BuildingCondition {
 
 export enum RoofCondition {
   GOOD = 'good',
+  FAIR = 'fair',
   NEEDS_REPAIR = 'needs_repair',
-  DAMAGED = 'damaged',
+  POOR = 'poor',
+  CRITICAL = 'critical',
 }
 
 @Entity('school_buildings')
@@ -48,9 +50,6 @@ export class SchoolBuilding {
   @Column({ type: 'int', nullable: true })
   floors: number;
 
-  @Column({ type: 'int', nullable: true })
-  rooms: number;
-
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   areaSquareMeters: number;
 
@@ -69,6 +68,13 @@ export class SchoolBuilding {
 
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
   structuralScore: number;
+
+  @Column({ type: 'jsonb', nullable: true })
+  facilities: Array<{
+    facility_id: string;
+    facility_name: string;
+    number_of_rooms: number;
+  }>;
 
   @Column({ type: 'jsonb', nullable: true })
   footprintGeojson: object;

@@ -26,8 +26,18 @@ export class User {
   @JoinColumn({ name: 'role_id' })
   role: Role;
 
+  @Column({ type: 'jsonb', nullable: true })
+  location: {
+    province?: string;
+    district?: string;
+    sector?: string;
+    schoolId?: string;
+    schoolName?: string;
+  };
+
   @Column({ default: true })
   isActive: boolean;
+
 
   @Column({ nullable: true })
   phone: string;

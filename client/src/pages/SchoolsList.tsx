@@ -28,9 +28,23 @@ import {
 } from "../components/ui/table";
 import { useNavigate } from "react-router-dom";
 import { SchoolForm } from "../components/SchoolForm";
+import { resolveDistrictName, resolveProvinceName } from "../lib/rwanda-locations";
+import { ImigongoPattern } from "../components/ui/ImigongoPattern";
+
+interface School {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+  province: string;
+  district: string;
+  priorityLevel: string;
+  kmzStatus: string;
+  overallScore?: number;
+}
 
 export default function SchoolsList() {
-  const [schools, setSchools] = useState<any[]>([]);
+  const [schools, setSchools] = useState<School[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [page, setPage] = useState(1);
@@ -110,8 +124,15 @@ export default function SchoolsList() {
   };
 
   return (
-    <div className="space-y-8 pb-10">
-      <PageHeader
+    <div className="relative space-y-8 pb-10 min-h-screen">
+      {/* Background Pattern */}
+      <ImigongoPattern 
+        className="fixed inset-0 text-primary pointer-events-none mask-[linear-gradient(to_bottom_right,black_0%,transparent_40%,transparent_60%,black_100%)]" 
+        opacity={0.04}
+      />
+
+      <div className="relative z-10 space-y-8">
+        <PageHeader
         title="Schools Directory"
         description="Manage and monitor all national TVET institutions"
         icon={Building2}
@@ -125,7 +146,7 @@ export default function SchoolsList() {
         }
       />
 
-      <Card className="border border-border/10 bg-card/60 backdrop-blur-sm overflow-hidden rounded-3xl shadow-none">
+      <Card className="border-none bg-linear-to-br from-card/90 to-card/40 backdrop-blur-xl overflow-hidden rounded-4xl shadow-[0_0_50px_-12px_rgba(0,0,0,0.05)] transition-all duration-500">
         <CardContent className="p-0">
           <div className="flex flex-col md:flex-row items-center justify-between p-6 gap-6 bg-card/40">
             <SearchInput
@@ -232,10 +253,10 @@ export default function SchoolsList() {
                           className="cursor-pointer"
                         >
                           <div className="font-medium text-foreground/80 leading-tight">
-                            {school.district}
+                            {resolveDistrictName(school.district)}
                           </div>
                           <div className="text-[10px] text-muted-foreground font-medium">
-                            {school.province}
+                            {resolveProvinceName(school.province)}
                           </div>
                         </TableCell>
                         <TableCell className="text-[10px] font-black uppercase tracking-wider text-foreground/60 opacity-60">
@@ -362,6 +383,7 @@ export default function SchoolsList() {
           </div>
         </CardContent>
       </Card>
+      </div>
 
       {/* ADD SCHOOL MODAL */}
       <SchoolForm

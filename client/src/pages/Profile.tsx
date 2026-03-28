@@ -14,6 +14,8 @@ import {
   ChevronRight,
   Lock,
   UserCircle,
+  Layers,
+  MapPin,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { motion, AnimatePresence } from "framer-motion";
@@ -61,6 +63,22 @@ export default function Profile() {
     if (score < 5) return "Medium";
     return "Strong";
   };
+
+  const accessLevelName =
+    typeof user?.role === "object" && user?.role !== null
+      ? (user.role as any)?.accessLevel?.name ?? null
+      : null;
+
+  const loc = user?.location;
+  const scopeLabel = loc
+    ? loc.schoolName
+      ? loc.schoolName
+      : loc.sector
+        ? `${loc.sector}, ${loc.district}`
+        : loc.district
+          ? `${loc.district}, ${loc.province}`
+          : loc.province
+    : null;
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,10 +167,31 @@ export default function Profile() {
           </div>
         }
         description={
-          <span className="text-sm text-muted-foreground/80 font-medium max-w-md pt-2 block mt-2 normal-case tracking-normal">
-            Manage your identity, security settings, and personal preference
-            for the RTB GIS Platform.
-          </span>
+          <div className="flex flex-col gap-3 mt-2">
+            {(accessLevelName || scopeLabel) && (
+              <div className="flex flex-wrap items-center gap-3 py-2 px-3 bg-card border border-border/40 rounded-xl w-fit">
+                {accessLevelName && (
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-primary">
+                    <Layers className="w-3.5 h-3.5" />
+                    {accessLevelName}
+                  </span>
+                )}
+                {accessLevelName && scopeLabel && (
+                  <span className="text-muted-foreground/30">•</span>
+                )}
+                {scopeLabel && (
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                    <MapPin className="w-3.5 h-3.5" />
+                    {scopeLabel}
+                  </span>
+                )}
+              </div>
+            )}
+            <span className="text-sm text-muted-foreground/80 font-medium max-w-md pt-2 block normal-case tracking-normal">
+              Manage your identity, security settings, and personal preference
+              for the RTB GIS Platform.
+            </span>
+          </div>
         }
       />
 

@@ -20,7 +20,9 @@ export class AuthService {
 
     const user = await this.userRepository.createQueryBuilder('user')
       .leftJoinAndSelect('user.role', 'role')
+      .leftJoinAndSelect('role.accessLevel', 'accessLevel')
       .addSelect('user.password')
+      .addSelect('user.location')
       .where('user.email = :email', { email })
       .andWhere('user.isActive = :isActive', { isActive: true })
       .getOne();
@@ -47,7 +49,9 @@ export class AuthService {
   async refreshToken(userId: string, refreshToken: string) {
     const user = await this.userRepository.createQueryBuilder('user')
       .leftJoinAndSelect('user.role', 'role')
+      .leftJoinAndSelect('role.accessLevel', 'accessLevel')
       .addSelect('user.refreshToken')
+      .addSelect('user.location')
       .where('user.id = :userId', { userId })
       .andWhere('user.isActive = :isActive', { isActive: true })
       .getOne();
@@ -66,7 +70,7 @@ export class AuthService {
   async validateUser(userId: string): Promise<User> {
     const user = await this.userRepository.findOne({ 
       where: { id: userId, isActive: true },
-      relations: ['role']
+      relations: ['role', 'role.accessLevel']
     });
     if (!user) throw new UnauthorizedException('User not found or inactive');
     return user;

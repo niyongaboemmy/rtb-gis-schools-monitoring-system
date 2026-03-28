@@ -1,5 +1,15 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToMany,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { AccessLevel } from '../../access-levels/entities/access-level.entity';
 
 @Entity('roles')
 export class Role {
@@ -15,7 +25,11 @@ export class Role {
   @Column({ type: 'text', array: true, default: [] })
   permissions: string[];
 
-  @OneToMany(() => User, user => user.role)
+  @ManyToOne(() => AccessLevel, (al) => al.roles, { nullable: true, eager: true })
+  @JoinColumn()
+  accessLevel: AccessLevel;
+
+  @OneToMany(() => User, (user) => user.role)
   users: User[];
 
   @CreateDateColumn()

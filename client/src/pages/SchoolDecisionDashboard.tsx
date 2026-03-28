@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, Navigate } from "react-router-dom";
+import { useAuthStore } from "../store/authStore";
 import {
   Activity,
   AlertTriangle,
@@ -57,6 +58,8 @@ import { PageHeader } from "../components/ui/page-header";
 import { motion } from "framer-motion";
 import { cn } from "../lib/utils";
 import { api } from "../lib/api";
+import { useAuthorization } from "../hooks/useAuthorization";
+import { Permission } from "../lib/permissions";
 import { SchoolForm } from "../components/SchoolForm";
 import { FacilitySurveyForm } from "../components/FacilitySurveyForm";
 import { Modal } from "../components/ui/modal";
@@ -65,7 +68,11 @@ type BuildingCondition = "good" | "fair" | "poor" | "critical";
 // type PriorityLevel = "critical" | "high" | "medium" | "low";
 
 export default function SchoolDecisionDashboard() {
-  const { id } = useParams<{ id: string }>();
+  const { id: paramId } = useParams<{ id: string }>();
+  const { user } = useAuthStore();
+  const { isAuthorized } = useAuthorization();
+  const id = paramId || user?.location?.schoolId;
+
   const [school, setSchool] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [is3DViewOpen, setIs3DViewOpen] = useState(false);
@@ -629,10 +636,15 @@ export default function SchoolDecisionDashboard() {
           The school could not be loaded.
         </p>
         <Button asChild className="rounded-full mt-4" variant="outline">
-          <Link to="/schools">Return to Directory</Link>
+          <Link to="/welcome">Return to Welcome</Link>
         </Button>
       </div>
     );
+  }
+
+  // Redirect if no ID could be determined
+  if (!id && !loading) {
+    return <Navigate to="/welcome" replace />;
   }
 
   const schoolPos: [number, number] = [
@@ -649,16 +661,18 @@ export default function SchoolDecisionDashboard() {
           {/* Header */}
           <PageHeader
             backButton={
-              <Button
-                variant="outline"
-                size="icon"
-                asChild
-                className="rounded-full h-12 w-12 border-border/10 hover:bg-background/50 hover:border-primary/30 transition-all shadow-none"
-              >
-                <Link to="/schools">
-                  <ArrowLeft className="h-5 w-5" />
-                </Link>
-              </Button>
+              paramId ? (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  asChild
+                  className="rounded-full h-12 w-12 border-border/10 hover:bg-background/50 hover:border-primary/30 transition-all shadow-none"
+                >
+                  <Link to="/schools">
+                    <ArrowLeft className="h-5 w-5" />
+                  </Link>
+                </Button>
+              ) : null
             }
             title={schoolData.name}
             titleBadge={
@@ -696,32 +710,38 @@ export default function SchoolDecisionDashboard() {
                     School Map
                   </Button>
                 )}
-                <Button
-                  variant="outline"
-                  onClick={() => setIsEditModalOpen(true)}
-                  className="rounded-full h-10 px-5 font-black uppercase tracking-wider text-[10px] border-border/10 shadow-none hover:bg-primary/5 transition-all"
-                >
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Edit
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setIsSurveyModalOpen(true)}
-                  className="rounded-full h-10 px-5 font-black uppercase tracking-wider text-[10px] border-border/10 shadow-none hover:bg-primary/5 transition-all"
-                >
-                  <ClipboardCheck className="mr-2 h-4 w-4" />
-                  Survey
-                </Button>
-                <Button
-                  variant="outline"
-                  asChild
-                  className="rounded-full h-10 px-5 font-black uppercase tracking-wider text-[10px] border-border/10 shadow-none hover:bg-primary/5 transition-all"
-                >
-                  <Link to={`/schools/${id}/kmz`}>
-                    <Layers className="mr-2 h-4 w-4" />
-                    KMZ/KML
-                  </Link>
-                </Button>
+                {isAuthorized(Permission.EDIT_SCHOOL_PROFILE) && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsEditModalOpen(true)}
+                    className="rounded-full h-10 px-5 font-black uppercase tracking-wider text-[10px] border-border/10 shadow-none hover:bg-primary/5 transition-all"
+                  >
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit
+                  </Button>
+                )}
+                {isAuthorized(Permission.SCHOOL_SURVERY_EDIT) && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsSurveyModalOpen(true)}
+                    className="rounded-full h-10 px-5 font-black uppercase tracking-wider text-[10px] border-border/10 shadow-none hover:bg-primary/5 transition-all"
+                  >
+                    <ClipboardCheck className="mr-2 h-4 w-4" />
+                    Survey
+                  </Button>
+                )}
+                {isAuthorized(Permission.SCHOOL_VIEW_2D3D_MAP) && (
+                  <Button
+                    variant="outline"
+                    asChild
+                    className="rounded-full h-10 px-5 font-black uppercase tracking-wider text-[10px] border-border/10 shadow-none hover:bg-primary/5 transition-all"
+                  >
+                    <Link to={`/schools/${id}/kmz`}>
+                      <Layers className="mr-2 h-4 w-4" />
+                      KMZ/KML
+                    </Link>
+                  </Button>
+                )}
               </div>
             }
           />
@@ -1056,287 +1076,293 @@ export default function SchoolDecisionDashboard() {
               </Card>
             </motion.div>
             {/* Location Map */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.5 }}
-              className=""
-            >
-              <Card className="border border-border/20 dark:border-blue-900/50 bg-card/60 backdrop-blur-sm rounded-3xl overflow-hidden">
-                <CardHeader className="border-b border-border/10 pb-2 px-4">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base font-bold flex items-center gap-2 pr-2">
-                      <MapPin className="w-5 h-5 text-primary" />
-                      {/* KMZ Status Badge */}
-                      <span>Location</span>
-                    </CardTitle>
-                    {/* Map Tabs */}
-                    <div className="flex bg-muted/50 rounded-xl p-1">
-                      <button
-                        onClick={() => setActiveMapTab("kml")}
-                        className={cn(
-                          "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
-                          activeMapTab === "kml"
-                            ? "bg-primary text-white shadow-md"
-                            : "text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        <LucideImage className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">KML</span>
-                      </button>
-                      <button
-                        onClick={() => setActiveMapTab("map")}
-                        className={cn(
-                          "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
-                          activeMapTab === "map"
-                            ? "bg-primary text-white shadow-md"
-                            : "text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        <LucideMap className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Map</span>
-                      </button>
-                      <button
-                        onClick={() => setActiveMapTab("satellite")}
-                        className={cn(
-                          "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
-                          activeMapTab === "satellite"
-                            ? "bg-primary text-white shadow-md"
-                            : "text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        <Globe className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Satellite</span>
-                      </button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {/* Map Content */}
-                  {activeMapTab !== "kml" ? (
-                    <div className="h-[400px] md:h-[400px] w-full relative">
-                      <MapContainer
-                        center={schoolPos}
-                        zoom={activeMapTab === "street" ? 16 : 14}
-                        className="w-full h-full"
-                        zoomControl={false}
-                      >
-                        {activeMapTab === "map" && (
-                          <TileLayer
-                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-                            url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                          />
-                        )}
-                        {activeMapTab === "satellite" && (
-                          <TileLayer
-                            attribution="&copy; Esri"
-                            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                          />
-                        )}
-                        {activeMapTab === "terrain" && (
-                          <TileLayer
-                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                            url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
-                          />
-                        )}
-                        {activeMapTab === "traffic" && (
-                          <TileLayer
-                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                          />
-                        )}
-                        {activeMapTab === "street" && (
-                          <TileLayer
-                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                          />
-                        )}
-                        {/* Custom Zoom Controls */}
-                        <CustomZoomControls />
-
-                        <Marker
-                          position={schoolPos}
-                          icon={createCustomIcon("#3b82f6")}
-                          eventHandlers={{
-                            click: () =>
-                              id &&
-                              window.open(`/schools/${id}/3dview`, "_blank"),
-                          }}
+            {isAuthorized(Permission.SCHOOL_VIEW_2D3D_MAP) && (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.5 }}
+                className=""
+              >
+                <Card className="border border-border/20 dark:border-blue-900/50 bg-card/60 backdrop-blur-sm rounded-3xl overflow-hidden">
+                  <CardHeader className="border-b border-border/10 pb-2 px-4">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base font-bold flex items-center gap-2 pr-2">
+                        <MapPin className="w-5 h-5 text-primary" />
+                        {/* KMZ Status Badge */}
+                        <span>Location</span>
+                      </CardTitle>
+                      {/* Map Tabs */}
+                      <div className="flex bg-muted/50 rounded-xl p-1">
+                        <button
+                          onClick={() => setActiveMapTab("kml")}
+                          className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                            activeMapTab === "kml"
+                              ? "bg-primary text-white shadow-md"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
                         >
-                          <Popup closeButton={false} className="custom-popup">
-                            <div className="p-1">
-                              <div className="font-black text-xs mb-0.5 text-primary">
-                                {schoolData.name}
-                              </div>
-                              <div className="text-[10px] font-bold text-muted-foreground flex items-center gap-1">
-                                <Box className="w-3 h-3" />
-                                Click to view school map
-                              </div>
-                            </div>
-                          </Popup>
-                        </Marker>
-                      </MapContainer>
-
-                      {/* Modern Overlays */}
-                      <div className="absolute top-3 left-3 z-1001 bg-background/80 backdrop-blur-md border border-border/20 rounded-xl px-3 py-1.5 shadow-lg flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
-                          Live Monitoring
-                        </span>
-                      </div>
-
-                      <div className="absolute bottom-3 right-3 z-1001 bg-background/80 backdrop-blur-md border border-border/20 rounded-xl px-3 py-1.5 shadow-lg flex flex-col items-end">
-                        <span className="text-[9px] font-black uppercase text-muted-foreground leading-none mb-1 tracking-tighter">
-                          Location Context
-                        </span>
-                        <span className="text-[11px] font-bold tabular-nums">
-                          {schoolPos[0].toFixed(5)}°, {schoolPos[1].toFixed(5)}°
-                        </span>
-                      </div>
-
-                      {/* 3D View Overlay Hint */}
-                      <div className="absolute bottom-3 left-3 z-1001">
-                        <Button
-                          size="sm"
-                          onClick={() =>
-                            id &&
-                            window.open(`/schools/${id}/3dview`, "_blank")
-                          }
-                          className="rounded-full shadow-lg bg-primary/90 hover:bg-primary text-[10px] font-black uppercase border border-white/20 h-8 px-4"
+                          <LucideImage className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">KML</span>
+                        </button>
+                        <button
+                          onClick={() => setActiveMapTab("map")}
+                          className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                            activeMapTab === "map"
+                              ? "bg-primary text-white shadow-md"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
                         >
-                          <Box className="w-3.5 h-3.5 mr-2" />
-                          Explore School Map
-                        </Button>
+                          <LucideMap className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Map</span>
+                        </button>
+                        <button
+                          onClick={() => setActiveMapTab("satellite")}
+                          className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                            activeMapTab === "satellite"
+                              ? "bg-primary text-white shadow-md"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          <Globe className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Satellite</span>
+                        </button>
                       </div>
                     </div>
-                  ) : (
-                    /* KML / Structure Photo Tab */
-                    <div className="h-[400px] md:h-[400px] w-full relative bg-muted/20">
-                      {/* Show processing status if KMZ is being processed */}
-                      {schoolData.kmzStatus === "processing" ? (
-                        <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center">
-                          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
-                          <p className="text-sm font-bold text-muted-foreground mb-2">
-                            Processing KMZ file...
-                          </p>
-                          <p className="text-xs text-muted-foreground/70">
-                            Please wait while we extract building structures
-                          </p>
-                        </div>
-                      ) : (schoolData.kmzStatus === "completed" ||
-                          schoolData.kmzStatus === "pending") &&
-                        id ? (
-                        <div
-                          className="w-full h-full relative group cursor-pointer"
-                          onClick={() =>
-                            id &&
-                            window.open(`/schools/${id}/3dview`, "_blank")
-                          }
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {/* Map Content */}
+                    {activeMapTab !== "kml" ? (
+                      <div className="h-[400px] md:h-[400px] w-full relative">
+                        <MapContainer
+                          center={schoolPos}
+                          zoom={activeMapTab === "street" ? 16 : 14}
+                          className="w-full h-full"
+                          zoomControl={false}
                         >
-                          <img
-                            src={`/public/uploads/schools/${id}/kmz_content/b0.png`}
-                            alt="School Structure"
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              const img = e.target as HTMLImageElement;
-                              if (img.src.includes("b0.png")) {
-                                img.src = `/public/uploads/schools/${id}/kmz_content/model.jpg`;
-                              } else if (img.src.includes("model.jpg")) {
-                                img.src = `/public/uploads/schools/${id}/kmz_content/a.png`;
-                              } else if (img.src.includes("a.png")) {
-                                img.src = `/public/uploads/schools/${id}/kmz_content/b2.png`;
-                              } else {
-                                img.src =
-                                  "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjRjNGNEY2Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM5Qzk2QTkiIGZvbnQtd2lkdGg9IjE2IiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zdHlsZT0iYm9sZCI+T0xEIFNBTVBMRTwvdGV4dD48L3N2Zz4=";
-                              }
-                            }}
-                          />
-                          <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                          <div className="absolute bottom-0 left-0 right-0 p-4 text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                            <p className="font-bold text-sm">
-                              Click to view full school map
-                            </p>
-                          </div>
-                          <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              asChild
-                              className="rounded-full bg-white/90 hover:bg-white dark:bg-gray-800 dark:text-white dark:hover:bg-blue-600 text-foreground shadow-lg"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Link to={`/schools/${id}/kmz`}>
-                                <Upload className="w-4 h-4 mr-1" />
-                                Update
-                              </Link>
-                            </Button>
-                            <Button
-                              size="sm"
-                              className="rounded-full bg-primary/90 hover:bg-primary text-white shadow-lg"
-                              onClick={() =>
+                          {activeMapTab === "map" && (
+                            <TileLayer
+                              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                              url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                            />
+                          )}
+                          {activeMapTab === "satellite" && (
+                            <TileLayer
+                              attribution="&copy; Esri"
+                              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                            />
+                          )}
+                          {activeMapTab === "terrain" && (
+                            <TileLayer
+                              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                              url="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
+                            />
+                          )}
+                          {activeMapTab === "traffic" && (
+                            <TileLayer
+                              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                            />
+                          )}
+                          {activeMapTab === "street" && (
+                            <TileLayer
+                              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                            />
+                          )}
+                          {/* Custom Zoom Controls */}
+                          <CustomZoomControls />
+
+                          <Marker
+                            position={schoolPos}
+                            icon={createCustomIcon("#3b82f6")}
+                            eventHandlers={{
+                              click: () =>
                                 id &&
-                                window.open(`/schools/${id}/3dview`, "_blank")
-                              }
-                            >
-                              <Box className="w-4 h-4 mr-1" />
-                              School Map
-                            </Button>
-                          </div>
+                                window.open(`/schools/${id}/3dview`, "_blank"),
+                            }}
+                          >
+                            <Popup closeButton={false} className="custom-popup">
+                              <div className="p-1">
+                                <div className="font-black text-xs mb-0.5 text-primary">
+                                  {schoolData.name}
+                                </div>
+                                <div className="text-[10px] font-bold text-muted-foreground flex items-center gap-1">
+                                  <Box className="w-3 h-3" />
+                                  Click to view school map
+                                </div>
+                              </div>
+                            </Popup>
+                          </Marker>
+                        </MapContainer>
+
+                        {/* Modern Overlays */}
+                        <div className="absolute top-3 left-3 z-1001 bg-background/80 backdrop-blur-md border border-border/20 rounded-xl px-3 py-1.5 shadow-lg flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                            Live Monitoring
+                          </span>
                         </div>
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center">
-                          <div className="w-20 h-20 bg-muted rounded-2xl flex items-center justify-center mb-4">
-                            <LucideImage className="w-10 h-10 text-muted-foreground/50" />
-                          </div>
-                          <p className="text-sm font-bold text-muted-foreground mb-2">
-                            No structure image available
-                          </p>
-                          <p className="text-xs text-muted-foreground/70 mb-4">
-                            Upload KMZ to see school structure
-                          </p>
-                          <Button size="sm" asChild className="rounded-full">
-                            <Link to={`/schools/${id}/kmz`}>
-                              <Upload className="w-4 h-4 mr-1" />
-                              Upload KMZ
-                            </Link>
+
+                        <div className="absolute bottom-3 right-3 z-1001 bg-background/80 backdrop-blur-md border border-border/20 rounded-xl px-3 py-1.5 shadow-lg flex flex-col items-end">
+                          <span className="text-[9px] font-black uppercase text-muted-foreground leading-none mb-1 tracking-tighter">
+                            Location Context
+                          </span>
+                          <span className="text-[11px] font-bold tabular-nums">
+                            {schoolPos[0].toFixed(5)}°, {schoolPos[1].toFixed(5)}°
+                          </span>
+                        </div>
+
+                        {/* 3D View Overlay Hint */}
+                        <div className="absolute bottom-3 left-3 z-1001">
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              id &&
+                              window.open(`/schools/${id}/3dview`, "_blank")
+                            }
+                            className="rounded-full shadow-lg bg-primary/90 hover:bg-primary text-[10px] font-black uppercase border border-white/20 h-8 px-4"
+                          >
+                            <Box className="w-3.5 h-3.5 mr-2" />
+                            Explore School Map
                           </Button>
                         </div>
-                      )}
-                    </div>
-                  )}
+                      </div>
+                    ) : (
+                      /* KML / Structure Photo Tab */
+                      <div className="h-[400px] md:h-[400px] w-full relative bg-muted/20">
+                        {/* Show processing status if KMZ is being processed */}
+                        {schoolData.kmzStatus === "processing" ? (
+                          <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center">
+                            <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+                            <p className="text-sm font-bold text-muted-foreground mb-2">
+                              Processing KMZ file...
+                            </p>
+                            <p className="text-xs text-muted-foreground/70">
+                              Please wait while we extract building structures
+                            </p>
+                          </div>
+                        ) : (schoolData.kmzStatus === "completed" ||
+                            schoolData.kmzStatus === "pending") &&
+                          id ? (
+                          <div
+                            className="w-full h-full relative group cursor-pointer"
+                            onClick={() =>
+                              id &&
+                              window.open(`/schools/${id}/3dview`, "_blank")
+                            }
+                          >
+                            <img
+                              src={`/public/uploads/schools/${id}/kmz_content/b0.png`}
+                              alt="School Structure"
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                const img = e.target as HTMLImageElement;
+                                if (img.src.includes("b0.png")) {
+                                  img.src = `/public/uploads/schools/${id}/kmz_content/model.jpg`;
+                                } else if (img.src.includes("model.jpg")) {
+                                  img.src = `/public/uploads/schools/${id}/kmz_content/a.png`;
+                                } else if (img.src.includes("a.png")) {
+                                  img.src = `/public/uploads/schools/${id}/kmz_content/b2.png`;
+                                } else {
+                                  img.src =
+                                    "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjRjNGNEY2Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM5Qzk2QTkiIGZvbnQtd2lkdGg9IjE2IiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zdHlsZT0iYm9sZCI+T0xEIFNBTVBMRTwvdGV4dD48L3N2Zz4=";
+                                }
+                              }}
+                            />
+                            <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                            <div className="absolute bottom-0 left-0 right-0 p-4 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                              <p className="font-bold text-sm">
+                                Click to view full school map
+                              </p>
+                            </div>
+                            <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
+                              {isAuthorized(Permission.SCHOOL_VIEW_2D3D_MAP) && (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  asChild
+                                  className="rounded-full bg-white/90 hover:bg-white dark:bg-gray-800 dark:text-white dark:hover:bg-blue-600 text-foreground shadow-lg"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Link to={`/schools/${id}/kmz`}>
+                                    <Upload className="w-4 h-4 mr-1" />
+                                    Update
+                                  </Link>
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                className="rounded-full bg-primary/90 hover:bg-primary text-white shadow-lg"
+                                onClick={() =>
+                                  id &&
+                                  window.open(`/schools/${id}/3dview`, "_blank")
+                                }
+                              >
+                                <Box className="w-4 h-4 mr-1" />
+                                School Map
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center">
+                            <div className="w-20 h-20 bg-muted rounded-2xl flex items-center justify-center mb-4">
+                              <LucideImage className="w-10 h-10 text-muted-foreground/50" />
+                            </div>
+                            <p className="text-sm font-bold text-muted-foreground mb-2">
+                              No structure image available
+                            </p>
+                            <p className="text-xs text-muted-foreground/70 mb-4">
+                              Upload KMZ to see school structure
+                            </p>
+                            {isAuthorized(Permission.SCHOOL_VIEW_2D3D_MAP) && (
+                              <Button size="sm" asChild className="rounded-full">
+                                <Link to={`/schools/${id}/kmz`}>
+                                  <Upload className="w-4 h-4 mr-1" />
+                                  Upload KMZ
+                                </Link>
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
-                  {/* Coordinates Info - Always Visible */}
-                  <div className="p-3 sm:p-4 border-t border-border/10 space-y-2">
-                    <div className="grid grid-cols-2 gap-2 text-xs sm:text-sm">
-                      <div className="flex items-center justify-between bg-muted/30 rounded-lg px-3 py-2">
-                        <span className="text-muted-foreground">Latitude</span>
-                        <span className="font-mono font-bold text-xs">
-                          {parseFloat(String(schoolData.latitude)).toFixed(6)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between bg-muted/30 rounded-lg px-3 py-2">
-                        <span className="text-muted-foreground">Longitude</span>
-                        <span className="font-mono font-bold text-xs">
-                          {parseFloat(String(schoolData.longitude)).toFixed(6)}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between bg-muted/30 rounded-lg px-3 py-2">
-                        <span className="text-muted-foreground">Elevation</span>
-                        <span className="font-mono font-bold text-xs">
-                          {parseFloat(String(schoolData.elevation)) || 0} m
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between bg-muted/30 rounded-lg px-3 py-2">
-                        <span className="text-muted-foreground">Campus</span>
-                        <span className="font-mono font-bold text-xs">
-                          {schoolData.campusAreaHectares} ha
-                        </span>
+                    {/* Coordinates Info - Always Visible */}
+                    <div className="p-3 sm:p-4 border-t border-border/10 space-y-2">
+                      <div className="grid grid-cols-2 gap-2 text-xs sm:text-sm">
+                        <div className="flex items-center justify-between bg-muted/30 rounded-lg px-3 py-2">
+                          <span className="text-muted-foreground">Latitude</span>
+                          <span className="font-mono font-bold text-xs">
+                            {parseFloat(String(schoolData.latitude)).toFixed(6)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between bg-muted/30 rounded-lg px-3 py-2">
+                          <span className="text-muted-foreground">Longitude</span>
+                          <span className="font-mono font-bold text-xs">
+                            {parseFloat(String(schoolData.longitude)).toFixed(6)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between bg-muted/30 rounded-lg px-3 py-2">
+                          <span className="text-muted-foreground">Elevation</span>
+                          <span className="font-mono font-bold text-xs">
+                            {parseFloat(String(schoolData.elevation)) || 0} m
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between bg-muted/30 rounded-lg px-3 py-2">
+                          <span className="text-muted-foreground">Campus</span>
+                          <span className="font-mono font-bold text-xs">
+                            {schoolData.campusAreaHectares} ha
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
             {/* Executive Summary Cards */}
           </div>
 
@@ -2000,12 +2026,14 @@ export default function SchoolDecisionDashboard() {
                         <p className="text-sm mt-2 mb-4">
                           Complete a facility survey to see compliance details
                         </p>
-                        <Button
-                          onClick={() => setIsSurveyModalOpen(true)}
-                          className="rounded-full"
-                        >
-                          Start Facility Survey
-                        </Button>
+                        {isAuthorized(Permission.SCHOOL_SURVERY_EDIT) && (
+                          <Button
+                            onClick={() => setIsSurveyModalOpen(true)}
+                            className="rounded-full"
+                          >
+                            Start Facility Survey
+                          </Button>
+                        )}
                       </div>
                     )}
                   </CardContent>

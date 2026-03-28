@@ -1,18 +1,15 @@
 import { Input } from "../ui/input";
-import { UserMinus, UserPlus } from "lucide-react";
+import { UserPlus } from "lucide-react";
 
 interface StaffStepProps {
   maleTeachers: string;
   femaleTeachers: string;
   maleStudents: string;
   femaleStudents: string;
-  adminStaff: string;
   maleAdminStaff: string;
   femaleAdminStaff: string;
-  supportStaff: string;
   maleSupportStaff: string;
   femaleSupportStaff: string;
-  totalTeachers: string;
   totalStudents: string;
   onChange: (field: string, value: string) => void;
 }
@@ -22,83 +19,13 @@ export function StaffStep({
   femaleTeachers,
   maleStudents,
   femaleStudents,
-  adminStaff,
   maleAdminStaff,
   femaleAdminStaff,
-  supportStaff,
   maleSupportStaff,
   femaleSupportStaff,
   totalStudents,
   onChange,
 }: StaffStepProps) {
-  const staffFields = [
-    {
-      key: "maleTeachers",
-      label: "Male Teachers",
-      icon: UserPlus,
-      color: "from-blue-500 to-cyan-500",
-      bgColor: "bg-blue-500/10",
-    },
-    {
-      key: "femaleTeachers",
-      label: "Female Teachers",
-      icon: UserMinus,
-      color: "from-pink-500 to-rose-500",
-      bgColor: "bg-pink-500/10",
-    },
-  ];
-
-  const adminStaffFields = [
-    {
-      key: "maleAdminStaff",
-      label: "Male Admin",
-      icon: UserPlus,
-      color: "from-violet-500 to-purple-500",
-      bgColor: "bg-violet-500/10",
-    },
-    {
-      key: "femaleAdminStaff",
-      label: "Female Admin",
-      icon: UserMinus,
-      color: "from-fuchsia-500 to-pink-500",
-      bgColor: "bg-fuchsia-500/10",
-    },
-  ];
-
-  const supportStaffFields = [
-    {
-      key: "maleSupportStaff",
-      label: "Male Support",
-      icon: UserPlus,
-      color: "from-emerald-500 to-teal-500",
-      bgColor: "bg-emerald-500/10",
-    },
-    {
-      key: "femaleSupportStaff",
-      label: "Female Support",
-      icon: UserMinus,
-      color: "from-teal-500 to-cyan-500",
-      bgColor: "bg-teal-500/10",
-    },
-  ];
-
-  const studentFields = [
-    {
-      key: "maleStudents",
-      label: "Male Students",
-      icon: UserPlus,
-      color: "from-indigo-500 to-blue-500",
-      bgColor: "bg-indigo-500/10",
-    },
-    {
-      key: "femaleStudents",
-      label: "Female Students",
-      icon: UserMinus,
-      color: "from-rose-500 to-pink-500",
-      bgColor: "bg-rose-500/10",
-    },
-  ];
-
   const getValue = (key: string) => {
     switch (key) {
       case "maleTeachers":
@@ -117,180 +44,124 @@ export function StaffStep({
         return maleSupportStaff;
       case "femaleSupportStaff":
         return femaleSupportStaff;
-      case "totalStudents":
-        return totalStudents;
-      case "adminStaff":
-        return adminStaff;
-      case "supportStaff":
-        return supportStaff;
       default:
         return "";
     }
   };
 
+  const CategoryCard = ({
+    title,
+    icon: Icon,
+    maleKey,
+    femaleKey,
+    color,
+  }: {
+    title: string;
+    icon: any;
+    maleKey: string;
+    femaleKey: string;
+    color: string;
+  }) => {
+    const maleVal = parseInt(getValue(maleKey)) || 0;
+    const femaleVal = parseInt(getValue(femaleKey)) || 0;
+    const total = maleVal + femaleVal;
+
+    return (
+      <div className="group relative p-4 rounded-2xl border border-border/40 bg-card/30 hover:bg-card/50 hover:border-primary/20 transition-all duration-300">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div
+              className={`p-2 rounded-xl bg-linear-to-br ${color} bg-opacity-10`}
+            >
+              <Icon className={`w-4 h-4 text-primary`} />
+            </div>
+            <h3 className="text-sm font-bold text-foreground/80">{title}</h3>
+          </div>
+          <div className="flex flex-col items-end">
+            <span className="text-[10px] font-bold uppercase tracking-tighter text-muted-foreground/60">
+              Total
+            </span>
+            <span className="text-lg font-black text-primary leading-none">
+              {total}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5 pl-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-500/60" />
+              <span className="text-[10px] font-bold text-muted-foreground uppercase">
+                Male
+              </span>
+            </div>
+            <Input
+              type="number"
+              min="0"
+              placeholder="0"
+              value={getValue(maleKey)}
+              onChange={(e) => onChange(maleKey, e.target.value)}
+              className="h-11 text-sm font-bold bg-background/50 border-border/20 focus:border-blue-500/50"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5 pl-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-pink-500/60" />
+              <span className="text-[10px] font-bold text-muted-foreground uppercase">
+                Female
+              </span>
+            </div>
+            <Input
+              type="number"
+              min="0"
+              placeholder="0"
+              value={getValue(femaleKey)}
+              onChange={(e) => onChange(femaleKey, e.target.value)}
+              className="h-11 text-sm font-bold bg-background/50 border-border/20 focus:border-pink-500/50"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="space-y-8">
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="w-1 h-6 rounded-full bg-linear-to-b from-primary to-primary/60" />
-          <label className="text-base font-bold text-foreground">
-            School Teachers
-          </label>
-        </div>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {staffFields.map(({ key, label, icon: Icon, color, bgColor }) => (
-            <div
-              key={key}
-              className="p-5 rounded-2xl border-2 border-border/30 hover:border-primary/30 hover:bg-muted/30 transition-all duration-300"
-            >
-              <div className="flex flex-col items-center gap-3">
-                <div
-                  className={`w-12 h-12 rounded-xl ${bgColor} flex items-center justify-center`}
-                >
-                  <Icon
-                    className={`w-6 h-6 bg-linear-to-r ${color} bg-clip-text text-transparent`}
-                  />
-                </div>
-                <label className="text-sm font-semibold text-foreground text-center">
-                  {label}
-                </label>
-                <Input
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={getValue(key)}
-                  onChange={(e) => onChange(key, e.target.value)}
-                  className="text-center font-bold text-lg w-full"
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <CategoryCard
+          title="Teaching Staff"
+          icon={UserPlus}
+          maleKey="maleTeachers"
+          femaleKey="femaleTeachers"
+          color="from-blue-500/20 to-cyan-500/20"
+        />
+        <CategoryCard
+          title="Administrative"
+          icon={UserPlus}
+          maleKey="maleAdminStaff"
+          femaleKey="femaleAdminStaff"
+          color="from-blue-500/20 to-blue-500/20"
+        />
+        <CategoryCard
+          title="Support Staff"
+          icon={UserPlus}
+          maleKey="maleSupportStaff"
+          femaleKey="femaleSupportStaff"
+          color="from-emerald-500/20 to-teal-500/20"
+        />
+        <CategoryCard
+          title="Students Population"
+          icon={UserPlus}
+          maleKey="maleStudents"
+          femaleKey="femaleStudents"
+          color="from-indigo-500/20 to-blue-500/20"
+        />
       </div>
 
-      {/* Administrative Staff Breakdown */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="w-1 h-6 rounded-full bg-linear-to-b from-violet-500 to-purple-500" />
-          <label className="text-base font-bold text-foreground">
-            Administrative Staff
-          </label>
-        </div>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {adminStaffFields.map(
-            ({ key, label, icon: Icon, color, bgColor }) => (
-              <div
-                key={key}
-                className="p-5 rounded-2xl border-2 border-border/30 hover:border-violet-500/30 hover:bg-muted/30 transition-all duration-300"
-              >
-                <div className="flex flex-col items-center gap-3">
-                  <div
-                    className={`w-12 h-12 rounded-xl ${bgColor} flex items-center justify-center`}
-                  >
-                    <Icon
-                      className={`w-6 h-6 bg-linear-to-r ${color} bg-clip-text text-transparent`}
-                    />
-                  </div>
-                  <label className="text-sm font-semibold text-foreground text-center">
-                    {label}
-                  </label>
-                  <Input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    value={getValue(key)}
-                    onChange={(e) => onChange(key, e.target.value)}
-                    className="text-center font-bold text-lg w-full"
-                  />
-                </div>
-              </div>
-            ),
-          )}
-        </div>
-      </div>
-
-      {/* Support Staff Breakdown */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="w-1 h-6 rounded-full bg-linear-to-b from-emerald-500 to-teal-500" />
-          <label className="text-base font-bold text-foreground">
-            Support Staff
-          </label>
-        </div>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {supportStaffFields.map(
-            ({ key, label, icon: Icon, color, bgColor }) => (
-              <div
-                key={key}
-                className="p-5 rounded-2xl border-2 border-border/30 hover:border-emerald-500/30 hover:bg-muted/30 transition-all duration-300"
-              >
-                <div className="flex flex-col items-center gap-3">
-                  <div
-                    className={`w-12 h-12 rounded-xl ${bgColor} flex items-center justify-center`}
-                  >
-                    <Icon
-                      className={`w-6 h-6 bg-linear-to-r ${color} bg-clip-text text-transparent`}
-                    />
-                  </div>
-                  <label className="text-sm font-semibold text-foreground text-center">
-                    {label}
-                  </label>
-                  <Input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    value={getValue(key)}
-                    onChange={(e) => onChange(key, e.target.value)}
-                    className="text-center font-bold text-lg w-full"
-                  />
-                </div>
-              </div>
-            ),
-          )}
-        </div>
-      </div>
-
-      {/* Student Breakdown */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="w-1 h-6 rounded-full bg-linear-to-b from-indigo-500 to-blue-500" />
-          <label className="text-base font-bold text-foreground">
-            School Students
-          </label>
-        </div>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {studentFields.map(({ key, label, icon: Icon, color, bgColor }) => (
-            <div
-              key={key}
-              className="p-5 rounded-2xl border-2 border-border/30 hover:border-indigo-500/30 hover:bg-muted/30 transition-all duration-300"
-            >
-              <div className="flex flex-col items-center gap-3">
-                <div
-                  className={`w-12 h-12 rounded-xl ${bgColor} flex items-center justify-center`}
-                >
-                  <Icon
-                    className={`w-6 h-6 bg-linear-to-r ${color} bg-clip-text text-transparent`}
-                  />
-                </div>
-                <label className="text-sm font-semibold text-foreground text-center">
-                  {label}
-                </label>
-                <Input
-                  type="number"
-                  min="0"
-                  placeholder="0"
-                  value={getValue(key)}
-                  onChange={(e) => onChange(key, e.target.value)}
-                  className="text-center font-bold text-lg w-full"
-                />
-              </div>
-            </div>
-          ))}
-        </div>
+      {/* Optional logic for syncing total fields if needed by parent */}
+      <div className="hidden">
+        {/* These fields might be expected by handleInputChange in SchoolForm */}
+        <Input value={totalStudents} readOnly />
       </div>
     </div>
   );

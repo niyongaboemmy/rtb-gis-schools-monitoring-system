@@ -13,7 +13,6 @@ import {
   Home,
   BookOpen,
   Users,
-  Building,
 } from "lucide-react";
 import {
   BasicInfoStep,
@@ -21,12 +20,13 @@ import {
   ContactStep,
   ProgramsStep,
   StaffStep,
-  FacilitiesStep,
   BuildingsStep,
   LandStep,
   type BuildingData,
   type EducationProgram,
 } from "./school-form-steps";
+import { useAuthorization } from "../hooks/useAuthorization";
+import { Permission, type PermissionType } from "../lib/permissions";
 
 export interface SchoolFormData {
   code: string;
@@ -72,16 +72,6 @@ export interface SchoolFormData {
   femaleSupportStaff: string;
   totalTeachers: string;
   totalStudents: string;
-  hasLibrary: string;
-  hasLaboratory: string;
-  hasComputerLab: string;
-  hasSportsField: string;
-  hasHostel: string;
-  hasCanteen: string;
-  hasElectricity: string;
-  hasWater: string;
-  hasInternet: string;
-  hasSolarPanel: string;
   numberOfAccessRoads: string;
   roadState: string;
   roadStatusPercentage: string;
@@ -103,6 +93,7 @@ interface Step {
   title: string;
   description: string;
   icon: React.ReactNode;
+  permission?: PermissionType;
 }
 
 const steps: Step[] = [
@@ -111,48 +102,49 @@ const steps: Step[] = [
     title: "Basic Info",
     description: "Institution details",
     icon: <Building2 className="w-5 h-5" />,
+    permission: Permission.EDIT_SCHOOL_BASIC,
   },
   {
     id: 2,
     title: "Location",
     description: "Geographic data",
     icon: <MapPin className="w-5 h-5" />,
+    permission: Permission.EDIT_SCHOOL_LOCATION,
   },
   {
     id: 3,
     title: "Contact",
     description: "Contact information",
     icon: <Phone className="w-5 h-5" />,
+    permission: Permission.EDIT_SCHOOL_CONTACT,
   },
   {
     id: 4,
     title: "Trades",
     description: "TVET Trades",
     icon: <BookOpen className="w-5 h-5" />,
+    permission: Permission.EDIT_SCHOOL_PROGRAMS,
   },
   {
     id: 5,
     title: "Staff",
     description: "Staff details",
     icon: <Users className="w-5 h-5" />,
+    permission: Permission.EDIT_SCHOOL_STAFF,
   },
   {
     id: 6,
-    title: "Facilities",
-    description: "Infrastructure",
-    icon: <Building className="w-5 h-5" />,
+    title: "Land",
+    description: "Land area & Access",
+    icon: <Home className="w-5 h-5" />,
+    permission: Permission.EDIT_SCHOOL_LAND,
   },
   {
     id: 7,
-    title: "Land",
-    description: "Land area",
-    icon: <Home className="w-5 h-5" />,
-  },
-  {
-    id: 8,
     title: "Buildings",
     description: "Building details",
     icon: <Home className="w-5 h-5" />,
+    permission: Permission.EDIT_SCHOOL_BUILDINGS,
   },
 ];
 
@@ -200,16 +192,6 @@ const defaultFormData: SchoolFormData = {
   femaleSupportStaff: "",
   totalTeachers: "",
   totalStudents: "",
-  hasLibrary: "false",
-  hasLaboratory: "false",
-  hasComputerLab: "false",
-  hasSportsField: "false",
-  hasHostel: "false",
-  hasCanteen: "false",
-  hasElectricity: "false",
-  hasWater: "false",
-  hasInternet: "false",
-  hasSolarPanel: "false",
   numberOfAccessRoads: "",
   roadState: "",
   roadStatusPercentage: "",
@@ -226,7 +208,17 @@ export function SchoolForm({
   mode = "create",
   schoolId,
 }: SchoolFormProps) {
+  const { isAuthorized } = useAuthorization();
   const [currentStep, setCurrentStep] = useState(1);
+
+  // Filter steps based on permissions
+  const visibleSteps = steps.filter(
+    (step) =>
+      !step.permission ||
+      isAuthorized(step.permission) ||
+      isAuthorized(Permission.MANAGE_SCHOOLS),
+  );
+
   const [formData, setFormData] = useState<SchoolFormData>(() => ({
     ...defaultFormData,
     ...(initialData as Partial<SchoolFormData>),
@@ -241,13 +233,17 @@ export function SchoolForm({
       buildingCode: b.buildingCode || "",
       buildingFunction: b.function || "",
       buildingFloors: b.floors?.toString() || "",
-      buildingRooms: b.rooms?.toString() || "",
       buildingArea: b.areaSquareMeters?.toString() || "",
       buildingYearBuilt: b.yearBuilt?.toString() || "",
       buildingCondition: b.condition || "good",
       buildingRoofCondition: b.roofCondition || "good",
       buildingStructuralScore: b.structuralScore?.toString() || "",
       buildingNotes: b.notes || "",
+      facilities: Array.isArray(b.facilities) ? b.facilities : [],
+      geolocation: {
+        latitude: b.centroidLat ?? null,
+        longitude: b.centroidLng ?? null,
+      },
     }));
   };
 
@@ -299,11 +295,17 @@ export function SchoolForm({
   };
 
   const nextStep = () => {
-    if (currentStep < steps.length) setCurrentStep(currentStep + 1);
+    const currentIndex = visibleSteps.findIndex((s) => s.id === currentStep);
+    if (currentIndex < visibleSteps.length - 1) {
+      setCurrentStep(visibleSteps[currentIndex + 1].id);
+    }
   };
 
   const prevStep = () => {
-    if (currentStep > 1) setCurrentStep(currentStep - 1);
+    const currentIndex = visibleSteps.findIndex((s) => s.id === currentStep);
+    if (currentIndex > 0) {
+      setCurrentStep(visibleSteps[currentIndex - 1].id);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -373,19 +375,7 @@ export function SchoolForm({
         femaleSupportStaff: formData.femaleSupportStaff
           ? parseInt(formData.femaleSupportStaff)
           : null,
-        // Facilities
-        hasLibrary: formData.hasLibrary === "true",
-        hasLaboratory: formData.hasLaboratory === "true",
-        hasComputerLab: formData.hasComputerLab === "true",
-        hasSportsField: formData.hasSportsField === "true",
-        hasHostel: formData.hasHostel === "true",
-        hasCanteen: formData.hasCanteen === "true",
-        // Utilities
-        hasElectricity: formData.hasElectricity === "true",
-        hasWater: formData.hasWater === "true",
-        hasInternet: formData.hasInternet === "true",
-        hasSolarPanel: formData.hasSolarPanel === "true",
-        // Roads
+        // Roads & Land
         numberOfAccessRoads: formData.numberOfAccessRoads
           ? parseInt(formData.numberOfAccessRoads)
           : null,
@@ -417,7 +407,6 @@ export function SchoolForm({
             code: b.buildingCode || null,
             function: b.buildingFunction || null,
             floors: b.buildingFloors ? parseInt(b.buildingFloors) : null,
-            rooms: b.buildingRooms ? parseInt(b.buildingRooms) : null,
             area: b.buildingArea ? parseFloat(b.buildingArea) : null,
             yearBuilt: b.buildingYearBuilt
               ? parseInt(b.buildingYearBuilt)
@@ -425,9 +414,12 @@ export function SchoolForm({
             condition: b.buildingCondition || "good",
             roofCondition: b.buildingRoofCondition || "good",
             structuralScore: b.buildingStructuralScore
-              ? parseInt(b.buildingStructuralScore)
+              ? parseFloat(b.buildingStructuralScore)
               : null,
             notes: b.buildingNotes || null,
+            facilities: b.facilities.length > 0 ? b.facilities : null,
+            latitude: b.geolocation.latitude ?? null,
+            longitude: b.geolocation.longitude ?? null,
           })),
       };
 
@@ -521,30 +513,19 @@ export function SchoolForm({
             femaleTeachers={formData.femaleTeachers}
             maleStudents={formData.maleStudents}
             femaleStudents={formData.femaleStudents}
-            adminStaff={formData.adminStaff}
             maleAdminStaff={formData.maleAdminStaff}
             femaleAdminStaff={formData.femaleAdminStaff}
-            supportStaff={formData.supportStaff}
             maleSupportStaff={formData.maleSupportStaff}
             femaleSupportStaff={formData.femaleSupportStaff}
-            totalTeachers={formData.totalTeachers}
             totalStudents={formData.totalStudents}
             onChange={handleInputChange}
           />
         );
       case 6:
         return (
-          <FacilitiesStep
-            hasLibrary={formData.hasLibrary}
-            hasLaboratory={formData.hasLaboratory}
-            hasComputerLab={formData.hasComputerLab}
-            hasSportsField={formData.hasSportsField}
-            hasHostel={formData.hasHostel}
-            hasCanteen={formData.hasCanteen}
-            hasElectricity={formData.hasElectricity}
-            hasWater={formData.hasWater}
-            hasInternet={formData.hasInternet}
-            hasSolarPanel={formData.hasSolarPanel}
+          <LandStep
+            usedLandArea={formData.usedLandArea}
+            unusedLandArea={formData.unusedLandArea}
             numberOfAccessRoads={formData.numberOfAccessRoads}
             roadState={formData.roadState}
             roadStatusPercentage={formData.roadStatusPercentage}
@@ -553,18 +534,16 @@ export function SchoolForm({
         );
       case 7:
         return (
-          <LandStep
-            usedLandArea={formData.usedLandArea}
-            unusedLandArea={formData.unusedLandArea}
-            onChange={handleInputChange}
-          />
-        );
-      case 8:
-        return (
           <BuildingsStep
             buildings={formData.buildings}
             onBuildingsChange={(buildings) =>
               setFormData((prev) => ({ ...prev, buildings }))
+            }
+            schoolLatitude={
+              formData.latitude ? parseFloat(formData.latitude) : null
+            }
+            schoolLongitude={
+              formData.longitude ? parseFloat(formData.longitude) : null
             }
           />
         );
@@ -585,7 +564,7 @@ export function SchoolForm({
       <div className="flex h-full -m-6">
         {/* Left Sidebar - Vertical Steps */}
         <div
-          className="w-72 min-w-[280px] bg-linear-to-b from-primary/10 via-primary/5 to-background border-r border-border/50 flex flex-col"
+          className="w-72 min-w-70 bg-linear-to-b from-primary/10 via-primary/5 to-background border-r border-border/50 flex flex-col"
           style={{ height: "calc(100vh - 100px)" }}
         >
           <div className="p-6 pb-4">
@@ -599,7 +578,7 @@ export function SchoolForm({
             </p>
           </div>
           <div className="flex-1 overflow-y-auto px-6 py-2 space-y-2">
-            {steps.map((step) => (
+            {visibleSteps.map((step) => (
               <button
                 key={step.id}
                 type="button"
@@ -629,7 +608,8 @@ export function SchoolForm({
           <div className="px-6 py-4 border-t border-border/50">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              Step {currentStep} of {steps.length}
+              Step {visibleSteps.findIndex((s) => s.id === currentStep) + 1} of{" "}
+              {visibleSteps.length}
             </div>
           </div>
         </div>
@@ -676,7 +656,7 @@ export function SchoolForm({
                 {currentStep === 1 ? "Cancel" : "Previous"}
               </Button>
 
-              {currentStep < steps.length ? (
+              {currentStep !== visibleSteps[visibleSteps.length - 1]?.id ? (
                 <Button
                   type="button"
                   size="lg"

@@ -6,7 +6,19 @@ interface User {
   firstName: string;
   lastName: string;
   email: string;
-  role: string;
+  role: string | {
+    id: string;
+    name: string;
+    permissions: string[];
+    accessLevel?: { id: string; name: string } | null;
+  };
+  location?: {
+    province?: string;
+    district?: string;
+    sector?: string;
+    schoolId?: string;
+    schoolName?: string;
+  } | null;
   avatarUrl?: string;
   phone?: string;
   department?: string;

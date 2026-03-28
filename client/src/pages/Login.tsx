@@ -2,8 +2,10 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 import { api } from "../lib/api";
-import { Lock, Mail, Loader2, ArrowRight } from "lucide-react";
+import { Mail, Loader2, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
+import { PasswordInput } from "../components/ui/password-input";
+import { ImigongoPattern } from "../components/ui/ImigongoPattern";
 
 export default function Login() {
   const [email, setEmail] = useState("admin@rtb.gov.rw");
@@ -20,15 +22,22 @@ export default function Login() {
 
     try {
       const response = await api.post("/auth/login", { email, password });
+      const user = response.data.user;
       setAuth(
         response.data.accessToken,
         response.data.refreshToken,
-        response.data.user,
+        user,
       );
-      navigate("/");
+      
+      if (user.location?.schoolId) {
+        navigate("/school-dashboard");
+      } else {
+        navigate("/welcome");
+      }
     } catch (err: any) {
+      const axiosError = err as { response?: { data?: { message?: string } } };
       setError(
-        err.response?.data?.message ||
+        axiosError.response?.data?.message ||
           "Login failed. Please verify credentials.",
       );
     } finally {
@@ -39,7 +48,13 @@ export default function Login() {
   return (
     <div className="min-h-screen w-full flex bg-background overflow-hidden font-sans">
       {/* Left panel - Branding with Imigongo */}
-      <div className="hidden lg:flex w-1/2 bg-[#001D3D] relative overflow-hidden items-center justify-center p-12">
+      <div className="hidden lg:flex w-1/2 bg-[#001D3D] relative overflow-hidden items-center justify-center p-12 border-r border-white/5">
+        {/* Imigongo Background Pattern */}
+        <ImigongoPattern
+          className="absolute inset-0 text-white mask-[linear-gradient(to_bottom_right,black_0%,transparent_40%,transparent_60%,black_100%)]"
+          opacity={0.05}
+          scale={1.5}
+        />
         {/* Animated Background Elements */}
         <div className="absolute inset-0">
           <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-blue-600/30 blur-[150px] rounded-full animate-pulse" />
@@ -52,7 +67,7 @@ export default function Login() {
             initial={{ opacity: 0, y: -30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, type: "spring" }}
-            className="w-32 h-32 bg-white/10 backdrop-blur-2xl rounded-[2.5rem] flex items-center justify-center mb-12 border border-white/20 shadow-2xl relative group"
+            className="w-32 h-32 bg-white/10 backdrop-blur-2xl rounded-[2.5rem] flex items-center justify-center mb-12 shadow-2xl relative group"
           >
             <div className="absolute inset-0 bg-white/5 rounded-[2.5rem] opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
             <img
@@ -102,14 +117,13 @@ export default function Login() {
           </motion.div>
         </div>
 
-        {/* Imigongo lines decorative element at bottom */}
         <div className="absolute bottom-0 left-0 right-0 h-32 bg-linear-to-t from-black/40 to-transparent pointer-events-none" />
       </div>
 
       {/* Right panel - Login form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-background relative">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-background relative overflow-hidden">
         {/* Subtle background pattern for light mode */}
-        <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-size-[20px_20px] bg-[radial-gradient(#000_1px,transparent_1px)]" />
+        <div className="absolute inset-0 opacity-[0.02] pointer-events-none bg-size-[40px_40px] bg-[radial-gradient(#000_1px,transparent_1px)]" />
 
         <motion.div
           initial={{ opacity: 0, y: 30 }}
@@ -126,7 +140,7 @@ export default function Login() {
               alt="RTB Logo"
               className="w-24 h-24 object-contain lg:hidden mb-2"
             />
-            
+
             <div className="space-y-3">
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
@@ -137,11 +151,12 @@ export default function Login() {
                 <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                 SYSTEM ACCESS PORTAL
               </motion.div>
-              <h2 className="text-5xl font-black tracking-tight text-foreground leading-tight">
+              <h2 className="text-5xl lg:text-6xl font-black tracking-tight text-foreground leading-[1.1]">
                 Authentification
               </h2>
-              <p className="text-muted-foreground font-medium text-lg">
-                Enter your credentials to manage the platform
+              <p className="text-muted-foreground font-medium text-lg lg:text-xl">
+                Enter secure credentials to monitor the national TVET
+                infrastructure
               </p>
             </div>
           </div>
@@ -157,8 +172,18 @@ export default function Login() {
           )}
 
           <form onSubmit={handleLogin} className="space-y-6">
-            <div className="space-y-5">
-              <div className="space-y-2.5">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.4, staggerChildren: 0.1 }}
+              className="space-y-5"
+            >
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.5 }}
+                className="space-y-2.5"
+              >
                 <div className="pb-1">
                   <label className="text-sm font-bold text-foreground/80 ml-1">
                     Email Address
@@ -175,32 +200,32 @@ export default function Login() {
                     required
                   />
                 </div>
-              </div>
-              <div className="space-y-2.5">
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.6 }}
+                className="space-y-2.5"
+              >
                 <div className="flex items-center justify-between ml-1">
                   <label className="text-sm font-bold text-foreground/80">
                     Password
                   </label>
                   <a
                     href="#"
-                    className="text-xs text-primary font-bold hover:underline"
+                    className="text-[11px] text-primary font-black uppercase tracking-wider hover:text-primary/70 transition-colors"
                   >
                     Forgot Password?
                   </a>
                 </div>
-                <div className="relative group">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="flex h-12 w-full rounded-xl border border-input dark:border-blue-700/30 bg-background/50 backdrop-blur-sm pl-12 pr-4 py-2 text-sm transition-all focus:bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                    placeholder="••••••••"
-                    required
-                  />
-                </div>
-              </div>
-            </div>
+                <PasswordInput
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                />
+              </motion.div>
+            </motion.div>
 
             <motion.button
               whileHover={{ scale: 1.02, translateY: -2 }}

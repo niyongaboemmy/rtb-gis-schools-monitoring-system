@@ -10,6 +10,7 @@ export interface FacilityItem {
   id: string;
   label: string;
   tags: string[];
+  issueCategories?: string[]; // Predefined common issues for this item
 }
 
 export interface Facility {

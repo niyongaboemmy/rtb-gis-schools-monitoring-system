@@ -11,11 +11,14 @@ import SchoolDetail from "./pages/SchoolDetail";
 import PopulationAnalytics from "./pages/PopulationAnalytics";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
+import Welcome from "./pages/Welcome";
 import { Permission } from "./lib/permissions";
 import { TooltipProvider } from "./components/ui/tooltip";
 import Profile from "./pages/Profile";
 import SchoolDecisionDashboard from "./pages/SchoolDecisionDashboard";
 import School3DViewPage from "./pages/School3DViewPage";
+import SchoolLevelDashboard from "./pages/SchoolLevelDashboard";
+import SchoolReporting from "./pages/SchoolReporting";
 
 export default function App() {
   return (
@@ -31,15 +34,50 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/map" element={<NationalMap />} />
-            <Route path="/schools" element={<SchoolsList />} />
-            <Route path="/schools/:id" element={<SchoolDetail />} />
+            <Route path="/welcome" element={<Welcome />} />
+            
             <Route
-              path="/schools/:id/decision"
-              element={<SchoolDecisionDashboard />}
-            />
-            <Route path="/schools/:id/3dview" element={<School3DViewPage />} />
+              element={
+                <ProtectedRoute requiredPermission={Permission.VIEW_DASHBOARD} />
+              }
+            >
+              <Route path="/" element={<Dashboard />} />
+            </Route>
+
+            <Route
+              element={
+                <ProtectedRoute
+                  requiredPermission={Permission.SCHOOL_LEVEL_DASHBOARD}
+                />
+              }
+            >
+              <Route
+                path="/school-dashboard"
+                element={<SchoolLevelDashboard />}
+              />
+            </Route>
+
+            <Route
+              element={
+                <ProtectedRoute requiredPermission={Permission.VIEW_MAP} />
+              }
+            >
+              <Route path="/map" element={<NationalMap />} />
+            </Route>
+
+            <Route
+              element={
+                <ProtectedRoute requiredPermission={Permission.VIEW_SCHOOLS} />
+              }
+            >
+              <Route path="/schools" element={<SchoolsList />} />
+              <Route path="/schools/:id" element={<SchoolDetail />} />
+              <Route
+                path="/schools/:id/decision"
+                element={<SchoolDecisionDashboard />}
+              />
+              <Route path="/schools/:id/3dview" element={<School3DViewPage />} />
+            </Route>
 
             {/* Permission-protected routes */}
             <Route
@@ -66,6 +104,16 @@ export default function App() {
                 path="/schools/:id/places-overlay"
                 element={<PlacesOverlayUpload />}
               />
+            </Route>
+
+            <Route
+              element={
+                <ProtectedRoute
+                  requiredPermission={Permission.CREATE_REPORT}
+                />
+              }
+            >
+              <Route path="/reporting" element={<SchoolReporting />} />
             </Route>
 
             <Route

@@ -136,38 +136,6 @@ export class School {
   @Column({ type: 'int', nullable: true })
   supportStaff: number;
 
-  // Facilities
-  @Column({ type: 'boolean', default: false })
-  hasLibrary: boolean;
-
-  @Column({ type: 'boolean', default: false })
-  hasLaboratory: boolean;
-
-  @Column({ type: 'boolean', default: false })
-  hasComputerLab: boolean;
-
-  @Column({ type: 'boolean', default: false })
-  hasSportsField: boolean;
-
-  @Column({ type: 'boolean', default: false })
-  hasHostel: boolean;
-
-  @Column({ type: 'boolean', default: false })
-  hasCanteen: boolean;
-
-  // Utilities
-  @Column({ type: 'boolean', default: false })
-  hasElectricity: boolean;
-
-  @Column({ type: 'boolean', default: false })
-  hasWater: boolean;
-
-  @Column({ type: 'boolean', default: false })
-  hasInternet: boolean;
-
-  @Column({ type: 'boolean', default: false })
-  hasSolarPanel: boolean;
-
   // Roads
   @Column({ type: 'int', nullable: true })
   numberOfAccessRoads: number;

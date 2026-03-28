@@ -1,20 +1,31 @@
-import { useState } from "react";
-import { Input } from "../ui/input";
-import { RichDropdown } from "../ui/rich-dropdown";
-import type { DropdownOption } from "../ui/rich-dropdown";
+import { useState, useEffect } from "react";
 import { Button } from "../ui/button";
+import { api } from "../../lib/api";
+import { BuildingFormDrawer } from "./BuildingFormDrawer";
+import { BuildingDetailsModal } from "./BuildingDetailsModal";
+import type { AvailableFacility } from "./BuildingFormDrawer";
 import {
   Building2,
-  Hash,
-  Layers,
-  Maximize2,
-  Calendar,
-  AlertTriangle,
-  Home,
-  FileText,
   Plus,
   Trash2,
+  Pencil,
+  Eye,
+  DoorOpen,
+  Layers,
+  AlertTriangle,
+  MapPin,
 } from "lucide-react";
+
+export interface FacilityItem {
+  facility_id: string; // FacilityEntity.facilityId
+  facility_name: string; // FacilityEntity.title (auto-filled)
+  number_of_rooms: number;
+}
+
+export interface BuildingGeoLocation {
+  latitude: number | null;
+  longitude: number | null;
+}
 
 export interface BuildingData {
   id: string;
@@ -22,19 +33,23 @@ export interface BuildingData {
   buildingCode: string;
   buildingFunction: string;
   buildingFloors: string;
-  buildingRooms: string;
   buildingArea: string;
   buildingYearBuilt: string;
   buildingCondition: string;
   buildingRoofCondition: string;
   buildingStructuralScore: string;
   buildingNotes: string;
+  facilities: FacilityItem[];
+  geolocation: BuildingGeoLocation;
 }
 
 interface BuildingsStepProps {
   buildings?: BuildingData[];
   onBuildingsChange?: (buildings: BuildingData[]) => void;
-  // Legacy single building support (deprecated - use buildings array)
+  /** School's saved coordinates — used to auto-center the building geo modal */
+  schoolLatitude?: number | null;
+  schoolLongitude?: number | null;
+  // Legacy single building support (deprecated)
   buildingName?: string;
   buildingCode?: string;
   buildingFunction?: string;
@@ -47,18 +62,27 @@ interface BuildingsStepProps {
   buildingNotes?: string;
 }
 
-const buildingConditionOptions: DropdownOption[] = [
-  { label: "Good", value: "good" },
-  { label: "Fair", value: "fair" },
-  { label: "Poor", value: "poor" },
-  { label: "Critical", value: "critical" },
-];
-
-const roofConditionOptions: DropdownOption[] = [
-  { label: "Good", value: "good" },
-  { label: "Needs Repair", value: "needs_repair" },
-  { label: "Damaged", value: "damaged" },
-];
+const conditionConfig: Record<string, { label: string; classes: string }> = {
+  good: {
+    label: "Good",
+    classes:
+      "bg-green-500/15 text-green-700 dark:text-green-400 ring-green-500/20",
+  },
+  fair: {
+    label: "Fair",
+    classes:
+      "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 ring-yellow-500/20",
+  },
+  poor: {
+    label: "Poor",
+    classes:
+      "bg-orange-500/15 text-orange-700 dark:text-orange-400 ring-orange-500/20",
+  },
+  critical: {
+    label: "Critical",
+    classes: "bg-red-500/15 text-red-700 dark:text-red-400 ring-red-500/20",
+  },
+};
 
 const createEmptyBuilding = (): BuildingData => ({
   id: `building-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -66,215 +90,21 @@ const createEmptyBuilding = (): BuildingData => ({
   buildingCode: "",
   buildingFunction: "",
   buildingFloors: "",
-  buildingRooms: "",
   buildingArea: "",
   buildingYearBuilt: "",
   buildingCondition: "good",
   buildingRoofCondition: "good",
   buildingStructuralScore: "",
   buildingNotes: "",
+  facilities: [],
+  geolocation: { latitude: null, longitude: null },
 });
-
-interface BuildingCardProps {
-  building: BuildingData;
-  index: number;
-  onUpdate: (id: string, field: keyof BuildingData, value: string) => void;
-  onRemove: (id: string) => void;
-  canRemove: boolean;
-}
-
-function BuildingCard({
-  building,
-  index,
-  onUpdate,
-  onRemove,
-  canRemove,
-}: BuildingCardProps) {
-  return (
-    <div className="p-5 rounded-2xl border-2 border-border/30 hover:border-primary/20 transition-all duration-300 bg-card">
-      <div className="flex items-center justify-between mb-4">
-        <h4 className="font-semibold text-foreground flex items-center gap-2">
-          <Building2 className="w-4 h-4 text-primary" />
-          Building #{index + 1}
-        </h4>
-        {canRemove && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => onRemove(building.id)}
-            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <Building2 className="w-3 h-3 text-muted-foreground" />
-            Name <span className="text-destructive">*</span>
-          </label>
-          <Input
-            placeholder="e.g. Main Building"
-            value={building.buildingName}
-            onChange={(e) =>
-              onUpdate(building.id, "buildingName", e.target.value)
-            }
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <Hash className="w-3 h-3 text-muted-foreground" />
-            Code
-          </label>
-          <Input
-            placeholder="e.g. BLD-001"
-            value={building.buildingCode}
-            onChange={(e) =>
-              onUpdate(building.id, "buildingCode", e.target.value)
-            }
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <Home className="w-3 h-3 text-muted-foreground" />
-            Function
-          </label>
-          <Input
-            placeholder="e.g. Classroom, Admin"
-            value={building.buildingFunction}
-            onChange={(e) =>
-              onUpdate(building.id, "buildingFunction", e.target.value)
-            }
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <Layers className="w-3 h-3 text-muted-foreground" />
-            Floors
-          </label>
-          <Input
-            type="number"
-            min="1"
-            placeholder="e.g. 2"
-            value={building.buildingFloors}
-            onChange={(e) =>
-              onUpdate(building.id, "buildingFloors", e.target.value)
-            }
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <Layers className="w-3 h-3 text-muted-foreground" />
-            Rooms
-          </label>
-          <Input
-            type="number"
-            min="1"
-            placeholder="e.g. 4"
-            value={building.buildingRooms}
-            onChange={(e) =>
-              onUpdate(building.id, "buildingRooms", e.target.value)
-            }
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <Maximize2 className="w-3 h-3 text-muted-foreground" />
-            Area (m²)
-          </label>
-          <Input
-            type="number"
-            step="any"
-            placeholder="e.g. 500"
-            value={building.buildingArea}
-            onChange={(e) =>
-              onUpdate(building.id, "buildingArea", e.target.value)
-            }
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <Calendar className="w-3 h-3 text-muted-foreground" />
-            Year Built
-          </label>
-          <Input
-            type="number"
-            min="1900"
-            max="2030"
-            placeholder="e.g. 2015"
-            value={building.buildingYearBuilt}
-            onChange={(e) =>
-              onUpdate(building.id, "buildingYearBuilt", e.target.value)
-            }
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <AlertTriangle className="w-3 h-3 text-muted-foreground" />
-            Condition
-          </label>
-          <RichDropdown
-            options={buildingConditionOptions}
-            value={building.buildingCondition}
-            onChange={(val) => onUpdate(building.id, "buildingCondition", val)}
-            placeholder="Select..."
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <AlertTriangle className="w-3 h-3 text-muted-foreground" />
-            Roof Condition
-          </label>
-          <RichDropdown
-            options={roofConditionOptions}
-            value={building.buildingRoofCondition}
-            onChange={(val) =>
-              onUpdate(building.id, "buildingRoofCondition", val)
-            }
-            placeholder="Select..."
-          />
-        </div>
-        <div className="space-y-2 md:col-span-2">
-          <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <Hash className="w-3 h-3 text-muted-foreground" />
-            Structural Score (0-100)
-          </label>
-          <Input
-            type="number"
-            min="0"
-            max="100"
-            placeholder="e.g. 85"
-            value={building.buildingStructuralScore}
-            onChange={(e) =>
-              onUpdate(building.id, "buildingStructuralScore", e.target.value)
-            }
-          />
-        </div>
-        <div className="space-y-2 md:col-span-2">
-          <label className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <FileText className="w-3 h-3 text-muted-foreground" />
-            Notes
-          </label>
-          <textarea
-            placeholder="Additional notes..."
-            value={building.buildingNotes}
-            onChange={(e) =>
-              onUpdate(building.id, "buildingNotes", e.target.value)
-            }
-            className="w-full min-h-[60px] rounded-xl border border-border/30 bg-background/80 px-3 py-2 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all resize-none"
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function BuildingsStep({
   buildings: initialBuildings,
   onBuildingsChange,
+  schoolLatitude,
+  schoolLongitude,
   buildingName,
   buildingCode,
   buildingFunction,
@@ -286,12 +116,23 @@ export function BuildingsStep({
   buildingStructuralScore,
   buildingNotes,
 }: BuildingsStepProps) {
-  // Use new multi-building approach if onBuildingsChange is provided
+  const [availableFacilities, setAvailableFacilities] = useState<
+    AvailableFacility[]
+  >([]);
+  const [facilitiesLoading, setFacilitiesLoading] = useState(false);
+
+  useEffect(() => {
+    setFacilitiesLoading(true);
+    api
+      .get<AvailableFacility[]>("/schools/facilities")
+      .then((res) => setAvailableFacilities(res.data))
+      .catch(() => setAvailableFacilities([]))
+      .finally(() => setFacilitiesLoading(false));
+  }, []);
+
   const [buildings, setBuildings] = useState<BuildingData[]>(() => {
-    if (initialBuildings && initialBuildings.length > 0) {
+    if (initialBuildings && initialBuildings.length > 0)
       return initialBuildings;
-    }
-    // If legacy single building data exists, convert to array
     if (buildingName) {
       return [
         {
@@ -300,101 +141,298 @@ export function BuildingsStep({
           buildingCode: buildingCode || "",
           buildingFunction: buildingFunction || "",
           buildingFloors: buildingFloors || "",
-          buildingRooms: "",
           buildingArea: buildingArea || "",
           buildingYearBuilt: buildingYearBuilt || "",
           buildingCondition: buildingCondition || "good",
           buildingRoofCondition: buildingRoofCondition || "good",
           buildingStructuralScore: buildingStructuralScore || "",
           buildingNotes: buildingNotes || "",
+          facilities: [],
+          geolocation: { latitude: null, longitude: null },
         },
       ];
     }
-    return [createEmptyBuilding()];
+    return [];
   });
 
-  const handleAddBuilding = () => {
-    const newBuildings = [...buildings, createEmptyBuilding()];
-    setBuildings(newBuildings);
-    onBuildingsChange?.(newBuildings);
-  };
-
-  const handleUpdateBuilding = (
-    id: string,
-    field: keyof BuildingData,
-    value: string,
-  ) => {
-    const newBuildings = buildings.map((b) =>
-      b.id === id ? { ...b, [field]: value } : b,
-    );
-    setBuildings(newBuildings);
-    onBuildingsChange?.(newBuildings);
-  };
-
-  const handleRemoveBuilding = (id: string) => {
-    if (buildings.length > 1) {
-      const newBuildings = buildings.filter((b) => b.id !== id);
-      setBuildings(newBuildings);
-      onBuildingsChange?.(newBuildings);
-    }
-  };
-
-  const hasAtLeastOneBuilding = buildings.some(
-    (b) => b.buildingName.trim() !== "",
+  // Drawer state
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [activeBuilding, setActiveBuilding] = useState<BuildingData | null>(
+    null,
   );
+  const [activeIndex, setActiveIndex] = useState<number>(-1);
+
+  // Details modal state
+  const [detailsBuilding, setDetailsBuilding] = useState<BuildingData | null>(
+    null,
+  );
+  const [detailsIndex, setDetailsIndex] = useState<number>(0);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  const openDetails = (building: BuildingData, index: number) => {
+    setDetailsBuilding(building);
+    setDetailsIndex(index);
+    setDetailsOpen(true);
+  };
+
+  const openNew = () => {
+    setActiveBuilding(createEmptyBuilding());
+    setActiveIndex(-1);
+    setDrawerOpen(true);
+  };
+
+  const openEdit = (building: BuildingData, index: number) => {
+    setActiveBuilding(building);
+    setActiveIndex(index);
+    setDrawerOpen(true);
+  };
+
+  const handleSave = (data: BuildingData) => {
+    let next: BuildingData[];
+    if (activeIndex === -1) {
+      next = [...buildings, data];
+    } else {
+      next = buildings.map((b, i) => (i === activeIndex ? data : b));
+    }
+    setBuildings(next);
+    onBuildingsChange?.(next);
+  };
+
+  const handleRemove = (index: number) => {
+    const next = buildings.filter((_, i) => i !== index);
+    setBuildings(next);
+    onBuildingsChange?.(next);
+  };
+
+  const namedCount = buildings.filter(
+    (b) => b.buildingName.trim() !== "",
+  ).length;
 
   return (
-    <div className="space-y-6">
-      <div className="p-4 rounded-2xl bg-linear-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20">
-        <div className="flex items-start gap-3">
-          <Building2 className="w-5 h-5 text-amber-500 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
-              Building Details
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Add buildings on campus. This information helps assess the
-              school's infrastructure condition.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        {buildings.map((building, index) => (
-          <BuildingCard
-            key={building.id}
-            building={building}
-            index={index}
-            onUpdate={handleUpdateBuilding}
-            onRemove={handleRemoveBuilding}
-            canRemove={buildings.length > 1}
-          />
-        ))}
-      </div>
-
-      <Button
-        type="button"
-        variant="outline"
-        onClick={handleAddBuilding}
-        className="w-full rounded-xl border-2 border-dashed border-primary/30 hover:border-primary/50 hover:bg-primary/5"
-      >
-        <Plus className="w-4 h-4 mr-2" />
-        Add Another Building
-      </Button>
-
-      {buildings.length > 0 && (
-        <div className="text-center text-sm text-muted-foreground">
-          Total buildings:{" "}
-          <span className="font-semibold">{buildings.length}</span>
-          {hasAtLeastOneBuilding && (
-            <span className="ml-2 text-green-600">
-              ({buildings.filter((b) => b.buildingName.trim() !== "").length}{" "}
-              with name)
+    <div className="space-y-5">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-primary" />
+          <span className="text-sm font-semibold text-foreground">
+            Buildings
+          </span>
+          {buildings.length > 0 && (
+            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-primary/10 text-primary text-xs font-bold">
+              {buildings.length}
             </span>
           )}
         </div>
+        <Button
+          type="button"
+          size="sm"
+          onClick={openNew}
+          className="h-8 px-3 text-xs gap-1.5"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Add Building
+        </Button>
+      </div>
+
+      {/* Hint banner */}
+      <div className="p-3.5 rounded-xl bg-amber-500/8 border border-amber-500/20 text-sm text-amber-700 dark:text-amber-300 flex items-start gap-2.5">
+        <Building2 className="w-4 h-4 mt-0.5 shrink-0 text-amber-500" />
+        <span>
+          Add all buildings on school. Click a building to edit its details, or
+          use <strong>Add Building</strong> to register a new one.
+        </span>
+      </div>
+
+      {/* Empty state */}
+      {buildings.length === 0 && (
+        <button
+          type="button"
+          onClick={openNew}
+          className="w-full flex flex-col items-center justify-center gap-3 py-12 rounded-2xl border-2 border-dashed border-border/40 hover:border-primary/30 hover:bg-primary/3 transition-all group"
+        >
+          <div className="p-3 rounded-xl bg-muted group-hover:bg-primary/10 transition-colors">
+            <Building2 className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-medium text-foreground">
+              No buildings yet
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Click to add the first building
+            </p>
+          </div>
+        </button>
       )}
+
+      {/* Building list */}
+      {buildings.length > 0 && (
+        <div className="rounded-2xl border border-border/30 overflow-hidden divide-y divide-border/20">
+          {buildings.map((building, index) => {
+            const cond =
+              conditionConfig[building.buildingCondition] ??
+              conditionConfig.fair;
+            const name = building.buildingName.trim() || `Unnamed Building`;
+            const hasGeo =
+              building.geolocation.latitude !== null ||
+              building.geolocation.longitude !== null;
+
+            return (
+              <div
+                key={building.id}
+                className="group flex items-center gap-3 px-4 py-3.5 bg-card hover:bg-muted/40 transition-colors cursor-pointer"
+                onClick={() => openDetails(building, index)}
+              >
+                {/* Index badge */}
+                <div className="w-7 h-7 rounded-lg bg-primary/8 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                  {index + 1}
+                </div>
+
+                {/* Main info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-foreground truncate">
+                      {name}
+                    </span>
+                    {building.buildingCode && (
+                      <span className="text-xs text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded">
+                        {building.buildingCode}
+                      </span>
+                    )}
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ring-inset ${cond.classes}`}
+                    >
+                      {cond.label}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 mt-1 flex-wrap">
+                    {building.buildingFunction && (
+                      <span className="text-xs text-muted-foreground">
+                        {building.buildingFunction}
+                      </span>
+                    )}
+                    {(() => {
+                      const totalRooms = building.facilities.reduce(
+                        (sum, f) => sum + (f.number_of_rooms || 0),
+                        0,
+                      );
+                      return building.buildingFloors || totalRooms > 0 ? (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Layers className="w-3 h-3" />
+                          {[
+                            building.buildingFloors &&
+                              `${building.buildingFloors}F`,
+                            totalRooms > 0 && `${totalRooms} rooms`,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      ) : null;
+                    })()}
+                    {building.facilities.length > 0 && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <DoorOpen className="w-3 h-3" />
+                        {building.facilities.length}{" "}
+                        {building.facilities.length === 1
+                          ? "facility"
+                          : "facilities"}
+                      </span>
+                    )}
+                    {hasGeo && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <MapPin className="w-3 h-3" />
+                        Located
+                      </span>
+                    )}
+                    {building.buildingStructuralScore && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <AlertTriangle className="w-3 h-3" />
+                        Score: {building.buildingStructuralScore}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openDetails(building, index);
+                    }}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    title="View details"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEdit(building, index);
+                    }}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    title="Edit building"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemove(index);
+                    }}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                    title="Remove building"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Rest state indicator */}
+                <Eye className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:hidden shrink-0" />
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Summary footer */}
+      {buildings.length > 0 && (
+        <p className="text-xs text-muted-foreground text-center">
+          {namedCount} of {buildings.length} buildings named
+          {buildings.length - namedCount > 0 && (
+            <span className="text-amber-600 dark:text-amber-400 ml-1">
+              · {buildings.length - namedCount} need a name
+            </span>
+          )}
+        </p>
+      )}
+
+      {/* Details modal */}
+      <BuildingDetailsModal
+        isOpen={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+        building={detailsBuilding}
+        buildingIndex={detailsIndex}
+        onEdit={() => {
+          setDetailsOpen(false);
+          if (detailsBuilding) openEdit(detailsBuilding, detailsIndex);
+        }}
+      />
+
+      {/* Edit drawer */}
+      <BuildingFormDrawer
+        isOpen={drawerOpen}
+        building={activeBuilding}
+        buildingIndex={activeIndex}
+        onSave={handleSave}
+        onClose={() => setDrawerOpen(false)}
+        availableFacilities={availableFacilities}
+        facilitiesLoading={facilitiesLoading}
+        schoolLat={schoolLatitude ?? null}
+        schoolLng={schoolLongitude ?? null}
+      />
     </div>
   );
 }

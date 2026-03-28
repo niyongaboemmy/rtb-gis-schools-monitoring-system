@@ -282,35 +282,6 @@ export class AnalyticsService {
       );
     }
 
-    // 3. Facility Standards (Strategic)
-    const missingFacilities: string[] = [];
-    if (!school.hasLaboratory) missingFacilities.push('Science Laboratory');
-    if (!school.hasLibrary) missingFacilities.push('Library');
-    if (!school.hasComputerLab) missingFacilities.push('Computer Lab');
-
-    if (missingFacilities.length > 0) {
-      recs.push(
-        `[STRATEGIC] Facility Gap: ${missingFacilities.join(', ')} required to meet TVET excellence standards.`,
-      );
-    }
-
-    // 4. Utilities & Basic Rights
-    if (!school.hasElectricity) {
-      recs.push(
-        `[CRITICAL] Utility Gap: No reliable electricity. Grid or Solar connection required.`,
-      );
-    }
-    if (!school.hasWater) {
-      recs.push(`[URGENT] Utility Gap: No clean water source detected.`);
-    }
-
-    // 5. Compliance
-    if (facility > 70) {
-      recs.push(
-        `[URGENT] Compliance: Severe facility survey failures. Immediate administrative intervention required.`,
-      );
-    }
-
     if (recs.length === 0) {
       recs.push('Continue routine maintenance and monitoring.');
     }

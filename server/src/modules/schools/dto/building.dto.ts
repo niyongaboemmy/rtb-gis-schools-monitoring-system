@@ -1,9 +1,21 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsString, IsArray, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import {
   BuildingCondition,
   RoofCondition,
 } from '../entities/school-building.entity';
+
+export class FacilityItemDto {
+  @IsString()
+  facility_id: string;
+
+  @IsString()
+  facility_name: string;
+
+  @IsNumber()
+  number_of_rooms: number;
+}
 
 export class BuildingDto {
   @ApiPropertyOptional()
@@ -25,11 +37,6 @@ export class BuildingDto {
   @IsNumber()
   @IsOptional()
   floors?: number;
-
-  @ApiPropertyOptional()
-  @IsNumber()
-  @IsOptional()
-  rooms?: number;
 
   @ApiPropertyOptional()
   @IsNumber()
@@ -60,4 +67,21 @@ export class BuildingDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @ApiPropertyOptional()
+  @IsNumber()
+  @IsOptional()
+  latitude?: number;
+
+  @ApiPropertyOptional()
+  @IsNumber()
+  @IsOptional()
+  longitude?: number;
+
+  @ApiPropertyOptional({ type: [FacilityItemDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FacilityItemDto)
+  @IsOptional()
+  facilities?: FacilityItemDto[];
 }

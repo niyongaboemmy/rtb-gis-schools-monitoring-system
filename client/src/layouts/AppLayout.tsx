@@ -19,6 +19,11 @@ import {
   PanelLeftOpen,
   Menu,
   Bell,
+  MapPin,
+  Layers,
+  BarChart3,
+  GraduationCap,
+  ClipboardList,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -50,11 +55,11 @@ export function ProtectedRoute({
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (requiredPermission && !isAuthorized(requiredPermission))
-    return <Navigate to="/" replace />;
+    return <Navigate to="/welcome" replace />;
   if (allowedRoles.length > 0 && user) {
-    const roleName =
-      typeof user.role === "string" ? user.role : (user.role as any)?.name;
-    if (!allowedRoles.includes(roleName)) return <Navigate to="/" replace />;
+    const roleName = typeof user.role === "object" ? user.role.name : user.role;
+    if (!allowedRoles.includes(roleName))
+      return <Navigate to="/welcome" replace />;
   }
 
   return children ? <>{children}</> : <Outlet />;
@@ -72,15 +77,42 @@ export function AppLayout() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const allNavItems = [
-    { name: "Dashboard", path: "/", icon: LayoutDashboard },
-    { name: "National Map", path: "/map", icon: Map },
-    { name: "Schools Directory", path: "/schools", icon: Building2 },
-    // {
-    //   name: "Decision & Analytics",
-    //   path: "/analytics",
-    //   icon: BarChart3,
-    //   requiredPermission: Permission.VIEW_ANALYTICS,
-    // },
+    {
+      name: "Dashboard",
+      path: "/",
+      icon: LayoutDashboard,
+      requiredPermission: Permission.VIEW_DASHBOARD,
+    },
+    {
+      name: "School Dashboard",
+      path: "/school-dashboard",
+      icon: GraduationCap,
+      requiredPermission: Permission.SCHOOL_LEVEL_DASHBOARD,
+    },
+    {
+      name: "National Map",
+      path: "/map",
+      icon: Map,
+      requiredPermission: Permission.VIEW_MAP,
+    },
+    {
+      name: "Schools Directory",
+      path: "/schools",
+      icon: Building2,
+      requiredPermission: Permission.VIEW_SCHOOLS,
+    },
+    {
+      name: "Decision & Analytics",
+      path: "/analytics",
+      icon: BarChart3,
+      requiredPermission: Permission.VIEW_ANALYTICS,
+    },
+    {
+      name: "School Reporting",
+      path: "/reporting",
+      icon: ClipboardList,
+      requiredPermission: Permission.CREATE_REPORT,
+    },
     {
       name: "Reports",
       path: "/reports",
@@ -101,12 +133,26 @@ export function AppLayout() {
 
   const initials = `${user?.firstName?.charAt(0) ?? ""}${user?.lastName?.charAt(0) ?? ""}`;
   const roleName = (
-    typeof user?.role === "string"
-      ? user.role
-      : ((user?.role as any)?.name ?? "")
+    typeof user?.role === "object" ? user.role.name || "" : user?.role || ""
   )
     .replace(/_/g, " ")
     .toLowerCase();
+
+  const accessLevelName: string | null =
+    typeof user?.role === "object" && user?.role !== null
+      ? user.role.accessLevel?.name || null
+      : null;
+
+  const loc = user?.location;
+  const scopeLabel = loc
+    ? loc.schoolName
+      ? loc.schoolName
+      : loc.sector
+        ? `${loc.sector}, ${loc.district}`
+        : loc.district
+          ? `${loc.district}, ${loc.province}`
+          : (loc.province ?? null)
+    : null;
 
   const currentSegment =
     location.pathname.split("/")[1]?.replace(/-/g, " ") || "dashboard";
@@ -324,6 +370,15 @@ export function AppLayout() {
                   <p className="text-[10px] text-muted-foreground mt-0.5 truncate capitalize">
                     {roleName}
                   </p>
+                  {accessLevelName && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <Layers className="w-2.5 h-2.5 text-primary/60 shrink-0" />
+                      <p className="text-[9px] text-primary/70 font-semibold truncate">
+                        {accessLevelName}
+                        {scopeLabel && ` · ${scopeLabel}`}
+                      </p>
+                    </div>
+                  )}
                 </div>
                 {/* Settings cog  */}
                 <Settings className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
@@ -475,6 +530,23 @@ export function AppLayout() {
                     <span className="inline-block mt-1 text-[9px] font-semibold text-primary bg-primary/10 border border-primary/15 rounded-full px-2 py-0.5 capitalize">
                       {roleName}
                     </span>
+                    {accessLevelName && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <Layers className="w-2.5 h-2.5 text-primary/60 shrink-0" />
+                        <span className="text-[9px] font-semibold text-primary/70">
+                          {accessLevelName}
+                          {scopeLabel && ` · ${scopeLabel}`}
+                        </span>
+                      </div>
+                    )}
+                    {scopeLabel && !accessLevelName && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <MapPin className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
+                        <span className="text-[9px] text-muted-foreground font-medium">
+                          {scopeLabel}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -490,16 +562,18 @@ export function AppLayout() {
                     <User className="w-3.5 h-3.5 text-muted-foreground" />
                     My profile
                   </button>
-                  <button
-                    onClick={() => {
-                      setIsProfileOpen(false);
-                      navigate("/settings");
-                    }}
-                    className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-foreground hover:bg-accent rounded-lg transition-colors text-left"
-                  >
-                    <Settings className="w-3.5 h-3.5 text-muted-foreground" />
-                    Settings
-                  </button>
+                  {isAuthorized(Permission.MANAGE_USERS) && (
+                    <button
+                      onClick={() => {
+                        setIsProfileOpen(false);
+                        navigate("/settings");
+                      }}
+                      className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-foreground hover:bg-accent rounded-lg transition-colors text-left"
+                    >
+                      <Settings className="w-3.5 h-3.5 text-muted-foreground" />
+                      Settings
+                    </button>
+                  )}
                 </div>
 
                 <div className="p-1.5 border-t border-border/20">

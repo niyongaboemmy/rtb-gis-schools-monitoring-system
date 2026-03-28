@@ -27,6 +27,15 @@ import { RecommendationList } from "../components/analytics/RecommendationList";
 import { DistributionChart } from "../components/analytics/DistributionChart";
 import { Link } from "react-router-dom";
 import { cn } from "../lib/utils";
+import { ImigongoPattern } from "../components/ui/ImigongoPattern";
+
+interface DashboardSchool {
+  id: string;
+  name: string;
+  code?: string;
+  district?: string;
+  calculatedScore: number;
+}
 
 // Deep Intelligence Score Logic (Strictly mirroring SchoolDecisionDashboard weights)
 const calculateDeepScore = (school: any) => {
@@ -94,7 +103,7 @@ const calculateDeepScore = (school: any) => {
 
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
-  const [schools, setSchools] = useState<any[]>([]);
+  const [schools, setSchools] = useState<DashboardSchool[]>([]);
   const [loading, setLoading] = useState(true);
   const fetchedRef = useRef(false);
 
@@ -156,8 +165,15 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="space-y-8 pb-10">
-      <PageHeader
+    <div className="relative space-y-8 pb-10 min-h-screen">
+      {/* Background Pattern */}
+      <ImigongoPattern 
+        className="fixed inset-0 text-primary pointer-events-none mask-[linear-gradient(to_bottom_right,black_0%,transparent_40%,transparent_60%,black_100%)]" 
+        opacity={0.05}
+      />
+
+      <div className="relative z-10 space-y-8">
+        <PageHeader
         title="National System Overview"
         description="GIS Intelligence & Infrastructure Monitoring Dashboard"
         icon={LayoutGrid}
@@ -259,6 +275,7 @@ export default function Dashboard() {
           variant="destructive"
         />
       </div>
+      </div>
     </div>
   );
 }
@@ -273,7 +290,7 @@ function DirectorySection({
   title: string;
   subtitle: string;
   icon: any;
-  schools: any[];
+  schools: DashboardSchool[];
   variant: "success" | "destructive";
 }) {
   return (

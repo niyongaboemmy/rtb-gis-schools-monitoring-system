@@ -202,58 +202,6 @@ export class CreateSchoolDto {
   @Min(0)
   femaleSupportStaff?: number;
 
-  // Facilities
-  @ApiPropertyOptional()
-  @IsBoolean()
-  @IsOptional()
-  hasLibrary?: boolean;
-
-  @ApiPropertyOptional()
-  @IsBoolean()
-  @IsOptional()
-  hasLaboratory?: boolean;
-
-  @ApiPropertyOptional()
-  @IsBoolean()
-  @IsOptional()
-  hasComputerLab?: boolean;
-
-  @ApiPropertyOptional()
-  @IsBoolean()
-  @IsOptional()
-  hasSportsField?: boolean;
-
-  @ApiPropertyOptional()
-  @IsBoolean()
-  @IsOptional()
-  hasHostel?: boolean;
-
-  @ApiPropertyOptional()
-  @IsBoolean()
-  @IsOptional()
-  hasCanteen?: boolean;
-
-  // Utilities
-  @ApiPropertyOptional()
-  @IsBoolean()
-  @IsOptional()
-  hasElectricity?: boolean;
-
-  @ApiPropertyOptional()
-  @IsBoolean()
-  @IsOptional()
-  hasWater?: boolean;
-
-  @ApiPropertyOptional()
-  @IsBoolean()
-  @IsOptional()
-  hasInternet?: boolean;
-
-  @ApiPropertyOptional()
-  @IsBoolean()
-  @IsOptional()
-  hasSolarPanel?: boolean;
-
   // Roads
   @ApiPropertyOptional()
   @IsNumber()

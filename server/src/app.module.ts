@@ -13,6 +13,8 @@ import { StorageModule } from './modules/storage/storage.module';
 import { SeedModule } from './modules/seed/seed.module';
 import { databaseConfig } from './config/database.config';
 import { RolesModule } from './modules/roles/roles.module';
+import { AccessLevelsModule } from './modules/access-levels/access-levels.module';
+import { ReportsModule } from './modules/reports/reports.module';
 
 @Module({
   imports: [
@@ -27,15 +29,16 @@ import { RolesModule } from './modules/roles/roles.module';
     }),
 
     // Static Assets
-    ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'public'),
-      serveRoot: '/public',
-      serveStaticOptions: {
-        setHeaders: (res) => {
-          res.set('Access-Control-Allow-Origin', '*');
-        },
+    ServeStaticModule.forRoot(
+      {
+        rootPath: join(__dirname, '..', 'public'),
+        serveRoot: '/public',
       },
-    }),
+      {
+        rootPath: join(__dirname, '..', 'uploads'),
+        serveRoot: '/uploads',
+      },
+    ),
 
     // Feature modules
     AuthModule,
@@ -47,6 +50,10 @@ import { RolesModule } from './modules/roles/roles.module';
     StorageModule,
     SeedModule,
     RolesModule,
+    AccessLevelsModule,
+    ReportsModule,
   ],
 })
 export class AppModule {}
+
+

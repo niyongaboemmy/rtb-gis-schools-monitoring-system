@@ -4,7 +4,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike } from 'typeorm';
+import { Repository, ILike, DeepPartial } from 'typeorm';
 import { School, PriorityLevel } from './entities/school.entity';
 import {
   SchoolBuilding,
@@ -52,7 +52,7 @@ export class SchoolsService {
       console.log('Creating buildings for school:', savedSchool.id);
       console.log('Buildings data:', buildings);
       const schoolBuildings = buildings.map((building) => {
-        const { area, condition, roofCondition, code, ...buildingData } =
+        const { area, condition, roofCondition, code, latitude, longitude, ...buildingData } =
           building;
         const created = this.schoolBuildingRepository.create({
           ...buildingData,
@@ -61,7 +61,9 @@ export class SchoolsService {
           areaSquareMeters: area,
           condition: (condition as BuildingCondition) || BuildingCondition.FAIR,
           roofCondition: (roofCondition as RoofCondition) || RoofCondition.GOOD,
-        });
+          centroidLat: latitude ?? null,
+          centroidLng: longitude ?? null,
+        } as DeepPartial<SchoolBuilding>);
         console.log('Created building:', created);
         return created;
       });
@@ -152,7 +154,7 @@ export class SchoolsService {
       if (buildings.length > 0) {
         console.log('UPDATE - Creating new buildings...');
         const schoolBuildings = buildings.map((building) => {
-          const { area, condition, roofCondition, code, ...buildingData } =
+          const { area, condition, roofCondition, code, latitude, longitude, ...buildingData } =
             building;
           const created = this.schoolBuildingRepository.create({
             ...buildingData,
@@ -163,7 +165,9 @@ export class SchoolsService {
               (condition as BuildingCondition) || BuildingCondition.FAIR,
             roofCondition:
               (roofCondition as RoofCondition) || RoofCondition.GOOD,
-          });
+            centroidLat: latitude ?? null,
+            centroidLng: longitude ?? null,
+          } as DeepPartial<SchoolBuilding>);
           console.log('UPDATE - Created building:', created);
           return created;
         });
