@@ -3,27 +3,14 @@ import School3DView from "./School3DView";
 import School2DViewer from "./School2DViewer";
 import ViewerModeModal from "./ViewerModeModal";
 
-interface SchoolMapSchool {
-  id: string | number;
-  latitude: number | string;
-  longitude: number | string;
-  kmzFilePath?: string; // 3D KMZ — used by Cesium
-  kmz2dFilePath?: string; // 2D KMZ/KML — used by OpenLayers
-  kmzMasterKmlPath?: string;
-  geojsonContent?: any;
-  placesOverlayFilePath?: string;
-  placesOverlayData?: any;
-  buildings?: any[];
-}
-
 interface SchoolMapProps {
   /** Raw school object from the API */
-  school: SchoolMapSchool;
-  /** Override buildings list — SchoolReporting fetches buildings separately */
+  school: any;
+  /** Override buildings list */
   buildings?: any[];
-  /** Override places overlay — School3DViewPage fetches it via a dedicated API call */
+  /** Override places overlay */
   placesOverlay?: any;
-  /** Constrain to container height, no fullscreen toggle */
+  /** Constrain to container height */
   isEmbed?: boolean;
   onClose?: () => void;
   onSelectBuilding?: (building: any) => void;
@@ -31,9 +18,8 @@ interface SchoolMapProps {
 }
 
 /**
- * SchoolMap — orchestrator that owns the 2D/3D viewer mode selection and
- * renders the appropriate viewer. Callers pass a school object; all URL
- * construction is handled internally so it never leaks into pages.
+ * SchoolMap — orchestrator that only owns the 2D/3D viewer mode selection.
+ * It passes the raw school data directly to the chosen viewer category.
  */
 export default function SchoolMap({
   school,

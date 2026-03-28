@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
+import { FILE_SERVER_URL } from "../lib/api";
 import { cn } from "../lib/utils";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -194,20 +195,20 @@ export default function School2DViewer({
   const kmz3dUrl = school.kmzFilePath
     ? school.kmzFilePath.startsWith("/")
       ? school.kmzFilePath
-      : `/files/schools/${school.id}/kmz/${school.kmzFilePath}`
+      : `${FILE_SERVER_URL}/schools/${school.id}/kmz/${school.kmzFilePath}`
     : undefined;
 
   // 2D KMZ/KML - preferred for OpenLayers; fallback to 3D KMZ if not uploaded
   const kmzUrl = school.kmz2dFilePath
     ? school.kmz2dFilePath.startsWith("/")
       ? school.kmz2dFilePath
-      : `/files/schools/${school.id}/kmz_2d/${school.kmz2dFilePath}`
+      : `${FILE_SERVER_URL}/schools/${school.id}/kmz_2d/${school.kmz2dFilePath}`
     : kmz3dUrl;
 
   const placesOverlayUrl = school.placesOverlayFilePath
     ? school.placesOverlayFilePath.startsWith("/")
       ? school.placesOverlayFilePath
-      : `/files/schools/${school.id}/places-overlay/${school.placesOverlayFilePath}`
+      : `${FILE_SERVER_URL}/schools/${school.id}/places-overlay/${school.placesOverlayFilePath}`
     : undefined;
 
   const fallbackLocation = {
@@ -309,7 +310,10 @@ export default function School2DViewer({
           const name = feat.get("name") as string | undefined;
 
           // Reset previous selection
-          if (selectedFeatureRef.current && selectedFeatureRef.current !== feat) {
+          if (
+            selectedFeatureRef.current &&
+            selectedFeatureRef.current !== feat
+          ) {
             selectedFeatureRef.current.setStyle(undefined);
           }
           feat.setStyle(kmlSelectedStyle);
@@ -386,7 +390,13 @@ export default function School2DViewer({
       // Zoom to extent
       const extent = source.getExtent();
       if (extent && extent[0] !== Infinity) {
-        map.getView().fit(extent, { padding: [60, 60, 60, 60], duration: 600, maxZoom: 20 });
+        map
+          .getView()
+          .fit(extent, {
+            padding: [60, 60, 60, 60],
+            duration: 600,
+            maxZoom: 20,
+          });
       }
 
       // Collect named features for navigator
@@ -455,7 +465,7 @@ export default function School2DViewer({
     } catch (err) {
       console.error("[School2DViewer] GeoJSON load failed", err);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [geojson]);
 
   // ── Load Places Overlay ──────────────────────────────────────────────────
@@ -486,7 +496,10 @@ export default function School2DViewer({
       placesLayerRef.current = layer;
     };
 
-    if (effectivePlacesOverlay?.features || effectivePlacesOverlay?.type === "FeatureCollection") {
+    if (
+      effectivePlacesOverlay?.features ||
+      effectivePlacesOverlay?.type === "FeatureCollection"
+    ) {
       // GeoJSON format
       try {
         const gjFormat = new GeoJSONFormat();
@@ -518,7 +531,7 @@ export default function School2DViewer({
           console.error("[School2DViewer] Places overlay fetch failed", err),
         );
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectivePlacesOverlay, placesOverlayUrl]);
 
   // ── Toggle places visibility ─────────────────────────────────────────────
@@ -568,11 +581,15 @@ export default function School2DViewer({
       let tooltipPos: number[] | undefined;
 
       if (geom instanceof LineString) {
-        const cloned = geom.clone().transform("EPSG:3857", "EPSG:4326") as LineString;
+        const cloned = geom
+          .clone()
+          .transform("EPSG:3857", "EPSG:4326") as LineString;
         result = formatLength(getLength(cloned));
         tooltipPos = geom.getLastCoordinate();
       } else if (geom instanceof Polygon) {
-        const cloned = geom.clone().transform("EPSG:3857", "EPSG:4326") as Polygon;
+        const cloned = geom
+          .clone()
+          .transform("EPSG:3857", "EPSG:4326") as Polygon;
         result = formatArea(getArea(cloned));
         tooltipPos = geom.getInteriorPoint().getCoordinates();
       }
@@ -585,7 +602,7 @@ export default function School2DViewer({
     activeDrawRef.current = draw;
 
     return () => stopDraw();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measurementMode]);
 
   // ── Navigator fly-to ─────────────────────────────────────────────────────
@@ -611,13 +628,22 @@ export default function School2DViewer({
 
   // ── Initial Focus ────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!initialBuildingId || isLoading || !mapRef.current || features.length === 0) return;
+    if (
+      !initialBuildingId ||
+      isLoading ||
+      !mapRef.current ||
+      features.length === 0
+    )
+      return;
 
-    const target = features.find(f => {
+    const target = features.find((f) => {
       const bId = f.feature.get("id");
       const name = f.feature.get("name")?.toString().toLowerCase();
       // Try matching by ID or by name (since some KMLs use names as IDs)
-      return bId === initialBuildingId || name?.includes(initialBuildingId.toLowerCase());
+      return (
+        bId === initialBuildingId ||
+        name?.includes(initialBuildingId.toLowerCase())
+      );
     });
 
     if (target) {
@@ -734,7 +760,9 @@ export default function School2DViewer({
             size="icon"
             className="h-9 w-9 rounded-xl"
             onClick={() => setShowPlacesOverlay((v) => !v)}
-            title={showPlacesOverlay ? "Hide places overlay" : "Show places overlay"}
+            title={
+              showPlacesOverlay ? "Hide places overlay" : "Show places overlay"
+            }
           >
             {showPlacesOverlay ? (
               <Eye className="h-4 w-4" />
@@ -751,7 +779,8 @@ export default function School2DViewer({
             size="icon"
             className={cn(
               "h-9 w-9 rounded-xl",
-              measurementMode === "distance" && "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30",
+              measurementMode === "distance" &&
+                "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30",
             )}
             onClick={() =>
               setMeasurementMode((m) =>
@@ -769,7 +798,8 @@ export default function School2DViewer({
             size="icon"
             className={cn(
               "h-9 w-9 rounded-xl",
-              measurementMode === "area" && "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30",
+              measurementMode === "area" &&
+                "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30",
             )}
             onClick={() =>
               setMeasurementMode((m) => (m === "area" ? "none" : "area"))
@@ -866,7 +896,9 @@ export default function School2DViewer({
         <div className="absolute bottom-12 left-1/2 z-30 -translate-x-1/2">
           <div className="flex items-center gap-2 rounded-2xl bg-black/75 backdrop-blur-xl border border-white/10 px-4 py-2 shadow-xl">
             <MapPin className="h-3.5 w-3.5 text-blue-400 shrink-0" />
-            <span className="text-xs font-bold text-white">{selectedFeatureName}</span>
+            <span className="text-xs font-bold text-white">
+              {selectedFeatureName}
+            </span>
             <button
               onClick={() => {
                 if (selectedFeatureRef.current) {
@@ -913,12 +945,10 @@ export default function School2DViewer({
       <div className="absolute bottom-4 right-4 z-20">
         <div className="rounded-xl bg-black/60 backdrop-blur-md border border-white/10 px-3 py-1.5 text-[10px] font-mono text-white/60 space-x-3">
           <span>
-            {currentLat >= 0 ? "N" : "S"}{" "}
-            {Math.abs(currentLat).toFixed(6)}°
+            {currentLat >= 0 ? "N" : "S"} {Math.abs(currentLat).toFixed(6)}°
           </span>
           <span>
-            {currentLng >= 0 ? "E" : "W"}{" "}
-            {Math.abs(currentLng).toFixed(6)}°
+            {currentLng >= 0 ? "E" : "W"} {Math.abs(currentLng).toFixed(6)}°
           </span>
         </div>
       </div>

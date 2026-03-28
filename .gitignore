@@ -8,7 +8,14 @@ server/dist/
 server/temp/
 client/dist/
 .env
+**/.env
 *.log
 .DS_Store
 *.kmz
 node_modules
+
+# file-server
+file-server/storage/**
+!file-server/storage/.gitkeep
+file-server/node_modules/
+file-server/package-lock.json
