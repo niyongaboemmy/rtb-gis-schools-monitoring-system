@@ -50,15 +50,12 @@ Ion.defaultAccessToken = import.meta.env.VITE_CESIUM_ION_TOKEN;
 type ViewMode = "2D" | "3D";
 
 interface School3DViewProps {
-  buildings: any[];
-  kmzUrl?: string;
-  masterKmlUrl?: string;
-  kmzFile?: File;
-  geojson?: any;
+  /** Raw school object from the API */
+  school: any;
+  /** Override buildings list */
+  buildings?: any[];
+  /** Override places overlay */
   placesOverlay?: any;
-  placesOverlayUrl?: string; // Direct URL to places overlay KML/KMZ file
-  fallbackLocation: { lat: number; lng: number };
-  initialView?: any;
   onClose?: () => void;
   isEmbed?: boolean;
   onSelectBuilding?: (building: any) => void;
@@ -322,9 +319,13 @@ const ViewInitializer: React.FC<{
 
     // Highest priority: fly to initialBuildingId if provided
     if (initialBuildingId && features && features.length > 0) {
-      const target = features.find(f => {
+      const target = features.find((f) => {
         const id = f.id || f.name;
-        return id === initialBuildingId || (f.name && f.name.toLowerCase().includes(initialBuildingId.toLowerCase()));
+        return (
+          id === initialBuildingId ||
+          (f.name &&
+            f.name.toLowerCase().includes(initialBuildingId.toLowerCase()))
+        );
       });
 
       if (target) {
@@ -380,20 +381,44 @@ const ViewInitializer: React.FC<{
 // School3DView
 // ─────────────────────────────────────────────────────────────────────────────
 const School3DView: React.FC<School3DViewProps> = ({
+  school,
   buildings,
-  kmzUrl,
-  masterKmlUrl,
-  kmzFile,
-  geojson,
   placesOverlay,
-  placesOverlayUrl,
-  fallbackLocation,
-  initialView,
   onClose,
   isEmbed,
   onSelectBuilding,
   initialBuildingId,
 }) => {
+  // ── Derive spatial URLs locally ───────────────────────────────────────────
+  const kmzUrl = school.kmzFilePath
+    ? school.kmzFilePath.startsWith("/")
+      ? school.kmzFilePath
+      : `/files/schools/${school.id}/kmz/${school.kmzFilePath}`
+    : undefined;
+
+  const masterKmlUrl = school.kmzMasterKmlPath
+    ? school.kmzMasterKmlPath.startsWith("/") ||
+      school.kmzMasterKmlPath.startsWith("http")
+      ? school.kmzMasterKmlPath
+      : `/files/schools/${school.id}/kmz_content/${school.kmzMasterKmlPath}`
+    : undefined;
+
+  const placesOverlayUrl = school.placesOverlayFilePath
+    ? school.placesOverlayFilePath.startsWith("/")
+      ? school.placesOverlayFilePath
+      : `/files/schools/${school.id}/places-overlay/${school.placesOverlayFilePath}`
+    : undefined;
+
+  const fallbackLocation = {
+    lat: Number(school.latitude) || 0,
+    lng: Number(school.longitude) || 0,
+  };
+
+  const effectiveBuildings = buildings ?? school.buildings ?? [];
+  const geojson = school.geojsonContent;
+  const initialView = geojson?.properties?.initialView;
+  const kmzFile = undefined; // 3D viewer doesn't receive manual kmzFile prop from SchoolMap
+
   const viewerRef = useRef<any>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("2D");
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -453,11 +478,11 @@ const School3DView: React.FC<School3DViewProps> = ({
   }, []);
 
   const buildingsWithModels = React.useMemo(
-    () => buildings.filter((b) => b.modelPath),
-    [buildings],
+    () => effectiveBuildings.filter((b: any) => b.modelPath),
+    [effectiveBuildings],
   );
 
-  const isLargeFile = kmzFile && kmzFile.size > 100 * 1024 * 1024; // > 100MB
+  const isLargeFile = false; // Legacy check, no longer needed as manual files are handled elsewhere
 
   const kmzSource = kmzFile ?? kmzUrl;
   const hasKmzSource = !!kmzSource;
@@ -672,13 +697,17 @@ const School3DView: React.FC<School3DViewProps> = ({
   ];
 
   return (
-    <div className={cn(
-      isEmbed ? "relative w-full h-full min-h-[500px]" : "fixed inset-0 z-100"
-    )}>
+    <div
+      className={cn(
+        isEmbed
+          ? "relative w-full h-full min-h-[500px]"
+          : "fixed inset-0 z-100",
+      )}
+    >
       <Card
         className={cn(
           "w-full h-full relative overflow-hidden bg-background/80 backdrop-blur-xl border border-border/10 flex flex-col",
-          isEmbed ? "rounded-[35px]" : ""
+          isEmbed ? "rounded-[35px]" : "",
         )}
       >
         {/* Logo/Badge */}
@@ -687,11 +716,15 @@ const School3DView: React.FC<School3DViewProps> = ({
             <Globe className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h2 className={cn(
-              "font-black tracking-tighter uppercase",
-              isEmbed ? "text-[10px]" : "text-sm"
-            )}>
-              {isEmbed ? "Interactive Map Selector" : "Structural Mapping Engine"}
+            <h2
+              className={cn(
+                "font-black tracking-tighter uppercase",
+                isEmbed ? "text-[10px]" : "text-sm",
+              )}
+            >
+              {isEmbed
+                ? "Interactive Map Selector"
+                : "Structural Mapping Engine"}
             </h2>
             <p className="text-[8px] text-muted-foreground font-bold opacity-60 uppercase">
               {isLargeFile
@@ -846,9 +879,13 @@ const School3DView: React.FC<School3DViewProps> = ({
                   size="sm"
                   variant="default"
                   onClick={() => {
-                    const match = buildings.find(b => 
-                      (b.name && selectedEntity.name && b.name.toLowerCase() === selectedEntity.name.toLowerCase()) ||
-                      b.id === selectedEntity.id
+                    const match = effectiveBuildings.find(
+                      (b: any) =>
+                        (b.name &&
+                          selectedEntity.name &&
+                          b.name.toLowerCase() ===
+                            selectedEntity.name.toLowerCase()) ||
+                        b.id === selectedEntity.id,
                     );
                     if (match) onSelectBuilding(match);
                   }}
@@ -870,6 +907,28 @@ const School3DView: React.FC<School3DViewProps> = ({
             timeline={false}
             infoBox={false}
             selectionIndicator={false}
+            navigationHelpButton={false}
+            sceneModePicker={false}
+            baseLayerPicker={false}
+            geocoder={false}
+            homeButton={false}
+            fullscreenButton={false}
+            onSelectedEntityChange={(e: any) => {
+              if (e) {
+                const name = e.name;
+                const building = effectiveBuildings.find(
+                  (b: any) =>
+                    b.name?.toLowerCase() === name?.toLowerCase() ||
+                    b.code?.toLowerCase() === name?.toLowerCase(),
+                );
+                if (building) {
+                  setSelectedEntity(building);
+                  if (onSelectBuilding) onSelectBuilding(building);
+                }
+              } else {
+                setSelectedEntity(null);
+              }
+            }}
             style={{ width: "100%", height: "100%" }}
           >
             <SkyAtmosphere show />
@@ -1008,11 +1067,15 @@ const School3DView: React.FC<School3DViewProps> = ({
               />
             )}
 
-            {hasKmzSource && !isLargeFile && (
+            {hasKmzSource && (
               <KmlLoaderBridge
                 source={kmzSource!}
                 wallHeight={wallHeight}
-                onFeaturesLoaded={setFeatures}
+                onFeaturesLoaded={(entities: any[]) => {
+                  setFeatures(entities);
+                  setDataLoaded(true);
+                  setFlightComplete(true);
+                }}
                 onLoadStart={() => setDataLoaded(false)}
                 onLoadEnd={() => {
                   setDataLoaded(true);
@@ -1066,7 +1129,7 @@ const School3DView: React.FC<School3DViewProps> = ({
 
             {viewMode === "3D" &&
               !masterKmlUrl &&
-              buildingsWithModels.map((building) => {
+              buildingsWithModels.map((building: any) => {
                 const meta = building.modelMetadata || {};
                 const pos = meta.location || {
                   lat: Number(building.centroidLat),
