@@ -36,8 +36,10 @@ const schoolsDir = path.join(STORAGE_DIR, 'schools');
 // ── CORS ──────────────────────────────────────────────────────────────────
 app.use(cors({
   origin: CORS_ORIGINS,
-  methods: ['GET', 'POST', 'HEAD', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'HEAD', 'OPTIONS'],
 }));
+
+app.use(express.json({ limit: '5mb' }));
 
 // ── Multer ────────────────────────────────────────────────────────────────
 const storage = multer.diskStorage({
@@ -69,6 +71,37 @@ app.use('/files', express.static(STORAGE_DIR, {
     res.setHeader('Access-Control-Allow-Origin', '*');
   },
 }));
+
+// ── School 3D model lookup ────────────────────────────────────────────────
+app.get('/schools/:schoolId/3d', (req, res) => {
+  const dir = path.join(schoolsDir, req.params.schoolId, '3d');
+  if (!fs.existsSync(dir)) return res.status(404).json({ error: 'No 3D folder found' });
+  const files = fs.readdirSync(dir).filter(f => f.toLowerCase().endsWith('.glb'));
+  if (!files.length) return res.status(404).json({ error: 'No GLB file found' });
+  const filename = files[0];
+  res.json({
+    url: `/files/schools/${req.params.schoolId}/3d/${filename}`,
+    filename,
+  });
+});
+
+// ── School viewer state (home position, annotations, measures) ───────────
+app.get('/schools/:schoolId/viewer-state', (req, res) => {
+  const file = path.join(schoolsDir, req.params.schoolId, 'viewer-state.json');
+  if (!fs.existsSync(file)) return res.json({ home: null, annotations: [], measures: [] });
+  try {
+    res.json(JSON.parse(fs.readFileSync(file, 'utf8')));
+  } catch { res.json({ home: null, annotations: [], measures: [] }); }
+});
+
+app.put('/schools/:schoolId/viewer-state', (req, res) => {
+  const dir = path.join(schoolsDir, req.params.schoolId);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  try {
+    fs.writeFileSync(path.join(dir, 'viewer-state.json'), JSON.stringify(req.body));
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 app.get('/health', (_req, res) =>
   res.json({ status: 'ok', port: PORT, storageDir: STORAGE_DIR }),

@@ -1,5 +1,4 @@
 import { useState } from "react";
-import School3DView from "./School3DView";
 import School2DViewer from "./School2DViewer";
 import ViewerModeModal from "./ViewerModeModal";
 
@@ -55,6 +54,14 @@ export default function SchoolMap({
           setShowModal(false);
         }}
         onSelect={(mode) => {
+          if (mode === "3D") {
+            const params = new URLSearchParams();
+            if (school?.id) params.set("schoolId", school.id);
+            if (school?.name) params.set("schoolName", school.name);
+            window.open(`http://localhost:5175?${params.toString()}`, "_blank");
+            if (onClose) onClose();
+            return;
+          }
           setViewerMode(mode);
           setShowModal(false);
         }}
@@ -66,7 +73,6 @@ export default function SchoolMap({
         </div>
       )}
 
-      {viewerMode === "3D" && <School3DView {...sharedProps} />}
       {viewerMode === "2D" && <School2DViewer {...sharedProps} />}
     </>
   );

@@ -249,4 +249,13 @@ export class CreateSchoolDto {
   @Type(() => BuildingDto)
   @IsOptional()
   buildings?: BuildingDto[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  glb3dHomePosition?: any;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  glb3dAnnotations?: any[];
 }

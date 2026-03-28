@@ -27,7 +27,10 @@ import {
 } from "../components/ui/table";
 import { useNavigate } from "react-router-dom";
 import { SchoolForm } from "../components/SchoolForm";
-import { resolveDistrictName, resolveProvinceName } from "../lib/rwanda-locations";
+import {
+  resolveDistrictName,
+  resolveProvinceName,
+} from "../lib/rwanda-locations";
 import { ImigongoPattern } from "../components/ui/ImigongoPattern";
 import { useSchoolsStore } from "../store/schoolsStore";
 
@@ -78,7 +81,13 @@ export default function SchoolsList() {
   useEffect(() => {
     fetchSchools();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.page, filters.province, filters.district, filters.priority, filters.type]);
+  }, [
+    filters.page,
+    filters.province,
+    filters.district,
+    filters.priority,
+    filters.type,
+  ]);
 
   const handleSearch = () => {
     setFilters({ search: searchTerm, page: 1 });

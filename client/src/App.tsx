@@ -19,6 +19,7 @@ import SchoolDecisionDashboard from "./pages/SchoolDecisionDashboard";
 import School3DViewPage from "./pages/School3DViewPage";
 import SchoolLevelDashboard from "./pages/SchoolLevelDashboard";
 import SchoolReporting from "./pages/SchoolReporting";
+import GlbViewer from "./pages/GlbViewer";
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/schools/:id/glb-viewer" element={<GlbViewer />} />
 
           <Route
             element={
