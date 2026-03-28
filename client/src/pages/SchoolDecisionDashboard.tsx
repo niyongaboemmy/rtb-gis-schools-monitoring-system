@@ -730,18 +730,18 @@ export default function SchoolDecisionDashboard() {
                     Survey
                   </Button>
                 )}
-                {isAuthorized(Permission.SCHOOL_VIEW_2D3D_MAP) && (
-                  <Button
-                    variant="outline"
-                    asChild
-                    className="rounded-full h-10 px-5 font-black uppercase tracking-wider text-[10px] border-border/10 shadow-none hover:bg-primary/5 transition-all"
-                  >
-                    <Link to={`/schools/${id}/kmz`}>
-                      <Layers className="mr-2 h-4 w-4" />
-                      KMZ/KML
-                    </Link>
-                  </Button>
-                )}
+                {/* {isAuthorized(Permission.SCHOOL_VIEW_2D3D_MAP) && ( */}
+                <Button
+                  variant="outline"
+                  asChild
+                  className="rounded-full h-10 px-5 font-black uppercase tracking-wider text-[10px] border-border/10 shadow-none hover:bg-primary/5 transition-all"
+                >
+                  <Link to={`/schools/${id}/kmz`}>
+                    <Layers className="mr-2 h-4 w-4" />
+                    KMZ/KML
+                  </Link>
+                </Button>
+                {/* )} */}
               </div>
             }
           />
@@ -1211,7 +1211,8 @@ export default function SchoolDecisionDashboard() {
                             Location Context
                           </span>
                           <span className="text-[11px] font-bold tabular-nums">
-                            {schoolPos[0].toFixed(5)}°, {schoolPos[1].toFixed(5)}°
+                            {schoolPos[0].toFixed(5)}°,{" "}
+                            {schoolPos[1].toFixed(5)}°
                           </span>
                         </div>
 
@@ -1279,7 +1280,9 @@ export default function SchoolDecisionDashboard() {
                               </p>
                             </div>
                             <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
-                              {isAuthorized(Permission.SCHOOL_VIEW_2D3D_MAP) && (
+                              {isAuthorized(
+                                Permission.SCHOOL_VIEW_2D3D_MAP,
+                              ) && (
                                 <Button
                                   size="sm"
                                   variant="secondary"
@@ -1318,7 +1321,11 @@ export default function SchoolDecisionDashboard() {
                               Upload KMZ to see school structure
                             </p>
                             {isAuthorized(Permission.SCHOOL_VIEW_2D3D_MAP) && (
-                              <Button size="sm" asChild className="rounded-full">
+                              <Button
+                                size="sm"
+                                asChild
+                                className="rounded-full"
+                              >
                                 <Link to={`/schools/${id}/kmz`}>
                                   <Upload className="w-4 h-4 mr-1" />
                                   Upload KMZ
@@ -1334,19 +1341,27 @@ export default function SchoolDecisionDashboard() {
                     <div className="p-3 sm:p-4 border-t border-border/10 space-y-2">
                       <div className="grid grid-cols-2 gap-2 text-xs sm:text-sm">
                         <div className="flex items-center justify-between bg-muted/30 rounded-lg px-3 py-2">
-                          <span className="text-muted-foreground">Latitude</span>
+                          <span className="text-muted-foreground">
+                            Latitude
+                          </span>
                           <span className="font-mono font-bold text-xs">
                             {parseFloat(String(schoolData.latitude)).toFixed(6)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between bg-muted/30 rounded-lg px-3 py-2">
-                          <span className="text-muted-foreground">Longitude</span>
+                          <span className="text-muted-foreground">
+                            Longitude
+                          </span>
                           <span className="font-mono font-bold text-xs">
-                            {parseFloat(String(schoolData.longitude)).toFixed(6)}
+                            {parseFloat(String(schoolData.longitude)).toFixed(
+                              6,
+                            )}
                           </span>
                         </div>
                         <div className="flex items-center justify-between bg-muted/30 rounded-lg px-3 py-2">
-                          <span className="text-muted-foreground">Elevation</span>
+                          <span className="text-muted-foreground">
+                            Elevation
+                          </span>
                           <span className="font-mono font-bold text-xs">
                             {parseFloat(String(schoolData.elevation)) || 0} m
                           </span>
