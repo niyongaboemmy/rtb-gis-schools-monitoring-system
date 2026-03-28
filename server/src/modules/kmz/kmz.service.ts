@@ -394,6 +394,8 @@ export class KmzService {
       await this.schoolRepository.update(schoolId, {
         kmzStatus: KmzProcessingStatus.FAILED,
       });
+      // Clean up any partially-extracted kmz_content so the DB and disk stay in sync
+      await this.storageService.deleteDirectory(`schools/${schoolId}/kmz_content`);
       throw error;
     }
   }
@@ -429,8 +431,9 @@ export class KmzService {
           );
 
           if (!publicPath) {
-            this.logger.error(`FAILED to extract file from KMZ: ${fileName}`);
-            return;
+            // Throw so the whole extraction fails atomically — prevents DB being
+            // updated with a kmzMasterKmlPath whose referenced assets are missing
+            throw new Error(`Failed to extract KMZ asset: ${fileName}`);
           }
 
           this.logger.log(`Extracted KMZ member: ${fileName} -> ${publicPath}`);
@@ -859,8 +862,7 @@ export class KmzService {
         );
 
         if (!publicPath) {
-          this.logger.error(`Failed to extract: ${fileName}`);
-          continue;
+          throw new Error(`Failed to extract KMZ asset (unzipper): ${fileName}`);
         }
 
         this.logger.log(`Extracted (unzipper): ${fileName} -> ${publicPath}`);

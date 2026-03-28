@@ -58,6 +58,11 @@ import { PageHeader } from "../components/ui/page-header";
 import { motion } from "framer-motion";
 import { cn } from "../lib/utils";
 import { api, FILE_SERVER_URL } from "../lib/api";
+
+// New Sub-components for Performance Optimization
+import { DecisionIntelligenceScore } from "../components/dashboard/DecisionIntelligenceScore";
+import { FacilityBreakdownSection } from "../components/dashboard/FacilityBreakdownSection";
+import { SchoolStatsCards } from "../components/dashboard/SchoolStatsCards";
 import { useAuthorization } from "../hooks/useAuthorization";
 import { Permission } from "../lib/permissions";
 import { SchoolForm } from "../components/SchoolForm";
@@ -658,8 +663,7 @@ export default function SchoolDecisionDashboard() {
 
   return (
     <>
-      {!isSurveyModalOpen && (
-        <div className="space-y-6 pb-10">
+      <div className="space-y-6 pb-10">
           {/* Header */}
           <PageHeader
             backButton={
@@ -753,327 +757,7 @@ export default function SchoolDecisionDashboard() {
               transition={{ delay: 0.5 }}
               className="col-span-2"
             >
-              <Card className="border border-border/20 dark:border-blue-900/50 bg-card/60 backdrop-blur-sm rounded-3xl overflow-hidden">
-                <CardHeader className="border-b border-border/10 pb-4">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg font-bold flex items-center gap-2">
-                      <Activity className="w-5 h-5 text-primary" />
-                      Decision Intelligence Score
-                    </CardTitle>
-                    <Badge
-                      variant="outline"
-                      className="rounded-full bg-primary/5 text-primary border-primary/20 text-[10px] uppercase font-black px-3"
-                    >
-                      Dynamic Analysis
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0 overflow-hidden">
-                  <div className="flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-border/10">
-                    {/* Hero Score Section */}
-                    <div className="lg:w-2/5 p-8 flex flex-col items-center justify-center bg-linear-to-br from-primary/5 via-transparent to-transparent">
-                      <motion.div
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ type: "spring", damping: 15, delay: 0.6 }}
-                        className="relative w-48 h-48"
-                      >
-                        <svg className="w-full h-full transform -rotate-90">
-                          <circle
-                            cx="96"
-                            cy="96"
-                            r="88"
-                            stroke="currentColor"
-                            strokeWidth="12"
-                            fill="none"
-                            className="text-muted/10"
-                          />
-                          <motion.circle
-                            initial={{ pathLength: 0 }}
-                            animate={{
-                              pathLength: (assessment.overallScore ?? 50) / 100,
-                            }}
-                            transition={{
-                              duration: 1.5,
-                              ease: "easeOut",
-                              delay: 0.8,
-                            }}
-                            cx="96"
-                            cy="96"
-                            r="88"
-                            stroke="currentColor"
-                            strokeWidth="12"
-                            fill="none"
-                            strokeLinecap="round"
-                            className={cn(
-                              assessment.overallScore >= 70
-                                ? "text-emerald-500"
-                                : assessment.overallScore >= 50
-                                  ? "text-amber-500"
-                                  : "text-red-500",
-                            )}
-                          />
-                        </svg>
-                        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                          <motion.span
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 1.2 }}
-                            className="text-5xl font-black tracking-tight"
-                          >
-                            {assessment.overallScore ?? 50}
-                          </motion.span>
-                          <motion.span
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ delay: 1.4 }}
-                            className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mt-1"
-                          >
-                            Overall Score
-                          </motion.span>
-                        </div>
-
-                        {/* Animated Glow Effect */}
-                        <div
-                          className={cn(
-                            "absolute -inset-4 rounded-full opacity-20 blur-2xl -z-10 animate-pulse",
-                            assessment.overallScore >= 70
-                              ? "bg-emerald-500"
-                              : assessment.overallScore >= 50
-                                ? "bg-amber-500"
-                                : "bg-red-500",
-                          )}
-                        />
-                      </motion.div>
-
-                      <div className="mt-8 grid grid-cols-2 gap-4 w-full">
-                        <div className="p-3 rounded-2xl bg-background/40 border border-border/10 text-center">
-                          <p className="text-xs font-black text-muted-foreground uppercase tracking-wider mb-1">
-                            Status
-                          </p>
-                          <Badge
-                            className={cn(
-                              "rounded-full font-black text-[10px] uppercase",
-                              assessment.overallScore >= 70
-                                ? "bg-emerald-500"
-                                : assessment.overallScore >= 50
-                                  ? "bg-amber-500"
-                                  : "bg-red-500",
-                            )}
-                          >
-                            {assessment.overallScore >= 70
-                              ? "Optimal"
-                              : assessment.overallScore >= 50
-                                ? "Acceptable"
-                                : "Critical"}
-                          </Badge>
-                        </div>
-                        <div className="p-3 rounded-2xl bg-background/40 border border-border/10 text-center">
-                          <p className="text-xs font-black text-muted-foreground uppercase tracking-wider mb-1">
-                            Urgency
-                          </p>
-                          <p className="text-sm font-black text-primary uppercase leading-tight">
-                            {assessment.urgencyMonths} Months
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Breakdown Section */}
-                    <div className="lg:w-3/5 p-6 space-y-6">
-                      <div className="grid grid-cols-2 gap-3">
-                        {[
-                          {
-                            label: "Buildings Health",
-                            score: assessment.infrastructureScore ?? 50,
-                            icon: Building2,
-                          },
-                          {
-                            label: "Buildings Depreciation",
-                            score: assessment.buildingAgeScore ?? 50,
-                            icon: TrendingUp,
-                          },
-                          {
-                            label: "Students Population",
-                            score: assessment.populationPressureScore ?? 50,
-                            icon: Users,
-                          },
-                          {
-                            label: "School Accessibility",
-                            score: assessment.accessibilityScore ?? 50,
-                            icon: MapPin,
-                          },
-                          {
-                            label: "Facility Compliance",
-                            score: assessment.facilityComplianceScore ?? 0,
-                            icon: ClipboardCheck,
-                          },
-                        ].map((metric, index) => (
-                          <motion.div
-                            key={metric.label}
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: 0.1 * index + 0.5 }}
-                            whileHover={{
-                              scale: 1.02,
-                              backgroundColor: "rgba(var(--primary), 0.05)",
-                            }}
-                            className="p-3 rounded-2xl bg-muted/30 border border-border/5 transition-all group cursor-default"
-                          >
-                            <div className="flex items-center gap-3 mb-2">
-                              <div className="p-2 rounded-lg bg-background dark:bg-blue-900/20 shadow-sm group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                                <metric.icon className="w-3.5 h-3.5" />
-                              </div>
-                              <span className="text-sm font-bold text-muted-foreground dark:text-white group-hover:text-foreground transition-colors">
-                                {metric.label}
-                              </span>
-                            </div>
-                            <div className="flex items-end justify-between gap-2">
-                              <span className="text-lg font-black leading-none">
-                                {metric.score}%
-                              </span>
-                              <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden mb-1">
-                                <motion.div
-                                  initial={{ width: 0 }}
-                                  animate={{ width: `${metric.score}%` }}
-                                  transition={{
-                                    duration: 1,
-                                    delay: 0.8 + index * 0.1,
-                                  }}
-                                  className={cn(
-                                    "h-full rounded-full",
-                                    metric.score >= 70
-                                      ? "bg-emerald-500"
-                                      : metric.score >= 50
-                                        ? "bg-amber-500"
-                                        : "bg-red-500",
-                                  )}
-                                />
-                              </div>
-                            </div>
-                          </motion.div>
-                        ))}
-                      </div>
-
-                      {/* Enhanced Recommendations */}
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 1.2 }}
-                        className="p-5 bg-card/40 border border-border/10 rounded-3xl backdrop-blur-md"
-                      >
-                        <div className="flex items-center justify-between mb-4">
-                          <h4 className="text-xs font-black text-primary flex items-center gap-2 uppercase tracking-[0.2em]">
-                            <Sparkles className="w-3.5 h-3.5" />
-                            Intelligence Suggestions
-                          </h4>
-                          <Badge
-                            variant="outline"
-                            className="rounded-full text-[9px] font-black uppercase tracking-widest bg-primary/5 text-primary border-primary/20"
-                          >
-                            Live Analysis
-                          </Badge>
-                        </div>
-                        <div className="space-y-3">
-                          {assessment.recommendations
-                            ?.slice(0, 4)
-                            .map((rec: string, i: number) => {
-                              const isUrgent = rec.includes("[URGENT]");
-                              const isCritical = rec.includes("[CRITICAL]");
-                              const isStrategic = rec.includes("[STRATEGIC]");
-                              const cleanRec = rec
-                                .replace("[URGENT]", "")
-                                .replace("[CRITICAL]", "")
-                                .replace("[STRATEGIC]", "")
-                                .trim();
-
-                              return (
-                                <motion.div
-                                  initial={{ opacity: 0, x: -10 }}
-                                  animate={{ opacity: 1, x: 0 }}
-                                  transition={{ delay: 1.3 + i * 0.1 }}
-                                  key={i}
-                                  className={cn(
-                                    "flex items-start gap-4 p-3.5 rounded-2xl border transition-all hover:scale-[1.01]",
-                                    isUrgent
-                                      ? "bg-red-500/5 border-red-500/20 shadow-red-500/5"
-                                      : isCritical
-                                        ? "bg-amber-500/5 border-amber-500/20 shadow-amber-500/5"
-                                        : isStrategic
-                                          ? "bg-emerald-500/5 border-emerald-500/20 shadow-emerald-500/5"
-                                          : "bg-primary/5 border-primary/20 shadow-primary/5",
-                                  )}
-                                >
-                                  <div
-                                    className={cn(
-                                      "p-2 rounded-xl shrink-0",
-                                      isUrgent
-                                        ? "bg-red-500 text-white shadow-lg shadow-red-500/30"
-                                        : isCritical
-                                          ? "bg-amber-500 text-white shadow-lg shadow-amber-500/30"
-                                          : isStrategic
-                                            ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/30"
-                                            : "bg-primary text-white shadow-lg shadow-primary/30",
-                                    )}
-                                  >
-                                    {isUrgent ? (
-                                      <AlertTriangle className="w-3.5 h-3.5" />
-                                    ) : isCritical ? (
-                                      <Wrench className="w-3.5 h-3.5" />
-                                    ) : isStrategic ? (
-                                      <Sparkles className="w-3.5 h-3.5" />
-                                    ) : (
-                                      <CheckCircle2 className="w-3.5 h-3.5" />
-                                    )}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span
-                                        className={cn(
-                                          "text-[9px] font-black uppercase tracking-wider",
-                                          isUrgent
-                                            ? "text-red-500"
-                                            : isCritical
-                                              ? "text-amber-600"
-                                              : isStrategic
-                                                ? "text-emerald-600"
-                                                : "text-primary",
-                                        )}
-                                      >
-                                        {isUrgent
-                                          ? "Urgent Refactor"
-                                          : isCritical
-                                            ? "Critical Need"
-                                            : isStrategic
-                                              ? "Strategic Goal"
-                                              : "System Note"}
-                                      </span>
-                                      <div
-                                        className={cn(
-                                          "h-1 w-1 rounded-full",
-                                          isUrgent
-                                            ? "bg-red-500"
-                                            : isCritical
-                                              ? "bg-amber-500"
-                                              : isStrategic
-                                                ? "bg-emerald-500"
-                                                : "bg-primary",
-                                        )}
-                                      />
-                                    </div>
-                                    <p className="text-xs font-bold leading-relaxed text-foreground/90">
-                                      {cleanRec}
-                                    </p>
-                                  </div>
-                                </motion.div>
-                              );
-                            })}
-                        </div>
-                      </motion.div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <DecisionIntelligenceScore assessment={assessment} />
             </motion.div>
             {/* Location Map */}
             {isAuthorized(Permission.SCHOOL_VIEW_2D3D_MAP) && (
@@ -1249,9 +933,26 @@ export default function SchoolDecisionDashboard() {
                           >
                             {schoolData.thumbnailUrl ? (
                               <img
-                                src={schoolData.thumbnailUrl}
+                                src={
+                                  schoolData.thumbnailUrl
+                                    ? `${FILE_SERVER_URL}${schoolData.thumbnailUrl.startsWith("/") ? "" : "/"}${schoolData.thumbnailUrl}`
+                                    : `${FILE_SERVER_URL}/schools/${id}/kmz_content/b0.png`
+                                }
                                 alt="School Structure"
                                 className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  const img = e.target as HTMLImageElement;
+                                  if (img.src.includes("b0.png")) {
+                                    img.src = `${FILE_SERVER_URL}/schools/${id}/kmz_content/model.jpg`;
+                                  } else if (img.src.includes("model.jpg")) {
+                                    img.src = `${FILE_SERVER_URL}/schools/${id}/kmz_content/a.png`;
+                                  } else if (img.src.includes("a.png")) {
+                                    img.src = `${FILE_SERVER_URL}/schools/${id}/kmz_content/b2.png`;
+                                  } else {
+                                    img.src =
+                                      "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZThlOGU4Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIyNCIgZmlsbD0iI2FhYSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+U2Nob29sIFZpc3VhbGl6YXRpb248L3RleHQ+PC9zdmc+";
+                                  }
+                                }}
                               />
                             ) : (
                               <div className="w-full h-full bg-slate-900/50 flex flex-col items-center justify-center p-4">
@@ -1848,176 +1549,13 @@ export default function SchoolDecisionDashboard() {
                           </span>{" "}
                           facility items surveyed
                         </div>
-                        {/* Detailed Facility Breakdown */}
-                        {facilityStats.byFacility &&
-                          facilityStats.byFacility.length > 0 && (
-                            <div className="mt-8 pt-6 border-t border-border/10">
-                              <div className="flex items-center justify-between mb-6">
-                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">
-                                  Structural Facility Breakdown
-                                </p>
-                                <div className="text-[10px] font-bold text-muted-foreground bg-muted/30 px-2 py-0.5 rounded-md">
-                                  Sorted by Compliance
-                                </div>
-                              </div>
-
-                              <motion.div
-                                initial="hidden"
-                                animate="show"
-                                variants={{
-                                  hidden: { opacity: 0 },
-                                  show: {
-                                    opacity: 1,
-                                    transition: {
-                                      staggerChildren: 0.05,
-                                    },
-                                  },
-                                }}
-                                className="grid grid-cols-1 md:grid-cols-2 gap-4"
-                              >
-                                {[...facilityStats.byFacility]
-                                  .map((group: any) => {
-                                    const compliant = group.items.filter(
-                                      (i: any) => i.compliance === "compliant",
-                                    ).length;
-                                    const total = group.items.length;
-                                    const rate =
-                                      total > 0
-                                        ? Math.round((compliant / total) * 100)
-                                        : 0;
-                                    return { ...group, rate, compliant, total };
-                                  })
-                                  .sort((a, b) => b.rate - a.rate)
-                                  .map((facilityGroup, index) => {
-                                    const FacilityIcon = (() => {
-                                      const n =
-                                        facilityGroup.facility.toLowerCase();
-                                      if (n.includes("classroom"))
-                                        return BookOpen;
-                                      if (n.includes("library"))
-                                        return BookOpen;
-                                      if (
-                                        n.includes("lab") ||
-                                        n.includes("laboratory")
-                                      )
-                                        return FlaskConical;
-                                      if (n.includes("computer"))
-                                        return Monitor;
-                                      if (n.includes("hostel")) return Home;
-                                      if (n.includes("canteen")) return Coffee;
-                                      if (
-                                        n.includes("sports") ||
-                                        n.includes("field")
-                                      )
-                                        return Trophy;
-                                      if (
-                                        n.includes("washroom") ||
-                                        n.includes("toilet")
-                                      )
-                                        return Droplets;
-                                      if (n.includes("water")) return Droplets;
-                                      if (
-                                        n.includes("electricity") ||
-                                        n.includes("power")
-                                      )
-                                        return Zap;
-                                      if (
-                                        n.includes("internet") ||
-                                        n.includes("wifi")
-                                      )
-                                        return Wifi;
-                                      if (
-                                        n.includes("security") ||
-                                        n.includes("fence")
-                                      )
-                                        return Shield;
-                                      return Building2;
-                                    })();
-
-                                    return (
-                                      <motion.div
-                                        key={facilityGroup.facility}
-                                        variants={{
-                                          hidden: { opacity: 0, y: 10 },
-                                          show: { opacity: 1, y: 0 },
-                                        }}
-                                        whileHover={{
-                                          scale: 1.01,
-                                          translateY: -2,
-                                        }}
-                                        onClick={() => {
-                                          setSelectedFacilityGroup(
-                                            facilityGroup,
-                                          );
-                                          setIsFacilityModalOpen(true);
-                                        }}
-                                        className="p-4 rounded-2xl bg-muted/20 border border-border/5 hover:bg-muted/40 transition-all group cursor-pointer"
-                                      >
-                                        <div className="flex items-center gap-3 mb-3">
-                                          <div className="p-2 rounded-xl bg-background shadow-sm group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300">
-                                            <FacilityIcon className="w-4 h-4" />
-                                          </div>
-                                          <div className="flex-1 min-w-0">
-                                            <div className="flex items-center justify-between gap-2">
-                                              <span className="text-xs font-black truncate">
-                                                {facilityGroup.facility}
-                                              </span>
-                                              <span
-                                                className={cn(
-                                                  "text-[10px] font-black tabular-nums",
-                                                  facilityGroup.rate >= 70
-                                                    ? "text-emerald-500"
-                                                    : facilityGroup.rate >= 40
-                                                      ? "text-amber-500"
-                                                      : "text-red-500",
-                                                )}
-                                              >
-                                                {facilityGroup.rate}%
-                                              </span>
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        <div className="space-y-1.5">
-                                          <div className="h-1.5 w-full bg-muted/50 rounded-full overflow-hidden">
-                                            <motion.div
-                                              initial={{ width: 0 }}
-                                              animate={{
-                                                width: `${facilityGroup.rate}%`,
-                                              }}
-                                              transition={{
-                                                duration: 1,
-                                                delay: 0.2 + index * 0.05,
-                                              }}
-                                              className={cn(
-                                                "h-full rounded-full transition-all duration-500",
-                                                facilityGroup.rate >= 70
-                                                  ? "bg-emerald-500"
-                                                  : facilityGroup.rate >= 40
-                                                    ? "bg-amber-500"
-                                                    : "bg-red-500",
-                                              )}
-                                            />
-                                          </div>
-                                          <div className="flex justify-between text-[9px] font-bold text-muted-foreground uppercase tracking-tighter">
-                                            <span>
-                                              {facilityGroup.rate >= 70
-                                                ? "Mainly Compliant"
-                                                : facilityGroup.rate >= 40
-                                                  ? "Partially Compliant"
-                                                  : "Needs Attention"}
-                                            </span>
-                                            <span>
-                                              {facilityGroup.total} Total
-                                            </span>
-                                          </div>
-                                        </div>
-                                      </motion.div>
-                                    );
-                                  })}
-                              </motion.div>
-                            </div>
-                          )}
+                        <FacilityBreakdownSection
+                          facilityStats={facilityStats}
+                          setSelectedFacilityGroup={setSelectedFacilityGroup}
+                          setIsFacilityModalOpen={setIsFacilityModalOpen}
+                          setIsSurveyModalOpen={setIsSurveyModalOpen}
+                          isAuthorized={isAuthorized}
+                        />
                       </>
                     ) : (
                       <div className="text-center py-10 text-muted-foreground">
@@ -2045,254 +1583,18 @@ export default function SchoolDecisionDashboard() {
 
             {/* Right Column - Summary & Other Info */}
             <div className="space-y-6">
-              <div className="col-span-2 grid gap-4 grid-cols-12 w-full h-max">
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0 }}
-                  whileHover={{ scale: 1.02, y: -5 }}
-                  className="col-span-6"
-                >
-                  <Card className="border border-border/20 bg-blue-50 dark:bg-blue-950/30 rounded-2xl transition-all dark:border-blue-900/30 duration-300 hover:bg-blue-100/80 dark:hover:bg-blue-900/40">
-                    <CardContent className="p-5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-blue-600/70">
-                            Total Students
-                          </p>
-                          <p className="text-2xl font-black text-blue-700 dark:text-blue-300 mt-1">
-                            {formatNumber(totalStudents)}
-                          </p>
-                        </div>
-                        <div className="w-12 h-12 bg-blue-500/20 rounded-2xl flex items-center justify-center">
-                          <Users className="w-6 h-6 text-blue-600" />
-                        </div>
-                      </div>
-                      <div className="mt-3 flex items-center gap-2 text-[10px] text-blue-600/70">
-                        <TrendingUp className="w-3 h-3" />
-                        <span>Capacity: {formatNumber(totalCapacity)}</span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
-                  whileHover={{ scale: 1.02, y: -5 }}
-                  className="col-span-6"
-                >
-                  <Card className="border border-border/20 bg-blue-50 dark:bg-blue-950/30 rounded-2xl transition-all dark:border-blue-900/30 duration-300 hover:bg-blue-100/80 dark:hover:bg-blue-900/40">
-                    <CardContent className="p-5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-blue-600/70">
-                            All Staff
-                          </p>
-                          <p className="text-2xl font-black text-blue-700 dark:text-blue-300 mt-1">
-                            {formatNumber(totalStaff)}
-                          </p>
-                        </div>
-                        <div className="w-12 h-12 bg-blue-500/20 rounded-2xl flex items-center justify-center">
-                          <TeacherIcon className="w-6 h-6 text-blue-600" />
-                        </div>
-                      </div>
-                      <div className="mt-3 flex items-center gap-2 text-[10px] text-blue-600/70">
-                        <Target className="w-3 h-3" />
-                        <span>
-                          Gender Ratio (Male:Female):{" "}
-                          {totalTeachers > 0
-                            ? `${maleTeachers}:${femaleTeachers}`
-                            : "N/A"}
-                        </span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  whileHover={{ scale: 1.02, y: -5 }}
-                  className="col-span-6"
-                >
-                  <Card className="border border-border/20 bg-emerald-50 dark:bg-emerald-950/30 rounded-2xl transition-all dark:border-blue-900/30 duration-300 hover:bg-emerald-100/80 dark:hover:bg-emerald-900/40">
-                    <CardContent className="p-5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600/70">
-                            Buildings
-                          </p>
-                          <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300 mt-1">
-                            {buildings.length}
-                          </p>
-                        </div>
-                        <div className="w-12 h-12 bg-emerald-500/20 rounded-2xl flex items-center justify-center">
-                          <Building2 className="w-6 h-6 text-emerald-600" />
-                        </div>
-                      </div>
-                      <div className="mt-3 flex items-center gap-2 text-[10px] text-emerald-600/70">
-                        <Activity className="w-3 h-3" />
-                        <span>
-                          Avg Year:{" "}
-                          {avgBuildingYear > 0
-                            ? avgBuildingYear
-                            : parseFloat(String(schoolData.establishedYear))}
-                        </span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-                {/* Additional KPI Cards - Matching SchoolDetail */}
-                {/* Single Land Usage Card - Shows Used vs Total */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 }}
-                  whileHover={{ scale: 1.02, y: -5 }}
-                  className="col-span-6"
-                >
-                  <Card className="border border-border/20 bg-green-50 dark:bg-green-950/30 rounded-2xl transition-all dark:border-blue-900/30 duration-300 hover:bg-green-100/80 dark:hover:bg-green-900/40">
-                    <CardContent className="p-5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-green-600/70">
-                            Land Usage (ha)
-                          </p>
-                          <p className="text-2xl font-black text-green-700 dark:text-green-300 mt-1">
-                            {schoolData.usedLandArea !== undefined
-                              ? `${Math.round(parseFloat(String(schoolData.usedLandArea))) || 0} / ${Math.round((parseFloat(String(schoolData.usedLandArea)) || 0) + (parseFloat(String(schoolData.unusedLandArea)) || 0))}`
-                              : "--"}
-                          </p>
-                        </div>
-                        <div className="w-12 h-12 bg-green-500/20 rounded-2xl flex items-center justify-center">
-                          <MapPin className="w-6 h-6 text-green-600" />
-                        </div>
-                      </div>
-                      {/* Progress bar showing used vs total */}
-                      {schoolData.usedLandArea !== undefined &&
-                        schoolData.unusedLandArea !== undefined && (
-                          <div className="mt-3">
-                            <div className="flex justify-between text-[10px] text-green-600/70 mb-1">
-                              <span>Used / Total</span>
-                              <span>
-                                {Math.round(
-                                  (parseFloat(schoolData.usedLandArea) /
-                                    (parseFloat(schoolData.usedLandArea ?? 0) +
-                                      parseFloat(
-                                        schoolData.unusedLandArea ?? 0,
-                                      ))) *
-                                    100,
-                                )}
-                                %
-                              </span>
-                            </div>
-                            <div className="w-full bg-green-200 dark:bg-green-900/30 rounded-full h-2">
-                              <div
-                                className="h-2 rounded-full bg-green-500 transition-all"
-                                style={{
-                                  width: `${Math.round(
-                                    (parseFloat(schoolData.usedLandArea ?? 0) /
-                                      (parseFloat(
-                                        schoolData.usedLandArea ?? 0,
-                                      ) +
-                                        parseFloat(
-                                          schoolData.unusedLandArea ?? 0,
-                                        ))) *
-                                      100,
-                                  )}%`,
-                                }}
-                              />
-                            </div>
-                            <div className="flex justify-between mt-1 text-[9px] text-green-600/50">
-                              <span>
-                                Used:{" "}
-                                {parseFloat(String(schoolData.usedLandArea)) ||
-                                  0}{" "}
-                                ha
-                              </span>
-                              <span>
-                                Available:{" "}
-                                {parseFloat(
-                                  String(schoolData.unusedLandArea),
-                                ) || 0}{" "}
-                                ha
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 }}
-                  whileHover={{ scale: 1.02, y: -5 }}
-                  className="col-span-6"
-                >
-                  <Card className="border border-border/20 bg-slate-50 dark:bg-slate-950/30 rounded-2xl transition-all dark:border-blue-700/30 duration-300 hover:bg-slate-100/80 dark:hover:bg-slate-900/40">
-                    <CardContent className="p-5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="mb-3">Road Status</div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-600/70 dark:text-gray-300/50">
-                            Accessibility
-                          </p>
-                          <p className="text-2xl font-black text-slate-700 dark:text-slate-300 mt-1">
-                            {schoolData.roadStatusPercentage
-                              ? `${parseFloat(String(schoolData.roadStatusPercentage))}%`
-                              : "--"}
-                          </p>
-                        </div>
-                        <div>
-                          <div className="w-12 h-12 bg-slate-500/20 rounded-2xl flex items-center justify-center">
-                            <MapIcon className="w-6 h-6 text-slate-600" />
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.55 }}
-                  whileHover={{ scale: 1.02, y: -5 }}
-                  className="col-span-6"
-                >
-                  <Card className="border border-border/20 bg-teal-50 dark:bg-teal-950/30 rounded-2xl transition-all dark:border-blue-900/30 duration-300 hover:bg-teal-100/80 dark:hover:bg-teal-900/40">
-                    <CardContent className="p-5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-teal-600/70">
-                            TVET Trades
-                          </p>
-                          <p className="text-2xl font-black text-teal-700 dark:text-teal-300 mt-1">
-                            {schoolData.educationPrograms?.length || 0}
-                          </p>
-                        </div>
-                        <div className="w-12 h-12 bg-teal-500/20 rounded-2xl flex items-center justify-center">
-                          <GraduationCap className="w-6 h-6 text-teal-600" />
-                        </div>
-                      </div>
-                      <div className="mt-3 flex items-center gap-2 text-[10px] text-teal-600/70">
-                        <span>
-                          Total:{" "}
-                          {formatNumber(
-                            schoolData.calculatedAssessment?.totalCapacity || 0,
-                          )}{" "}
-                          capacity
-                        </span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              </div>
+                <SchoolStatsCards
+                  schoolData={schoolData}
+                  totalStudents={totalStudents}
+                  totalCapacity={totalCapacity}
+                  totalStaff={totalStaff}
+                  totalTeachers={totalTeachers}
+                  maleTeachers={maleTeachers}
+                  femaleTeachers={femaleTeachers}
+                  buildings={buildings}
+                  avgBuildingYear={avgBuildingYear}
+                  formatNumber={formatNumber}
+                />
               {/* Student Distribution - Using real trades from database */}
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
@@ -2619,7 +1921,7 @@ export default function SchoolDecisionDashboard() {
                       width: `${Math.random() * 1.5 + 0.5}px`,
                       height: `${Math.random() * 1.5 + 0.5}px`,
                       animationDelay: `${Math.random() * 4}s`,
-                      animationDuration: `${Math.random() * 2 + 2}s`,
+                      animationDuration: `${Math.random() * 2 + 2}px`,
                       opacity: Math.random() * 0.7 + 0.3,
                     }}
                   />
@@ -2695,9 +1997,17 @@ export default function SchoolDecisionDashboard() {
                   {id &&
                     (schoolData.thumbnailUrl ? (
                       <img
-                        src={schoolData.thumbnailUrl}
+                        src={
+                          schoolData.thumbnailUrl
+                            ? `${FILE_SERVER_URL}${schoolData.thumbnailUrl.startsWith("/") ? "" : "/"}${schoolData.thumbnailUrl}`
+                            : `${FILE_SERVER_URL}/schools/${id}/kmz_content/b0.png`
+                        }
                         alt="School Structure"
                         className="max-w-full max-h-full object-contain p-8 drop-shadow-2xl"
+                        onError={(e) => {
+                          const img = e.target as HTMLImageElement;
+                          img.src = `${FILE_SERVER_URL}/schools/${id}/kmz_content/a.png`;
+                        }}
                       />
                     ) : (
                       <div className="flex flex-col items-center gap-6 p-12 text-center text-white/90">
@@ -2788,7 +2098,6 @@ export default function SchoolDecisionDashboard() {
             initialData={schoolData}
           />
         </div>
-      )}
       {/* FACILITY SURVEY MODAL */}
       {isSurveyModalOpen && (
         <FacilitySurveyForm
