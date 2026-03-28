@@ -27,6 +27,12 @@ export class PermissionsGuard implements CanActivate {
       return false;
     }
 
+    // Super Admin bypass — always has all permissions
+    const roleName = (user.role.name || "").toLowerCase().replace(/\s+/g, '_');
+    if (roleName === 'super_admin') {
+      return true;
+    }
+
     const userPermissions = user.role.permissions || [];
     return requiredPermissions.every((permission) =>
       userPermissions.includes(permission),

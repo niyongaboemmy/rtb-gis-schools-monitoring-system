@@ -48,6 +48,15 @@ interface AuthUser {
 export function hasPermission(user: AuthUser | null, permission: PermissionType): boolean {
   if (!user || !user.role) return false;
   
+  // Super Admin bypass — always has all permissions
+  const roleIdentifier = typeof user.role === 'string' 
+    ? user.role 
+    : user.role.name;
+    
+  if (roleIdentifier && roleIdentifier.toLowerCase().replace(/\s+/g, '_') === 'super_admin') {
+    return true;
+  }
+  
   // Handle case where role might be just a string (legacy) or an object
   const userPermissions = typeof user.role === 'object' 
     ? (user.role.permissions || []) 

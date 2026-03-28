@@ -57,8 +57,13 @@ export function ProtectedRoute({
   if (requiredPermission && !isAuthorized(requiredPermission))
     return <Navigate to="/welcome" replace />;
   if (allowedRoles.length > 0 && user) {
-    const roleName = typeof user.role === "object" ? user.role.name : user.role;
-    if (!allowedRoles.includes(roleName))
+    const rawRole = typeof user.role === "object" ? user.role.name : user.role;
+    const roleName = (rawRole || "").toLowerCase().replace(/\s+/g, '_');
+    
+    // Super Admin bypass for allowedRoles list
+    if (roleName === "super_admin") return children ? <>{children}</> : <Outlet />;
+    
+    if (!allowedRoles.includes(rawRole))
       return <Navigate to="/welcome" replace />;
   }
 

@@ -730,18 +730,18 @@ export default function SchoolDecisionDashboard() {
                     Survey
                   </Button>
                 )}
-                {/* {isAuthorized(Permission.SCHOOL_VIEW_2D3D_MAP) && ( */}
-                <Button
-                  variant="outline"
-                  asChild
-                  className="rounded-full h-10 px-5 font-black uppercase tracking-wider text-[10px] border-border/10 shadow-none hover:bg-primary/5 transition-all"
-                >
-                  <Link to={`/schools/${id}/kmz`}>
-                    <Layers className="mr-2 h-4 w-4" />
-                    KMZ/KML
-                  </Link>
-                </Button>
-                {/* )} */}
+                {isAuthorized(Permission.SCHOOL_VIEW_2D3D_MAP) && (
+                  <Button
+                    variant="outline"
+                    asChild
+                    className="rounded-full h-10 px-5 font-black uppercase tracking-wider text-[10px] border-border/10 shadow-none hover:bg-primary/5 transition-all"
+                  >
+                    <Link to={`/schools/${id}/kmz`}>
+                      <Layers className="mr-2 h-4 w-4" />
+                      KMZ/KML
+                    </Link>
+                  </Button>
+                )}
               </div>
             }
           />
@@ -1180,8 +1180,7 @@ export default function SchoolDecisionDashboard() {
                             icon={createCustomIcon("#3b82f6")}
                             eventHandlers={{
                               click: () =>
-                                id &&
-                                window.open(`/schools/${id}/3dview`, "_blank"),
+                                id && setIsMapModalOpen(true),
                             }}
                           >
                             <Popup closeButton={false} className="custom-popup">
@@ -1221,8 +1220,7 @@ export default function SchoolDecisionDashboard() {
                           <Button
                             size="sm"
                             onClick={() =>
-                              id &&
-                              window.open(`/schools/${id}/3dview`, "_blank")
+                              id && setIsMapModalOpen(true)
                             }
                             className="rounded-full shadow-lg bg-primary/90 hover:bg-primary text-[10px] font-black uppercase border border-white/20 h-8 px-4"
                           >
@@ -1251,8 +1249,7 @@ export default function SchoolDecisionDashboard() {
                           <div
                             className="w-full h-full relative group cursor-pointer"
                             onClick={() =>
-                              id &&
-                              window.open(`/schools/${id}/3dview`, "_blank")
+                              id && setIsMapModalOpen(true)
                             }
                           >
                             <img
@@ -1300,8 +1297,7 @@ export default function SchoolDecisionDashboard() {
                                 size="sm"
                                 className="rounded-full bg-primary/90 hover:bg-primary text-white shadow-lg"
                                 onClick={() =>
-                                  id &&
-                                  window.open(`/schools/${id}/3dview`, "_blank")
+                                  id && setIsMapModalOpen(true)
                                 }
                               >
                                 <Box className="w-4 h-4 mr-1" />
@@ -2724,7 +2720,7 @@ export default function SchoolDecisionDashboard() {
                     size="lg"
                     className="rounded-full px-10 py-7 bg-linear-to-r from-blue-600 via-blue-600 to-blue-600 hover:from-blue-700 hover:via-blue-700 hover:to-blue-700 text-white font-bold text-lg shadow-2xl shadow-blue-500/40 hover:shadow-blue-500/60 transition-all duration-300 transform hover:scale-110"
                     onClick={() =>
-                      id && window.open(`/schools/${id}/3dview`, "_blank")
+                      id && setIsMapModalOpen(true)
                     }
                   >
                     <Box className="w-6 h-6 mr-3" />

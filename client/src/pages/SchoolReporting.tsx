@@ -186,15 +186,22 @@ export default function SchoolReporting({
   useEffect(() => {
     if (activeTab === "history") fetchHistory();
     if (activeTab === "analytics") fetchAnalyticsData();
-  }, [activeTab, analyticsRange, selectedSchoolId, historyPage, statusFilter, historyDateRange]);
+  }, [
+    activeTab,
+    analyticsRange,
+    selectedSchoolId,
+    historyPage,
+    statusFilter,
+    historyDateRange,
+  ]);
 
   const fetchAnalyticsData = async () => {
     if (!selectedSchoolId) return;
     setAnalyticsLoading(true);
     try {
-      const params: any = { 
+      const params: any = {
         schoolId: selectedSchoolId,
-        limit: 1000 // Get a larger set for analytics trend calculation
+        limit: 1000, // Get a larger set for analytics trend calculation
       };
       if (analyticsRange.startDate)
         params.startDate = analyticsRange.startDate.toISOString();
@@ -223,9 +230,11 @@ export default function SchoolReporting({
     try {
       await api.patch(`/reports/${reportId}/status`, { status });
       // Optimistic update
-      const updatedReports = allReports.map((r) => (r.id === reportId ? { ...r, status } : r));
+      const updatedReports = allReports.map((r) =>
+        r.id === reportId ? { ...r, status } : r,
+      );
       setAllReports(updatedReports);
-      
+
       // Update the currently viewed report if open
       if (selectedReport?.id === reportId) {
         setSelectedReport({ ...selectedReport, status });
@@ -246,26 +255,26 @@ export default function SchoolReporting({
     if (!user?.id) return;
     setHistoryLoading(true);
     try {
-      const params: any = { 
+      const params: any = {
         reportedBy: user.id,
         page: historyPage,
         limit: historyLimit,
       };
-      
+
       if (statusFilter !== "ALL") {
         params.status = statusFilter;
       }
-      
+
       if (historyDateRange.start) {
         params.startDate = historyDateRange.start.toISOString();
       }
-      
+
       if (historyDateRange.end) {
         params.endDate = historyDateRange.end.toISOString();
       }
 
       const res = await api.get("/reports", { params });
-      
+
       // Backend now returns { data, total }
       if (res.data && res.data.data) {
         setHistory(res.data.data);
@@ -302,33 +311,41 @@ export default function SchoolReporting({
     try {
       // 1. Set identifiers
       setSelectedSchoolId(report.schoolId);
-      
+
       // 2. Fetch dependencies
       const schoolRes = await api.get(`/schools/${report.schoolId}`);
       setSelectedSchoolDetails(schoolRes.data);
       setBuildings(schoolRes.data.buildings || []);
-      
-      const building = (schoolRes.data.buildings || []).find((b: any) => b.id === report.buildingId);
+
+      const building = (schoolRes.data.buildings || []).find(
+        (b: any) => b.id === report.buildingId,
+      );
       setSelectedBuilding(building || null);
-      
-      const facilityDef = facilitiesDefinitions.find(f => f.facilityId === report.facilityId);
+
+      const facilityDef = facilitiesDefinitions.find(
+        (f) => f.facilityId === report.facilityId,
+      );
       setSelectedFacility(facilityDef || null);
-      
-      const targetItem = facilityDef?.items.find((i: any) => i.id === report.itemId);
+
+      const targetItem = facilityDef?.items.find(
+        (i: any) => i.id === report.itemId,
+      );
       setSelectedItem(targetItem || null);
-      
+
       // 3. Set current issue details
       setCurrentIssue({
-        category: Array.isArray(report.issueCategory) ? report.issueCategory : [report.issueCategory],
+        category: Array.isArray(report.issueCategory)
+          ? report.issueCategory
+          : [report.issueCategory],
         description: report.description,
         files: [], // Files cannot be pre-filled easily from URLs
       });
-      
+
       // 4. Set UI state
       setIsEditing(report.id);
       setActiveTab("report");
       setStep(5);
-      
+
       showToast("Edit mode: Update incident details", "success");
     } catch (err) {
       console.error("Failed to prepare edit mode", err);
@@ -443,13 +460,16 @@ export default function SchoolReporting({
         // UPDATE MODE
         const issue = finalIssues[0];
         const attachmentUrls = await uploadFilesToExternalServer(issue.files);
-        
+
         const payload = {
           description: issue.description,
           issueCategory: issue.category,
-          attachments: [...(selectedReport?.attachments || []), ...attachmentUrls],
+          attachments: [
+            ...(selectedReport?.attachments || []),
+            ...attachmentUrls,
+          ],
         };
-        
+
         await api.patch(`/reports/${isEditing}`, payload);
         showToast("Report updated successfully", "success");
       } else {
@@ -931,7 +951,7 @@ export default function SchoolReporting({
   );
 
   return (
-    <div className="relative min-h-screen py-6 px-4 md:px-12 space-y-6 overflow-hidden">
+    <div className="relative min-h-screen py-6 pt-0 space-y-4 overflow-hidden">
       <AnimatePresence>
         {selectedReport && (
           <ReportDetailsModal
@@ -993,7 +1013,7 @@ export default function SchoolReporting({
                   className="space-y-6"
                 >
                   <div className="text-center mb-6">
-                    <h3 className="text-base font-black uppercase tracking-tighter">
+                    <h3 className="text-base font-bold uppercase tracking-tighter">
                       Identify Your School
                     </h3>
                   </div>
@@ -1048,7 +1068,7 @@ export default function SchoolReporting({
                       <ArrowLeft className="w-4 h-4" />
                     </Button>
                     <div className="flex-1">
-                      <h3 className="text-base font-black uppercase tracking-tighter">
+                      <h3 className="text-base font-bold uppercase tracking-tighter">
                         Locate Block
                       </h3>
                       <p className="text-[10px] text-muted-foreground font-bold uppercase opacity-60">
@@ -1179,7 +1199,7 @@ export default function SchoolReporting({
                       <ArrowLeft className="w-4 h-4" />
                     </Button>
                     <div>
-                      <h3 className="text-base font-black uppercase tracking-tighter">
+                      <h3 className="text-base font-bold uppercase tracking-tighter">
                         Locate Facility
                       </h3>
                       <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
@@ -1232,7 +1252,7 @@ export default function SchoolReporting({
                       <ArrowLeft className="w-4 h-4" />
                     </Button>
                     <div>
-                      <h3 className="text-base font-black uppercase tracking-tighter">
+                      <h3 className="text-base font-bold uppercase tracking-tighter">
                         Select Target
                       </h3>
                       <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
@@ -1286,35 +1306,41 @@ export default function SchoolReporting({
                       <ArrowLeft className="w-4 h-4" />
                     </Button>
                     <div>
-                      <h3 className="text-base font-black uppercase tracking-tighter">
+                      <h3 className="text-base font-bold uppercase tracking-tighter">
                         {isEditing ? "Modify Incident" : "Incident Details"}
                       </h3>
                       <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
-                        {selectedItem.label} · {isEditing ? "Update Logic" : "Final Step"}
+                        {selectedItem.label} ·{" "}
+                        {isEditing ? "Update Logic" : "Final Step"}
                       </p>
                     </div>
                   </div>
-                  
+
                   {isEditing && (
                     <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-3xl mb-6 flex items-center justify-between">
-                       <div className="flex items-center gap-3">
-                          <AlertCircle className="w-5 h-5 text-amber-500" />
-                          <div>
-                             <p className="text-[10px] font-black uppercase tracking-tighter text-amber-500">Edit Mode Active</p>
-                             <p className="text-[8px] font-bold uppercase text-amber-500/60">You are modifying a submitted report. Submit to save changes.</p>
-                          </div>
-                       </div>
-                       <Button 
-                        variant="ghost" 
-                        size="sm" 
+                      <div className="flex items-center gap-3">
+                        <AlertCircle className="w-5 h-5 text-amber-500" />
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-tighter text-amber-500">
+                            Edit Mode Active
+                          </p>
+                          <p className="text-[8px] font-bold uppercase text-amber-500/60">
+                            You are modifying a submitted report. Submit to save
+                            changes.
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => {
                           setIsEditing(false);
                           resetForm();
                         }}
                         className="rounded-full h-8 px-4 text-[9px] font-black uppercase tracking-widest text-amber-500 hover:bg-amber-500/10"
-                       >
-                         Cancel Edit
-                       </Button>
+                      >
+                        Cancel Edit
+                      </Button>
                     </div>
                   )}
 
@@ -1487,7 +1513,7 @@ export default function SchoolReporting({
                     { label: "PENDING REVIEW", value: "PENDING" },
                     { label: "SOLVED / CLOSED", value: "SOLVED" },
                     { label: "CRITICAL PRIORITY", value: "NEED_INTERVENTION" },
-                    { label: "FAILED / INVALID", value: "FAILED" }
+                    { label: "FAILED / INVALID", value: "FAILED" },
                   ]}
                   value={statusFilter}
                   onChange={(val) => {
@@ -1497,49 +1523,62 @@ export default function SchoolReporting({
                   className="rounded-3xl"
                 />
               </div>
-              
+
               <div className="md:col-span-4 space-y-2">
                 <label className="text-[10px] font-black uppercase text-primary tracking-widest pl-2 flex items-center gap-2">
                   <Calendar className="w-3 h-3" /> Date Range
                 </label>
                 <div className="flex gap-2">
-                   <Input 
-                      type="date" 
-                      className="rounded-2xl h-11 text-[10px] font-bold" 
-                      onChange={(e) => setHistoryDateRange(prev => ({ ...prev, start: e.target.value ? new Date(e.target.value) : null }))}
-                   />
-                   <Input 
-                      type="date" 
-                      className="rounded-2xl h-11 text-[10px] font-bold" 
-                      onChange={(e) => setHistoryDateRange(prev => ({ ...prev, end: e.target.value ? new Date(e.target.value) : null }))}
-                   />
+                  <Input
+                    type="date"
+                    className="rounded-2xl h-11 text-[10px] font-bold"
+                    onChange={(e) =>
+                      setHistoryDateRange((prev) => ({
+                        ...prev,
+                        start: e.target.value ? new Date(e.target.value) : null,
+                      }))
+                    }
+                  />
+                  <Input
+                    type="date"
+                    className="rounded-2xl h-11 text-[10px] font-bold"
+                    onChange={(e) =>
+                      setHistoryDateRange((prev) => ({
+                        ...prev,
+                        end: e.target.value ? new Date(e.target.value) : null,
+                      }))
+                    }
+                  />
                 </div>
               </div>
 
               <div className="md:col-span-4 flex justify-end pb-0.5">
-                  <div className="bg-muted/30 p-1.5 rounded-full border border-border/10 flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={historyPage <= 1}
-                        onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
-                        className="rounded-full h-8 w-8 p-0"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </Button>
-                      <span className="text-[10px] font-black px-4 uppercase tracking-widest">
-                        Page {historyPage} of {Math.ceil(historyTotal / historyLimit) || 1}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={historyPage >= Math.ceil(historyTotal / historyLimit)}
-                        onClick={() => setHistoryPage(p => p + 1)}
-                        className="rounded-full h-8 w-8 p-0"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </Button>
-                  </div>
+                <div className="bg-muted/30 p-1.5 rounded-full border border-border/10 flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={historyPage <= 1}
+                    onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                    className="rounded-full h-8 w-8 p-0"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <span className="text-[10px] font-black px-4 uppercase tracking-widest">
+                    Page {historyPage} of{" "}
+                    {Math.ceil(historyTotal / historyLimit) || 1}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={
+                      historyPage >= Math.ceil(historyTotal / historyLimit)
+                    }
+                    onClick={() => setHistoryPage((p) => p + 1)}
+                    className="rounded-full h-8 w-8 p-0"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -1566,7 +1605,7 @@ export default function SchoolReporting({
             ) : history.length === 0 ? (
               <Card className="bg-card/30 backdrop-blur-md p-20 rounded-[40px] text-center border-dashed border-2 border-border/20">
                 <ClipboardList className="w-16 h-16 text-muted-foreground/30 mx-auto mb-6" />
-                <h3 className="text-base font-black uppercase tracking-tighter mb-2">
+                <h3 className="text-base font-bold uppercase tracking-tighter mb-2">
                   No Reports Yet
                 </h3>
                 <p className="text-muted-foreground font-medium mb-8">
@@ -1666,7 +1705,7 @@ export default function SchoolReporting({
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </Button>
-                              
+
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -1760,7 +1799,10 @@ export default function SchoolReporting({
                               variant="ghost"
                               size="sm"
                               className="h-8 w-8 p-0"
-                              onClick={(e) => { e.stopPropagation(); handleEditReport(record); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditReport(record);
+                              }}
                             >
                               <Edit2 className="w-3 h-3 text-primary" />
                             </Button>
@@ -1768,7 +1810,10 @@ export default function SchoolReporting({
                               variant="ghost"
                               size="sm"
                               className="h-8 w-8 p-0"
-                              onClick={(e) => { e.stopPropagation(); setReportToDelete(record); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setReportToDelete(record);
+                              }}
                             >
                               <Trash2 className="w-3 h-3 text-rose-500" />
                             </Button>
@@ -1828,7 +1873,7 @@ export default function SchoolReporting({
                 opacity={0.03}
               />
               <div className="flex justify-between items-center mb-6 px-4 pt-4">
-                <h3 className="text-base font-black uppercase tracking-tighter">
+                <h3 className="text-base font-bold uppercase tracking-tighter">
                   Evidence Gallery
                 </h3>
                 <Button

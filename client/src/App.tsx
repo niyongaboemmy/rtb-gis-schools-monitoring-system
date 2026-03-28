@@ -72,10 +72,7 @@ export default function App() {
             >
               <Route path="/schools" element={<SchoolsList />} />
               <Route path="/schools/:id" element={<SchoolDetail />} />
-              <Route
-                path="/schools/:id/decision"
-                element={<SchoolDecisionDashboard />}
-              />
+              <Route path="/schools/:id/decision" element={<SchoolDecisionDashboard />} />
               <Route path="/schools/:id/3dview" element={<School3DViewPage />} />
             </Route>
 
