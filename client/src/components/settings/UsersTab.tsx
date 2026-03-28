@@ -23,6 +23,7 @@ import { RichDropdown } from "../ui/rich-dropdown";
 import { UserFormModal } from "../users/UserFormModal";
 import { BulkUploadModal } from "../users/BulkUploadModal";
 import { useAuthStore } from "../../store/authStore";
+import { useSchoolsStore } from "../../store/schoolsStore";
 import { resolveDistrictName, resolveProvinceName } from "../../lib/rwanda-locations";
 import {
   Search,
@@ -44,8 +45,9 @@ import { cn } from "../../lib/utils";
 export function UsersTab() {
   const [users, setUsers] = useState<any[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
-  const [schools, setSchools] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const { allSchools, fetchAllSchools } = useSchoolsStore();
 
   // Filters & Pagination
   const [searchTerm, setSearchTerm] = useState("");
@@ -71,7 +73,8 @@ export function UsersTab() {
 
   useEffect(() => {
     fetchInitialData();
-  }, []);
+    fetchAllSchools();
+  }, [fetchAllSchools]);
 
   const fetchInitialData = async () => {
     if (fetchPromise.current) return fetchPromise.current;
@@ -81,20 +84,9 @@ export function UsersTab() {
     fetchPromise.current = Promise.all([
       api.get("/users"),
       api.get("/roles"),
-      api.get("/schools"),
-    ]).then(([usersRes, rolesRes, schoolsRes]) => {
+    ]).then(([usersRes, rolesRes]) => {
       setUsers(usersRes.data);
       setRoles(rolesRes.data);
-      const rawSchools = schoolsRes.data.data;
-      setSchools(
-        Array.isArray(rawSchools)
-          ? rawSchools
-          : Array.isArray(rawSchools?.data)
-            ? rawSchools.data
-            : Array.isArray(rawSchools?.items)
-              ? rawSchools.items
-              : [],
-      );
     }).catch(err => {
       console.error("Failed to load initial data", err);
     }).finally(() => {
@@ -497,7 +489,7 @@ export function UsersTab() {
         onSuccess={() => fetchInitialData()}
         editingUser={editingUser}
         roles={roles}
-        schools={schools}
+        schools={allSchools}
       />
 
       <BulkUploadModal

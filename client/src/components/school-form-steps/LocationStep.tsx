@@ -14,6 +14,9 @@ interface LocationStepProps {
   onAdministrativeChange: (field: string, value: string) => void;
   onAddressChange: (value: string) => void;
   onElevationChange: (value: string) => void;
+  kmz2dFilePath: string;
+  tifFilePath: string;
+  onGisChange: (field: string, value: string) => void;
 }
 
 export function LocationStep({
@@ -30,6 +33,9 @@ export function LocationStep({
   onAdministrativeChange,
   onAddressChange,
   onElevationChange,
+  kmz2dFilePath,
+  tifFilePath,
+  onGisChange,
 }: LocationStepProps) {
   return (
     <LocationPicker
@@ -46,6 +52,9 @@ export function LocationStep({
       onAdministrativeChange={onAdministrativeChange}
       onAddressChange={onAddressChange}
       onElevationChange={onElevationChange}
+      kmz2dFilePath={kmz2dFilePath}
+      tifFilePath={tifFilePath}
+      onGisChange={onGisChange}
     />
   );
 }

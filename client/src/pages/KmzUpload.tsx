@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import {
   UploadCloud,
@@ -10,11 +10,14 @@ import {
   MapPin,
   Box,
   Map,
+  FileCheck,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { PageHeader } from "../components/ui/page-header";
 import { useAuthStore } from "../store/authStore";
 import { cn } from "../lib/utils";
+import { api } from "../lib/api";
 
 export default function KmzUpload() {
   const { id } = useParams<{ id: string }>();
@@ -26,7 +29,27 @@ export default function KmzUpload() {
   >("idle");
   const [message, setMessage] = useState("");
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [existingFile3d, setExistingFile3d] = useState<string | null>(null);
+  const [existingFile2d, setExistingFile2d] = useState<string | null>(null);
+  const [loadingSchool, setLoadingSchool] = useState(true);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    api
+      .get(`/schools/${id}`)
+      .then((res) => {
+        const school = res.data;
+        // 3D: look for a .dlb file in the buildings modelPaths
+        const dlbBuilding = school.buildings?.find((b: any) =>
+          b.modelPath?.toLowerCase().endsWith(".glb"),
+        );
+        setExistingFile3d(dlbBuilding?.modelPath || null);
+        // 2D: kmz/kml file stored on the school
+        setExistingFile2d(school.kmz2dFilePath || null);
+      })
+      .finally(() => setLoadingSchool(false));
+  }, [id]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -55,14 +78,12 @@ export default function KmzUpload() {
     const formData = new FormData();
     formData.append("file", file);
 
-    // Use XMLHttpRequest for progress tracking on large files
     const xhr = new XMLHttpRequest();
     xhrRef.current = xhr;
 
     const apiBaseUrl = import.meta.env.VITE_API_URL || "/api/v1";
     const token = useAuthStore.getState().token;
 
-    // Route to the correct endpoint based on upload mode
     const endpoint =
       uploadMode === "2d"
         ? `${apiBaseUrl}/schools/${id}/kmz/2d`
@@ -92,7 +113,6 @@ export default function KmzUpload() {
         setMessage(
           "Geospatial data successfully integrated into GIS database.",
         );
-        // Redirect back to school detail after 3 seconds
         setTimeout(() => {
           navigate(`/schools/${id}`);
         }, 3000);
@@ -102,7 +122,7 @@ export default function KmzUpload() {
           const errorData = JSON.parse(xhr.responseText);
           setMessage(
             errorData.message ||
-              "Failed to analyze geospatial payload. Telemetry format mismatch or file exceeds size limits.",
+              "Failed to analyze geospatial payload. File format mismatch or file exceeds size limits.",
           );
         } catch {
           setMessage(
@@ -120,11 +140,24 @@ export default function KmzUpload() {
     xhr.send(formData);
   };
 
+  const existingFile = uploadMode === "3d" ? existingFile3d : existingFile2d;
+  const existingFileName = existingFile
+    ? existingFile.split("/").pop()
+    : null;
+  const isUpdate = !!existingFile;
+
+  const acceptAttr = uploadMode === "3d" ? ".glb" : ".kmz,.kml";
+  const formatLabel = uploadMode === "3d" ? "GLB" : "KMZ or KML";
+  const formatHint =
+    uploadMode === "3d"
+      ? ".glb files only (max 2GB)"
+      : ".kmz or .kml files only (max 2GB)";
+
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <PageHeader
-        title="GIS Telemetry Deployment"
-        description="Upload KMZ or KML files for 3D Cesium rendering or 2D OpenLayers display."
+        title="Upload Maps"
+        description="Upload map files for 3D Cesium rendering or 2D OpenLayers display."
         icon={Layers}
         backButton={
           <Button
@@ -143,22 +176,57 @@ export default function KmzUpload() {
       {/* 2D / 3D mode selector */}
       <div className="grid grid-cols-2 gap-4">
         {[
-          { mode: "3d" as const, label: "3D Viewer", desc: "Cesium — with 3D building models & terrain", icon: Box },
-          { mode: "2d" as const, label: "2D Viewer", desc: "OpenLayers — flat KML features & overlays", icon: Map },
-        ].map(({ mode, label, desc, icon: Icon }) => (
+          {
+            mode: "3d" as const,
+            label: "3D Viewer",
+            desc: "Cesium — GLB format with 3D building models & terrain",
+            icon: Box,
+            fileLabel: existingFile3d ? existingFile3d.split("/").pop() : null,
+          },
+          {
+            mode: "2d" as const,
+            label: "2D Viewer",
+            desc: "OpenLayers — KMZ or KML flat features & overlays",
+            icon: Map,
+            fileLabel: existingFile2d ? existingFile2d.split("/").pop() : null,
+          },
+        ].map(({ mode, label, desc, icon: Icon, fileLabel }) => (
           <button
             key={mode}
-            onClick={() => { setUploadMode(mode); setFile(null); setStatus("idle"); }}
+            onClick={() => {
+              setUploadMode(mode);
+              setFile(null);
+              setStatus("idle");
+            }}
             className={cn(
               "rounded-3xl p-6 text-left border-2 transition-all",
               uploadMode === mode
                 ? "border-primary bg-primary/5"
-                : "border-border/20 hover:border-primary/40 bg-card"
+                : "border-border/20 hover:border-primary/40 bg-card",
             )}
           >
-            <Icon className={cn("w-6 h-6 mb-3", uploadMode === mode ? "text-primary" : "text-muted-foreground")} />
-            <p className="text-sm font-black uppercase tracking-tight">{label}</p>
+            <div className="flex items-start justify-between mb-3">
+              <Icon
+                className={cn(
+                  "w-6 h-6",
+                  uploadMode === mode ? "text-primary" : "text-muted-foreground",
+                )}
+              />
+              {!loadingSchool && fileLabel && (
+                <span className="text-[9px] font-black uppercase tracking-widest bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full">
+                  Uploaded
+                </span>
+              )}
+            </div>
+            <p className="text-sm font-black uppercase tracking-tight">
+              {label}
+            </p>
             <p className="text-[10px] text-muted-foreground mt-1">{desc}</p>
+            {!loadingSchool && fileLabel && (
+              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-2 truncate">
+                {fileLabel}
+              </p>
+            )}
           </button>
         ))}
       </div>
@@ -176,7 +244,25 @@ export default function KmzUpload() {
             </p>
           </div>
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-6">
+            {/* Existing file notice */}
+            {!loadingSchool && isUpdate && (
+              <div className="flex items-start gap-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-4">
+                <FileCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                    {uploadMode === "3d" ? "3D map" : "2D map"} already uploaded
+                  </p>
+                  <p className="text-xs text-emerald-600/80 dark:text-emerald-400/80 truncate mt-0.5">
+                    {existingFileName}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Uploading a new file will replace the existing one.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div
               onDragOver={handleDragOver}
               onDrop={handleDrop}
@@ -189,7 +275,7 @@ export default function KmzUpload() {
                 type="file"
                 id="kmz-upload"
                 className="hidden"
-                accept=".kmz,.kml"
+                accept={acceptAttr}
                 onChange={handleFileChange}
                 disabled={status === "uploading" || status === "processing"}
               />
@@ -204,16 +290,11 @@ export default function KmzUpload() {
                   </div>
                   <div>
                     <span className="text-lg font-medium text-primary hover:underline">
-                      Click to upload
+                      {isUpdate ? "Click to replace file" : "Click to upload"}
                     </span>
-                    <span className="text-muted-foreground">
-                      {" "}
-                      or drag and drop
-                    </span>
+                    <span className="text-muted-foreground"> or drag and drop</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    KMZ or KML files only (max 2GB)
-                  </p>
+                  <p className="text-xs text-muted-foreground">{formatHint}</p>
                 </label>
               ) : (
                 <div className="flex flex-col items-center gap-4">
@@ -225,8 +306,7 @@ export default function KmzUpload() {
                     <p className="text-sm text-muted-foreground">
                       {file.size > 1024 * 1024 * 1024
                         ? (file.size / (1024 * 1024 * 1024)).toFixed(2) + " GB"
-                        : (file.size / (1024 * 1024)).toFixed(2)}{" "}
-                      MB
+                        : (file.size / (1024 * 1024)).toFixed(2) + " MB"}
                     </p>
                   </div>
                   {status === "uploading" && (
@@ -269,25 +349,34 @@ export default function KmzUpload() {
                 asChild
                 disabled={status === "uploading" || status === "processing"}
               >
-                <Link to={`/schools`}>Cancel</Link>
+                <Link to={`/schools/${id}`}>Cancel</Link>
               </Button>
               <Button
                 onClick={handleUpload}
                 disabled={
                   !file || status === "uploading" || status === "processing"
                 }
-                className="min-w-[120px]"
+                className="min-w-[140px]"
               >
                 {status === "uploading" || status === "processing" ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Processing
                   </>
+                ) : isUpdate ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Update {formatLabel} File
+                  </>
                 ) : (
-                  "Upload & Process"
+                  <>
+                    <UploadCloud className="mr-2 h-4 w-4" />
+                    Upload {formatLabel} File
+                  </>
                 )}
               </Button>
             </div>
+
             <div className="pt-4 border-t">
               <p className="text-sm text-muted-foreground mb-3">
                 Want to add places of interest (shops, hospitals, etc.)?

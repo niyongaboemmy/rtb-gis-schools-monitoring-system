@@ -141,7 +141,9 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
               <div>
                 <p className="text-[9px] font-black uppercase text-muted-foreground opacity-60">Facility / Category</p>
                 <div className="flex flex-wrap gap-1 mt-0.5">
-                  <span className="text-sm font-black uppercase tracking-tight mr-2">{report.facilityId}</span>
+                  <span className="text-sm font-semibold capitalize mr-2">
+                    {report.facilityId?.replace(/_/g, " ").replace(/-/g, " ")}
+                  </span>
                   {categories.map((cat: string) => (
                     <Badge key={cat} variant="outline" className="rounded-full text-[7px] font-black uppercase px-2 py-0 border-primary/10 text-primary h-4">
                       {cat}
@@ -175,8 +177,10 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
           </div>
         </div>
 
+        <div className="border-t border-border/10" />
+
         {/* Description Section */}
-        <div className="bg-muted/30 p-5 rounded-2xl border border-border/10 relative overflow-hidden group">
+        <div className="bg-muted/50 p-5 rounded-2xl border border-border/10 relative overflow-hidden group">
           <AlertCircle className="absolute -bottom-2 -right-2 w-16 h-16 text-primary opacity-5" />
           <label className="text-[9px] font-black uppercase text-primary tracking-widest flex items-center gap-2 mb-3">
             <Layers className="w-3 h-3" /> Detailed Narrative
@@ -195,7 +199,7 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
                 <FilePreview key={i} url={url} filename={`Evidence #${i + 1}`} className="shadow-sm border-border/5" />
               ))
             ) : (
-              <div className="col-span-full border-2 border-dashed border-border/10 rounded-2xl p-8 flex flex-col items-center justify-center opacity-40">
+              <div className="col-span-full border-2 border-dashed border-border/10 rounded-2xl p-8 flex flex-col items-center justify-center opacity-40 bg-muted/30">
                 <Camera className="w-8 h-8 mb-2" />
                 <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">No imagery detected</span>
               </div>
@@ -209,7 +213,7 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
         isOpen={isMapOpen}
         onClose={() => setIsMapOpen(false)}
         maxWidth="max-w-[95vw]"
-        className="h-[90vh] sm:rounded-[45px] overflow-hidden p-0"
+        className="h-[90vh] sm:rounded-2xl overflow-hidden p-0"
         hideCloseButton
       >
         <div className="absolute inset-0 z-50">

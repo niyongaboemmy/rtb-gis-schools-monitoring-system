@@ -17,6 +17,9 @@ import {
   Map as MapIcon,
   Satellite,
   Mountain,
+  Layers,
+  Box,
+  Globe,
 } from "lucide-react";
 import { rwandaLocation } from "@devrw/rwanda-location";
 import type {
@@ -142,6 +145,9 @@ interface LocationPickerProps {
   onAdministrativeChange: (field: string, value: string) => void;
   onAddressChange: (value: string) => void;
   onElevationChange: (value: string) => void;
+  kmz2dFilePath?: string;
+  tifFilePath?: string;
+  onGisChange?: (field: string, value: string) => void;
 }
 
 function MapClickHandler({
@@ -185,6 +191,9 @@ export function LocationPicker({
   onAdministrativeChange,
   onAddressChange,
   onElevationChange,
+  kmz2dFilePath = "",
+  tifFilePath = "",
+  onGisChange,
 }: LocationPickerProps) {
   // Map view state
   const [mapView, setMapView] = useState<MapViewType>("street");
@@ -724,6 +733,50 @@ export function LocationPicker({
             disabled={isLoadingElevation}
             className="rounded-xl border-border/30 bg-background/80 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all h-11"
           />
+        </div>
+      </div>
+
+      <div className="pt-4 border-t border-border/20">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-1 h-5 rounded-full bg-linear-to-b from-blue-500 to-blue-400" />
+          <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+            <Layers className="w-4 h-4 text-blue-400" />
+            High-Resolution Spatial Assets (Optimization)
+          </h3>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+              <Box className="w-3 h-3" />
+              2D Optimized Orthomosaic (KMZ)
+            </label>
+            <Input
+              value={kmz2dFilePath}
+              onChange={(e) => onGisChange?.("kmz2dFilePath", e.target.value)}
+              placeholder="e.g. schools/123/kmz_2d/ortho_optimized.kmz"
+              className="rounded-xl border-border/30 bg-background/80 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all h-10 text-xs"
+            />
+            <p className="text-[10px] text-muted-foreground italic px-1">
+              Optimized version for the 2D viewer (smaller file size).
+            </p>
+          </div>
+          
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+              <Globe className="w-3 h-3" />
+              Highest Resolution TIF (COG)
+            </label>
+            <Input
+              value={tifFilePath}
+              onChange={(e) => onGisChange?.("tifFilePath", e.target.value)}
+              placeholder="e.g. schools/123/tif/large_ortho.tif"
+              className="rounded-xl border-border/30 bg-background/80 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all h-10 text-xs"
+            />
+            <p className="text-[10px] text-muted-foreground italic px-1">
+              Cloud Optimized GeoTIFF (COG) for lossless native-quality zoom.
+            </p>
+          </div>
         </div>
       </div>
     </div>

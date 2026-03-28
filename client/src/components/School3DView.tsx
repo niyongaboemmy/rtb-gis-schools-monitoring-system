@@ -11,6 +11,7 @@ import {
   GeoJsonDataSource,
   PolylineGraphics,
   PolygonGraphics,
+  ImageryLayer,
 } from "resium";
 import JSZip from "jszip";
 import {
@@ -24,6 +25,7 @@ import {
   CallbackProperty,
   PolygonHierarchy,
   KmlDataSource as CesiumKmlDataSource,
+  SingleTileImageryProvider,
 } from "cesium";
 import {
   X,
@@ -404,6 +406,19 @@ const School3DView: React.FC<School3DViewProps> = ({
       : `${FILE_SERVER_URL}/schools/${school.id}/kmz_content/${school.kmzMasterKmlPath}`
     : undefined;
 
+  // Use optimized 2D KMZ if explicitly provided for better performance
+  const kmz2dUrl = school.kmz2dFilePath
+    ? school.kmz2dFilePath.startsWith("/")
+      ? school.kmz2dFilePath
+      : `${FILE_SERVER_URL}/schools/${school.id}/kmz_2d/${school.kmz2dFilePath}`
+    : undefined;
+
+  const tifUrl = school.tifFilePath
+    ? school.tifFilePath.startsWith("/")
+      ? school.tifFilePath
+      : `${FILE_SERVER_URL}/schools/${school.id}/tif/${school.tifFilePath}`
+    : undefined;
+
   const placesOverlayUrl = school.placesOverlayFilePath
     ? school.placesOverlayFilePath.startsWith("/")
       ? school.placesOverlayFilePath
@@ -485,7 +500,7 @@ const School3DView: React.FC<School3DViewProps> = ({
 
   const isLargeFile = false; // Legacy check, no longer needed as manual files are handled elsewhere
 
-  const kmzSource = kmzFile ?? kmzUrl;
+  const kmzSource = kmzFile ?? kmz2dUrl ?? kmzUrl;
   const hasKmzSource = !!kmzSource;
 
   useEffect(() => {
@@ -515,9 +530,9 @@ const School3DView: React.FC<School3DViewProps> = ({
     } else if (!dataLoaded) {
       setLoadingStep(2);
       setLoadingMessage(
-        viewMode === "3D"
-          ? "Extracting 3D Models..."
-          : "Processing Spatial Data...",
+        tifUrl 
+          ? "Rendering High-Res Textures..." 
+          : (viewMode === "3D" ? "Extracting 3D Models..." : "Processing Spatial Data...")
       );
     } else {
       setLoadingStep(3);
@@ -999,29 +1014,24 @@ const School3DView: React.FC<School3DViewProps> = ({
               />
             )}
 
+            {/* Places Overlay */}
             {showPlacesOverlay && parsedPlacesOverlay && (
               <GeoJsonDataSource
                 data={parsedPlacesOverlay}
                 clampToGround
                 onLoad={(ds) => {
-                  console.log(
-                    "[PlacesOverlay] Loaded entities:",
-                    ds.entities.values.length,
-                  );
                   ds.entities.values.forEach((entity: any) => {
-                    console.log("[PlacesOverlay] Entity:", entity.name, entity);
                     // Style for places overlay - only outline, no fill
                     if (entity.polygon) {
                       entity.polygon.material = Color.TRANSPARENT as any;
                       entity.polygon.outline = true as any;
                       entity.polygon.outlineColor = Color.RED as any;
-                      entity.polygon.outlineWidth = 5 as any; // Increased for visibility
+                      entity.polygon.outlineWidth = 5 as any;
                     }
                     if (entity.polyline) {
                       entity.polyline.width = 3 as any;
                       entity.polyline.material = Color.RED as any;
                     }
-                    // Handle Points/Pins for places - make them very visible
                     if (entity.billboard) {
                       entity.billboard.image =
                         "https://maps.google.com/mapfiles/kml/pushpins/ylw-pushpin.png" as any;
@@ -1049,6 +1059,18 @@ const School3DView: React.FC<School3DViewProps> = ({
                     }
                   });
                 }}
+              />
+            )}
+
+            {/* High-Resolution GeoTIFF Layer (High Performance) */}
+            {tifUrl && (
+              <ImageryLayer
+                imageryProvider={
+                  new SingleTileImageryProvider({
+                    url: tifUrl,
+                  })
+                }
+                alpha={0.8}
               />
             )}
 

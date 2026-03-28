@@ -25,6 +25,7 @@ export const Permission = {
   EDIT_SCHOOL_PROFILE: 'EDIT_SCHOOL_PROFILE',
   SCHOOL_SURVERY_EDIT: 'SCHOOL_SURVERY_EDIT',
   SCHOOL_VIEW_2D3D_MAP: 'SCHOOL_VIEW_2D3D_MAP',
+  VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD: 'VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD',
 } as const;
 
 export type PermissionType = typeof Permission[keyof typeof Permission];
