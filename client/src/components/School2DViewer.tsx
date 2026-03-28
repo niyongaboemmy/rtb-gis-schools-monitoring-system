@@ -8,6 +8,8 @@ import VectorSource from "ol/source/Vector";
 import XYZ from "ol/source/XYZ";
 import KML from "ol/format/KML";
 import GeoJSONFormat from "ol/format/GeoJSON";
+import { PMTilesVectorSource } from "ol-pmtiles";
+import VectorTileLayer from "ol/layer/VectorTile";
 import Draw from "ol/interaction/Draw";
 import { getLength, getArea } from "ol/sphere";
 import { fromLonLat, toLonLat, transformExtent } from "ol/proj";
@@ -22,6 +24,7 @@ import { LineString, Polygon } from "ol/geom";
 import Overlay from "ol/Overlay";
 import Feature from "ol/Feature";
 import JSZip from "jszip";
+import rwandaBoundaries from "../assets/maps/rwanda-boundaries.json";
 import {
   X,
   Globe,
@@ -67,23 +70,6 @@ interface School2DViewerProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Custom Animations (Inline CSS Injection)
-// ─────────────────────────────────────────────────────────────────────────────
-const styles = `
-  @keyframes scan {
-    0% { transform: translateY(0); opacity: 0; }
-    50% { opacity: 1; }
-    100% { transform: translateY(100vh); opacity: 0; }
-  }
-  .animate-scan {
-    animation: scan 3s linear infinite;
-  }
-  .animate-spin-slow {
-    animation: spin 8s linear infinite;
-  }
-`;
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 interface GroundOverlayData {
@@ -104,10 +90,7 @@ interface UnpackedKmzFile {
   assetMap: Map<string, string>;
 }
 
-async function unpackKmzFile(
-  file: File,
-  onProgress?: (p: number) => void,
-): Promise<UnpackedKmzFile> {
+async function unpackKmzFile(file: File): Promise<UnpackedKmzFile> {
   const createdBlobUrls: string[] = [];
   const buffer = await file.arrayBuffer();
   const sourceUri = `https://local-kmz-host/${encodeURIComponent(file.name)}`;
@@ -119,8 +102,6 @@ async function unpackKmzFile(
 
   if (isZip) {
     const zip = await new JSZip().loadAsync(buffer);
-    const totalFiles = Object.keys(zip.files).length;
-    let processedFiles = 0;
 
     // Extract all non-KML files as blob URLs
     await Promise.all(
@@ -134,9 +115,6 @@ async function unpackKmzFile(
           // Also map by basename for relative resolution
           const base = name.split("/").pop() ?? "";
           if (base && !assetMap.has(base)) assetMap.set(base, url);
-
-          processedFiles++;
-          if (onProgress) onProgress((processedFiles / totalFiles) * 80); // 80% for extraction
         }),
     );
 
@@ -344,16 +322,6 @@ export default function School2DViewer({
   onSelectBuilding,
   initialBuildingId,
 }: School2DViewerProps) {
-  // Inject custom animations
-  useEffect(() => {
-    const styleSheet = document.createElement("style");
-    styleSheet.innerText = styles;
-    document.head.appendChild(styleSheet);
-    return () => {
-      document.head.removeChild(styleSheet);
-    };
-  }, []);
-
   // ── Derive spatial URLs locally ───────────────────────────────────────────
   const buildUrl = (path: string | undefined, subfolder: string) => {
     if (!path) return undefined;
@@ -406,8 +374,6 @@ export default function School2DViewer({
   const [showBasicInfo, setShowBasicInfo] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("Initialising map…");
-  const [loadProgress, setLoadProgress] = useState(0);
-  const [estimatedSeconds, setEstimatedSeconds] = useState<number | null>(null);
   const [isTileLoading, setIsTileLoading] = useState(false);
   const [measurementMode, setMeasurementMode] = useState<
     "none" | "distance" | "area"
@@ -426,8 +392,15 @@ export default function School2DViewer({
     null,
   );
   const [basemapStyle, setBasemapStyle] = useState<
-    "satellite" | "dark" | "street"
-  >("satellite");
+    | "satellite"
+    | "dark"
+    | "street"
+    | "offline"
+    | "nsdi"
+    | "ghost"
+    | "google"
+    | "google-hybrid"
+  >("google");
   const [kmzOpacity, setKmzOpacity] = useState(1);
   const [showOpacitySlider, setShowOpacitySlider] = useState(false);
   const [infoFeature, setInfoFeature] = useState<{
@@ -436,27 +409,79 @@ export default function School2DViewer({
   } | null>(null);
 
   // Basemap URL resolver
-  const getBasemapUrl = (style: "satellite" | "dark" | "street") =>
-    ({
-      // Google Hybrid (Satellite + Road Labels)
-      satellite: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
-      // Google Dark style (approximated via CartoDB Dark Matter)
+  const getBasemapUrl = (style: string) => {
+    const urls: Record<string, string> = {
+      satellite:
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       dark: "https://{a-c}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-      // Google Street style (standard OSM as reliable fallback)
-      street: "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
-    })[style];
+      street: "https://{a-c}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      nsdi: "https://geodata.rw/geoserver/gwc/service/wmts?layer=rwanda:orto_2008&style=&tilematrixset=EPSG:900913&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/png&TileMatrix=EPSG:900913:{z}&TileCol={x}&TileRow={y}",
+      offline: `${FILE_SERVER_URL}/maps/rwanda.pmtiles`,
+      google: "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+      "google-hybrid": "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+    };
+    return urls[style];
+  };
+
+  const ghostLayerRef = useRef<VectorLayer | null>(null);
+  const offlineLayerRef = useRef<VectorTileLayer | null>(null);
 
   // Switch basemap
   const switchBasemap = useCallback(
-    (style: "satellite" | "dark" | "street") => {
+    (
+      style:
+        | "satellite"
+        | "dark"
+        | "street"
+        | "offline"
+        | "nsdi"
+        | "ghost"
+        | "google"
+        | "google-hybrid",
+    ) => {
       setBasemapStyle(style);
       const layer = basemapLayerRef.current;
+
+      // Handle standard raster layers
       if (layer) {
-        (layer.getSource() as XYZ).setUrl(getBasemapUrl(style));
+        if (
+          style !== "ghost" &&
+          style !== "offline"
+        ) {
+          layer.setVisible(true);
+          const url = getBasemapUrl(style);
+          if (url) {
+            const source = layer.getSource() as XYZ;
+            source.setUrl(url);
+            
+            // Fix Overzooming: Most tilesets (like Esri) stop at level 19. 
+            // We tell OL to scale them if we go beyond that.
+            if (style === "satellite" || style === "nsdi") {
+              // @ts-ignore
+              source.maxZoom = 19; 
+            } else {
+              // @ts-ignore
+              source.maxZoom = 23; 
+            }
+            source.refresh();
+          }
+        } else {
+          layer.setVisible(false);
+        }
       }
-      // Show/hide label overlay only for satellite
-      basemapLabelLayerRef.current?.setVisible(style === "satellite");
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+
+      // Handle Ghost (GeoJSON) layer
+      if (ghostLayerRef.current) {
+        ghostLayerRef.current.setVisible(style === "ghost" || style === "offline");
+      }
+
+      // Handle PMTiles (Offline) layer
+      if (offlineLayerRef.current) {
+        offlineLayerRef.current.setVisible(style === "offline");
+      }
+
+      // Show/hide label overlay
+      basemapLabelLayerRef.current?.setVisible(style === "satellite" || style === "nsdi");
     },
     [],
   );
@@ -509,28 +534,24 @@ export default function School2DViewer({
     if (!containerRef.current || mapRef.current) return;
 
     const basemapSrc = new XYZ({
-      url: getBasemapUrl("satellite"),
-      attributions: "© Google, DigitalGlobe",
-      maxZoom: 23,
+      url: getBasemapUrl("google"),
+      attributions: "© Google, Esri, DigitalGlobe",
+      maxZoom: 19, // Use 19 as the 'tile' limit to enable overzooming up to 23
       crossOrigin: "anonymous",
     });
-    const basemap = new TileLayer({
-      source: basemapSrc,
-      zIndex: 0,
-      preload: Infinity, // Preload lower-res tiles for smoothness
-    });
+    const basemap = new TileLayer({ source: basemapSrc, zIndex: 0 });
     basemapLayerRef.current = basemap;
 
+    // Satellite labels overlay (roads, place names)
     const labelSrc = new XYZ({
-      url: "https://mt1.google.com/vt/lyrs=h&x={x}&y={y}&z={z}",
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
       maxZoom: 23,
       crossOrigin: "anonymous",
     });
     const labelLayer = new TileLayer({
       source: labelSrc,
       zIndex: 1,
-      opacity: 0.9,
-      preload: Infinity,
+      opacity: 0.85,
     });
     basemapLabelLayerRef.current = labelLayer;
 
@@ -552,6 +573,44 @@ export default function School2DViewer({
       }),
       controls: [],
     });
+
+    // ── Optimized Basemaps (Ghost & Offline) ─────────────────────────────────
+    // 1. Ghost Layer (Lightweight GeoJSON)
+    const ghostSource = new VectorSource({
+      features: new GeoJSONFormat().readFeatures(rwandaBoundaries, {
+        featureProjection: "EPSG:3857",
+      }),
+    });
+    const ghostLayer = new VectorLayer({
+      source: ghostSource,
+      style: new Style({
+        fill: new Fill({ color: "rgba(30, 41, 59, 0.05)" }),
+        stroke: new Stroke({ color: "rgba(148, 163, 184, 0.5)", width: 1 }),
+      }),
+      visible: false,
+      zIndex: -1,
+    });
+    map.addLayer(ghostLayer);
+    ghostLayerRef.current = ghostLayer;
+
+    // 2. Offline Layer (PMTiles)
+    const pmtilesUrl = `${FILE_SERVER_URL}/maps/rwanda.pmtiles`;
+    const offlineSource = new PMTilesVectorSource({
+      url: pmtilesUrl,
+      attributions: ["© OpenStreetMap"],
+    });
+    const offlineLayer = new VectorTileLayer({
+      source: offlineSource,
+      visible: false,
+      zIndex: -1,
+      // Minimalist style for offline browsing
+      style: new Style({
+        stroke: new Stroke({ color: "#e2e8f0", width: 1 }),
+        fill: new Fill({ color: "#f8fafc" }),
+      }),
+    });
+    map.addLayer(offlineLayer);
+    offlineLayerRef.current = offlineLayer;
 
     map.addControl(new ScaleLine({ units: "metric" }));
 
@@ -687,18 +746,8 @@ export default function School2DViewer({
       // ── Progressive async loader (fire-and-forget) ────────────────────────
       const loadLevels = async () => {
         setIsTileLoading(true);
-        const totalImages =
-          Array.from(groupedByLevel.values()).reduce(
-            (sum, arr) => sum + arr.length,
-            0,
-          ) || 1;
-        let imagesDecoded = 0;
-        const startTime = Date.now();
 
-        const fetchWithRetry = async (
-          url: string,
-          retries = 2,
-        ): Promise<Blob> => {
+        const fetchWithRetry = async (url: string, retries = 2): Promise<Blob> => {
           for (let i = 0; i <= retries; i++) {
             try {
               const res = await fetch(url);
@@ -706,7 +755,7 @@ export default function School2DViewer({
               return await res.blob();
             } catch (err) {
               if (i === retries) throw err;
-              await new Promise((r) => setTimeout(r, 1000 * (i + 1))); // Exponential backoff
+              await new Promise(r => setTimeout(r, 1000 * (i + 1))); // Exponential backoff
             }
           }
           throw new Error("Failed after retries");
@@ -730,10 +779,8 @@ export default function School2DViewer({
             // ─────────────────────────────────────────────────────────────────
             // CASE A: Cloud Optimized GeoTIFF (Highest Performance)
             // ─────────────────────────────────────────────────────────────────
-            const isTif =
-              ov.imageUrl.toLowerCase().endsWith(".tif") ||
-              ov.imageUrl.toLowerCase().endsWith(".tiff");
-
+            const isTif = ov.imageUrl.toLowerCase().endsWith(".tif") || ov.imageUrl.toLowerCase().endsWith(".tiff");
+            
             if (isTif) {
               const source = new GeoTIFFSource({
                 sources: [{ url: ov.imageUrl }],
@@ -746,7 +793,6 @@ export default function School2DViewer({
                 zIndex: 5 + level,
                 opacity: kmzOpacity,
                 extent: ovExt,
-                preload: Infinity,
               });
 
               map.addLayer(layer);
@@ -766,11 +812,7 @@ export default function School2DViewer({
               tileSize: 256,
               interpolate: true,
               wrapX: false,
-              loader: async (
-                z: number,
-                x: number,
-                y: number,
-              ): Promise<ImageBitmap> => {
+              loader: async (z: number, x: number, y: number): Promise<ImageBitmap> => {
                 const te = tileGrid.getTileCoordExtent([z, x, y]);
                 const ix = getIntersection(te, ovExt);
 
@@ -779,10 +821,7 @@ export default function School2DViewer({
                   return canvas.transferToImageBitmap();
                 }
 
-                const createTileFromBitmap = (
-                  bm: ImageBitmap,
-                  tbm?: ImageBitmap | null,
-                ) => {
+                const createTileFromBitmap = (bm: ImageBitmap, tbm?: ImageBitmap | null) => {
                   const [ixW, ixS, ixE, ixN] = ix;
                   const [tW, tS, tE, tN] = te;
                   const tileWd = tE - tW;
@@ -795,7 +834,7 @@ export default function School2DViewer({
 
                   const fullSrcW = ((ixE - ixW) / extWd) * bm.width;
                   let chosenBm = bm;
-
+                  
                   // Use thumbnail if downsampling aggressively
                   if (tbm && fullSrcW > dstW * 4) {
                     chosenBm = tbm;
@@ -810,27 +849,14 @@ export default function School2DViewer({
                   const ctx = canvas.getContext("2d")!;
                   ctx.imageSmoothingEnabled = true;
                   ctx.imageSmoothingQuality = "high";
-                  ctx.drawImage(
-                    chosenBm,
-                    srcX,
-                    srcY,
-                    srcW,
-                    srcH,
-                    dstX,
-                    dstY,
-                    dstW,
-                    dstH,
-                  );
+                  ctx.drawImage(chosenBm, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH);
                   return canvas.transferToImageBitmap();
                 };
 
                 // 1. Check if bitmap is already decoded
                 let existing = bitmaps.get(ov.imageUrl);
                 if (existing) {
-                  return createTileFromBitmap(
-                    existing,
-                    thumbs.get(ov.imageUrl),
-                  );
+                  return createTileFromBitmap(existing, thumbs.get(ov.imageUrl));
                 }
 
                 // 2. Not decoded? Check for a pending decode promise
@@ -843,35 +869,19 @@ export default function School2DViewer({
                       const blob = await fetchWithRetry(ov.imageUrl);
                       const bm = await createImageBitmap(blob);
                       bitmaps.set(ov.imageUrl, bm);
-
-                      imagesDecoded++;
-                      const progress = Math.min(
-                        98,
-                        80 + (imagesDecoded / totalImages) * 18,
-                      );
-                      setLoadProgress(progress);
-
-                      // TTC Heuristic: (avg time per image) * (remaining images)
-                      const elapsed = (Date.now() - startTime) / 1000;
-                      const avgTime = elapsed / imagesDecoded;
-                      const remaining = totalImages - imagesDecoded;
-                      setEstimatedSeconds(Math.ceil(avgTime * remaining));
-
+                      
                       // Create thumbnail for overview levels
                       if (bm.width > 2048 || bm.height > 2048) {
                         const scale = 1024 / Math.max(bm.width, bm.height);
                         const tbm = await createImageBitmap(bm, {
                           resizeWidth: Math.round(bm.width * scale),
                           resizeHeight: Math.round(bm.height * scale),
-                          resizeQuality: "high",
+                          resizeQuality: "high"
                         });
                         thumbs.set(ov.imageUrl, tbm);
                       }
                     } catch (err) {
-                      console.error(
-                        `[Pool] Failed to decode ${ov.imageUrl}:`,
-                        err,
-                      );
+                      console.error(`[Pool] Failed to decode ${ov.imageUrl}:`, err);
                       // Clear pending so we can try again later if needed
                       pendingDecodes.delete(ov.imageUrl);
                       throw err;
@@ -887,10 +897,7 @@ export default function School2DViewer({
                   await pending;
                   existing = bitmaps.get(ov.imageUrl);
                   if (existing) {
-                    return createTileFromBitmap(
-                      existing,
-                      thumbs.get(ov.imageUrl),
-                    );
+                    return createTileFromBitmap(existing, thumbs.get(ov.imageUrl));
                   }
                 } catch (err) {
                   // Fallback to empty if both attempts failed
@@ -906,16 +913,13 @@ export default function School2DViewer({
               zIndex: 5 + level,
               opacity: kmzOpacity,
               extent: ovExt,
-              preload: Infinity,
             });
 
             map.addLayer(tileLayer);
             groundOverlayLayersRef.current.push(tileLayer);
           }
 
-          await new Promise<void>((resolve) =>
-            requestAnimationFrame(() => resolve()),
-          );
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         }
         mapRef.current?.once("rendercomplete", () => setIsTileLoading(false));
       };
@@ -998,16 +1002,11 @@ export default function School2DViewer({
       // Prioritize direct GeoTIFF if available
       if (tifUrl) {
         setLoadingMessage("Initialising high-res GeoTIFF…");
-        loadGroundOverlays([
-          {
-            north: 90,
-            south: -90,
-            east: 180,
-            west: -180, // Extent will be derived from metadata usually
-            imageUrl: tifUrl,
-            drawOrder: 0,
-          },
-        ]);
+        loadGroundOverlays([{
+          north: 90, south: -90, east: 180, west: -180, // Extent will be derived from metadata usually
+          imageUrl: tifUrl,
+          drawOrder: 0
+        }]);
       }
 
       if (kmzUrl) {
@@ -1024,10 +1023,7 @@ export default function School2DViewer({
             const blob = await res.blob();
             const file = new File([blob], "data.kmz", { type: blob.type });
             cleanupKmzRef.current?.();
-            const unpacked = await unpackKmzFile(file, (p) => {
-              setLoadProgress(p);
-              setLoadingMessage("Unpacking spatial assets…");
-            });
+            const unpacked = await unpackKmzFile(file);
             cleanupKmzRef.current = unpacked.cleanup;
 
             // Collect GroundOverlay tiles from ALL KML files in the archive
@@ -1351,145 +1347,29 @@ export default function School2DViewer({
         </div>
       )}
 
-      {/* ── Background Asset Stream HUD ────────────────────────────────────── */}
-      {(isTileLoading || decodingCount > 0) && !isLoading && (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2">
-          <div className="flex items-center gap-3 rounded-full bg-black/60 backdrop-blur-xl border border-white/10 px-4 py-2 shadow-2xl animate-in slide-in-from-bottom-4 duration-500">
-            <div className="flex items-center gap-1.5">
-              <div className="relative h-2 w-2">
-                <div className="absolute inset-0 rounded-full bg-blue-500 animate-ping" />
-                <div className="relative h-2 w-2 rounded-full bg-blue-500" />
-              </div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-white/90">
-                Streaming High-Res Assets
-              </span>
-            </div>
-            <div className="h-4 w-px bg-white/10" />
-            <div className="flex items-center gap-2">
-              <div className="h-1 w-24 rounded-full bg-white/10 overflow-hidden">
-                <div
-                  className="h-full bg-blue-500 transition-all duration-500 ease-out"
-                  style={{ width: `${loadProgress}%` }}
-                />
-              </div>
-              <span className="text-[9px] font-mono font-bold text-blue-300 w-8">
-                {Math.round(loadProgress)}%
-              </span>
-            </div>
-            {estimatedSeconds !== null && (
-              <>
-                <div className="h-4 w-px bg-white/10" />
-                <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest">
-                  TTC: {estimatedSeconds}s
-                </span>
-              </>
-            )}
+      {/* ── Loading overlay ───────────────────────────────────────────────── */}
+      {(isLoading || isTileLoading || decodingCount > 0) && (
+        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-[#0f1117]/90 backdrop-blur-sm">
+          <div className="flex items-center justify-center h-16 w-16 rounded-full bg-blue-500/10 border border-blue-500/20">
+            <Globe className="h-8 w-8 text-blue-400 animate-pulse" />
           </div>
-          {decodingCount > 0 && (
-            <p className="text-[9px] font-medium text-blue-400/60 tracking-wider uppercase animate-pulse">
-              Optimizing {decodingCount} texture clusters...
+          <div className="text-center space-y-1">
+            <p className="text-xs font-black uppercase tracking-widest text-white/80">
+              {decodingCount > 0 ? "Optimizing Quality..." : loadingMessage}
             </p>
-          )}
-        </div>
-      )}
-
-      {/* ── Modern SYNC Overlay (Only for initial KML/Data discovery) ────────── */}
-      {isLoading && (
-        <div className="absolute inset-0 z-[110] flex flex-col items-center justify-center bg-[#05070a]/95 backdrop-blur-2xl animate-out fade-out duration-700">
-          {/* Animated Background Scanner */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
-            <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-blue-500 to-transparent animate-scan" />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(37,99,235,0.05)_0%,transparent_70%)]" />
-          </div>
-
-          <div className="relative flex flex-col items-center max-w-sm w-full px-8">
-            {/* Progress Central Hub */}
-            <div className="relative mb-12">
-              {/* Outer Pulsing Rings */}
-              <div className="absolute -inset-8 rounded-full border border-blue-500/10 animate-ping [animation-duration:3s]" />
-              <div className="absolute -inset-16 rounded-full border border-blue-500/5 animate-ping [animation-duration:4s]" />
-
-              {/* Progress Ring */}
-              <svg className="h-32 w-32 -rotate-90">
-                <circle
-                  cx="64"
-                  cy="64"
-                  r="60"
-                  fill="transparent"
-                  stroke="rgba(255,255,255,0.05)"
-                  strokeWidth="4"
+            {decodingCount > 0 && (
+              <p className="text-[10px] text-blue-300/60 animate-pulse">
+                Rendering {decodingCount} high-res native textures...
+              </p>
+            )}
+            <div className="flex items-center gap-1 justify-center pt-2">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="h-1 w-1 rounded-full bg-blue-400 animate-bounce"
+                  style={{ animationDelay: `${i * 0.15}s` }}
                 />
-                <circle
-                  cx="64"
-                  cy="64"
-                  r="60"
-                  fill="transparent"
-                  stroke="url(#progressGradient)"
-                  strokeWidth="4"
-                  strokeDasharray={377}
-                  strokeDashoffset={377 - (377 * loadProgress) / 100}
-                  strokeLinecap="round"
-                  className="transition-all duration-500 ease-out"
-                />
-                <defs>
-                  <linearGradient
-                    id="progressGradient"
-                    x1="0%"
-                    y1="0%"
-                    x2="100%"
-                    y2="100%"
-                  >
-                    <stop offset="0%" stopColor="#3b82f6" />
-                    <stop offset="100%" stopColor="#60a5fa" />
-                  </linearGradient>
-                </defs>
-              </svg>
-
-              {/* Central Icon/Percentage */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-2xl font-black text-white tracking-tighter">
-                  {Math.round(loadProgress)}%
-                </span>
-                <div className="flex gap-0.5 mt-1">
-                  {[0, 1, 2].map((i) => (
-                    <div
-                      key={i}
-                      className="h-1 w-1 rounded-full bg-blue-500 animate-bounce"
-                      style={{ animationDelay: `${i * 0.1}s` }}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Status Info */}
-            <div className="text-center space-y-4 w-full">
-              <div className="space-y-1">
-                <h3 className="text-sm font-black uppercase tracking-[0.2em] text-white/90">
-                  {decodingCount > 0 ? "Optimizing Assets" : "System Sync"}
-                </h3>
-                <p className="text-[11px] font-medium text-blue-400/80 tracking-widest uppercase animate-pulse">
-                  {loadingMessage}
-                </p>
-              </div>
-
-              {/* TTC Placeholder removed since it's in the background HUD now */}
-              <div className="pt-4 border-t border-white/5 flex items-center justify-between">
-                <div className="text-left">
-                  <p className="text-[9px] font-bold text-white/30 uppercase tracking-widest mb-0.5">
-                    Data Sync Status
-                  </p>
-                  <p className="text-xs font-mono font-bold text-blue-300">
-                    Synchronizing...
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[9px] font-bold text-white/30 uppercase tracking-widest mb-0.5">
-                    Connection
-                  </p>
-                  <p className="text-xs font-bold text-emerald-400">Stable</p>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         </div>
@@ -1510,6 +1390,8 @@ export default function School2DViewer({
               <X className="h-4 w-4" />
             </Button>
           )}
+
+
 
           {/* Feature navigator */}
           <Button
@@ -1556,13 +1438,24 @@ export default function School2DViewer({
 
           <div className="h-px bg-border/20 mx-1" />
 
-          {/* Basemap: satellite */}
+          {/* Basemap: Google Satellite (NEW Default) */}
+          <Button
+            variant={basemapStyle === "google" ? "default" : "ghost"}
+            size="icon"
+            className="h-9 w-9 rounded-xl border border-white/10"
+            onClick={() => switchBasemap("google")}
+            title="Google Satellite (High Compatibility)"
+          >
+            <Globe className="h-4 w-4 text-sky-400" />
+          </Button>
+
+          {/* Basemap: satellite (Esri) */}
           <Button
             variant={basemapStyle === "satellite" ? "default" : "ghost"}
             size="icon"
             className="h-9 w-9 rounded-xl"
             onClick={() => switchBasemap("satellite")}
-            title="Satellite basemap"
+            title="Esri World Imagery"
           >
             <Satellite className="h-4 w-4" />
           </Button>
@@ -1587,6 +1480,39 @@ export default function School2DViewer({
             title="Street map"
           >
             <MapIcon2 className="h-4 w-4" />
+          </Button>
+
+          {/* Basemap: NSDI */}
+          <Button
+            variant={basemapStyle === "nsdi" ? "default" : "ghost"}
+            size="icon"
+            className="h-9 w-9 rounded-xl"
+            onClick={() => switchBasemap("nsdi")}
+            title="Official Rwanda NSDI map (Faster locally)"
+          >
+            <Globe className="h-4 w-4" />
+          </Button>
+
+          {/* Basemap: Offline */}
+          <Button
+            variant={basemapStyle === "offline" ? "default" : "ghost"}
+            size="icon"
+            className="h-9 w-9 rounded-xl"
+            onClick={() => switchBasemap("offline")}
+            title="Offline cached map (PMTiles)"
+          >
+            <Download className="h-4 w-4" />
+          </Button>
+
+          {/* Basemap: Ghost */}
+          <Button
+            variant={basemapStyle === "ghost" ? "default" : "ghost"}
+            size="icon"
+            className="h-9 w-9 rounded-xl"
+            onClick={() => switchBasemap("ghost")}
+            title="Low bandwidth mode (Vector only)"
+          >
+            <Layers className="h-4 w-4" />
           </Button>
 
           <div className="h-px bg-border/20 mx-1" />
@@ -1651,10 +1577,12 @@ export default function School2DViewer({
             size="icon"
             className="h-9 w-9 rounded-xl"
             onClick={() =>
-              mapRef.current?.getView().animate({
-                zoom: (mapRef.current.getView().getZoom() ?? 19) + 1,
-                duration: 200,
-              })
+              mapRef.current
+                ?.getView()
+                .animate({
+                  zoom: (mapRef.current.getView().getZoom() ?? 19) + 1,
+                  duration: 200,
+                })
             }
             title="Zoom in"
           >
@@ -1667,10 +1595,12 @@ export default function School2DViewer({
             size="icon"
             className="h-9 w-9 rounded-xl"
             onClick={() =>
-              mapRef.current?.getView().animate({
-                zoom: (mapRef.current.getView().getZoom() ?? 19) - 1,
-                duration: 200,
-              })
+              mapRef.current
+                ?.getView()
+                .animate({
+                  zoom: (mapRef.current.getView().getZoom() ?? 19) - 1,
+                  duration: 200,
+                })
             }
             title="Zoom out"
           >
@@ -1877,20 +1807,16 @@ export default function School2DViewer({
 
       {/* ── Basic Info Modal ────────────────────────────────────────────── */}
       {showBasicInfo && (
-        <div className="absolute inset-0 z-110 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="absolute inset-0 z-[110] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="relative w-full max-w-lg bg-black/60 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl p-8 text-white overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-blue-500 to-blue-500" />
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500" />
 
             <div className="flex items-start justify-between mb-8">
               <div>
-                <h2 className="text-2xl font-bold tracking-tight mb-1">
-                  {school.name}
-                </h2>
+                <h2 className="text-2xl font-bold tracking-tight mb-1">{school.name}</h2>
                 <div className="flex items-center gap-2 text-sm text-white/50 font-medium tracking-wide">
                   <MapPin className="h-3.5 w-3.5" />
-                  {[school.province, school.district, school.sector]
-                    .filter(Boolean)
-                    .join(" • ") || "Location Unknown"}
+                  {[school.province, school.district, school.sector].filter(Boolean).join(" • ") || "Location Unknown"}
                 </div>
               </div>
               <Button
@@ -1905,53 +1831,27 @@ export default function School2DViewer({
 
             <div className="grid grid-cols-2 gap-y-6 gap-x-8">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">
-                  School Code
-                </p>
-                <p className="text-lg font-mono font-medium">
-                  {school.code || "N/A"}
-                </p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">School Code</p>
+                <p className="text-lg font-mono font-medium">{school.code || "N/A"}</p>
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">
-                  Level
-                </p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">Level</p>
                 <p className="text-lg font-medium">{school.level || "N/A"}</p>
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">
-                  Type
-                </p>
-                <p className="text-lg font-medium capitalize">
-                  {school.type?.toLowerCase() || "N/A"}
-                </p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">Type</p>
+                <p className="text-lg font-medium capitalize">{school.type?.toLowerCase() || "N/A"}</p>
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">
-                  Status
-                </p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">Status</p>
                 <div className="flex items-center gap-2">
-                  <div
-                    className={cn(
-                      "h-2 w-2 rounded-full",
-                      school.status === "ACTIVE"
-                        ? "bg-emerald-400"
-                        : "bg-amber-400",
-                    )}
-                  />
-                  <p className="text-lg font-medium capitalize">
-                    {school.status?.toLowerCase() || "Active"}
-                  </p>
+                  <div className={cn("h-2 w-2 rounded-full", school.status === "ACTIVE" ? "bg-emerald-400" : "bg-amber-400")} />
+                  <p className="text-lg font-medium capitalize">{school.status?.toLowerCase() || "Active"}</p>
                 </div>
               </div>
               <div className="col-span-2">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">
-                  Coordinates
-                </p>
-                <p className="text-sm font-mono text-white/70">
-                  {Number(school.latitude).toFixed(6)},{" "}
-                  {Number(school.longitude).toFixed(6)}
-                </p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">Coordinates</p>
+                <p className="text-sm font-mono text-white/70">{Number(school.latitude).toFixed(6)}, {Number(school.longitude).toFixed(6)}</p>
               </div>
             </div>
           </div>
