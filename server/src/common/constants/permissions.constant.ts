@@ -22,6 +22,9 @@ export enum Permission {
   EXPORT_REPORTS = 'EXPORT_REPORTS',
   SCHOOL_LEVEL_DASHBOARD = 'SCHOOL_LEVEL_DASHBOARD',
   CREATE_REPORT = 'CREATE_REPORT',
+  EDIT_SCHOOL_PROFILE = 'EDIT_SCHOOL_PROFILE',
+  SCHOOL_SURVERY_EDIT = 'SCHOOL_SURVERY_EDIT',
+  SCHOOL_VIEW_2D3D_MAP = 'SCHOOL_VIEW_2D3D_MAP',
 }
 
 export const DefaultRolePermissions: Record<string, Permission[]> = {
@@ -49,6 +52,9 @@ export const DefaultRolePermissions: Record<string, Permission[]> = {
     Permission.EXPORT_REPORTS,
     Permission.SCHOOL_LEVEL_DASHBOARD,
     Permission.CREATE_REPORT,
+    Permission.EDIT_SCHOOL_PROFILE,
+    Permission.SCHOOL_SURVERY_EDIT,
+    Permission.SCHOOL_VIEW_2D3D_MAP,
   ],
   gis_analyst: [
     Permission.VIEW_DASHBOARD,
