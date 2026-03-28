@@ -25,7 +25,10 @@ export class Role {
   @Column({ type: 'text', array: true, default: [] })
   permissions: string[];
 
-  @ManyToOne(() => AccessLevel, (al) => al.roles, { nullable: true, eager: true })
+  @ManyToOne(() => AccessLevel, (al) => al.roles, {
+    nullable: true,
+    eager: true,
+  })
   @JoinColumn()
   accessLevel: AccessLevel;
 

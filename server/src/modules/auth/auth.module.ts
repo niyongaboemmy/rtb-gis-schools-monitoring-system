@@ -16,8 +16,15 @@ import { User } from '../users/entities/user.entity';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET') || 'rtb-super-secret-key-2026',
-        signOptions: { expiresIn: configService.get<string>('JWT_ACCESS_EXPIRES_IN', '15m') as any },
+        secret:
+          configService.get<string>('JWT_SECRET') ||
+          'rtb-super-secret-key-2026',
+        signOptions: {
+          expiresIn: configService.get<string>(
+            'JWT_ACCESS_EXPIRES_IN',
+            '15m',
+          ) as any,
+        },
       }),
       inject: [ConfigService],
     }),

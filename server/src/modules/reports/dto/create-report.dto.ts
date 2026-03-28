@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsOptional, IsString, IsUUID, IsEnum } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  IsEnum,
+} from 'class-validator';
 import { ReportStatus } from '../entities/issue-report.entity';
 
 export class CreateReportDto {
@@ -18,9 +24,9 @@ export class CreateReportDto {
   @IsNotEmpty()
   itemId: string;
 
-  @IsString()
+  @IsString({ each: true })
   @IsOptional()
-  issueCategory?: string;
+  issueCategory?: string[];
 
   @IsString()
   @IsNotEmpty()

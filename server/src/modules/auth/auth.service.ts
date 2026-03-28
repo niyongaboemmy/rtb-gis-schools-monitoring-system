@@ -18,7 +18,8 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
 
-    const user = await this.userRepository.createQueryBuilder('user')
+    const user = await this.userRepository
+      .createQueryBuilder('user')
       .leftJoinAndSelect('user.role', 'role')
       .leftJoinAndSelect('role.accessLevel', 'accessLevel')
       .addSelect('user.password')
@@ -30,7 +31,8 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
     const isPasswordValid = await user.validatePassword(password);
-    if (!isPasswordValid) throw new UnauthorizedException('Invalid credentials');
+    if (!isPasswordValid)
+      throw new UnauthorizedException('Invalid credentials');
 
     // Update last login
     await this.userRepository.update(user.id, { lastLoginAt: new Date() });
@@ -47,7 +49,8 @@ export class AuthService {
   }
 
   async refreshToken(userId: string, refreshToken: string) {
-    const user = await this.userRepository.createQueryBuilder('user')
+    const user = await this.userRepository
+      .createQueryBuilder('user')
       .leftJoinAndSelect('user.role', 'role')
       .leftJoinAndSelect('role.accessLevel', 'accessLevel')
       .addSelect('user.refreshToken')
@@ -55,7 +58,8 @@ export class AuthService {
       .where('user.id = :userId', { userId })
       .andWhere('user.isActive = :isActive', { isActive: true })
       .getOne();
-    if (!user || !user.refreshToken) throw new UnauthorizedException('Access denied');
+    if (!user || !user.refreshToken)
+      throw new UnauthorizedException('Access denied');
 
     const tokens = await this.generateTokens(user);
     await this.saveRefreshToken(user.id, tokens.refreshToken);
@@ -68,9 +72,9 @@ export class AuthService {
   }
 
   async validateUser(userId: string): Promise<User> {
-    const user = await this.userRepository.findOne({ 
+    const user = await this.userRepository.findOne({
       where: { id: userId, isActive: true },
-      relations: ['role', 'role.accessLevel']
+      relations: ['role', 'role.accessLevel'],
     });
     if (!user) throw new UnauthorizedException('User not found or inactive');
     return user;

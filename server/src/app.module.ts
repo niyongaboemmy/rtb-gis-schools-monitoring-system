@@ -55,5 +55,3 @@ import { ReportsModule } from './modules/reports/reports.module';
   ],
 })
 export class AppModule {}
-
-

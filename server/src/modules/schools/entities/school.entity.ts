@@ -181,6 +181,10 @@ export class School {
   @Column({ nullable: true })
   kmzMasterKmlPath: string;
 
+  // 2D-specific KMZ/KML for OpenLayers viewer
+  @Column({ nullable: true })
+  kmz2dFilePath: string;
+
   @Column({ nullable: true })
   kmzProcessedAt: Date;
 

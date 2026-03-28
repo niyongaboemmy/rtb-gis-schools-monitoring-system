@@ -18,6 +18,7 @@ import {
   SchoolFacilitySurvey,
   ComplianceLevel,
 } from './entities/school-facility-survey.entity';
+import { StorageService } from '../storage/storage.service';
 
 @Injectable()
 export class SchoolsService {
@@ -30,6 +31,7 @@ export class SchoolsService {
     private readonly facilityRepository: Repository<FacilityEntity>,
     @InjectRepository(SchoolFacilitySurvey)
     private readonly surveyRepository: Repository<SchoolFacilitySurvey>,
+    private readonly storageService: StorageService,
   ) {}
 
   async create(createSchoolDto: CreateSchoolDto): Promise<School> {
@@ -52,8 +54,15 @@ export class SchoolsService {
       console.log('Creating buildings for school:', savedSchool.id);
       console.log('Buildings data:', buildings);
       const schoolBuildings = buildings.map((building) => {
-        const { area, condition, roofCondition, code, latitude, longitude, ...buildingData } =
-          building;
+        const {
+          area,
+          condition,
+          roofCondition,
+          code,
+          latitude,
+          longitude,
+          ...buildingData
+        } = building;
         const created = this.schoolBuildingRepository.create({
           ...buildingData,
           schoolId: savedSchool.id,
@@ -154,8 +163,15 @@ export class SchoolsService {
       if (buildings.length > 0) {
         console.log('UPDATE - Creating new buildings...');
         const schoolBuildings = buildings.map((building) => {
-          const { area, condition, roofCondition, code, latitude, longitude, ...buildingData } =
-            building;
+          const {
+            area,
+            condition,
+            roofCondition,
+            code,
+            latitude,
+            longitude,
+            ...buildingData
+          } = building;
           const created = this.schoolBuildingRepository.create({
             ...buildingData,
             schoolId: id,
@@ -185,6 +201,8 @@ export class SchoolsService {
 
   async remove(id: string): Promise<void> {
     const school = await this.findOne(id);
+    // Delete all spatial assets stored for this school (KMZ, tiles, places overlay, thumbnail)
+    await this.storageService.deleteDirectory(`schools/${id}`);
     await this.schoolRepository.remove(school);
   }
 

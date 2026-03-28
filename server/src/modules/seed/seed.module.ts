@@ -8,8 +8,9 @@ import { FacilityEntity } from '../schools/entities/facility.entity';
 import { AccessLevel } from '../access-levels/entities/access-level.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Role, School, FacilityEntity, AccessLevel])],
+  imports: [
+    TypeOrmModule.forFeature([User, Role, School, FacilityEntity, AccessLevel]),
+  ],
   providers: [SeedService],
 })
 export class SeedModule {}
-

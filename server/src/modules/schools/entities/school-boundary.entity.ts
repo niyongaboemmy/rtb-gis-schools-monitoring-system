@@ -1,6 +1,11 @@
 import {
-  Entity, PrimaryGeneratedColumn, Column, CreateDateColumn,
-  UpdateDateColumn, ManyToOne, JoinColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { School } from './school.entity';
 
@@ -18,7 +23,9 @@ export class SchoolBoundary {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => School, (school) => school.boundaries, { onDelete: 'CASCADE' })
+  @ManyToOne(() => School, (school) => school.boundaries, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'school_id' })
   school: School;
 

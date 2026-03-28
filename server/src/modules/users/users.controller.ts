@@ -1,5 +1,19 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ParseUUIDPipe, Request,
-  UploadedFile, UseInterceptors, Res, HttpCode } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  ParseUUIDPipe,
+  Request,
+  UploadedFile,
+  UseInterceptors,
+  Res,
+  HttpCode,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import type { Response } from 'express';
@@ -9,7 +23,6 @@ import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/constants/permissions.constant';
 import * as XLSX from 'xlsx';
-
 
 @ApiTags('users')
 @Controller('users')
@@ -35,7 +48,17 @@ export class UsersController {
   @Post()
   @ApiOperation({ summary: 'Create new user' })
   @RequirePermissions(Permission.MANAGE_USERS)
-  create(@Body() body: { firstName: string; lastName: string; email: string; password: string; roleId?: string; location?: any }) {
+  create(
+    @Body()
+    body: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      password: string;
+      roleId?: string;
+      location?: any;
+    },
+  ) {
     return this.usersService.create(body);
   }
 
@@ -43,16 +66,42 @@ export class UsersController {
   @ApiOperation({ summary: 'Download xlsx user upload template' })
   @RequirePermissions(Permission.MANAGE_USERS)
   downloadTemplate(@Res() res: Response) {
-    const headers = ['firstName', 'lastName', 'email', 'password', 'roleName', 'province', 'district', 'sector', 'schoolId'];
-    const example = ['John', 'Doe', 'john.doe@rtb.gov.rw', 'SecurePass123!', 'viewer', 'Kigali City', 'Gasabo', '', ''];
+    const headers = [
+      'firstName',
+      'lastName',
+      'email',
+      'password',
+      'roleName',
+      'province',
+      'district',
+      'sector',
+      'schoolId',
+    ];
+    const example = [
+      'John',
+      'Doe',
+      'john.doe@rtb.gov.rw',
+      'SecurePass123!',
+      'viewer',
+      'Kigali City',
+      'Gasabo',
+      '',
+      '',
+    ];
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([headers, example]);
     // Column widths
     ws['!cols'] = headers.map(() => ({ wch: 20 }));
     XLSX.utils.book_append_sheet(wb, ws, 'Users');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-    res.setHeader('Content-Disposition', 'attachment; filename="users_upload_template.xlsx"');
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="users_upload_template.xlsx"',
+    );
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
     res.send(buf);
   }
 
@@ -95,8 +144,15 @@ export class UsersController {
 
   @Patch('me/password')
   @ApiOperation({ summary: 'Change your own password' })
-  changePassword(@Request() req, @Body() body: { currentPassword: string; newPassword: string }) {
-    return this.usersService.changePassword(req.user.id, body.currentPassword, body.newPassword);
+  changePassword(
+    @Request() req,
+    @Body() body: { currentPassword: string; newPassword: string },
+  ) {
+    return this.usersService.changePassword(
+      req.user.id,
+      body.currentPassword,
+      body.newPassword,
+    );
   }
 
   @Patch(':id')

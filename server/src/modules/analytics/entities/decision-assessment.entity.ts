@@ -1,6 +1,11 @@
 import {
-  Entity, PrimaryGeneratedColumn, Column, CreateDateColumn,
-  UpdateDateColumn, ManyToOne, JoinColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { School } from '../../schools/entities/school.entity';
 
@@ -16,7 +21,9 @@ export class DecisionAssessment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => School, (school) => school.assessments, { onDelete: 'CASCADE' })
+  @ManyToOne(() => School, (school) => school.assessments, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'school_id' })
   school: School;
 

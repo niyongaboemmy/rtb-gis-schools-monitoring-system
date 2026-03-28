@@ -43,8 +43,8 @@ export class IssueReport {
   @Column()
   itemId: string; // The ID from FacilityItem
 
-  @Column({ nullable: true })
-  issueCategory: string; // The chosen predefined issue
+  @Column({ type: 'jsonb', nullable: true })
+  issueCategory: string[]; // Multiple chosen predefined issues
 
   @Column({ type: 'text' })
   description: string;

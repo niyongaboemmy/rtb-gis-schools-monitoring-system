@@ -88,7 +88,6 @@ export function RolesTab() {
     permissionLabel: string,
     checked: boolean,
   ) => {
-    if (role.name === "super_admin") return;
     const key = `perm-${role.id}-${permissionLabel}`;
     setAL(key, true);
 
@@ -188,8 +187,40 @@ export function RolesTab() {
         return "Re-run priority algorithms and modify assessment weights";
       case "EXPORT_REPORTS":
         return "Export data tables and comprehensive system reports";
+      case "CREATE_SCHOOL":
+        return "Enable registration of new schools and TVET centers";
+      case "DELETE_SCHOOL":
+        return "Permanent removal of school records from the national database";
+      case "EDIT_SCHOOL_BASIC":
+        return "Modify basic identification, status, and establishing year";
+      case "EDIT_SCHOOL_LOCATION":
+        return "Update geographic coordinates and administrative location data";
+      case "EDIT_SCHOOL_CONTACT":
+        return "Modify contact person, email, phone, and website links";
+      case "EDIT_SCHOOL_PROGRAMS":
+        return "Manage education programs (Trades), levels, and student counts";
+      case "EDIT_SCHOOL_STAFF":
+        return "Update staffing figures for teachers, admin, and support personnel";
+      case "EDIT_SCHOOL_LAND":
+        return "Modify land usage figures (used vs unused square meters)";
+      case "EDIT_SCHOOL_BUILDINGS":
+        return "Manage structural building data, conditions, and footprints";
+      case "VIEW_INTELLIGENCE":
+        return "Access AI-driven decision priority scores and infrastructure delta";
+      case "RUN_FACILITY_SURVEY":
+        return "Conduct or initiate infrastructure compliance assessments";
+      case "SCHOOL_LEVEL_DASHBOARD":
+        return "Access detailed individual school intelligence view";
+      case "CREATE_REPORT":
+        return "Submit new incident or infrastructure status reports";
+      case "EDIT_SCHOOL_PROFILE":
+        return "General ability to modify school-related profile data";
+      case "SCHOOL_SURVERY_EDIT":
+        return "Ability to edit or initiate facility survey compliance entries";
+      case "SCHOOL_VIEW_2D3D_MAP":
+        return "Enable access to the multimodal 2D/3D map viewer overlays";
       default:
-        return "System permission";
+        return "Operational authority parameter";
     }
   };
 
@@ -391,7 +422,6 @@ export function RolesTab() {
                               "opacity-60",
                           )}
                           disabled={
-                            selectedRole.name === "super_admin" ||
                             isAL(`perm-${selectedRole.id}-${permission}`)
                           }
                         >

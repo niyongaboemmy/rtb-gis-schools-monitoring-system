@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  ParseUUIDPipe,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesService } from './roles.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -30,7 +40,9 @@ export class RolesController {
   @Post()
   @ApiOperation({ summary: 'Create new role' })
   @RequirePermissions(Permission.MANAGE_USERS)
-  create(@Body() body: { name: string; description?: string; permissions: string[] }) {
+  create(
+    @Body() body: { name: string; description?: string; permissions: string[] },
+  ) {
     return this.rolesService.create(body);
   }
 

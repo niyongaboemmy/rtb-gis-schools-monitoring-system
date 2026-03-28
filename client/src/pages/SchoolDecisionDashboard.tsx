@@ -63,6 +63,7 @@ import { Permission } from "../lib/permissions";
 import { SchoolForm } from "../components/SchoolForm";
 import { FacilitySurveyForm } from "../components/FacilitySurveyForm";
 import { Modal } from "../components/ui/modal";
+import SchoolMap from "../components/SchoolMap";
 
 type BuildingCondition = "good" | "fair" | "poor" | "critical";
 // type PriorityLevel = "critical" | "high" | "medium" | "low";
@@ -78,6 +79,7 @@ export default function SchoolDecisionDashboard() {
   const [is3DViewOpen, setIs3DViewOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSurveyModalOpen, setIsSurveyModalOpen] = useState(false);
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [activeMapTab, setActiveMapTab] = useState<
     "map" | "satellite" | "terrain" | "traffic" | "street" | "kml"
   >("kml");
@@ -701,9 +703,7 @@ export default function SchoolDecisionDashboard() {
                   schoolData.kmzFilePath) && (
                   <Button
                     variant="outline"
-                    onClick={() =>
-                      id && window.open(`/schools/${id}/3dview`, "_blank")
-                    }
+                    onClick={() => setIsMapModalOpen(true)}
                     className="rounded-full h-10 px-5 font-black uppercase text-[10px] border-primary/30 bg-primary/5 text-primary shadow-none hover:bg-primary/10 tracking-widest transition-all outline-none"
                   >
                     <Box className="mr-2 h-3.5 w-3.5" />
@@ -1255,17 +1255,17 @@ export default function SchoolDecisionDashboard() {
                             }
                           >
                             <img
-                              src={`/public/uploads/schools/${id}/kmz_content/b0.png`}
+                              src={`/files/schools/${id}/kmz_content/b0.png`}
                               alt="School Structure"
                               className="w-full h-full object-cover"
                               onError={(e) => {
                                 const img = e.target as HTMLImageElement;
                                 if (img.src.includes("b0.png")) {
-                                  img.src = `/public/uploads/schools/${id}/kmz_content/model.jpg`;
+                                  img.src = `/files/schools/${id}/kmz_content/model.jpg`;
                                 } else if (img.src.includes("model.jpg")) {
-                                  img.src = `/public/uploads/schools/${id}/kmz_content/a.png`;
+                                  img.src = `/files/schools/${id}/kmz_content/a.png`;
                                 } else if (img.src.includes("a.png")) {
-                                  img.src = `/public/uploads/schools/${id}/kmz_content/b2.png`;
+                                  img.src = `/files/schools/${id}/kmz_content/b2.png`;
                                 } else {
                                   img.src =
                                     "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjRjNGNEY2Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM5Qzk2QTkiIGZvbnQtd2lkdGg9IjE2IiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zdHlsZT0iYm9sZCI+T0xEIFNBTVBMRTwvdGV4dD48L3N2Zz4=";
@@ -2692,12 +2692,12 @@ export default function SchoolDecisionDashboard() {
                 <div className="absolute inset-0 flex items-center justify-center">
                   {id && (
                     <img
-                      src={`/public/uploads/schools/${id}/kmz_content/b0.png`}
+                      src={`/files/schools/${id}/kmz_content/b0.png`}
                       alt="School Structure"
                       className="max-w-full max-h-full object-contain p-8 drop-shadow-2xl"
                       onError={(e) => {
                         const img = e.target as HTMLImageElement;
-                        img.src = `/public/uploads/schools/${id}/kmz_content/a.png`;
+                        img.src = `/files/schools/${id}/kmz_content/a.png`;
                       }}
                     />
                   )}
@@ -3103,6 +3103,23 @@ export default function SchoolDecisionDashboard() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={isMapModalOpen}
+        onClose={() => setIsMapModalOpen(false)}
+        title="School Digital Twin"
+        className="max-w-[100vw] w-screen h-screen p-0 m-0 rounded-none overflow-hidden"
+      >
+        <div className="w-full h-full bg-slate-900 border-none">
+          {schoolData && (
+            <SchoolMap
+              school={schoolData}
+              buildings={buildings}
+              onClose={() => setIsMapModalOpen(false)}
+            />
+          )}
+        </div>
       </Modal>
     </>
   );

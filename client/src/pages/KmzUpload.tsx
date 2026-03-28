@@ -8,14 +8,18 @@ import {
   ArrowLeft,
   Layers,
   MapPin,
+  Box,
+  Map,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { PageHeader } from "../components/ui/page-header";
 import { useAuthStore } from "../store/authStore";
+import { cn } from "../lib/utils";
 
 export default function KmzUpload() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [uploadMode, setUploadMode] = useState<"3d" | "2d">("3d");
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<
     "idle" | "uploading" | "processing" | "success" | "error"
@@ -58,7 +62,12 @@ export default function KmzUpload() {
     const apiBaseUrl = import.meta.env.VITE_API_URL || "/api/v1";
     const token = useAuthStore.getState().token;
 
-    xhr.open("POST", `${apiBaseUrl}/schools/${id}/kmz`);
+    // Route to the correct endpoint based on upload mode
+    const endpoint =
+      uploadMode === "2d"
+        ? `${apiBaseUrl}/schools/${id}/kmz/2d`
+        : `${apiBaseUrl}/schools/${id}/kmz`;
+    xhr.open("POST", endpoint);
     xhr.setRequestHeader("Accept", "application/json");
     if (token) {
       xhr.setRequestHeader("Authorization", `Bearer ${token}`);
@@ -115,7 +124,7 @@ export default function KmzUpload() {
     <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <PageHeader
         title="GIS Telemetry Deployment"
-        description="Upload drone survey KMZ or KML payloads to initialize structural mapping and 3D terrain extraction."
+        description="Upload KMZ or KML files for 3D Cesium rendering or 2D OpenLayers display."
         icon={Layers}
         backButton={
           <Button
@@ -130,6 +139,29 @@ export default function KmzUpload() {
           </Button>
         }
       />
+
+      {/* 2D / 3D mode selector */}
+      <div className="grid grid-cols-2 gap-4">
+        {[
+          { mode: "3d" as const, label: "3D Viewer", desc: "Cesium — with 3D building models & terrain", icon: Box },
+          { mode: "2d" as const, label: "2D Viewer", desc: "OpenLayers — flat KML features & overlays", icon: Map },
+        ].map(({ mode, label, desc, icon: Icon }) => (
+          <button
+            key={mode}
+            onClick={() => { setUploadMode(mode); setFile(null); setStatus("idle"); }}
+            className={cn(
+              "rounded-3xl p-6 text-left border-2 transition-all",
+              uploadMode === mode
+                ? "border-primary bg-primary/5"
+                : "border-border/20 hover:border-primary/40 bg-card"
+            )}
+          >
+            <Icon className={cn("w-6 h-6 mb-3", uploadMode === mode ? "text-primary" : "text-muted-foreground")} />
+            <p className="text-sm font-black uppercase tracking-tight">{label}</p>
+            <p className="text-[10px] text-muted-foreground mt-1">{desc}</p>
+          </button>
+        ))}
+      </div>
 
       <div className="bg-card rounded-3xl p-8">
         {status === "success" ? (

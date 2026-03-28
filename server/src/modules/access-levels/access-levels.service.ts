@@ -27,9 +27,7 @@ export class AccessLevelsService {
   async create(dto: { name: string }): Promise<AccessLevel> {
     const existing = await this.repo.findOne({ where: { name: dto.name } });
     if (existing)
-      throw new ConflictException(
-        `Access level "${dto.name}" already exists`,
-      );
+      throw new ConflictException(`Access level "${dto.name}" already exists`);
     const level = this.repo.create(dto);
     return this.repo.save(level);
   }

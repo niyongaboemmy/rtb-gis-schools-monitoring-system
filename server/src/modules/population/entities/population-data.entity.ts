@@ -1,6 +1,11 @@
 import {
-  Entity, PrimaryGeneratedColumn, Column, CreateDateColumn,
-  UpdateDateColumn, ManyToOne, JoinColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { School } from '../../schools/entities/school.entity';
 
@@ -9,7 +14,9 @@ export class PopulationData {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => School, (school) => school.populationData, { onDelete: 'CASCADE' })
+  @ManyToOne(() => School, (school) => school.populationData, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'school_id' })
   school: School;
 

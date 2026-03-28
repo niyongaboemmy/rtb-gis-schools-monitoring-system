@@ -47,6 +47,27 @@ export class KmzController {
     return this.kmzService.uploadKmz(schoolId, file);
   }
 
+  @Post('2d')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Upload 2D KMZ/KML file for the OpenLayers viewer (no 3D model extraction)',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  uploadKmz2d(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.kmzService.uploadKmz2d(schoolId, file);
+  }
+
   @Post('places-overlay')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

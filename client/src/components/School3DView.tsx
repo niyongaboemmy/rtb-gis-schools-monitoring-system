@@ -59,7 +59,10 @@ interface School3DViewProps {
   placesOverlayUrl?: string; // Direct URL to places overlay KML/KMZ file
   fallbackLocation: { lat: number; lng: number };
   initialView?: any;
-  onClose: () => void;
+  onClose?: () => void;
+  isEmbed?: boolean;
+  onSelectBuilding?: (building: any) => void;
+  initialBuildingId?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -310,10 +313,25 @@ const ViewInitializer: React.FC<{
   location: { lat: number; lng: number };
   onComplete: () => void;
   initialView?: any;
-}> = ({ location, onComplete, initialView }) => {
+  initialBuildingId?: string;
+  features?: any[];
+}> = ({ location, onComplete, initialView, initialBuildingId, features }) => {
   const { viewer } = useCesium();
   useEffect(() => {
     if (!viewer) return;
+
+    // Highest priority: fly to initialBuildingId if provided
+    if (initialBuildingId && features && features.length > 0) {
+      const target = features.find(f => {
+        const id = f.id || f.name;
+        return id === initialBuildingId || (f.name && f.name.toLowerCase().includes(initialBuildingId.toLowerCase()));
+      });
+
+      if (target) {
+        viewer.flyTo(target, { duration: 3 }).then(onComplete);
+        return;
+      }
+    }
 
     // Use initialView (from KMZ) as top priority
     if (initialView) {
@@ -372,6 +390,9 @@ const School3DView: React.FC<School3DViewProps> = ({
   fallbackLocation,
   initialView,
   onClose,
+  isEmbed,
+  onSelectBuilding,
+  initialBuildingId,
 }) => {
   const viewerRef = useRef<any>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("2D");
@@ -651,18 +672,28 @@ const School3DView: React.FC<School3DViewProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-100">
-      <Card className="w-full h-full relative overflow-hidden bg-background/80 backdrop-blur-xl border border-border/10 flex flex-col">
+    <div className={cn(
+      isEmbed ? "relative w-full h-full min-h-[500px]" : "fixed inset-0 z-100"
+    )}>
+      <Card
+        className={cn(
+          "w-full h-full relative overflow-hidden bg-background/80 backdrop-blur-xl border border-border/10 flex flex-col",
+          isEmbed ? "rounded-[35px]" : ""
+        )}
+      >
         {/* Logo/Badge */}
         <div className="absolute top-6 left-6 z-10 flex gap-3 pointer-events-none">
           <div className="w-10 h-10 bg-primary/20 rounded-2xl flex items-center justify-center border border-primary/20">
             <Globe className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h2 className="text-sm font-black tracking-tighter uppercase">
-              Structural Mapping Engine
+            <h2 className={cn(
+              "font-black tracking-tighter uppercase",
+              isEmbed ? "text-[10px]" : "text-sm"
+            )}>
+              {isEmbed ? "Interactive Map Selector" : "Structural Mapping Engine"}
             </h2>
-            <p className="text-[10px] text-muted-foreground font-bold opacity-60 uppercase">
+            <p className="text-[8px] text-muted-foreground font-bold opacity-60 uppercase">
               {isLargeFile
                 ? "Backend-Heavy Hybrid Mode"
                 : "Original KMZ Processing Mode"}
@@ -730,14 +761,16 @@ const School3DView: React.FC<School3DViewProps> = ({
                 {btn.icon}
               </Button>
             ))}
-            <Button
-              variant="secondary"
-              size="icon"
-              className="rounded-full h-10 w-10 bg-red-500/10 text-red-500 hover:bg-red-500/20"
-              onClick={onClose}
-            >
-              <X size={18} />
-            </Button>
+            {onClose && (
+              <Button
+                variant="secondary"
+                size="icon"
+                className="rounded-full h-10 w-10 bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                onClick={onClose}
+              >
+                <X size={18} />
+              </Button>
+            )}
           </div>
         </div>
 
@@ -799,7 +832,7 @@ const School3DView: React.FC<School3DViewProps> = ({
                 Element Details
               </p>
               <Button
-                className="w-full text-[10px] font-bold h-8"
+                className="w-full text-[10px] font-black uppercase h-8 rounded-full"
                 size="sm"
                 onClick={() =>
                   viewerRef.current?.cesiumElement?.flyTo(selectedEntity)
@@ -807,6 +840,22 @@ const School3DView: React.FC<School3DViewProps> = ({
               >
                 Zoom to Feature
               </Button>
+              {onSelectBuilding && selectedEntity.name && (
+                <Button
+                  className="w-full text-[10px] font-black uppercase h-10 rounded-full mt-2 shadow-lg shadow-primary/20"
+                  size="sm"
+                  variant="default"
+                  onClick={() => {
+                    const match = buildings.find(b => 
+                      (b.name && selectedEntity.name && b.name.toLowerCase() === selectedEntity.name.toLowerCase()) ||
+                      b.id === selectedEntity.id
+                    );
+                    if (match) onSelectBuilding(match);
+                  }}
+                >
+                  <MapPin className="w-3 h-3 mr-2" /> Select as Location
+                </Button>
+              )}
             </Card>
           </div>
         )}
@@ -1057,6 +1106,8 @@ const School3DView: React.FC<School3DViewProps> = ({
                 initialView={
                   initialView || parsedGeojson?.properties?.initialView
                 }
+                initialBuildingId={initialBuildingId}
+                features={features}
                 onComplete={() => setFlightComplete(true)}
               />
             )}

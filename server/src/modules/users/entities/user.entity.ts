@@ -1,6 +1,13 @@
 import {
-  Entity, PrimaryGeneratedColumn, Column, CreateDateColumn,
-  UpdateDateColumn, BeforeInsert, BeforeUpdate, ManyToOne, JoinColumn
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  BeforeInsert,
+  BeforeUpdate,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { Role } from '../../roles/entities/role.entity';
@@ -22,7 +29,7 @@ export class User {
   @Column({ select: false })
   password: string;
 
-  @ManyToOne(() => Role, role => role.users, { eager: true, nullable: true })
+  @ManyToOne(() => Role, (role) => role.users, { eager: true, nullable: true })
   @JoinColumn({ name: 'role_id' })
   role: Role;
 
@@ -37,7 +44,6 @@ export class User {
 
   @Column({ default: true })
   isActive: boolean;
-
 
   @Column({ nullable: true })
   phone: string;

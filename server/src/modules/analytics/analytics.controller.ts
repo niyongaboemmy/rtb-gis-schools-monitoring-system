@@ -1,5 +1,10 @@
 import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { AnalyticsService } from './analytics.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -17,7 +22,9 @@ export class AnalyticsController {
   }
 
   @Get('decisions')
-  @ApiOperation({ summary: 'Get school decision assessments ranked by priority' })
+  @ApiOperation({
+    summary: 'Get school decision assessments ranked by priority',
+  })
   @ApiQuery({ name: 'province', required: false })
   @ApiQuery({ name: 'priority', required: false })
   getDecisions(

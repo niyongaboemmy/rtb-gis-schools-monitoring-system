@@ -49,6 +49,20 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/minio/, ""),
         },
+        "/files": {
+          target: "http://localhost:3002",
+          changeOrigin: true,
+        },
+        // File server upload endpoint
+        "/upload": {
+          target: "http://localhost:3002",
+          changeOrigin: true,
+        },
+        // Backward compat: old DB records still reference /uploads/reports/...
+        "/uploads": {
+          target: apiTarget,
+          changeOrigin: true,
+        },
       },
     },
   };

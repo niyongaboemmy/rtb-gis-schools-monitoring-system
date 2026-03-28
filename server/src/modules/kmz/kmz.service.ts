@@ -198,7 +198,7 @@ export class KmzService {
           const initialView = rootInitialView || allViews[0] || null;
           const overlaysMetadata = allOverlays;
 
-          const assetsBaseUrl = `${process.env.VITE_API_URL || ''}/public/uploads/schools/${schoolId}/kmz_content`;
+          const assetsBaseUrl = `/files/schools/${schoolId}/kmz_content`;
 
           const updatedGeoJson = {
             type: 'FeatureCollection',
@@ -1180,5 +1180,51 @@ export class KmzService {
     }
 
     return { modelMap };
+  }
+
+  /**
+   * Upload a 2D-specific KMZ/KML file for the OpenLayers viewer.
+   * Unlike the 3D upload, this just stores the file — no model extraction.
+   */
+  async uploadKmz2d(schoolId: string, file: Express.Multer.File) {
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+    });
+    if (!school) throw new NotFoundException(`School ${schoolId} not found`);
+
+    const filename = file.originalname.toLowerCase();
+    if (!filename.endsWith('.kmz') && !filename.endsWith('.kml')) {
+      throw new BadRequestException('File must be a .kmz or .kml file');
+    }
+
+    const fs = require('fs');
+    const fileBuffer = fs.readFileSync(file.path);
+
+    const filePath = `schools/${schoolId}/kmz_2d/${file.originalname}`;
+    const publicPath = await this.storageService.uploadFile(
+      filePath,
+      fileBuffer,
+      file.mimetype,
+    );
+
+    try {
+      fs.unlinkSync(file.path);
+    } catch (e) {
+      this.logger.warn(`Failed to clean up temp file: ${file.path}`);
+    }
+
+    if (!publicPath) {
+      throw new BadRequestException('Failed to store 2D KMZ file');
+    }
+
+    await this.schoolRepository.update(schoolId, {
+      kmz2dFilePath: publicPath,
+    });
+
+    return {
+      message: '2D KMZ file uploaded successfully',
+      schoolId,
+      kmz2dFilePath: publicPath,
+    };
   }
 }

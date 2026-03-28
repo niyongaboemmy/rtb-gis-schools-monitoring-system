@@ -25,8 +25,8 @@ export enum Permission {
 }
 
 export const DefaultRolePermissions: Record<string, Permission[]> = {
-  'super_admin': Object.values(Permission),
-  'admin': [
+  super_admin: Object.values(Permission),
+  admin: [
     Permission.VIEW_DASHBOARD,
     Permission.VIEW_MAP,
     Permission.VIEW_SCHOOLS,
@@ -50,7 +50,7 @@ export const DefaultRolePermissions: Record<string, Permission[]> = {
     Permission.SCHOOL_LEVEL_DASHBOARD,
     Permission.CREATE_REPORT,
   ],
-  'gis_analyst': [
+  gis_analyst: [
     Permission.VIEW_DASHBOARD,
     Permission.VIEW_MAP,
     Permission.VIEW_SCHOOLS,
@@ -62,7 +62,7 @@ export const DefaultRolePermissions: Record<string, Permission[]> = {
     Permission.SCHOOL_LEVEL_DASHBOARD,
     Permission.CREATE_REPORT,
   ],
-  'viewer': [
+  viewer: [
     Permission.VIEW_DASHBOARD,
     Permission.VIEW_MAP,
     Permission.VIEW_SCHOOLS,

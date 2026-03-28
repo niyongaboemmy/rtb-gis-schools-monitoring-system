@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import School3DView from "../components/School3DView";
+import SchoolMap from "../components/SchoolMap";
 import { Button } from "../components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { api } from "../lib/api";
@@ -77,37 +77,10 @@ export default function School3DViewPage() {
         </div>
       </div>
 
-      {/* 3D View */}
-      <School3DView
-        buildings={school?.buildings || []}
-        geojson={school?.geojsonContent}
+      {/* Map viewer — mode selection is handled inside SchoolMap */}
+      <SchoolMap
+        school={school}
         placesOverlay={placesOverlay}
-        placesOverlayUrl={
-          school?.placesOverlayFilePath
-            ? school.placesOverlayFilePath.startsWith("/")
-              ? school.placesOverlayFilePath
-              : `/public/uploads/schools/${id}/places-overlay/${school.placesOverlayFilePath}`
-            : undefined
-        }
-        initialView={school?.geojsonContent?.properties?.initialView}
-        masterKmlUrl={
-          school?.kmzMasterKmlPath
-            ? school.kmzMasterKmlPath.startsWith("http")
-              ? school.kmzMasterKmlPath
-              : `${import.meta.env.VITE_API_URL || ""}/${school.kmzMasterKmlPath.replace(/^\//, "")}`
-            : undefined
-        }
-        kmzUrl={
-          school?.kmzFilePath
-            ? school.kmzFilePath.startsWith("/")
-              ? school.kmzFilePath
-              : `/public/uploads/schools/${id}/kmz/${school.kmzFilePath}`
-            : undefined
-        }
-        fallbackLocation={{
-          lat: Number(school?.latitude) || 0,
-          lng: Number(school?.longitude) || 0,
-        }}
         onClose={() => navigate(`/schools/${id}/decision`)}
       />
     </div>

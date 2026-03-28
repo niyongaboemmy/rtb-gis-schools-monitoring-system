@@ -19,9 +19,13 @@ async function bootstrap() {
   app.use(json({ limit: '1024mb' }));
   app.use(urlencoded({ limit: '1024mb', extended: true }));
 
-  // CORS
+  // CORS — origins from APP_CORS_ORIGINS env var (comma-separated)
+  const corsOrigins = (process.env.APP_CORS_ORIGINS || 'http://localhost:5173')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
   app.enableCors({
-    origin: ['http://localhost:5173', 'http://localhost:3000'],
+    origin: corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   });
@@ -43,7 +47,9 @@ async function bootstrap() {
   if (process.env.SWAGGER_ENABLED !== 'false') {
     const config = new DocumentBuilder()
       .setTitle('RTB GIS Schools Monitoring API')
-      .setDescription('API for the Rwanda TVET Board GIS Schools Monitoring & Intelligence System')
+      .setDescription(
+        'API for the Rwanda TVET Board GIS Schools Monitoring & Intelligence System',
+      )
       .setVersion('1.0')
       .addBearerAuth()
       .addTag('auth', 'Authentication endpoints')

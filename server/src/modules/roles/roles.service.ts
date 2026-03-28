@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Role } from './entities/role.entity';
@@ -26,9 +30,17 @@ export class RolesService {
     return role;
   }
 
-  async create(dto: { name: string; description?: string; permissions: string[]; accessLevelId?: string }) {
-    const existing = await this.roleRepository.findOne({ where: { name: dto.name } });
-    if (existing) throw new ConflictException(`Role with name ${dto.name} already exists`);
+  async create(dto: {
+    name: string;
+    description?: string;
+    permissions: string[];
+    accessLevelId?: string;
+  }) {
+    const existing = await this.roleRepository.findOne({
+      where: { name: dto.name },
+    });
+    if (existing)
+      throw new ConflictException(`Role with name ${dto.name} already exists`);
 
     const { accessLevelId, ...rest } = dto;
     const role = this.roleRepository.create({
@@ -58,11 +70,16 @@ export class RolesService {
 
   async remove(id: string) {
     const role = await this.findOne(id);
-    if (role.name === 'super_admin' || role.name === 'admin' || role.name === 'viewer') {
-      throw new ConflictException(`Cannot delete system default role: ${role.name}`);
+    if (
+      role.name === 'super_admin' ||
+      role.name === 'admin' ||
+      role.name === 'viewer'
+    ) {
+      throw new ConflictException(
+        `Cannot delete system default role: ${role.name}`,
+      );
     }
     await this.roleRepository.remove(role);
     return { success: true };
   }
 }
-
