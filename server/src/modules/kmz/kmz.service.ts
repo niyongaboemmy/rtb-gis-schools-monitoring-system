@@ -42,33 +42,17 @@ export class KmzService {
     if (!school) throw new NotFoundException(`School ${schoolId} not found`);
 
     const filename = file.originalname.toLowerCase();
-    if (!filename.endsWith('.kmz') && !filename.endsWith('.kml')) {
-      throw new BadRequestException('File must be a .kmz or .kml file');
+    if (!filename.endsWith('.glb')) {
+      throw new BadRequestException('File must be a .glb file');
     }
 
-    // Update status to processing
-    await this.schoolRepository.update(schoolId, {
-      kmzStatus: KmzProcessingStatus.PROCESSING,
-    });
-
-    // Read file from disk (for large files, this is more efficient than memory buffer)
-    const fs = require('fs');
     const fileBuffer = fs.readFileSync(file.path);
 
-    // Save original file for direct frontend 3D rendering
-    const filePath = `schools/${schoolId}/kmz/${file.originalname}`;
+    const filePath = `schools/${schoolId}/3d/${file.originalname}`;
     const publicPath = await this.storageService.uploadFile(
       filePath,
       fileBuffer,
       file.mimetype,
-    );
-
-    // Process synchronously instead of queuing
-    const result = await this.processGeospatialBuffer(
-      schoolId,
-      fileBuffer,
-      file.originalname,
-      publicPath || undefined,
     );
 
     // Clean up temp file
@@ -78,10 +62,26 @@ export class KmzService {
       this.logger.warn(`Failed to clean up temp file: ${file.path}`);
     }
 
-    return {
-      message: 'Geospatial file uploaded and processed successfully',
+    // Store as a building record so the 3D viewer can find it
+    await this.buildingRepository.delete({ schoolId });
+    const building = this.buildingRepository.create({
       schoolId,
-      ...result,
+      name: file.originalname,
+      modelPath: publicPath || filePath,
+      modelName: file.originalname,
+    });
+    await this.buildingRepository.save(building);
+
+    await this.schoolRepository.update(schoolId, {
+      kmzStatus: KmzProcessingStatus.COMPLETED,
+      kmzFilePath: publicPath || filePath,
+      kmzProcessedAt: new Date(),
+    });
+
+    return {
+      message: '3D GLB model uploaded successfully',
+      schoolId,
+      modelPath: publicPath || filePath,
     };
   }
 

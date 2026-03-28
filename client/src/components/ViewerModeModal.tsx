@@ -26,11 +26,11 @@ const OPTIONS = [
     mode: "3D" as const,
     icon: Box,
     label: "3D View",
-    tagline: "Immersive — Cesium",
+    tagline: "GLB Viewer — Opens in new tab",
     features: [
-      { icon: Mountain, text: "Real terrain & elevation" },
-      { icon: Box, text: "3D building models" },
-      { icon: Globe, text: "Satellite imagery" },
+      { icon: Mountain, text: "High-fidelity 3D models" },
+      { icon: Box, text: "GLB / GLTF support" },
+      { icon: Ruler, text: "Distance & area measurement" },
       { icon: Zap, text: "GPU-accelerated rendering" },
     ],
   },
@@ -106,7 +106,7 @@ export default function ViewerModeModal({
                 hovered === mode ? "opacity-100 text-primary" : "opacity-0",
               )}
             >
-              Select {label} →
+              {mode === "3D" ? "Open in New Tab →" : `Select ${label} →`}
             </p>
           </button>
         ))}

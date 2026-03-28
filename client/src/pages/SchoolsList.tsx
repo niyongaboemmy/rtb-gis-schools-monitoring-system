@@ -317,7 +317,7 @@ export default function SchoolsList() {
                               onClick={() =>
                                 navigate(`/schools/${school.id}/kmz`)
                               }
-                              title="Upload KMZ"
+                              title="Upload Maps"
                             >
                               <Upload className="w-4 h-4" />
                             </Button>

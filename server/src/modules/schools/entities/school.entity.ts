@@ -216,6 +216,23 @@ export class School {
   @Column({ type: 'text', nullable: true })
   description: string;
 
+  // 3D GLB viewer — saved camera home position
+  @Column({ type: 'jsonb', nullable: true })
+  glb3dHomePosition: {
+    position: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+  };
+
+  // 3D GLB viewer — user-created annotations
+  @Column({ type: 'jsonb', nullable: true })
+  glb3dAnnotations: {
+    id: string;
+    label: string;
+    color: string;
+    position: { x: number; y: number; z: number };
+    createdAt: string;
+  }[];
+
   @OneToMany(() => SchoolBuilding, (building) => building.school, {
     cascade: true,
   })
