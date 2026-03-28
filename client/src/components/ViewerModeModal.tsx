@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Globe, Box, Zap, Mountain, Ruler, PenLine } from "lucide-react";
 import { Modal } from "./ui/modal";
 import { cn } from "../lib/utils";

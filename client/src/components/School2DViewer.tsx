@@ -39,15 +39,12 @@ import { cn } from "../lib/utils";
 // Props (identical to School3DViewProps for drop-in compatibility)
 // ─────────────────────────────────────────────────────────────────────────────
 interface School2DViewerProps {
-  buildings: any[];
-  kmzUrl?: string;
-  masterKmlUrl?: string;
-  kmzFile?: File;
-  geojson?: any;
+  /** Raw school object from the API */
+  school: any;
+  /** Override buildings list */
+  buildings?: any[];
+  /** Override places overlay */
   placesOverlay?: any;
-  placesOverlayUrl?: string;
-  fallbackLocation: { lat: number; lng: number };
-  initialView?: any;
   onClose?: () => void;
   isEmbed?: boolean;
   onSelectBuilding?: (building: any) => void;
@@ -184,19 +181,44 @@ function formatArea(sqm: number): string {
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function School2DViewer({
+  school,
   buildings,
-  kmzUrl,
-  masterKmlUrl,
-  kmzFile,
-  geojson,
   placesOverlay,
-  placesOverlayUrl,
-  fallbackLocation,
   onClose,
   isEmbed = false,
   onSelectBuilding,
   initialBuildingId,
 }: School2DViewerProps) {
+  // ── Derive spatial URLs locally ───────────────────────────────────────────
+  // 3D KMZ - baseline fallback
+  const kmz3dUrl = school.kmzFilePath
+    ? school.kmzFilePath.startsWith("/")
+      ? school.kmzFilePath
+      : `/files/schools/${school.id}/kmz/${school.kmzFilePath}`
+    : undefined;
+
+  // 2D KMZ/KML - preferred for OpenLayers; fallback to 3D KMZ if not uploaded
+  const kmzUrl = school.kmz2dFilePath
+    ? school.kmz2dFilePath.startsWith("/")
+      ? school.kmz2dFilePath
+      : `/files/schools/${school.id}/kmz_2d/${school.kmz2dFilePath}`
+    : kmz3dUrl;
+
+  const placesOverlayUrl = school.placesOverlayFilePath
+    ? school.placesOverlayFilePath.startsWith("/")
+      ? school.placesOverlayFilePath
+      : `/files/schools/${school.id}/places-overlay/${school.placesOverlayFilePath}`
+    : undefined;
+
+  const fallbackLocation = {
+    lat: Number(school.latitude) || 0,
+    lng: Number(school.longitude) || 0,
+  };
+
+  const effectiveBuildings = buildings ?? school.buildings ?? [];
+  const effectivePlacesOverlay = placesOverlay ?? school.placesOverlayData;
+  const geojson = school.geojsonContent;
+
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OLMap | null>(null);
   const kmlLayerRef = useRef<VectorLayer | null>(null);
@@ -296,8 +318,8 @@ export default function School2DViewer({
 
           // Try matching a building
           if (name && onSelectBuilding) {
-            const building = buildings.find(
-              (b) =>
+            const building = effectiveBuildings.find(
+              (b: any) =>
                 b.name?.toLowerCase() === name.toLowerCase() ||
                 b.code?.toLowerCase() === name.toLowerCase(),
             );
@@ -376,24 +398,13 @@ export default function School2DViewer({
     };
 
     const run = async () => {
-      // Priority: kmzFile > kmzUrl > masterKmlUrl
-      if (kmzFile) {
-        setLoadingMessage("Unpacking KMZ file…");
-        cleanupKmzRef.current?.();
-        const unpacked = await unpackKmzFile(kmzFile);
-        cleanupKmzRef.current = unpacked.cleanup;
-        await loadKml(unpacked.kmlText);
-        return;
-      }
-
-      const url = kmzUrl ?? masterKmlUrl;
-      if (url) {
+      if (kmzUrl) {
         setLoadingMessage("Fetching spatial data…");
         try {
-          const res = await fetch(url);
+          const res = await fetch(kmzUrl);
           const contentType = res.headers.get("content-type") ?? "";
           const isZip =
-            url.toLowerCase().endsWith(".kmz") ||
+            kmzUrl.toLowerCase().endsWith(".kmz") ||
             contentType.includes("zip") ||
             contentType.includes("kmz");
 
@@ -421,7 +432,7 @@ export default function School2DViewer({
 
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kmzFile, kmzUrl, masterKmlUrl]);
+  }, [kmzUrl]);
 
   // ── Load GeoJSON ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -475,11 +486,11 @@ export default function School2DViewer({
       placesLayerRef.current = layer;
     };
 
-    if (placesOverlay?.features || placesOverlay?.type === "FeatureCollection") {
+    if (effectivePlacesOverlay?.features || effectivePlacesOverlay?.type === "FeatureCollection") {
       // GeoJSON format
       try {
         const gjFormat = new GeoJSONFormat();
-        const parsed = gjFormat.readFeatures(placesOverlay, {
+        const parsed = gjFormat.readFeatures(effectivePlacesOverlay, {
           featureProjection: "EPSG:3857",
           dataProjection: "EPSG:4326",
         }) as Feature[];
@@ -508,7 +519,7 @@ export default function School2DViewer({
         );
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placesOverlay, placesOverlayUrl]);
+  }, [effectivePlacesOverlay, placesOverlayUrl]);
 
   // ── Toggle places visibility ─────────────────────────────────────────────
   useEffect(() => {
