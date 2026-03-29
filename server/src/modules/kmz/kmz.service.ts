@@ -21,6 +21,8 @@ import unzipper from 'unzipper';
 import * as path from 'path';
 import archiver from 'archiver';
 import type { Response } from 'express';
+import sharp from 'sharp';
+import * as os from 'os';
 
 @Injectable()
 export class KmzService {
@@ -1187,7 +1189,8 @@ export class KmzService {
 
   /**
    * Upload a 2D-specific KMZ/KML file for the OpenLayers viewer.
-   * Unlike the 3D upload, this just stores the file — no model extraction.
+   * Extracts all assets server-side and stores a pre-computed manifest
+   * so the client does NOT need to download and unzip the raw KMZ.
    */
   async uploadKmz2d(schoolId: string, file: Express.Multer.File) {
     const school = await this.schoolRepository.findOne({
@@ -1200,9 +1203,9 @@ export class KmzService {
       throw new BadRequestException('File must be a .kmz or .kml file');
     }
 
-    const fs = require('fs');
     const fileBuffer = fs.readFileSync(file.path);
 
+    // Store raw file (kept for 3D compatibility / fallback)
     const filePath = `schools/${schoolId}/kmz_2d/${file.originalname}`;
     const publicPath = await this.storageService.uploadFile(
       filePath,
@@ -1220,14 +1223,281 @@ export class KmzService {
       throw new BadRequestException('Failed to store 2D KMZ file');
     }
 
+    // ── Server-side extraction (the heavy work) ────────────────────────────
+    let manifest: any = null;
+    try {
+      manifest = await this.extractKmz2dAssets(
+        schoolId, 
+        fileBuffer, 
+        file.originalname
+      );
+      this.logger.log(
+        `[2D] Manifest built for school ${schoolId}: ${manifest?.kmlUrls?.length || 0} KML(s), ${manifest?.groundOverlays?.length || 0} overlay(s)`,
+      );
+    } catch (err: any) {
+      // Non-fatal: fallback to browser-side processing if extraction fails
+      this.logger.warn(
+        `[2D] Manifest extraction failed (will fall back to browser): ${err.message}`,
+      );
+    }
+
     await this.schoolRepository.update(schoolId, {
       kmz2dFilePath: publicPath,
+      kmz2dManifest: manifest,
     });
 
     return {
-      message: '2D KMZ file uploaded successfully',
+      message: '2D KMZ file uploaded and processed successfully',
       schoolId,
       kmz2dFilePath: publicPath,
+      manifestReady: manifest !== null,
+      overlayCount: manifest?.groundOverlays?.length ?? 0,
     };
+  }
+
+  /**
+   * Return pre-computed 2D manifest for the viewer.
+   * Includes resolved absolute URLs for KML files and ground overlay images.
+   */
+  async getKmz2dManifest(schoolId: string) {
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+    });
+    if (!school) throw new NotFoundException(`School ${schoolId} not found`);
+
+    return {
+      schoolId,
+      manifest: school.kmz2dManifest ?? null,
+      kmz2dFilePath: school.kmz2dFilePath ?? null,
+    };
+  }
+
+  /**
+   * Server-side KMZ extraction for the 2D viewer.
+   * Unpacks the archive, uploads every asset to the file server, then builds
+   * a lightweight manifest the client can use instead of the raw KMZ.
+   */
+  private async extractKmz2dAssets(
+    schoolId: string,
+    fileBuffer: Buffer,
+    fileName: string,
+  ): Promise<{
+    kmlUrls: string[];
+    groundOverlays: any[];
+    initialView: any | null;
+  }> {
+    const kmlUrls: string[] = [];
+    const groundOverlays: any[] = [];
+    let initialView: any = null;
+
+    if (fileName.toLowerCase().endsWith('.kml')) {
+      // Bare KML file — just store it, no extraction needed
+      const publicPath = await this.storageService.uploadFile(
+        `schools/${schoolId}/kmz_2d_content/doc.kml`,
+        fileBuffer,
+        'application/vnd.google-earth.kml+xml',
+      );
+      if (publicPath) kmlUrls.push(publicPath);
+
+      // Parse for initial view
+      const parser = new xml2js.Parser({
+        explicitArray: false,
+        mergeAttrs: true,
+      });
+      const parsed = await parser
+        .parseStringPromise(fileBuffer.toString('utf-8'))
+        .catch(() => null);
+      if (parsed) {
+        const { views } = this.extractKmlFeatures(parsed);
+        if (views.length > 0) initialView = this.parseKmlView(views[0]);
+      }
+      return { kmlUrls, groundOverlays, initialView };
+    }
+
+    // ── KMZ (zip) extraction ───────────────────────────────────────────────
+    const fileServerBase = process.env.FILE_SERVER_BASE_URL || '/files';
+    const assetBaseUrl = `${fileServerBase}/schools/${schoolId}/kmz_2d_content`;
+
+    let jszipInstance: any;
+    try {
+      jszipInstance = await (JSZip as any).loadAsync(fileBuffer);
+    } catch (err: any) {
+      throw new Error(`Failed to open KMZ archive: ${err.message}`);
+    }
+
+    // Map of in-zip path → { url, isTiled, maxZoom }
+    const assetUrlMap: Record<string, { url: string; isTiled?: boolean; maxZoom?: number }> = {};
+    const allKmlPaths: string[] = [];
+    const files = Object.keys(jszipInstance.files).filter(
+      (f: string) => !jszipInstance.files[f].dir,
+    );
+
+    const uploadDirectoryToStorage = async (
+      localDir: string,
+      storagePrefix: string,
+    ): Promise<void> => {
+      const dirFiles = await fs.promises.readdir(localDir, { withFileTypes: true });
+      for (const file of dirFiles) {
+        const p = path.join(localDir, file.name);
+        if (file.isDirectory()) {
+           await uploadDirectoryToStorage(p, `${storagePrefix}/${file.name}`);
+        } else {
+           const buf = await fs.promises.readFile(p);
+           const ext = path.extname(file.name).toLowerCase();
+           let mime = 'application/octet-stream';
+           if (ext === '.png') mime = 'image/png';
+           else if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
+           await this.storageService.uploadFile(`${storagePrefix}/${file.name}`, buf as any, mime);
+        }
+      }
+    };
+
+    // Upload all assets in batches
+    const BATCH_SIZE = 30;
+    for (let i = 0; i < files.length; i += BATCH_SIZE) {
+      const batch = files.slice(i, i + BATCH_SIZE);
+      await Promise.all(
+        batch.map(async (zipPath: string) => {
+          const fileBuf = await jszipInstance.files[zipPath].async(
+            'nodebuffer',
+          );
+          const contentType = this.getContentType(zipPath);
+          
+          let isTiled = false;
+          let tileUrlTemplate = '';
+          let maxZoom = 0;
+
+          const isOptimizeable = (contentType === 'image/jpeg' || contentType === 'image/png') && !zipPath.toLowerCase().includes('.tif');
+
+          if (isOptimizeable) {
+             try {
+               const meta = await sharp(fileBuf).metadata();
+               if ((meta.width && meta.width > 2048) || (meta.height && meta.height > 2048)) {
+                  this.logger.log(`Image ${zipPath} is massive (${meta.width}x${meta.height}). Tiling on backend to save client GPU!`);
+                  const tmpDir = path.join(os.tmpdir(), `kmz_chunk_${Date.now()}_${Math.random()}`);
+                  await fs.promises.mkdir(tmpDir, { recursive: true });
+                  
+                  await sharp(fileBuf)
+                     .tile({ layout: 'google', size: 256 })
+                     .toFile(tmpDir); 
+                  
+                  const storagePrefix = `schools/${schoolId}/kmz_2d_content/${zipPath}_tiled`;
+                  await uploadDirectoryToStorage(tmpDir, storagePrefix);
+                  await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(()=>null);
+                  
+                  let tileExt = 'jpg';
+                  const files00 = await fs.promises.readdir(path.join(tmpDir, '0', '0')).catch(()=>[]);
+                  if (files00.length > 0) tileExt = files00[0].split('.').pop() || 'jpg';
+                  
+                  tileUrlTemplate = `${fileServerBase}/${storagePrefix}/{z}/{x}/{y}.${tileExt}`;
+                  isTiled = true;
+                  maxZoom = Math.ceil(Math.log2(Math.max(meta.width, meta.height) / 256));
+               }
+             } catch (e) {
+                this.logger.warn(`Sharp failed to tile ${zipPath}: ` + e);
+             }
+          }
+
+          if (!isTiled) {
+            const publicPath = await this.storageService.uploadFile(
+              `schools/${schoolId}/kmz_2d_content/${zipPath}`,
+              fileBuf as any,
+              contentType,
+            );
+            if (publicPath) {
+              assetUrlMap[zipPath] = { url: publicPath };
+              const baseName = zipPath.split('/').pop()!;
+              if (!assetUrlMap[baseName]) assetUrlMap[baseName] = { url: publicPath };
+            }
+          } else {
+            assetUrlMap[zipPath] = { url: tileUrlTemplate, isTiled: true, maxZoom };
+            const baseName = zipPath.split('/').pop()!;
+            if (!assetUrlMap[baseName]) assetUrlMap[baseName] = { url: tileUrlTemplate, isTiled: true, maxZoom };
+          }
+
+          if (zipPath.toLowerCase().endsWith('.kml')) {
+            allKmlPaths.push(zipPath);
+          }
+        }),
+      );
+    }
+
+    // Prefer doc.kml / index.kml as the root KML
+    const rootKmlPath =
+      allKmlPaths.find((p) => p.toLowerCase() === 'doc.kml') ||
+      allKmlPaths.find((p) => p.toLowerCase() === 'index.kml') ||
+      allKmlPaths[0];
+
+    if (rootKmlPath && assetUrlMap[rootKmlPath]) {
+      kmlUrls.push(assetUrlMap[rootKmlPath].url);
+    }
+
+    // Parse every KML for overlays and initial view
+    const parser = new xml2js.Parser({
+      explicitArray: false,
+      mergeAttrs: true,
+    });
+    for (const kmlPath of allKmlPaths) {
+      const content = await jszipInstance.files[kmlPath].async('string');
+      const parsed = await parser.parseStringPromise(content).catch(() => null);
+      if (!parsed) continue;
+
+      const { overlays, views } = this.extractKmlFeatures(parsed);
+
+      for (const ov of overlays) {
+        const icon = ov.Icon;
+        if (!icon) continue;
+        const href = this.getKmlValue(icon.href);
+        const kmlDir = kmlPath.includes('/') ? kmlPath.substring(0, kmlPath.lastIndexOf('/') + 1) : '';
+        let resolvedHref = href;
+        if (!href.startsWith('http') && !href.startsWith('/')) {
+           resolvedHref = kmlDir + href;
+           resolvedHref = resolvedHref.replace(/\.\//g, '');
+        }
+
+        const mapEntry =
+          assetUrlMap[resolvedHref] ||
+          assetUrlMap[href] ||
+          Object.entries(assetUrlMap).find(([k]) => k.endsWith('/' + href) || k === href)?.[1];
+          
+        const imageUrl = mapEntry ? mapEntry.url : `${assetBaseUrl}/${href}`;
+        const isTiled = mapEntry ? (mapEntry.isTiled || false) : false;
+        const maxZoom = mapEntry ? mapEntry.maxZoom : undefined;
+
+        const box = ov.LatLonBox || {};
+        const drawOrder = parseInt(this.getKmlValue(ov.drawOrder) || '0', 10);
+        groundOverlays.push({
+          name: this.getKmlValue(ov.name) || 'Overlay',
+          imageUrl,
+          isTiled,
+          maxZoom,
+          north: parseFloat(this.getKmlValue(box.north) || '0'),
+          south: parseFloat(this.getKmlValue(box.south) || '0'),
+          east: parseFloat(this.getKmlValue(box.east) || '0'),
+          west: parseFloat(this.getKmlValue(box.west) || '0'),
+          drawOrder: isNaN(drawOrder) ? 0 : drawOrder,
+        });
+      }
+
+      if (!initialView && views.length > 0) {
+        initialView = this.parseKmlView(views[0]);
+      }
+    }
+
+    // Deduplicate overlays (in case multiple KMLs define the same hierarchy)
+    const uniqueOverlays: any[] = [];
+    const seen = new Set<string>();
+    for (const ov of groundOverlays) {
+      const key = `${ov.imageUrl}_${ov.north}_${ov.south}_${ov.west}_${ov.east}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueOverlays.push(ov);
+      }
+    }
+
+    // Sort overlays so higher draw-order layers go on top
+    uniqueOverlays.sort((a, b) => a.drawOrder - b.drawOrder);
+
+    return { kmlUrls, groundOverlays: uniqueOverlays, initialView };
   }
 }

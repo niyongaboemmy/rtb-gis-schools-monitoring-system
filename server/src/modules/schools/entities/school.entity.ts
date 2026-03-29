@@ -185,6 +185,28 @@ export class School {
   @Column({ nullable: true })
   kmz2dFilePath: string;
 
+  // Pre-processed manifest for the 2D viewer (extracted at upload time)
+  @Column({ type: 'jsonb', nullable: true })
+  kmz2dManifest: {
+    kmlUrls: string[];
+    groundOverlays: {
+      imageUrl: string;
+      north: number;
+      south: number;
+      east: number;
+      west: number;
+      drawOrder: number;
+      name?: string;
+    }[];
+    initialView?: {
+      latitude: number;
+      longitude: number;
+      altitude?: number;
+      heading?: number;
+      range?: number;
+    } | null;
+  } | null;
+
   @Column({ nullable: true })
   kmzProcessedAt: Date;
 

@@ -7,9 +7,10 @@ import XYZ from "ol/source/XYZ";
 import VectorSource from "ol/source/Vector";
 import { fromLonLat, toLonLat } from "ol/proj";
 import { Feature } from "ol";
-import { Style, Fill, Stroke } from "ol/style";
+import { Fill, Stroke, Style } from "ol/style";
 import GeoJSONFormat from "ol/format/GeoJSON";
 import ScaleLine from "ol/control/ScaleLine";
+import WebGLTileLayer from "ol/layer/WebGLTile";
 
 import {
   blockStyle,
@@ -81,8 +82,8 @@ export function useMapSetup({
       maxZoom: 19,
       crossOrigin: "anonymous",
     });
-    const basemap = new TileLayer({ source: basemapSrc, zIndex: 0 });
-    basemapLayerRef.current = basemap;
+    const basemap = new WebGLTileLayer({ source: basemapSrc as any, zIndex: 0 });
+    basemapLayerRef.current = basemap as any;
 
     const blocksSource = new VectorSource();
     const blocksLayer = new VectorLayer({ source: blocksSource, style: blockStyle, zIndex: 50 });
@@ -97,8 +98,8 @@ export function useMapSetup({
       maxZoom: 23,
       crossOrigin: "anonymous",
     });
-    const labelLayer = new TileLayer({ source: labelSrc, zIndex: 1, opacity: 0.85 });
-    basemapLabelLayerRef.current = labelLayer;
+    const labelLayer = new WebGLTileLayer({ source: labelSrc as any, zIndex: 1, opacity: 0.85 });
+    basemapLabelLayerRef.current = labelLayer as any;
 
     const measureLayer = new VectorLayer({ source: measureSourceRef.current, style: measureStyle, zIndex: 50 });
     measureLayerRef.current = measureLayer;
@@ -110,6 +111,8 @@ export function useMapSetup({
         center: fromLonLat([fallbackLocation.lng, fallbackLocation.lat]),
         zoom: 19,
         maxZoom: 25,
+        constrainResolution: false,
+        multiWorld: true,
       }),
       controls: [],
     });

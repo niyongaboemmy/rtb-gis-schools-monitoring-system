@@ -1,7 +1,5 @@
 import { Fill, Stroke, Style, Circle as CircleStyle, Text } from "ol/style";
 import Feature from "ol/Feature";
-import JSZip from "jszip";
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types & Interfaces
@@ -13,15 +11,9 @@ export interface GroundOverlayData {
   east: number;
   west: number;
   imageUrl: string;
+  isTiled?: boolean;
+  maxZoom?: number;
   drawOrder: number;
-}
-
-export interface UnpackedKmzFile {
-  kmlText: string;
-  sourceUri: string;
-  cleanup: () => void;
-  allKmlTexts: Map<string, string>;
-  assetBlobs: Map<string, Blob>;
 }
 
 export interface School2DViewerProps {
@@ -116,7 +108,7 @@ export const placesStyleFunction = (feature: any) => {
   }
 
   return new Style({
-    fill: new Fill({ color: "rgba(251, 191, 36, 0.1)" }),
+    fill: new Fill({ color: "rgba(251, 191, 36, 0)" }),
     stroke: new Stroke({ color: "rgba(251, 191, 36, 0.95)", width: 2.5 }),
     text: name
       ? new Text({
@@ -169,82 +161,6 @@ export const annotationStyle = new Style({
 // ─────────────────────────────────────────────────────────────────────────────
 // Utilities
 // ─────────────────────────────────────────────────────────────────────────────
-
-export async function unpackKmzFile(file: File): Promise<UnpackedKmzFile> {
-  const createdBlobUrls: string[] = [];
-  const buffer = await file.arrayBuffer();
-  const sourceUri = `https://local-kmz-host/${encodeURIComponent(file.name)}`;
-  const zip = await JSZip.loadAsync(buffer);
-
-  const assetMap = new Map<string, string>();
-  const assetBlobs = new Map<string, Blob>();
-  await Promise.all(
-    Object.keys(zip.files)
-      .filter((n) => !n.toLowerCase().endsWith(".kml") && !zip.files[n].dir)
-      .map(async (name) => {
-        const blob = await zip.files[name].async("blob");
-        const url = URL.createObjectURL(blob);
-        createdBlobUrls.push(url);
-        assetMap.set(name, url);
-        assetBlobs.set(url, blob);
-        
-        const base = name.split("/").pop() ?? "";
-        if (base && !assetMap.has(base)) assetMap.set(base, url);
-      }),
-  );
-
-  const allKmlTexts = new Map<string, string>();
-  const kmlEntries = Object.keys(zip.files).filter((n) =>
-    n.toLowerCase().endsWith(".kml"),
-  );
-
-  for (const kmlPath of kmlEntries) {
-    const rawText = await zip.files[kmlPath].async("text");
-    const kmlDir = kmlPath.includes("/")
-      ? kmlPath.split("/").slice(0, -1).join("/")
-      : "";
-
-    const rewritten = rawText.replace(/<href>([^<]+)<\/href>/gi, (_, raw) => {
-      const path = raw.trim();
-      const withDir = kmlDir ? `${kmlDir}/${path}` : path;
-      const resolved = assetMap.get(withDir) ?? assetMap.get(path) ?? assetMap.get(path.split("/").pop() ?? "") ?? null;
-      if (resolved) return `<href>${resolved}</href>`;
-      return `<href>${path}</href>`;
-    });
-    allKmlTexts.set(kmlPath, rewritten);
-  }
-
-  const rootKml = kmlEntries.find((n) => n.toLowerCase() === "doc.kml") ?? kmlEntries[0];
-  if (!rootKml) throw new Error("No .kml found in KMZ.");
-
-  return {
-    kmlText: allKmlTexts.get(rootKml)!,
-    sourceUri,
-    cleanup: () => createdBlobUrls.forEach((u) => URL.revokeObjectURL(u)),
-    allKmlTexts,
-    assetBlobs,
-  };
-}
-
-export function parseGroundOverlaysFromKml(kmlText: string): GroundOverlayData[] {
-  const overlays: GroundOverlayData[] = [];
-  const re = /<GroundOverlay[^>]*>([\s\S]*?)<\/GroundOverlay>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(kmlText)) !== null) {
-    const xml = m[1];
-    const north = parseFloat(xml.match(/<north>([\d.+\-eE]+)<\/north>/)?.[1] ?? "nan");
-    const south = parseFloat(xml.match(/<south>([\d.+\-eE]+)<\/south>/)?.[1] ?? "nan");
-    const east = parseFloat(xml.match(/<east>([\d.+\-eE]+)<\/east>/)?.[1] ?? "nan");
-    const west = parseFloat(xml.match(/<west>([\d.+\-eE]+)<\/west>/)?.[1] ?? "nan");
-    const drawOrder = parseInt(xml.match(/<drawOrder>(\d+)<\/drawOrder>/)?.[1] ?? "0", 10);
-    const iconHref = xml.match(/<Icon[^>]*>[\s\S]*?<href>([^<]*)<\/href>[\s\S]*?<\/Icon>/i)?.[1]?.trim() ?? "";
-
-    if (isNaN(north) || isNaN(south) || isNaN(east) || isNaN(west) || north <= south || east <= west || !iconHref) continue;
-
-    overlays.push({ north, south, east, west, imageUrl: iconHref, drawOrder });
-  }
-  return overlays;
-}
 
 export function formatLength(meters: number): string {
   return meters > 1000

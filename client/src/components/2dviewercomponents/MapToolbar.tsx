@@ -50,6 +50,8 @@ interface MapToolbarProps {
   setShowBasicInfo: React.Dispatch<React.SetStateAction<boolean>>;
   kmzOpacity: number;
   setKmzOpacity: (val: number) => void;
+  visuals: { brightness: number; contrast: number; saturation: number };
+  setVisuals: React.Dispatch<React.SetStateAction<{ brightness: number; contrast: number; saturation: number }>>;
 }
 
 export const MapToolbar: React.FC<MapToolbarProps> = ({
@@ -76,7 +78,10 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
   setShowBasicInfo,
   kmzOpacity,
   setKmzOpacity,
+  visuals,
+  setVisuals,
 }) => {
+  const [showVisuals, setShowVisuals] = React.useState(false);
   return (
     <div className="absolute right-4 top-4 z-30 flex flex-col gap-2">
       <Card className="bg-background/60 backdrop-blur-xl rounded-2xl border border-border/10 p-2 flex flex-col gap-1 shadow-xl">
@@ -123,10 +128,30 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
           variant={showOpacitySlider ? "default" : "ghost"}
           size="icon"
           className="h-9 w-9 rounded-xl"
-          onClick={() => setShowOpacitySlider((v) => !v)}
+          onClick={() => {
+            setShowOpacitySlider((v) => !v);
+            setShowVisuals(false);
+          }}
           title="KMZ layer opacity"
         >
           <SlidersHorizontal className="h-4 w-4" />
+        </Button>
+
+        {/* Visual Adjustments Toggle */}
+        <Button
+          variant={showVisuals ? "default" : "ghost"}
+          size="icon"
+          className={cn(
+            "h-9 w-9 rounded-xl",
+            showVisuals && "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+          )}
+          onClick={() => {
+            setShowVisuals(!showVisuals);
+            setShowOpacitySlider(false);
+          }}
+          title="Adjust Visuals (GPU)"
+        >
+          <Satellite className="h-4 w-4" />
         </Button>
 
         <div className="h-px bg-border/20 mx-1" />
@@ -382,6 +407,75 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
              >
                Full
              </button>
+          </div>
+        </Card>
+      )}
+
+      {/* Visual Adjustments Overlay */}
+      {showVisuals && (
+        <Card className="bg-background/80 backdrop-blur-2xl rounded-2xl border border-border/10 p-4 shadow-2xl animate-in slide-in-from-right-4 duration-300 w-56 flex flex-col gap-4">
+          <div className="flex items-center justify-between border-b border-white/5 pb-2 mb-1">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 flex items-center gap-2">
+              <Satellite className="h-3 w-3" />
+              GPU Visuals
+            </span>
+            <button 
+              onClick={() => setVisuals({ brightness: 1, contrast: 1, saturation: 1 })}
+              className="text-[9px] font-bold text-muted-foreground hover:text-white uppercase transition-colors"
+            >
+              Reset
+            </button>
+          </div>
+
+          {/* Brightness */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center text-[10px] font-bold text-white/40 uppercase tracking-tighter">
+              <span>Brightness</span>
+              <span className="text-white/80 tabular-nums">{visuals.brightness.toFixed(1)}x</span>
+            </div>
+            <input
+              type="range"
+              min="0.5"
+              max="2.0"
+              step="0.1"
+              value={visuals.brightness}
+              onChange={(e) => setVisuals(v => ({ ...v, brightness: parseFloat(e.target.value) }))}
+              className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            />
+          </div>
+
+          {/* Contrast */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center text-[10px] font-bold text-white/40 uppercase tracking-tighter">
+              <span>Contrast</span>
+              <span className="text-white/80 tabular-nums">{visuals.contrast.toFixed(1)}x</span>
+            </div>
+            <input
+              type="range"
+              min="0.5"
+              max="2.0"
+              step="0.1"
+              value={visuals.contrast}
+              onChange={(e) => setVisuals(v => ({ ...v, contrast: parseFloat(e.target.value) }))}
+              className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            />
+          </div>
+
+          {/* Saturation */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center text-[10px] font-bold text-white/40 uppercase tracking-tighter">
+              <span>Saturation</span>
+              <span className="text-white/80 tabular-nums">{visuals.saturation.toFixed(1)}x</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="2.0"
+              step="0.1"
+              value={visuals.saturation}
+              onChange={(e) => setVisuals(v => ({ ...v, saturation: parseFloat(e.target.value) }))}
+              className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            />
           </div>
         </Card>
       )}

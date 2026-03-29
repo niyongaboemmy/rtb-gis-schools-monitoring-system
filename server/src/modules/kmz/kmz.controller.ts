@@ -89,6 +89,14 @@ export class KmzController {
     return this.kmzService.uploadPlacesOverlay(schoolId, file);
   }
 
+  @Get('2d/manifest')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get pre-computed 2D KMZ manifest for a school' })
+  getKmz2dManifest(@Param('schoolId', ParseUUIDPipe) schoolId: string) {
+    return this.kmzService.getKmz2dManifest(schoolId);
+  }
+
   @Get('content')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

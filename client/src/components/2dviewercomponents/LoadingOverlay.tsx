@@ -2,24 +2,18 @@ import React from "react";
 
 interface LoadingOverlayProps {
   isLoading: boolean;
-  isTileLoading: boolean;
-  decodingCount: number;
   loadingProgress: number;
   loadingMessage: string;
   loadingStartTime: number;
-  activeBitmapCount: number;
 }
 
 export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
   isLoading,
-  isTileLoading,
-  decodingCount,
   loadingProgress,
   loadingMessage,
   loadingStartTime,
-  activeBitmapCount,
 }) => {
-  if (!isLoading && !isTileLoading && decodingCount === 0) return null;
+  if (!isLoading) return null;
 
   return (
     <div className="absolute inset-0 z-100 flex flex-col items-center justify-center bg-[#0a0d14]/90 backdrop-blur-xl transition-all duration-700">
@@ -58,34 +52,23 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
           />
         </div>
 
-        {/* Status Information */}
         <div className="space-y-2 mb-8">
           <h2 className="text-2xl font-bold text-white tracking-tight drop-shadow-sm">
-            {isLoading ? "Synchronising School Assets" : "Decoding High-Res Imagery"}
+            Synchronising School Assets
           </h2>
           <div className="flex flex-col items-center gap-1">
             <span className="text-blue-400 font-semibold text-xs py-1 px-3 rounded-full bg-blue-500/10 border border-blue-500/20 inline-block uppercase tracking-widest">
-              {decodingCount > 0 ? `Optimizing ${decodingCount} tiles…` : loadingMessage}
+              {loadingMessage}
             </span>
           </div>
         </div>
 
-        {/* Performance Metrics Dashboard */}
-        <div className="grid grid-cols-2 gap-4 p-5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm mb-10 shadow-inner">
-          <div className="text-left">
+        <div className="grid grid-cols-1 p-5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm mb-10 shadow-inner">
+          <div className="text-center">
             <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">Session Elapsed</p>
             <p className="text-lg font-mono font-medium text-white/90">
               {Math.floor((Date.now() - loadingStartTime) / 1000)}s
             </p>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">Live Decodes</p>
-            <div className="flex items-center justify-end gap-1.5">
-              <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-              <p className="text-lg font-mono font-medium text-white/90">
-                {activeBitmapCount} active
-              </p>
-            </div>
           </div>
         </div>
 

@@ -5,6 +5,7 @@ interface MapHudProps {
   school: any;
   setShowBasicInfo: (v: boolean) => void;
   isTileLoading: boolean;
+  decodingCount: number;
   isLoading: boolean;
   currentLat: number;
   currentLng: number;
@@ -18,6 +19,7 @@ export const MapHud: React.FC<MapHudProps> = ({
   school,
   setShowBasicInfo,
   isTileLoading,
+  decodingCount,
   isLoading,
   currentLat,
   currentLng,
@@ -45,7 +47,7 @@ export const MapHud: React.FC<MapHudProps> = ({
       </div>
 
       {/* ── Background tile-loading indicator ───────────────────────────────── */}
-      {isTileLoading && !isLoading && (
+      {(isTileLoading || decodingCount > 0) && !isLoading && (
         <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full bg-black/70 backdrop-blur-sm px-3 py-1.5 border border-white/10 pointer-events-none">
           <div className="flex items-center gap-0.5">
             {[0, 1, 2].map((i) => (
@@ -57,7 +59,7 @@ export const MapHud: React.FC<MapHudProps> = ({
             ))}
           </div>
           <span className="text-[10px] font-semibold uppercase tracking-wider text-white/70">
-            Loading imagery…
+            {decodingCount > 0 ? `Optimizing ${decodingCount} tiles…` : "Loading imagery…"}
           </span>
         </div>
       )}

@@ -81,6 +81,7 @@ export default function School2DViewer({
   const [showBasicInfo, setShowBasicInfo] = useState(false);
   const [showOpacitySlider, setShowOpacitySlider] = useState(false);
   const [kmzOpacity, setKmzOpacity] = useState(1);
+  const [visuals, setVisuals] = useState({ brightness: 1, contrast: 1, saturation: 1 });
   const [activeTool, setActiveTool] = useState<any>("none");
   const [currentLat, setCurrentLat] = useState(fallbackLocation.lat);
   const [currentLng, setCurrentLng] = useState(fallbackLocation.lng);
@@ -114,8 +115,8 @@ export default function School2DViewer({
     activeDrawRef: mapInternalDrawRef, blockOverlayRef, measureSourceRef, kmlLayerRef, geojsonLayerRef, placesLayerRef
   });
 
-  const { bitmapsRef } = useKmzLoader({
-    mapRef, mapReady, kmzUrl, tifUrl, schoolId: school.id, kmzOpacity,
+  useKmzLoader({
+    mapRef, mapReady, kmzUrl, tifUrl, schoolId: school.id, kmzOpacity, visuals,
     setIsLoading, setLoadingMessage, setLoadingProgress, setIsTileLoading, setDecodingCount, setFeatures,
     kmlLayerRef, groundOverlayLayersRef, overlayExtentRef
   });
@@ -196,11 +197,54 @@ export default function School2DViewer({
     <div className="fixed inset-0 z-50 overflow-hidden bg-[#0f1117] w-full h-full">
       <div ref={containerRef} className="absolute inset-0" />
       
-      <LoadingOverlay isLoading={isLoading} isTileLoading={isTileLoading} decodingCount={decodingCount} loadingProgress={loadingProgress} loadingMessage={loadingMessage} loadingStartTime={loadingStartTimeRef.current} activeBitmapCount={bitmapsRef.current.size} />
+      <LoadingOverlay 
+        isLoading={isLoading} 
+        loadingProgress={loadingProgress} 
+        loadingMessage={loadingMessage} 
+        loadingStartTime={loadingStartTimeRef.current} 
+      />
       
-      <MapToolbar onClose={onClose} showNavigator={showNavigator} setShowNavigator={setShowNavigator} showPlacesOverlay={showPlacesOverlay} setShowPlacesOverlay={setShowPlacesOverlay} showOpacitySlider={showOpacitySlider} setShowOpacitySlider={setShowOpacitySlider} basemapStyle={basemapStyle} switchBasemap={switchBasemap} measurementMode={measurementMode} setMeasurementMode={setMeasurementMode} clearMeasurements={() => measureSourceRef.current.clear()} activeTool={activeTool} setActiveTool={setActiveTool} onZoomIn={() => mapRef.current?.getView().animate({ zoom: (mapRef.current.getView().getZoom() ?? 19) + 1 })} onZoomOut={() => mapRef.current?.getView().animate({ zoom: (mapRef.current.getView().getZoom() ?? 19) - 1 })} onHome={() => mapRef.current?.getView().animate({ center: fromLonLat([fallbackLocation.lng, fallbackLocation.lat]), zoom: 19 })} onFitExtent={() => overlayExtentRef.current && mapRef.current?.getView().fit(overlayExtentRef.current, { padding: [60,60,60,60] })} onExportPng={exportPng} showBasicInfo={showBasicInfo} setShowBasicInfo={setShowBasicInfo} kmzOpacity={kmzOpacity} setKmzOpacity={setKmzOpacity} />
+      <MapToolbar 
+        onClose={onClose} 
+        showNavigator={showNavigator} 
+        setShowNavigator={setShowNavigator} 
+        showPlacesOverlay={showPlacesOverlay} 
+        setShowPlacesOverlay={setShowPlacesOverlay} 
+        showOpacitySlider={showOpacitySlider} 
+        setShowOpacitySlider={setShowOpacitySlider} 
+        basemapStyle={basemapStyle} 
+        switchBasemap={switchBasemap} 
+        measurementMode={measurementMode} 
+        setMeasurementMode={setMeasurementMode} 
+        clearMeasurements={() => measureSourceRef.current.clear()} 
+        activeTool={activeTool} 
+        setActiveTool={setActiveTool} 
+        onZoomIn={() => mapRef.current?.getView().animate({ zoom: (mapRef.current.getView().getZoom() ?? 19) + 1 })} 
+        onZoomOut={() => mapRef.current?.getView().animate({ zoom: (mapRef.current.getView().getZoom() ?? 19) - 1 })} 
+        onHome={() => mapRef.current?.getView().animate({ center: fromLonLat([fallbackLocation.lng, fallbackLocation.lat]), zoom: 19 })} 
+        onFitExtent={() => overlayExtentRef.current && mapRef.current?.getView().fit(overlayExtentRef.current, { padding: [60,60,60,60] })} 
+        onExportPng={exportPng} 
+        showBasicInfo={showBasicInfo} 
+        setShowBasicInfo={setShowBasicInfo} 
+        kmzOpacity={kmzOpacity} 
+        setKmzOpacity={setKmzOpacity} 
+        visuals={visuals}
+        setVisuals={setVisuals}
+      />
       
-      <MapHud school={school} setShowBasicInfo={setShowBasicInfo} isTileLoading={isTileLoading} isLoading={isLoading} currentLat={currentLat} currentLng={currentLng} measurementMode={measurementMode} measureResult={measureResult} infoFeature={infoFeature} onCloseInfo={() => setInfoFeature(null)} />
+      <MapHud 
+        school={school} 
+        setShowBasicInfo={setShowBasicInfo} 
+        isTileLoading={isTileLoading} 
+        decodingCount={decodingCount}
+        isLoading={isLoading} 
+        currentLat={currentLat} 
+        currentLng={currentLng} 
+        measurementMode={measurementMode} 
+        measureResult={measureResult} 
+        infoFeature={infoFeature} 
+        onCloseInfo={() => setInfoFeature(null)} 
+      />
       
       {showNavigator && <MapNavigator features={features} selectedFeatureName={selectedFeatureName} onFlyTo={flyToFeature} onClose={() => setShowNavigator(false)} />}
       
