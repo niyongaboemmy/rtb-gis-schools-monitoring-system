@@ -85,6 +85,16 @@ export class BuildingDto {
   @IsOptional()
   longitude?: number;
 
+  @ApiPropertyOptional()
+  @IsArray()
+  @IsOptional()
+  annotations?: any[];
+
+  @ApiPropertyOptional()
+  @IsArray()
+  @IsOptional()
+  media?: any[];
+
   @ApiPropertyOptional({ type: [FacilityItemDto] })
   @IsArray()
   @ValidateNested({ each: true })

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Viewer,
   Entity,
@@ -42,11 +42,17 @@ import {
   Layers,
   Eye,
   EyeOff,
+  PlusCircle,
+  MessageSquare,
+  MousePointer2,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
 import { Card } from "./ui/card";
-import { FILE_SERVER_URL } from "../lib/api";
+import { BlockInspector } from "./BlockInspector";
+import { BuildingFormDrawer } from "./school-form-steps/BuildingFormDrawer";
+import type { BuildingData } from "./school-form-steps/BuildingsStep";
+import { FILE_SERVER_URL, api } from "../lib/api";
 
 Ion.defaultAccessToken = import.meta.env.VITE_CESIUM_ION_TOKEN;
 
@@ -453,6 +459,15 @@ const School3DView: React.FC<School3DViewProps> = ({
   const [showNavigator, setShowNavigator] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEntity, setSelectedEntity] = useState<any>(null);
+  const [activeBlock, setActiveBlock] = useState<BuildingData | null>(null);
+  const [isBlockInspectorOpen, setIsBlockInspectorOpen] = useState(false);
+  const [activeTool, setActiveTool] = useState<string>("none");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerBuilding, setDrawerBuilding] = useState<BuildingData | null>(null);
+  const [schoolBuildings, setSchoolBuildings] = useState<BuildingData[]>([]);
+  const [availableFacilities, setAvailableFacilities] = useState<any[]>([]);
+  const [facilitiesLoading, setFacilitiesLoading] = useState(false);
+  const [inspectorPosition, setInspectorPosition] = useState<{ x: number; y: number } | null>(null);
 
   const [isMapLoading, setIsMapLoading] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -606,6 +621,107 @@ const School3DView: React.FC<School3DViewProps> = ({
     return () => remove();
   }, []);
 
+  // ── Sync buildings with backend ──────────────────────────────────────────
+  const fetchFacilities = useCallback(async () => {
+    try {
+      setFacilitiesLoading(true);
+      const res = await api.get("/schools/facilities/available");
+      setAvailableFacilities(res.data);
+    } catch (err) {
+      console.error("Failed to fetch facilities", err);
+    } finally {
+      setFacilitiesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchFacilities();
+  }, [fetchFacilities]);
+
+  const handleSaveBuilding = async (data: BuildingData) => {
+    try {
+      setIsMapLoading(true);
+      if (data.id.startsWith("temp-")) {
+        const res = await api.post(`/schools/${school.id}/buildings`, data);
+        setSchoolBuildings((prev) => [...prev, res.data]);
+      } else {
+        const res = await api.patch(`/schools/buildings/${data.id}`, data);
+        setSchoolBuildings((prev) => 
+          prev.map((b) => (b.id === data.id ? res.data : b))
+        );
+      }
+      setDrawerOpen(false);
+    } catch (err) {
+      console.error("Failed to save building", err);
+    } finally {
+      setIsMapLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setSchoolBuildings(effectiveBuildings);
+  }, [effectiveBuildings]);
+
+  // ── Mouse Click / Picking ────────────────────────────────────────────────
+  useEffect(() => {
+    const viewer = viewerRef.current?.cesiumElement;
+    if (!viewer) return;
+
+    const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
+    handler.setInputAction((click: any) => {
+      const picked = viewer.scene.pick(click.position);
+      
+      if (activeTool === "create_block") {
+        const c = viewer.camera.pickEllipsoid(click.position);
+        if (c) {
+          const carto = viewer.scene.globe.ellipsoid.cartesianToCartographic(c);
+          const lng = CesiumMath.toDegrees(carto.longitude);
+          const lat = CesiumMath.toDegrees(carto.latitude);
+          
+          const newBuilding: BuildingData = {
+            id: `temp-${Date.now()}`,
+            buildingName: "",
+            buildingCode: "",
+            buildingFunction: "",
+            buildingCondition: "good",
+            buildingRoofCondition: "good",
+            buildingStructuralScore: "100",
+            buildingFloors: "1",
+            buildingArea: "0",
+            buildingYearBuilt: new Date().getFullYear().toString(),
+            buildingNotes: "",
+            facilities: [],
+            geolocation: { latitude: lat, longitude: lng },
+            annotations: [],
+            media: [],
+          };
+          setDrawerBuilding(newBuilding);
+          setDrawerOpen(true);
+          setActiveTool("none");
+        }
+        return;
+      }
+
+      if (picked && picked.id) {
+        // Find if it matches a building
+        const building = schoolBuildings.find(b => 
+          b.id === picked.id.id || b.buildingName === picked.id.name
+        );
+        
+        if (building) {
+          setActiveBlock(building);
+          setIsBlockInspectorOpen(true);
+          setInspectorPosition({ x: click.position.x, y: click.position.y });
+          return;
+        }
+      } else {
+        setIsBlockInspectorOpen(false);
+      }
+    }, ScreenSpaceEventType.LEFT_CLICK);
+
+    return () => handler.destroy();
+  }, [activeTool, schoolBuildings, school.id]);
+
   const handleExportKMZ = () => {
     const schoolId = window.location.pathname.split("/")[2];
     if (schoolId) {
@@ -691,6 +807,35 @@ const School3DView: React.FC<School3DViewProps> = ({
       onClick: () =>
         setMeasurementMode(measurementMode === "area" ? "none" : "area"),
       title: "Area Measure",
+    },
+    {
+      icon: (
+        <MousePointer2
+          className={cn(
+            "w-5 h-5",
+            activeTool === "select" ? "text-primary" : "text-muted-foreground",
+          )}
+        />
+      ),
+      active: activeTool === "select",
+      onClick: () => setActiveTool(activeTool === "select" ? "none" : "select"),
+      title: "Select Block",
+    },
+    {
+      icon: (
+        <PlusCircle
+          className={cn(
+            "w-5 h-5",
+            activeTool === "create_block"
+              ? "text-primary"
+              : "text-muted-foreground",
+          )}
+        />
+      ),
+      active: activeTool === "create_block",
+      onClick: () =>
+        setActiveTool(activeTool === "create_block" ? "none" : "create_block"),
+      title: "Create School Block",
     },
     {
       icon: (

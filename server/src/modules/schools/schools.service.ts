@@ -54,25 +54,29 @@ export class SchoolsService {
       console.log('Creating buildings for school:', savedSchool.id);
       console.log('Buildings data:', buildings);
       const schoolBuildings = buildings.map((building) => {
-        const {
-          area,
-          condition,
-          roofCondition,
-          code,
-          latitude,
-          longitude,
-          ...buildingData
-        } = building;
-        const created = this.schoolBuildingRepository.create({
-          ...buildingData,
-          schoolId: savedSchool.id,
-          buildingCode: code,
-          areaSquareMeters: area,
-          condition: (condition as BuildingCondition) || BuildingCondition.FAIR,
-          roofCondition: (roofCondition as RoofCondition) || RoofCondition.GOOD,
-          centroidLat: latitude ?? null,
-          centroidLng: longitude ?? null,
-        } as DeepPartial<SchoolBuilding>);
+          const {
+            area,
+            condition,
+            roofCondition,
+            code,
+            latitude,
+            longitude,
+            annotations,
+            media,
+            ...buildingData
+          } = building;
+          const created = this.schoolBuildingRepository.create({
+            ...buildingData,
+            schoolId: savedSchool.id,
+            buildingCode: code,
+            areaSquareMeters: area,
+            condition: (condition as BuildingCondition) || BuildingCondition.FAIR,
+            roofCondition: (roofCondition as RoofCondition) || RoofCondition.GOOD,
+            centroidLat: latitude ?? null,
+            centroidLng: longitude ?? null,
+            annotations: annotations || [],
+            media: media || [],
+          } as DeepPartial<SchoolBuilding>);
         console.log('Created building:', created);
         return created;
       });
@@ -170,6 +174,8 @@ export class SchoolsService {
             code,
             latitude,
             longitude,
+            annotations,
+            media,
             ...buildingData
           } = building;
           const created = this.schoolBuildingRepository.create({
@@ -183,6 +189,8 @@ export class SchoolsService {
               (roofCondition as RoofCondition) || RoofCondition.GOOD,
             centroidLat: latitude ?? null,
             centroidLng: longitude ?? null,
+            annotations: annotations || [],
+            media: media || [],
           } as DeepPartial<SchoolBuilding>);
           console.log('UPDATE - Created building:', created);
           return created;

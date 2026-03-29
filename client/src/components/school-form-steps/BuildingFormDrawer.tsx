@@ -163,8 +163,8 @@ interface BuildingFormDrawerProps {
   buildingIndex: number;
   onSave: (data: BuildingData) => void;
   onClose: () => void;
-  availableFacilities: AvailableFacility[];
-  facilitiesLoading: boolean;
+  availableFacilities?: AvailableFacility[];
+  facilitiesLoading?: boolean;
   /** School's coordinates for auto-centering the geo modal */
   schoolLat?: number | null;
   schoolLng?: number | null;
@@ -231,7 +231,7 @@ export function BuildingFormDrawer({
   const addFacility = () => set("facilities", [...draft.facilities, createEmptyFacility()]);
 
   const selectFacility = (i: number, facilityId: string) => {
-    const found = availableFacilities.find((f) => f.facilityId === facilityId);
+    const found = (availableFacilities || []).find((f) => f.facilityId === facilityId);
     set(
       "facilities",
       draft.facilities.map((f, idx) =>
@@ -251,7 +251,7 @@ export function BuildingFormDrawer({
   const removeFacility = (i: number) =>
     set("facilities", draft.facilities.filter((_, idx) => idx !== i));
 
-  const facilityOptions: DropdownOption[] = availableFacilities.map((af) => ({
+  const facilityOptions: DropdownOption[] = (availableFacilities || []).map((af) => ({
     value: af.facilityId,
     label: af.title,
   }));
