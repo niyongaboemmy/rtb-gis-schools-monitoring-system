@@ -29,34 +29,55 @@ export interface School2DViewerProps {
   initialBuildingId?: string;
   /** High-resolution Cloud Optimized GeoTIFF path */
   tifFilePath?: string;
+  /**
+   * When true the viewer acts as a building-picker:
+   * clicking a building immediately calls onPickerSelect and closes.
+   */
+  pickerMode?: boolean;
+  /** Called with the picked building when pickerMode is active */
+  onPickerSelect?: (building: any) => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Styles
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const kmlStyle = new Style({
-  fill: new Fill({ color: "rgba(59, 130, 246, 0.25)" }),
-  stroke: new Stroke({ color: "rgba(59, 130, 246, 0.9)", width: 2 }),
-  image: new CircleStyle({
-    radius: 6,
-    fill: new Fill({ color: "rgba(59, 130, 246, 0.9)" }),
-    stroke: new Stroke({ color: "white", width: 1.5 }),
-  }),
-});
+export const kmlStyle = (feature: any) => {
+  const name = getFeatureName(feature);
+  const type = feature.getGeometry()?.getType();
+
+  return new Style({
+    fill: new Fill({ color: "rgba(0, 0, 0, 0)" }),
+    stroke: new Stroke({ color: "rgba(0, 0, 0, 0)", width: 0 }),
+    image: new CircleStyle({
+      radius: 6,
+      fill: new Fill({ color: "rgba(251, 191, 36, 0.95)" }),
+      stroke: new Stroke({ color: "white", width: 1.5 }),
+    }),
+    text: name ? new Text({
+      text: name,
+      font: "bold 11px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif",
+      fill: new Fill({ color: "#fff" }),
+      stroke: new Stroke({ color: "rgba(15, 23, 42, 0.95)", width: 4 }),
+      offsetY: type === "Point" ? 18 : 0,
+      overflow: true,
+      placement: type === "LineString" ? "line" : "point",
+    }) : undefined,
+  });
+};
 
 export const kmlSelectedStyle = new Style({
-  fill: new Fill({ color: "rgba(99, 179, 237, 0.35)" }),
-  stroke: new Stroke({ color: "#63b3ed", width: 3 }),
+  fill: new Fill({ color: "rgba(0, 0, 0, 0)" }),
+  stroke: new Stroke({ color: "rgba(255, 255, 255, 0.5)", width: 2 }),
   image: new CircleStyle({
     radius: 8,
-    fill: new Fill({ color: "#63b3ed" }),
+    fill: new Fill({ color: "#3b82f6" }),
     stroke: new Stroke({ color: "white", width: 2 }),
   }),
 });
 
 export const geojsonStyle = new Style({
-  fill: new Fill({ color: "rgba(34, 197, 94, 0.2)" }),
+  fill: new Fill({ color: "rgba(0, 0, 0, 0)" }),
   stroke: new Stroke({ color: "rgba(34, 197, 94, 0.8)", width: 2 }),
   image: new CircleStyle({
     radius: 5,
@@ -91,8 +112,8 @@ export const placesStyleFunction = (feature: any) => {
     return new Style({
       image: new CircleStyle({
         radius: 8,
-        fill: new Fill({ color: "rgba(251, 191, 36, 0.95)" }),
-        stroke: new Stroke({ color: "#fff", width: 2 }),
+        fill: new Fill({ color: "rgba(0, 0, 0, 0)" }),
+        stroke: new Stroke({ color: "rgba(251, 191, 36, 0.95)", width: 2 }),
       }),
       text: name
         ? new Text({
@@ -125,36 +146,70 @@ export const placesStyleFunction = (feature: any) => {
 };
 
 export const measureStyle = new Style({
-  fill: new Fill({ color: "rgba(251, 191, 36, 0.15)" }),
-  stroke: new Stroke({ color: "#fbbf24", width: 2, lineDash: [6, 4] }),
-  image: new CircleStyle({
-    radius: 5,
-    fill: new Fill({ color: "#fbbf24" }),
-    stroke: new Stroke({ color: "white", width: 1.5 }),
-  }),
-});
-
-export const blockStyle = new Style({
-  image: new CircleStyle({
-    radius: 8,
-    fill: new Fill({ color: "#6366f1" }),
-    stroke: new Stroke({ color: "#fff", width: 2 }),
-  }),
-  text: new Text({
-    font: "bold 12px 'Inter', system-ui, sans-serif",
-    fill: new Fill({ color: "#fff" }),
-    stroke: new Stroke({ color: "rgba(0, 0, 0, 0.8)", width: 3 }),
-    offsetY: 18,
-  }),
-});
-
-export const annotationStyle = new Style({
-  fill: new Fill({ color: "rgba(239, 68, 68, 0.2)" }),
-  stroke: new Stroke({ color: "#ef4444", width: 2.5 }),
+  fill: new Fill({ color: "rgba(0, 0, 0, 0)" }),
+  stroke: new Stroke({ color: "#3b82f6", width: 3, lineDash: [8, 5] }),
   image: new CircleStyle({
     radius: 6,
-    fill: new Fill({ color: "#ef4444" }),
-    stroke: new Stroke({ color: "#fff", width: 1.5 }),
+    fill: new Fill({ color: "#3b82f6" }),
+    stroke: new Stroke({ color: "white", width: 2 }),
+  }),
+});
+
+export const blockStyle = (feature?: any) => {
+  const isPolygon = feature?.getGeometry()?.getType() === "Polygon";
+  const annData = feature?.get("annotationData");
+  const buildingData = feature?.get("buildingData");
+  const name = feature?.get("buildingName") || buildingData?.buildingName || buildingData?.buildingCode || "Unnamed Block";
+  
+  // Read area from multiple possible locations (priority order)
+  const rawArea = annData?.areaSquareMeters
+    ?? feature?.get("buildingArea")
+    ?? buildingData?.buildingArea
+    ?? buildingData?.areaSquareMeters
+    ?? "";
+  const area = rawArea ? Number(rawArea) : 0;
+  const areaLabel = area > 0 ? `${area.toFixed(1)}m²` : "";
+  const labelText = feature?.get("hideLabel") ? "" : (name && areaLabel ? `${name} · ${areaLabel}` : name || areaLabel);
+
+  if (isPolygon) {
+    return new Style({
+      fill: new Fill({ color: "rgba(0, 0, 0, 0)" }),
+      stroke: new Stroke({ color: "#3b82f6", width: 3.5 }),
+      text: labelText ? new Text({
+        text: labelText,
+        font: "bold 12px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif",
+        fill: new Fill({ color: "#fff" }),
+        stroke: new Stroke({ color: "rgba(15, 23, 42, 0.95)", width: 4 }),
+        overflow: true,
+        placement: "point",
+      }) : undefined,
+    });
+  }
+
+  return new Style({
+    image: new CircleStyle({
+      radius: 10,
+      fill: new Fill({ color: "#3b82f6" }),
+      stroke: new Stroke({ color: "#fff", width: 2.5 }),
+    }),
+    text: labelText ? new Text({
+      text: labelText,
+      font: "bold 12px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif",
+      fill: new Fill({ color: "#fff" }),
+      stroke: new Stroke({ color: "rgba(15, 23, 42, 0.95)", width: 4 }),
+      offsetY: 22,
+      overflow: true,
+    }) : undefined,
+  });
+};
+
+export const annotationStyle = new Style({
+  fill: new Fill({ color: "rgba(0, 0, 0, 0)" }),
+  stroke: new Stroke({ color: "#10b981", width: 3 }),
+  image: new CircleStyle({
+    radius: 7,
+    fill: new Fill({ color: "#10b981" }),
+    stroke: new Stroke({ color: "#fff", width: 2 }),
   }),
 });
 

@@ -174,7 +174,9 @@ export function useKmzLoader({
           const resolution = te[2] - te[0];
           
           // Step 1: Find all strictly intersecting bounds for STANDARD layers only
+          // Optimization: Pre-filter by extent if many overlays exist
           const intersectingBounds = standardBounds.filter(({ ext }) => {
+            if (te[0] > ext[2] || te[2] < ext[0] || te[1] > ext[3] || te[3] < ext[1]) return false;
             const ix = getIntersection(te, ext);
             return ix && !isExtentEmpty(ix);
           });
@@ -293,7 +295,7 @@ export function useKmzLoader({
     };
 
     const loadKml = async (kmlT: string, grounds?: GroundOverlayData[], blobs?: Map<string, Blob>) => {
-      const kmlFormat = new KML({ extractStyles: true });
+      const kmlFormat = new KML({ extractStyles: false });
       let parsed: Feature[];
       try {
         parsed = kmlFormat.readFeatures(kmlT, { featureProjection: "EPSG:3857", dataProjection: "EPSG:4326" }) as Feature[];

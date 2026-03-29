@@ -1,286 +1,251 @@
-import { useState } from "react";
-import { 
-  Building2, 
-  Info, 
-  MessageSquare, 
-  Image as ImageIcon, 
-  Pencil, 
-  Calendar, 
-  Layers, 
-  Maximize2, 
-  Plus,
-  Trash2,
-  ExternalLink,
-  ChevronRight
-} from "lucide-react";
+import { Building2, Maximize2, Pencil, X } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { cn } from "../lib/utils";
 import type { BuildingData } from "./school-form-steps/BuildingsStep";
 
 interface BlockInspectorProps {
-  building: BuildingData;
+  building: BuildingData & Record<string, any>;
   onEdit: (building: BuildingData) => void;
   onClose: () => void;
   onUpdateBuilding: (building: BuildingData) => Promise<void>;
   onAddAnnotation?: () => void;
   onUploadMedia?: () => void;
+  on3DView?: () => void;
 }
 
-export function BlockInspector({ 
-  building, 
-  onEdit, 
+export function BlockInspector({
+  building,
+  onEdit,
   onClose,
-  onUpdateBuilding: _onUpdateBuilding,
-  onAddAnnotation,
-  onUploadMedia
+  on3DView,
 }: BlockInspectorProps) {
-  const [activeTab, setActiveTab] = useState<"details" | "annotate" | "media">("details");
-
   const conditionColors: Record<string, string> = {
-    good: "bg-green-500/10 text-green-600 border-green-500/20",
-    fair: "bg-blue-500/10 text-blue-600 border-blue-500/20",
-    poor: "bg-amber-500/10 text-amber-600 border-amber-500/20",
-    critical: "bg-red-500/10 text-red-600 border-red-500/20",
+    good: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    fair: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+    poor: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+    critical: "bg-red-500/10 text-red-400 border-red-500/20",
   };
 
   return (
-    <div className="w-[380px] bg-background/95 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[600px] animate-in fade-in zoom-in duration-200">
-      {/* Header */}
-      <div className="p-4 bg-primary/5 border-b border-border/30 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-primary/10 shadow-sm">
-            <Building2 className="w-5 h-5 text-primary" />
+    <div className="w-[260px] bg-background/90 backdrop-blur-3xl border-r border-white/10 shadow-[20px_0_50px_rgba(0,0,0,0.3)] flex flex-col animate-in fade-in slide-in-from-left-6 duration-700 overflow-hidden pointer-events-auto h-full border-l-0">
+      {/* Compact Header */}
+      <div className="p-4 pb-3 bg-linear-to-b from-white/10 to-transparent flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-xl bg-primary shadow-lg shadow-primary/20 text-white shrink-0">
+            <Building2 className="w-3.5 h-3.5" />
           </div>
-          <div>
-            <h3 className="font-bold text-base text-foreground leading-tight">
-              {building.buildingName || "Unnamed Block"}
+          <div className="min-w-0">
+            <h3 className="font-bold text-[13px] text-white leading-tight mb-0.5 truncate pr-1">
+              {building.buildingName ||
+                building.name ||
+                building.buildingCode ||
+                building.code ||
+                "Unnamed Block"}
             </h3>
-            <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mt-0.5">
-              {building.buildingCode || "NO-CODE"}
-            </p>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[7.5px] px-1.5 py-0.5 rounded-md bg-white/10 text-white/40 font-black uppercase tracking-widest border border-white/5 shrink-0">
+                {building.buildingCode || building.code || "ID-NONE"}
+              </span>
+            </div>
           </div>
         </div>
-        <button 
+        <button
           onClick={onClose}
-          className="p-1.5 rounded-full hover:bg-muted transition-colors text-muted-foreground"
+          className="p-1.5 rounded-xl text-white/20 hover:text-white hover:bg-white/10 transition-all active:scale-90 group shrink-0"
         >
-          <ChevronRight className="w-5 h-5" />
+          <X className="w-3.5 h-3.5 group-hover:rotate-90 transition-transform duration-300" />
         </button>
       </div>
 
-      {/* Tabs Navigation */}
-      <div className="flex p-1 bg-muted/30 border-b border-border/20">
-        {[
-          { id: "details", label: "Details", icon: Info },
-          { id: "annotate", label: "Annotate", icon: MessageSquare },
-          { id: "media", label: "Media", icon: ImageIcon },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
-            className={cn(
-              "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-medium rounded-lg transition-all",
-              activeTab === tab.id 
-                ? "bg-background shadow-sm text-primary" 
-                : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-            )}
-          >
-            <tab.icon className="w-3.5 h-3.5" />
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
-        {activeTab === "details" && (
-          <div className="p-4 space-y-5">
-            {/* Quick Stats */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-xl bg-muted/20 border border-border/10">
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Condition</p>
-                <div className="mt-1">
-                  <Badge variant="outline" className={cn("text-[10px] uppercase font-black px-1.5 h-5", conditionColors[building.buildingCondition] || "bg-muted")}>
-                    {building.buildingCondition}
-                  </Badge>
-                </div>
-              </div>
-              <div className="p-3 rounded-xl bg-muted/20 border border-border/10">
-                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter">Function</p>
-                <p className="mt-1 text-sm font-semibold truncate">{building.buildingFunction || "N/A"}</p>
-              </div>
-            </div>
-
-            {/* Detailed Info */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 text-sm">
-                <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center shrink-0">
-                  <Maximize2 className="w-4 h-4 text-indigo-500" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs text-muted-foreground">Area Coverage</p>
-                  <p className="font-medium">{building.buildingArea ? `${building.buildingArea} m²` : "Not specified"}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 text-sm">
-                <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
-                  <Layers className="w-4 h-4 text-amber-500" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs text-muted-foreground">Levels (Floors)</p>
-                  <p className="font-medium">{building.buildingFloors || "1"} Floor(s)</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 text-sm">
-                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
-                  <Calendar className="w-4 h-4 text-emerald-500" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs text-muted-foreground">Year Established</p>
-                  <p className="font-medium">{building.buildingYearBuilt || "Unknown"}</p>
-                </div>
-              </div>
-            </div>
-
-            {building.buildingNotes && (
-              <div className="p-3 rounded-xl bg-primary/5 border border-primary/10">
-                <p className="text-[10px] text-primary font-bold uppercase mb-1 flex items-center gap-1">
-                  <Info className="w-3 h-3" /> Notes
-                </p>
-                <p className="text-xs italic text-muted-foreground line-clamp-3">
-                  "{building.buildingNotes}"
-                </p>
-              </div>
-            )}
-
-            <Button 
-              variant="outline" 
-              className="w-full text-xs font-bold gap-2 rounded-xl group"
-              onClick={() => onEdit(building)}
+      {/* Main Body - Compact Scrollable */}
+      <div className="flex-1 overflow-y-auto px-4 py-1 custom-scrollbar space-y-3 pb-5">
+        {/* Vital Info Grid - Smaller items */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05] shadow-inner flex flex-col justify-between">
+            <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest mb-0.5 font-mono">
+              Condition
+            </p>
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-[6.5px] uppercase font-bold px-1.5 h-3.5 border-0 shadow-xs",
+                conditionColors[
+                  building.buildingCondition || building.condition
+                ] || "bg-white/10 text-white",
+              )}
             >
-              <Pencil className="w-3.5 h-3.5" />
-              Modify Building Profile
-            </Button>
+              {building.buildingCondition || building.condition || "N/A"}
+            </Badge>
+          </div>
+          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05] shadow-inner flex flex-col justify-between">
+            <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest mb-0.5 font-mono">
+              Roof
+            </p>
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-[6.5px] uppercase font-bold px-1.5 h-3.5 border-0 shadow-xs bg-white/10 text-white",
+              )}
+            >
+              {building.buildingRoofCondition ||
+                building.roofCondition ||
+                "N/A"}
+            </Badge>
+          </div>
+          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05] flex flex-col justify-between">
+            <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest font-mono">
+              Function
+            </p>
+            <p className="text-[9px] font-bold text-white/80 truncate leading-tight">
+              {building.buildingFunction || building.function || "N/A"}
+            </p>
+          </div>
+          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05] flex flex-col justify-between">
+            <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest font-mono">
+              Year Built
+            </p>
+            <p className="text-[9px] font-bold text-white/80 tabular-nums leading-tight">
+              {building.buildingYearBuilt || building.yearBuilt || "N/A"}
+            </p>
+          </div>
+          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05] flex flex-col justify-between">
+            <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest font-mono">
+              Area
+            </p>
+            <p className="text-[9px] font-bold text-white/80 tabular-nums leading-tight">
+              {(building.buildingArea ||
+                building.area ||
+                building.areaSquareMeters) &&
+              Number(
+                building.buildingArea ||
+                  building.area ||
+                  building.areaSquareMeters,
+              ) > 0
+                ? `${Number(building.buildingArea || building.area || building.areaSquareMeters).toFixed(0)} m²`
+                : "N/A"}
+            </p>
+          </div>
+          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05] flex flex-col justify-between">
+            <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest font-mono">
+              Floors
+            </p>
+            <p className="text-[9px] font-bold text-white/80 leading-tight">
+              {building.buildingFloors || building.floors || "1"}
+            </p>
+          </div>
+        </div>
+
+        {/* Compact Structural Score */}
+        {(building.buildingStructuralScore || building.structuralScore) && (
+          <div className="p-3 rounded-2xl bg-linear-to-br from-primary/10 to-transparent border border-primary/5 shadow-inner flex justify-between items-center group">
+            <div>
+              <p className="text-[6.5px] text-primary/80 font-black uppercase tracking-widest mb-0.5">
+                Health Score
+              </p>
+              <p className="text-base font-black text-white tabular-nums leading-none">
+                {building.buildingStructuralScore || building.structuralScore}
+                <span className="text-[8px] text-white/20 font-medium ml-1">
+                  / 100
+                </span>
+              </p>
+            </div>
+            <div className="w-8 h-8 rounded-full border border-white/5 flex items-center justify-center relative bg-black/20">
+              <svg className="w-full h-full -rotate-90 p-0.5">
+                <circle
+                  cx="16"
+                  cy="16"
+                  r="13"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  className="text-white/[0.02]"
+                />
+                <circle
+                  cx="16"
+                  cy="16"
+                  r="13"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeDasharray="81.6"
+                  strokeDashoffset={
+                    81.6 *
+                    (1 -
+                      Number(
+                        building.buildingStructuralScore ||
+                          building.structuralScore,
+                      ) /
+                        100)
+                  }
+                  strokeLinecap="round"
+                  className="text-primary transition-all duration-1000"
+                />
+              </svg>
+              <span className="absolute text-[6px] font-black text-primary/60">
+                {building.buildingStructuralScore || building.structuralScore}%
+              </span>
+            </div>
           </div>
         )}
 
-        {activeTab === "annotate" && (
-          <div className="p-4 space-y-4">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Annotations</h4>
-              <Badge variant="secondary" className="text-[10px]">{(building as any).annotations?.length || 0}</Badge>
-            </div>
+        {/* Compact Notes */}
+        {(building.buildingNotes || building.notes) && (
+          <div className="bg-white/[0.02] p-3 rounded-2xl border border-white/[0.05] italic">
+            <p className="text-[9px] text-white/40 leading-relaxed font-medium">
+              "{building.buildingNotes || building.notes}"
+            </p>
+          </div>
+        )}
 
-            {((building as any).annotations?.length || 0) === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center bg-muted/10 rounded-2xl border border-dashed border-border/30">
-                <div className="p-3 rounded-full bg-muted/50 mb-3">
-                  <MessageSquare className="w-6 h-6 text-muted-foreground/30" />
-                </div>
-                <p className="text-xs text-muted-foreground max-w-[200px]">
-                  No annotations yet. Use the tool below to add specialized notes.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {(building as any).annotations.map((ann: any) => (
-                  <div key={ann.id} className="p-3 rounded-xl bg-background border border-border/40 group hover:border-primary/30 transition-all">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <Badge variant="outline" className="text-[9px] h-4 font-bold bg-primary/5">{ann.type}</Badge>
-                      <button className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-destructive/10 text-destructive transition-all">
-                        <Trash2 className="w-3 h-3" />
-                      </button>
+        {/* Compact Facilities */}
+        {building.facilities && building.facilities.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-[6.5px] text-white/10 uppercase font-black tracking-widest ml-1">
+              Facilities ({building.facilities.length})
+            </p>
+            <div className="space-y-0.5">
+              {building.facilities.map((f: any, idx: number) => (
+                <div
+                  key={idx}
+                  className="flex justify-between items-center p-2 rounded-xl bg-white/[0.02] border border-transparent hover:border-white/5 transition-colors"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="p-1 rounded-lg bg-white/5 text-white/10 shrink-0">
+                      <Maximize2 className="w-2 h-2" />
                     </div>
-                    <p className="text-xs text-foreground line-clamp-2">{ann.content}</p>
-                    <p className="text-[9px] text-muted-foreground mt-2 font-medium">
-                      {new Date(ann.createdAt).toLocaleDateString()}
-                    </p>
+                    <span className="text-[9px] font-bold text-white/60 truncate">
+                      {f.facility_name || f.name || "Facility"}
+                    </span>
                   </div>
-                ))}
-              </div>
-            )}
-
-            <Button 
-              className="w-full text-xs font-bold gap-2 rounded-xl h-9"
-              onClick={onAddAnnotation}
-            >
-              <Plus className="w-4 h-4" />
-              Drop New Annotation
-            </Button>
-          </div>
-        )}
-
-        {activeTab === "media" && (
-          <div className="p-4 space-y-4">
-             <div className="flex items-center justify-between mb-2">
-              <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Gallery Assets</h4>
-              <Badge variant="secondary" className="text-[10px]">{(building as any).media?.length || 0}</Badge>
-            </div>
-
-            {((building as any).media?.length || 0) === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center bg-muted/10 rounded-2xl border border-dashed border-border/30">
-                <div className="p-3 rounded-full bg-muted/50 mb-3">
-                  <ImageIcon className="w-6 h-6 text-muted-foreground/30" />
+                  <span className="text-[8px] font-black text-white/20 tabular-nums uppercase shrink-0 bg-white/5 px-1.5 py-0.5 rounded-md ml-2">
+                    {f.number_of_rooms || f.count || 1}
+                  </span>
                 </div>
-                <p className="text-xs text-muted-foreground max-w-[200px]">
-                  No visual assets available for this block.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-2">
-                {(building as any).media.map((item: any) => (
-                  <div key={item.id} className="relative aspect-square rounded-xl overflow-hidden border border-border/30 group">
-                    <img src={item.url} alt={item.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Button size="icon" variant="secondary" className="w-8 h-8 rounded-full">
-                        <ExternalLink className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <Button 
-              variant="outline" 
-              className="w-full text-xs font-bold gap-2 rounded-xl h-9 border-dashed"
-              onClick={onUploadMedia}
-            >
-              <Plus className="w-4 h-4" />
-              Upload Assets
-            </Button>
+              ))}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Footer */}
-      <div className="p-3 bg-muted/10 border-t border-border/20 flex items-center justify-between">
-         <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[10px] text-muted-foreground font-medium">Synced with Server</span>
-         </div>
-         <Button variant="ghost" size="sm" className="h-7 text-[10px] font-bold p-0 px-2 hover:bg-transparent hover:text-primary">
-            BLOCK REPORT
-         </Button>
+      {/* Compact Action Footer */}
+      <div className="p-4 pt-4 grid grid-cols-2 gap-2 shrink-0 border-t border-white/[0.05] bg-black/20">
+        <Button
+          variant="outline"
+          className="h-8 text-[7px] font-black uppercase tracking-widest rounded-full border-white/5 hover:bg-white/10 hover:text-white text-white/40 transition-all group shrink-0"
+          onClick={() => onEdit(building)}
+        >
+          <Pencil className="w-2 h-2 mr-1 transition-transform group-hover:scale-110" />
+          Edit Block
+        </Button>
+        <Button
+          className="h-8 bg-blue-600/80 hover:bg-blue-600 text-white font-black text-[7px] uppercase tracking-widest rounded-full border-none shadow-lg shadow-blue-600/10 transition-all group shrink-0"
+          onClick={() => on3DView?.()}
+        >
+          <Maximize2 className="w-2 h-2 mr-1 transition-transform group-hover:scale-110" />
+          3D Explorer
+        </Button>
       </div>
-
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(0, 0, 0, 0.1);
-          border-radius: 10px;
-        }
-        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.1);
-        }
-      `}</style>
     </div>
   );
 }

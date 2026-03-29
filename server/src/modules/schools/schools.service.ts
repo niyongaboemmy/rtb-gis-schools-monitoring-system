@@ -14,6 +14,7 @@ import {
 import { CreateSchoolDto } from './dto/create-school.dto';
 import { UpdateSchoolDto } from './dto/update-school.dto';
 import { FacilityEntity } from './entities/facility.entity';
+import { BuildingDto } from './dto/building.dto';
 import {
   SchoolFacilitySurvey,
   ComplianceLevel,
@@ -134,6 +135,40 @@ export class SchoolsService {
 
     const [data, total] = await qb.getManyAndCount();
     return { data, total, page, limit };
+  }
+
+  async findBuildings(
+    id: string,
+    extent?: {
+      minLat?: number;
+      maxLat?: number;
+      minLng?: number;
+      maxLng?: number;
+    },
+  ): Promise<SchoolBuilding[]> {
+    const qb = this.schoolBuildingRepository
+      .createQueryBuilder('building')
+      .where('building.schoolId = :id', { id });
+
+    if (
+      extent &&
+      typeof extent.minLat === 'number' &&
+      typeof extent.maxLat === 'number' &&
+      typeof extent.minLng === 'number' &&
+      typeof extent.maxLng === 'number'
+    ) {
+      qb.andWhere(
+        'building.centroidLat >= :minLat AND building.centroidLat <= :maxLat AND building.centroidLng >= :minLng AND building.centroidLng <= :maxLng',
+        {
+          minLat: extent.minLat,
+          maxLat: extent.maxLat,
+          minLng: extent.minLng,
+          maxLng: extent.maxLng,
+        },
+      );
+    }
+
+    return qb.orderBy('building.name', 'ASC').getMany();
   }
 
   async findOne(id: string): Promise<School> {
@@ -279,6 +314,99 @@ export class SchoolsService {
       .getRawMany();
 
     return { total, byPriority, byProvince, byType };
+  }
+
+  // ============ Building Methods ============
+  async addBuilding(
+    schoolId: string,
+    dto: BuildingDto,
+  ): Promise<SchoolBuilding> {
+    const {
+      area,
+      condition,
+      roofCondition,
+      code,
+      latitude,
+      longitude,
+      annotations,
+      media,
+      ...buildingData
+    } = dto;
+
+    console.log(
+      '[addBuilding] Received annotations:',
+      JSON.stringify(annotations),
+    );
+
+    const created = this.schoolBuildingRepository.create({
+      ...buildingData,
+      schoolId,
+      buildingCode: code,
+      areaSquareMeters: area,
+      condition: (condition as BuildingCondition) || BuildingCondition.FAIR,
+      roofCondition: (roofCondition as RoofCondition) || RoofCondition.GOOD,
+      centroidLat: latitude ?? null,
+      centroidLng: longitude ?? null,
+      // Safety net: filter out any remaining nulls/nested arrays from the DTO transform
+      annotations: (annotations || []).filter(
+        (a: any) => a && typeof a === 'object' && !Array.isArray(a),
+      ),
+      media: (media || []).filter(
+        (m: any) => m && typeof m === 'object' && !Array.isArray(m),
+      ),
+    } as DeepPartial<SchoolBuilding>);
+
+    return this.schoolBuildingRepository.save(created);
+  }
+
+  async updateBuilding(
+    id: string,
+    dto: BuildingDto,
+  ): Promise<SchoolBuilding> {
+    const building = await this.schoolBuildingRepository.findOne({ where: { id } });
+    if (!building) throw new NotFoundException(`Building with ID "${id}" not found`);
+
+    const {
+      area,
+      condition,
+      roofCondition,
+      code,
+      latitude,
+      longitude,
+      annotations,
+      media,
+      ...buildingData
+    } = dto;
+
+    const updateData: any = {
+      ...buildingData,
+      buildingCode: code,
+      areaSquareMeters: area,
+      condition: condition || building.condition,
+      roofCondition: roofCondition || building.roofCondition,
+      centroidLat: latitude !== undefined ? latitude : building.centroidLat,
+      centroidLng: longitude !== undefined ? longitude : building.centroidLng,
+      // Safety net: filter out any remaining nulls/nested arrays from the DTO transform
+      annotations: annotations !== undefined
+        ? (annotations || []).filter(
+            (a: any) => a && typeof a === 'object' && !Array.isArray(a),
+          )
+        : building.annotations,
+      media: media !== undefined
+        ? (media || []).filter(
+            (m: any) => m && typeof m === 'object' && !Array.isArray(m),
+          )
+        : building.media,
+    };
+
+    Object.assign(building, updateData);
+    return this.schoolBuildingRepository.save(building);
+  }
+
+  async removeBuilding(id: string): Promise<void> {
+    const building = await this.schoolBuildingRepository.findOne({ where: { id } });
+    if (!building) throw new NotFoundException(`Building with ID "${id}" not found`);
+    await this.schoolBuildingRepository.remove(building);
   }
 
   // ============ Facility Survey Methods ============

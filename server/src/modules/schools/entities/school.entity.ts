@@ -210,6 +210,18 @@ export class School {
   @Column({ nullable: true })
   kmzProcessedAt: Date;
 
+  // Site-wide annotations for 2D map (measurements, labels)
+  @Column({ type: 'jsonb', nullable: true })
+  siteAnnotations: {
+    id: string;
+    type: 'point' | 'line' | 'polygon';
+    label?: string;
+    description?: string;
+    coordinates: number[];
+    style?: any;
+    createdAt: string;
+  }[];
+
   @Column({ type: 'jsonb', nullable: true })
   geojsonContent: object;
 

@@ -46,6 +46,8 @@ export interface BuildingData {
     type: "text" | "point" | "line" | "polygon";
     content: string;
     coordinates?: number[];
+    isFootprint?: boolean;
+    areaSquareMeters?: number;
     style?: any;
     createdAt: string;
   }[];

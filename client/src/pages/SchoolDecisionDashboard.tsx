@@ -2,45 +2,43 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, Link, Navigate } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 import {
-  Activity,
   AlertTriangle,
-  ArrowLeft,
-  BookOpen,
-  Box,
   Building2,
-  Calendar,
-  ClipboardCheck,
-  Clock,
-  Coffee,
-  Droplets,
-  FlaskConical,
-  Globe,
-  GraduationCap,
-  GraduationCap as TeacherIcon,
-  Home,
-  Image as LucideImage,
+  Users,
   Layers,
-  Mail,
-  Map as LucideMap,
-  MapIcon,
-  MapPin,
+  Search,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
+  FileText,
+  Camera,
+  Download,
+  Share2,
+  Menu,
+  X,
+  PieChart,
+  BarChart,
+  Calendar,
+  Clock,
+  ChevronRight,
+  Briefcase,
+  GraduationCap,
+  ClipboardCheck,
+  Building,
+  Upload,
+  Phone,
   Maximize,
+  Globe,
+  Box,
+  ArrowLeft,
+  LucideImage,
+  LucideMap,
+  Mail,
   Minus,
-  Monitor,
   Plus,
   Pencil,
-  Phone,
-  Shield,
-  Sparkles,
-  Target,
-  TrendingUp,
-  Trophy,
-  Upload,
-  Users,
-  Wifi,
-  Wrench,
-  Zap,
-  CheckCircle2,
+  MapPin,
+  ClipboardList,
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -54,7 +52,7 @@ import {
   CardTitle,
 } from "../components/ui/card";
 import { PageHeader } from "../components/ui/page-header";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "../lib/utils";
 import { api, FILE_SERVER_URL } from "../lib/api";
 
@@ -95,236 +93,20 @@ export default function SchoolDecisionDashboard() {
 
   const lastFetchedId = useRef<string | null>(null);
 
-  useEffect(() => {
-    if (!id) return;
-    if (lastFetchedId.current === id) return;
-
-    const fetchSchool = async () => {
-      setLoading(true);
-      try {
-        // Fetch school (buildings, assessments included by default)
-        const response = await api.get(`/schools/${id}`);
-        const schoolData = response.data;
-
-        // Calculate dynamic assessment data - do calculation even without buildings
-        if (
-          schoolData.buildings ||
-          schoolData.educationPrograms ||
-          schoolData.roadStatusPercentage
-        ) {
-          const currentYear = new Date().getFullYear();
-
-          // Calculate average building age (if buildings exist)
-          let avgBuildingAge = 0;
-          let totalDepreciation = 0;
-          let buildingAgeScore = 50;
-
-          if (schoolData.buildings && schoolData.buildings.length > 0) {
-            const buildingAges = schoolData.buildings
-              .filter((b: any) => b.yearBuilt)
-              .map((b: any) => currentYear - parseFloat(String(b.yearBuilt)));
-            avgBuildingAge =
-              buildingAges.length > 0
-                ? Math.round(
-                    buildingAges.reduce((a: number, b: number) => a + b, 0) /
-                      buildingAges.length,
-                  )
-                : 0;
-
-            // Calculate depreciation based on age and condition
-            // Standard depreciation: 2% per year, max 60%
-            // Condition adjustments: good=0, fair=10%, poor=20%, critical=30%
-            const conditionPenalties: Record<string, number> = {
-              good: 0,
-              fair: 10,
-              poor: 20,
-              critical: 30,
-            };
-
-            const avgConditionPenalty =
-              schoolData.buildings.reduce((sum: number, b: any) => {
-                return sum + (conditionPenalties[b.condition] || 10);
-              }, 0) / schoolData.buildings.length;
-
-            const ageDepreciation = Math.min(avgBuildingAge * 2, 60);
-            totalDepreciation = Math.min(
-              ageDepreciation + avgConditionPenalty,
-              100,
-            );
-
-            buildingAgeScore = Math.max(0, 100 - totalDepreciation);
-          }
-
-          // Infrastructure: calculate average of all infrastructure items
-          // Boolean facilities convert to 100 if present, 0 if not
-          const infrastructureItems = [
-            schoolData.hasLibrary ? 100 : 0,
-            schoolData.hasLaboratory ? 100 : 0,
-            schoolData.hasComputerLab ? 100 : 0,
-            schoolData.hasSportsField ? 100 : 0,
-            schoolData.hasHostel ? 100 : 0,
-            schoolData.hasCanteen ? 100 : 0,
-            schoolData.hasElectricity ? 100 : 0,
-            schoolData.hasWater ? 100 : 0,
-            schoolData.hasInternet ? 100 : 0,
-            schoolData.hasSolarPanel ? 100 : 0,
-            parseFloat(String(schoolData.roadStatusPercentage)) || 0,
-          ];
-          const infrastructureScore =
-            schoolData.buildings?.length > 0 ||
-            infrastructureItems.some((v) => v > 0)
-              ? Math.round(
-                  infrastructureItems.reduce((a, b) => a + b, 0) /
-                    infrastructureItems.length,
-                )
-              : 0;
-
-          // Calculate population: students from trades + staff
-          const totalStudentsInPrograms =
-            schoolData.educationPrograms?.reduce(
-              (sum: number, p: any) =>
-                sum + (parseFloat(String(p.totalStudents)) || 0),
-              0,
-            ) || 0;
-          const totalStaff =
-            (parseFloat(String(schoolData.maleTeachers)) || 0) +
-            (parseFloat(String(schoolData.femaleTeachers)) || 0) +
-            (parseFloat(String(schoolData.maleAdminStaff)) || 0) +
-            (parseFloat(String(schoolData.femaleAdminStaff)) || 0) +
-            (parseFloat(String(schoolData.maleSupportStaff)) || 0) +
-            (parseFloat(String(schoolData.femaleSupportStaff)) || 0);
-          const totalPopulation = totalStudentsInPrograms + totalStaff;
-
-          // Total capacity from trades
-          const totalCapacity =
-            schoolData.educationPrograms?.reduce(
-              (sum: number, p: any) =>
-                sum + (parseFloat(String(p.capacity)) || 0),
-              0,
-            ) || 0;
-
-          // Population: students from trades (not staff)
-          // For scoring: use students capacity utilization (students / capacity)
-          const populationScore =
-            totalCapacity > 0 && totalStudentsInPrograms > 0
-              ? Math.min(
-                  100,
-                  Math.round((totalStudentsInPrograms / totalCapacity) * 100),
-                )
-              : 50;
-
-          // Population pressure for display (capacity utilization)
-          const populationPressure = populationScore;
-
-          // Accessibility: use roads status percentage
-          const accessibilityScore = schoolData.roadStatusPercentage || 50;
-
-          // Facility Compliance: calculate from facility survey data
-          const facilityComplianceRate = facilityStats?.complianceRate || 0;
-
-          // Calculate overall score as weighted average of all 5 components
-          // Weights: Infrastructure 25%, Building Health 25%, Population 20%, Accessibility 15%, Facility Compliance 15%
-          const overallScore = Math.round(
-            infrastructureScore * 0.2 +
-              buildingAgeScore * 0.2 +
-              populationScore * 0.2 +
-              accessibilityScore * 0.2 +
-              facilityComplianceRate * 0.2,
-          );
-
-          // Add calculated assessment to school data
-          schoolData.calculatedAssessment = {
-            infrastructureScore: infrastructureScore,
-            buildingAgeScore: buildingAgeScore,
-            depreciation: totalDepreciation,
-            populationPressureScore: populationPressure,
-            accessibilityScore: accessibilityScore,
-            facilityComplianceScore: facilityComplianceRate,
-            overallScore: overallScore,
-            averageBuildingAge: avgBuildingAge,
-            totalCapacity: totalCapacity,
-            totalStudents: totalStudentsInPrograms,
-            totalStaff: totalStaff,
-            totalPopulation: totalPopulation,
-            supportStaff:
-              (parseFloat(String(schoolData.maleSupportStaff)) || 0) +
-              (parseFloat(String(schoolData.femaleSupportStaff)) || 0),
-          };
-        }
-
-        setSchool({ ...schoolData });
-
-        // Fetch facility survey data if school exists
-        if (id) {
-          try {
-            const surveyRes = await api.get(`/schools/${id}/survey`);
-            setFacilitySurvey(surveyRes.data || []);
-          } catch (surveyError) {
-            console.log("No facility survey found for this school");
-            setFacilitySurvey([]);
-          }
-
-          // Also fetch facilities list for displaying facility names
-          try {
-            const facilitiesRes = await api.get("/schools/facilities");
-            setFacilitiesList(facilitiesRes.data || []);
-          } catch (facilitiesError) {
-            console.log("No facilities found");
-            setFacilitiesList([]);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to fetch school data", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    lastFetchedId.current = id;
-    fetchSchool();
-  }, [id]);
-
-  // Merge real data with dummy data structure
+  // 1. Derived Values and Helper Functions (MUST BE BEFORE useEffect)
   const schoolData = school;
-
-  // Calculate derived values from trades (real data)
-  const educationPrograms = schoolData?.educationPrograms || [];
-  const totalStudents =
-    educationPrograms.length > 0
-      ? educationPrograms.reduce(
-          (sum: number, p: any) =>
-            sum + (parseFloat(String(p.totalStudents)) || 0),
-          0,
-        )
-      : 0;
-
-  const totalCapacity =
-    educationPrograms.length > 0
-      ? educationPrograms.reduce(
-          (sum: number, p: any) => sum + (parseFloat(String(p.capacity)) || 0),
-          0,
-        )
-      : 0; // Fallback
-
-  // All staff (teachers + admin + support)
+  const buildings = schoolData?.buildings || [];
+  const totalStudents = schoolData?.calculatedAssessment?.totalStudents || 0;
+  const totalCapacity = schoolData?.calculatedAssessment?.totalCapacity || 0;
+  const totalStaff = schoolData?.calculatedAssessment?.totalStaff || 0;
   const maleTeachers = parseFloat(String(schoolData?.maleTeachers)) || 0;
   const femaleTeachers = parseFloat(String(schoolData?.femaleTeachers)) || 0;
-
-  // Gender breakdown for staff
-  const maleAdminStaff = parseFloat(String(schoolData?.maleAdminStaff)) || 0;
-  const femaleAdminStaff =
-    parseFloat(String(schoolData?.femaleAdminStaff)) || 0;
-  const maleSupportStaff =
-    parseFloat(String(schoolData?.maleSupportStaff)) || 0;
-  const femaleSupportStaff =
-    parseFloat(String(schoolData?.femaleSupportStaff)) || 0;
-
   const totalTeachers = maleTeachers + femaleTeachers;
-  const totalAdminStaff = maleAdminStaff + femaleAdminStaff; // Total admin staff (male + female)
-  const totalSupportStaff = maleSupportStaff + femaleSupportStaff; // Total support staff (male + female)
-  const totalStaff = totalTeachers + totalAdminStaff + totalSupportStaff;
+  const avgBuildingYear = schoolData?.calculatedAssessment?.averageBuildingAge
+    ? new Date().getFullYear() -
+      schoolData.calculatedAssessment.averageBuildingAge
+    : 0;
 
-  // Facility survey calculations
   const getFacilitySurveyStats = () => {
     if (!facilitySurvey || facilitySurvey.length === 0) {
       return {
@@ -350,7 +132,6 @@ export default function SchoolDecisionDashboard() {
     const complianceRate =
       total > 0 ? Math.round((compliant / total) * 100) : 0;
 
-    // Group by facilityId for detailed breakdown
     const byFacilityMap: Record<string, { facility: string; items: any[] }> =
       {};
     facilitySurvey.forEach((survey: any) => {
@@ -363,7 +144,6 @@ export default function SchoolDecisionDashboard() {
           items: [],
         };
       }
-      // Find item name
       const facilityInfo = facilitiesList.find(
         (f: any) => f.facilityId === survey.facilityId,
       );
@@ -388,24 +168,8 @@ export default function SchoolDecisionDashboard() {
 
   const facilityStats = getFacilitySurveyStats();
 
-  const buildings = schoolData?.buildings || [];
-
-  // Calculate average building year
-  const buildingsWithYear = buildings.filter((b: any) => b.yearBuilt);
-  const avgBuildingYear =
-    buildingsWithYear.length > 0
-      ? Math.round(
-          buildingsWithYear.reduce(
-            (sum: number, b: any) => sum + parseFloat(String(b.yearBuilt)),
-            0,
-          ) / buildingsWithYear.length,
-        )
-      : 0;
-
-  // Calculate priority level based on Building Condition and Roof Condition
   const getPriorityFromBuildings = () => {
     if (!buildings || buildings.length === 0) return "medium";
-
     const conditionScores: Record<string, number> = {
       good: 0,
       fair: 25,
@@ -417,19 +181,17 @@ export default function SchoolDecisionDashboard() {
       needs_repair: 15,
       damaged: 35,
     };
-
     const avgBuildingScore =
-      buildings.reduce((sum: number, b: any) => {
-        return sum + (conditionScores[b.condition] || 25);
-      }, 0) / buildings.length;
-
+      buildings.reduce(
+        (sum: number, b: any) => sum + (conditionScores[b.condition] || 25),
+        0,
+      ) / buildings.length;
     const avgRoofScore =
-      buildings.reduce((sum: number, b: any) => {
-        return sum + (roofScores[b.roofCondition] || 15);
-      }, 0) / buildings.length;
-
+      buildings.reduce(
+        (sum: number, b: any) => sum + (roofScores[b.roofCondition] || 15),
+        0,
+      ) / buildings.length;
     const totalScore = avgBuildingScore + avgRoofScore;
-
     if (totalScore >= 75) return "critical";
     if (totalScore >= 50) return "high";
     if (totalScore >= 25) return "medium";
@@ -438,10 +200,8 @@ export default function SchoolDecisionDashboard() {
 
   const priorityLevel = getPriorityFromBuildings();
 
-  // Use calculated assessment from real data, or fallback to API assessment, or dummy data
   const getAssessment = () => {
     if (schoolData?.calculatedAssessment) {
-      // Recalculate with latest facilityStats
       const facilityComplianceRate = facilityStats?.complianceRate || 0;
       const infrastructureScore =
         schoolData.calculatedAssessment.infrastructureScore || 0;
@@ -464,7 +224,6 @@ export default function SchoolDecisionDashboard() {
         ...schoolData.calculatedAssessment,
         facilityComplianceScore: facilityComplianceRate,
         overallScore: overallScore,
-        // Use building/roof condition-based priority level instead of score-based
         priorityLevel: priorityLevel,
         recommendations: [
           schoolData.calculatedAssessment.depreciation > 40
@@ -492,9 +251,7 @@ export default function SchoolDecisionDashboard() {
         priorityLevel: priorityLevel,
       };
     }
-    return {
-      priorityLevel: priorityLevel,
-    };
+    return { priorityLevel: priorityLevel };
   };
 
   const assessment = getAssessment();
@@ -529,44 +286,6 @@ export default function SchoolDecisionDashboard() {
     }
   };
 
-  // const getPriorityBadge = (priority: PriorityLevel | string) => {
-  //   switch (priority) {
-  //     case "critical":
-  //       return (
-  //         <Badge
-  //           variant="destructive"
-  //           className="rounded-full font-black text-xs"
-  //         >
-  //           CRITICAL
-  //         </Badge>
-  //       );
-  //     case "high":
-  //       return (
-  //         <Badge className="rounded-full font-black text-xs bg-amber-500 hover:bg-amber-600">
-  //           HIGH
-  //         </Badge>
-  //       );
-  //     case "medium":
-  //       return (
-  //         <Badge variant="outline" className="rounded-full font-black text-xs">
-  //           MEDIUM
-  //         </Badge>
-  //       );
-  //     case "low":
-  //       return (
-  //         <Badge className="rounded-full font-black text-xs bg-emerald-500 hover:bg-emerald-600">
-  //           LOW
-  //         </Badge>
-  //       );
-  //     default:
-  //       return (
-  //         <Badge variant="outline" className="rounded-full font-black text-xs">
-  //           N/A
-  //         </Badge>
-  //       );
-  //   }
-  // };
-
   const formatNumber = (num: number | undefined | null) => {
     if (num === undefined || num === null) return "--";
     return new Intl.NumberFormat("en-US").format(num);
@@ -575,6 +294,21 @@ export default function SchoolDecisionDashboard() {
   const calculateAge = (year: number | undefined) => {
     if (!year) return "--";
     return new Date().getFullYear() - year;
+  };
+
+  const createCustomIcon = (color: string) => {
+    return L.divIcon({
+      className: "custom-pin",
+      html: `
+        <div style="position: relative; display: flex; align-items: center; justify-center; width: 24px; height: 24px;">
+          <div style="position: absolute; width: 100%; height: 100%; background-color: ${color}; border-radius: 50%; opacity: 0.4; animation: pin-pulse 2s infinite ease-out;"></div>
+          <div style="position: relative; width: 14px; height: 14px; background-color: ${color}; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.3); margin: auto;"></div>
+          <style>@keyframes pin-pulse { 0% { transform: scale(0.5); opacity: 0.8; } 100% { transform: scale(2.5); opacity: 0; } }</style>
+        </div>
+      `,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+    });
   };
 
   const CustomZoomControls = () => {
@@ -601,25 +335,175 @@ export default function SchoolDecisionDashboard() {
     );
   };
 
-  const createCustomIcon = (color: string) => {
-    return L.divIcon({
-      className: "custom-pin",
-      html: `
-        <div style="position: relative; display: flex; align-items: center; justify-center; width: 24px; height: 24px;">
-          <div style="position: absolute; width: 100%; height: 100%; background-color: ${color}; border-radius: 50%; opacity: 0.4; animation: pin-pulse 2s infinite ease-out;"></div>
-          <div style="position: relative; width: 14px; height: 14px; background-color: ${color}; border-radius: 50%; border: 2.5px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.3); margin: auto;"></div>
-          <style>
-            @keyframes pin-pulse {
-              0% { transform: scale(0.5); opacity: 0.8; }
-              100% { transform: scale(2.5); opacity: 0; }
-            }
-          </style>
-        </div>
-      `,
-      iconSize: [24, 24],
-      iconAnchor: [12, 12],
-    });
-  };
+  // 2. Main Effect Logic
+  useEffect(() => {
+    if (!id) return;
+    if (lastFetchedId.current === id) return;
+
+    const fetchSchool = async () => {
+      setLoading(true);
+      try {
+        const response = await api.get(`/schools/${id}`);
+        const schoolData = response.data;
+
+        if (
+          schoolData.buildings ||
+          schoolData.educationPrograms ||
+          schoolData.roadStatusPercentage
+        ) {
+          const currentYear = new Date().getFullYear();
+
+          let avgBuildingAge = 0;
+          let totalDepreciation = 0;
+          let buildingAgeScore = 50;
+
+          if (schoolData.buildings && schoolData.buildings.length > 0) {
+            const buildingAges = schoolData.buildings
+              .filter((b: any) => b.yearBuilt)
+              .map((b: any) => currentYear - parseFloat(String(b.yearBuilt)));
+            avgBuildingAge =
+              buildingAges.length > 0
+                ? Math.round(
+                    buildingAges.reduce((a: number, b: number) => a + b, 0) /
+                      buildingAges.length,
+                  )
+                : 0;
+
+            const conditionPenalties: Record<string, number> = {
+              good: 0,
+              fair: 10,
+              poor: 20,
+              critical: 30,
+            };
+
+            const avgConditionPenalty =
+              schoolData.buildings.reduce((sum: number, b: any) => {
+                return sum + (conditionPenalties[b.condition] || 10);
+              }, 0) / schoolData.buildings.length;
+
+            const ageDepreciation = Math.min(avgBuildingAge * 2, 60);
+            totalDepreciation = Math.min(
+              ageDepreciation + avgConditionPenalty,
+              100,
+            );
+
+            buildingAgeScore = Math.max(0, 100 - totalDepreciation);
+          }
+
+          const infrastructureItems = [
+            schoolData.hasLibrary ? 100 : 0,
+            schoolData.hasLaboratory ? 100 : 0,
+            schoolData.hasComputerLab ? 100 : 0,
+            schoolData.hasSportsField ? 100 : 0,
+            schoolData.hasHostel ? 100 : 0,
+            schoolData.hasCanteen ? 100 : 0,
+            schoolData.hasElectricity ? 100 : 0,
+            schoolData.hasWater ? 100 : 0,
+            schoolData.hasInternet ? 100 : 0,
+            schoolData.hasSolarPanel ? 100 : 0,
+            parseFloat(String(schoolData.roadStatusPercentage)) || 0,
+          ];
+          const infrastructureScore =
+            schoolData.buildings?.length > 0 ||
+            infrastructureItems.some((v) => v > 0)
+              ? Math.round(
+                  infrastructureItems.reduce((a, b) => a + b, 0) /
+                    infrastructureItems.length,
+                )
+              : 0;
+
+          const totalStudentsInPrograms =
+            schoolData.educationPrograms?.reduce(
+              (sum: number, p: any) =>
+                sum + (parseFloat(String(p.totalStudents)) || 0),
+              0,
+            ) || 0;
+          const totalStaff =
+            (parseFloat(String(schoolData.maleTeachers)) || 0) +
+            (parseFloat(String(schoolData.femaleTeachers)) || 0) +
+            (parseFloat(String(schoolData.maleAdminStaff)) || 0) +
+            (parseFloat(String(schoolData.femaleAdminStaff)) || 0) +
+            (parseFloat(String(schoolData.maleSupportStaff)) || 0) +
+            (parseFloat(String(schoolData.femaleSupportStaff)) || 0);
+          const totalPopulation = totalStudentsInPrograms + totalStaff;
+
+          const totalCapacity =
+            schoolData.educationPrograms?.reduce(
+              (sum: number, p: any) =>
+                sum + (parseFloat(String(p.capacity)) || 0),
+              0,
+            ) || 0;
+
+          const populationScore =
+            totalCapacity > 0 && totalStudentsInPrograms > 0
+              ? Math.min(
+                  100,
+                  Math.round((totalStudentsInPrograms / totalCapacity) * 100),
+                )
+              : 50;
+
+          const populationPressure = populationScore;
+
+          const accessibilityScore = schoolData.roadStatusPercentage || 50;
+
+          const facilityComplianceRate = facilityStats?.complianceRate || 0;
+
+          const overallScore = Math.round(
+            infrastructureScore * 0.2 +
+              buildingAgeScore * 0.2 +
+              populationScore * 0.2 +
+              accessibilityScore * 0.2 +
+              facilityComplianceRate * 0.2,
+          );
+
+          schoolData.calculatedAssessment = {
+            infrastructureScore: infrastructureScore,
+            buildingAgeScore: buildingAgeScore,
+            depreciation: totalDepreciation,
+            populationPressureScore: populationPressure,
+            accessibilityScore: accessibilityScore,
+            facilityComplianceScore: facilityComplianceRate,
+            overallScore: overallScore,
+            averageBuildingAge: avgBuildingAge,
+            totalCapacity: totalCapacity,
+            totalStudents: totalStudentsInPrograms,
+            totalStaff: totalStaff,
+            totalPopulation: totalPopulation,
+            supportStaff:
+              (parseFloat(String(schoolData.maleSupportStaff)) || 0) +
+              (parseFloat(String(schoolData.femaleSupportStaff)) || 0),
+          };
+        }
+
+        setSchool({ ...schoolData });
+
+        if (id) {
+          try {
+            const surveyRes = await api.get(`/schools/${id}/survey`);
+            setFacilitySurvey(surveyRes.data || []);
+          } catch (surveyError) {
+            console.log("No facility survey found for this school");
+            setFacilitySurvey([]);
+          }
+
+          try {
+            const facilitiesRes = await api.get("/schools/facilities");
+            setFacilitiesList(facilitiesRes.data || []);
+          } catch (facilitiesError) {
+            console.log("No facilities found");
+            setFacilitiesList([]);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch school data", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    lastFetchedId.current = id;
+    fetchSchool();
+  }, [id]);
 
   if (loading) {
     return (
@@ -647,7 +531,6 @@ export default function SchoolDecisionDashboard() {
     );
   }
 
-  // Redirect if no ID could be determined
   if (!id && !loading) {
     return <Navigate to="/welcome" replace />;
   }
@@ -657,12 +540,9 @@ export default function SchoolDecisionDashboard() {
     parseFloat(String(schoolData.longitude)) || 0,
   ];
 
-  // Use the values already computed above
-
   return (
     <>
       <div className="space-y-6 pb-10">
-        {/* Header */}
         <PageHeader
           backButton={
             paramId ? (
@@ -757,7 +637,6 @@ export default function SchoolDecisionDashboard() {
           >
             <DecisionIntelligenceScore assessment={assessment} />
           </motion.div>
-          {/* Location Map */}
           {isAuthorized(Permission.SCHOOL_VIEW_2D3D_MAP) && (
             <motion.div
               initial={{ opacity: 0, x: 20 }}
@@ -770,10 +649,8 @@ export default function SchoolDecisionDashboard() {
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base font-bold flex items-center gap-2 pr-2">
                       <MapPin className="w-5 h-5 text-primary" />
-                      {/* KMZ Status Badge */}
                       <span>Location</span>
                     </CardTitle>
-                    {/* Map Tabs */}
                     <div className="flex bg-muted/50 rounded-xl p-1">
                       <button
                         onClick={() => setActiveMapTab("kml")}
@@ -1290,7 +1167,7 @@ export default function SchoolDecisionDashboard() {
                       <tbody>
                         {buildings.map((building: any, idx: number) => (
                           <tr
-                            key={building.name || idx}
+                            key={building.id || `bldg-${idx}`}
                             className="border-b border-border/5 hover:bg-muted/30 transition-colors cursor-pointer"
                             onClick={() => {
                               setSelectedBuilding(building);
@@ -1569,7 +1446,6 @@ export default function SchoolDecisionDashboard() {
               totalStaff={totalStaff}
               totalTeachers={totalTeachers}
               maleTeachers={maleTeachers}
-              femaleTeachers={femaleTeachers}
               buildings={buildings}
               avgBuildingYear={avgBuildingYear}
               formatNumber={formatNumber}
@@ -1985,80 +1861,96 @@ export default function SchoolDecisionDashboard() {
           </div>
         </div>
       </Modal>
-      {/* BUILDING DETAIL MODAL */}
-      <Modal
-        isOpen={isBuildingModalOpen}
-        onClose={() => setIsBuildingModalOpen(false)}
-        title={
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-primary/10 text-primary">
-              <Building2 className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-lg font-black">
-                {selectedBuilding?.name} Details
-              </h3>
-              <p className="text-xs text-muted-foreground font-medium">
-                Building assessment and infrastructure report
-              </p>
-            </div>
-          </div>
-        }
-        maxWidth="max-w-2xl"
-      >
-        {selectedBuilding && (
-          <div className="space-y-6 py-2">
-            {/* Hero Quick Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                {
-                  label: "Condition",
-                  value: selectedBuilding.condition,
-                  detail: "Structural state",
-                  color: getConditionBg(selectedBuilding.condition),
-                },
-                {
-                  label: "Score",
-                  value: `${selectedBuilding.structuralScore}%`,
-                  detail: "Overall Health",
-                  color: getConditionBg(selectedBuilding.condition),
-                },
-                {
-                  label: "Year Built",
-                  value: selectedBuilding.yearBuilt || "N/A",
-                  detail: `Built ${calculateAge(selectedBuilding.yearBuilt)}y ago`,
-                  color: "bg-blue-500/10 text-blue-600",
-                },
-                {
-                  label: "Function",
-                  value: selectedBuilding.function || "Educational",
-                  detail: "Usage Type",
-                  color: "bg-slate-500/10 text-slate-600",
-                },
-              ].map((stat, i) => (
-                <div
-                  key={i}
-                  className="p-3 rounded-2xl bg-muted/30 border border-border/5"
-                >
-                  <p className="text-[9px] font-black uppercase text-muted-foreground mb-1 leading-none">
-                    {stat.label}
-                  </p>
-                  <p className="text-sm font-black truncate mb-0.5">
-                    {stat.value}
-                  </p>
-                  <p className="text-[8px] font-bold text-muted-foreground/60 leading-none">
-                    {stat.detail}
-                  </p>
+      {/* BUILDING DETAIL SIDE PANEL (REPLACING MODAL) */}
+      <AnimatePresence>
+        {isBuildingModalOpen && selectedBuilding && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsBuildingModalOpen(false)}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]"
+            />
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed top-0 right-0 bottom-0 w-96 bg-card/95 backdrop-blur-2xl border-l border-border/20 z-[101] shadow-2xl flex flex-col"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-border/10">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-2xl bg-primary/10 text-primary">
+                      <Building2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black leading-tight">
+                        {selectedBuilding.name}
+                      </h3>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+                        Detailed Asset Report
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsBuildingModalOpen(false)}
+                    className="p-2 rounded-xl hover:bg-muted/50 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
-              ))}
-            </div>
+              </div>
 
-            {/* Main Visualizations */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div className="p-5 rounded-3xl bg-muted/20 border border-border/5">
+              {/* Scrollable Content */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                {/* Hero Stats Table-style */}
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    {
+                      label: "State",
+                      value: selectedBuilding.condition,
+                      bg: getConditionBg(selectedBuilding.condition),
+                    },
+                    {
+                      label: "Integrity",
+                      value: `${selectedBuilding.structuralScore}%`,
+                      bg: getConditionBg(selectedBuilding.condition),
+                    },
+                    {
+                      label: "Footprint",
+                      value: `${formatNumber(selectedBuilding.areaSquareMeters)} m²`,
+                      bg: "bg-blue-500/10 text-blue-600",
+                    },
+                    {
+                      label: "Levels",
+                      value: `${selectedBuilding.floors} Floors`,
+                      bg: "bg-indigo-500/10 text-indigo-600",
+                    },
+                  ].map((stat, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "p-3 rounded-2xl border border-border/5",
+                        stat.bg,
+                      )}
+                    >
+                      <p className="text-[9px] font-black uppercase opacity-60 mb-0.5">
+                        {stat.label}
+                      </p>
+                      <p className="text-sm font-black truncate">
+                        {stat.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Score Chart Section */}
+                <div className="p-5 rounded-3xl bg-muted/20 border border-border/5 text-center">
                   <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 mb-4">
-                    Structural Integrity Score
+                    Infrastructure Health Gauge
                   </h4>
                   <div className="relative w-32 h-32 mx-auto">
                     <svg className="w-full h-full transform -rotate-90">
@@ -2069,7 +1961,7 @@ export default function SchoolDecisionDashboard() {
                         stroke="currentColor"
                         strokeWidth="8"
                         fill="none"
-                        className="text-muted/20"
+                        className="text-muted/10"
                       />
                       <motion.circle
                         cx="64"
@@ -2101,98 +1993,76 @@ export default function SchoolDecisionDashboard() {
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="space-y-4">
-                <div className="p-5 rounded-3xl bg-muted/20 border border-border/5 h-full">
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 mb-4">
-                    Space & Capacity
+                {/* Additional Metadata */}
+                <div className="space-y-4">
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 px-1">
+                    System Parameters
                   </h4>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600">
-                          <Layers className="w-4 h-4" />
+                  <div className="space-y-2">
+                    {[
+                      {
+                        icon: Calendar,
+                        label: "Year Built",
+                        value: selectedBuilding.yearBuilt || "N/A",
+                      },
+                      {
+                        icon: Clock,
+                        label: "Structure Age",
+                        value: `${calculateAge(selectedBuilding.yearBuilt)} Years`,
+                      },
+                      {
+                        icon: Globe,
+                        label: "Occupancy Type",
+                        value: selectedBuilding.occupancyType || "Standard",
+                      },
+                      {
+                        icon: Box,
+                        label: "Material Profile",
+                        value:
+                          selectedBuilding.primaryMaterial ||
+                          "Concrete / Steel",
+                      },
+                      {
+                        icon: Layers,
+                        label: "Priority Band",
+                        value:
+                          selectedBuilding.structuralScore < 50
+                            ? "High Refactor"
+                            : "Routine Maintenance",
+                      },
+                    ].map((item, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between p-3.5 rounded-2xl bg-muted/10 border border-border/5"
+                      >
+                        <div className="flex items-center gap-3">
+                          <item.icon className="w-4 h-4 text-muted-foreground/60" />
+                          <span className="text-xs font-bold text-muted-foreground">
+                            {item.label}
+                          </span>
                         </div>
-                        <span className="text-xs font-bold text-muted-foreground">
-                          Floors
-                        </span>
+                        <span className="text-xs font-black">{item.value}</span>
                       </div>
-                      <span className="text-sm font-black">
-                        {selectedBuilding.floors} Levels
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600">
-                          <Maximize className="w-4 h-4" />
-                        </div>
-                        <span className="text-xs font-bold text-muted-foreground">
-                          Footprint Area
-                        </span>
-                      </div>
-                      <span className="text-sm font-black">
-                        {formatNumber(selectedBuilding.areaSquareMeters)} m²
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600">
-                          <Clock className="w-4 h-4" />
-                        </div>
-                        <span className="text-xs font-bold text-muted-foreground">
-                          Structure Age
-                        </span>
-                      </div>
-                      <span className="text-sm font-black">
-                        {calculateAge(selectedBuilding.yearBuilt)} Years
-                      </span>
-                    </div>
+                    ))}
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Detailed Assessment List (Placeholders for real metrics if they exist in schema) */}
-            <div className="space-y-3">
-              <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 px-1">
-                Building Parameters
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {[
-                  {
-                    label: "Occupancy Type",
-                    value: selectedBuilding.occupancyType || "Standard",
-                  },
-                  {
-                    label: "Material",
-                    value: selectedBuilding.primaryMaterial || "Concrete/Steel",
-                  },
-                  {
-                    label: "Priority Level",
-                    value:
-                      selectedBuilding.structuralScore < 50
-                        ? "High"
-                        : "Routine",
-                  },
-                ].map((item, i) => (
-                  <div
-                    key={i}
-                    className="px-4 py-3 rounded-2xl border border-border/10 bg-muted/10"
-                  >
-                    <p className="text-[8px] font-black uppercase text-muted-foreground/60 leading-none mb-1">
-                      {item.label}
-                    </p>
-                    <p className="text-xs font-bold">{item.value}</p>
-                  </div>
-                ))}
+              {/* Action Footer */}
+              <div className="p-6 border-t border-border/10 bg-muted/5">
+                <Button
+                  className="w-full rounded-2xl h-12 font-black uppercase tracking-widest text-xs gap-2"
+                  variant="outline"
+                >
+                  <FileText className="w-4 h-4" />
+                  Generate Report PDF
+                </Button>
               </div>
-            </div>
-          </div>
+            </motion.div>
+          </>
         )}
-      </Modal>
+      </AnimatePresence>
 
       <Modal
         isOpen={isMapModalOpen}

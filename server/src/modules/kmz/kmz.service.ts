@@ -1500,4 +1500,82 @@ export class KmzService {
 
     return { kmlUrls, groundOverlays: uniqueOverlays, initialView };
   }
+
+  async removeOverlay(schoolId: string, index: number) {
+    const school = await this.schoolRepository.findOne({ where: { id: schoolId } });
+    if (!school || !school.kmz2dManifest) return { success: false };
+
+    const overlays = [...(school.kmz2dManifest.groundOverlays || [])];
+    if (index >= 0 && index < overlays.length) {
+      overlays.splice(index, 1);
+      school.kmz2dManifest.groundOverlays = overlays;
+      await this.schoolRepository.save(school);
+      return { success: true, manifest: school.kmz2dManifest };
+    }
+    return { success: false, message: 'Invalid overlay index' };
+  }
+
+  /**
+   * Add a new overlay (KMZ/KML) to the existing 2D manifest.
+   * This allows stacking multiple drone imagery layers over time.
+   */
+  async addOverlay(schoolId: string, file: Express.Multer.File) {
+    const school = await this.schoolRepository.findOne({ where: { id: schoolId } });
+    if (!school) throw new NotFoundException('School not found');
+
+    const fileBuffer = fs.readFileSync(file.path);
+    const newManifest = await this.extractKmz2dAssets(schoolId, fileBuffer, file.originalname);
+    
+    // Clean up temp file
+    try { fs.unlinkSync(file.path); } catch (e) { this.logger.warn(`Failed to clean up: ${file.path}`); }
+
+    const currentManifest = school.kmz2dManifest || { kmlUrls: [], groundOverlays: [] };
+    
+    // Merge new assets
+    const mergedManifest = {
+      ...currentManifest,
+      kmlUrls: [...(currentManifest.kmlUrls || []), ...(newManifest.kmlUrls || [])],
+      groundOverlays: [...(currentManifest.groundOverlays || []), ...(newManifest.groundOverlays || [])],
+      initialView: newManifest.initialView || currentManifest.initialView
+    };
+
+    school.kmz2dManifest = mergedManifest;
+    await this.schoolRepository.save(school);
+
+    return { 
+      success: true, 
+      manifest: mergedManifest,
+      addedOverlays: newManifest.groundOverlays?.length || 0 
+    };
+  }
+
+  async addSiteAnnotation(schoolId: string, annotation: any) {
+    const school = await this.schoolRepository.findOne({ where: { id: schoolId } });
+    if (!school) throw new NotFoundException('School not found');
+
+    const annotations = school.siteAnnotations || [];
+    const newAnn = {
+      id: annotation.id || `ann-${Date.now()}`,
+      type: annotation.type,
+      label: annotation.label,
+      description: annotation.description,
+      coordinates: annotation.coordinates,
+      style: annotation.style || {},
+      createdAt: new Date().toISOString(),
+    };
+    annotations.push(newAnn);
+    school.siteAnnotations = annotations;
+    await this.schoolRepository.save(school);
+    return newAnn;
+  }
+
+  async removeSiteAnnotation(schoolId: string, id: string) {
+    const school = await this.schoolRepository.findOne({ where: { id: schoolId } });
+    if (!school) throw new NotFoundException('School not found');
+
+    const annotations = (school.siteAnnotations || []).filter(a => a.id !== id);
+    school.siteAnnotations = annotations;
+    await this.schoolRepository.save(school);
+    return { success: true };
+  }
 }

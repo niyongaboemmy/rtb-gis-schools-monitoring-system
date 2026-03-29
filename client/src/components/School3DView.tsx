@@ -11,6 +11,7 @@ import {
   GeoJsonDataSource,
   PolylineGraphics,
   PolygonGraphics,
+  LabelGraphics,
   ImageryLayer,
 } from "resium";
 import JSZip from "jszip";
@@ -26,6 +27,10 @@ import {
   PolygonHierarchy,
   KmlDataSource as CesiumKmlDataSource,
   SingleTileImageryProvider,
+  LabelStyle,
+  VerticalOrigin,
+  Cartesian2,
+  DistanceDisplayCondition,
 } from "cesium";
 import {
   X,
@@ -467,7 +472,18 @@ const School3DView: React.FC<School3DViewProps> = ({
   const [schoolBuildings, setSchoolBuildings] = useState<BuildingData[]>([]);
   const [availableFacilities, setAvailableFacilities] = useState<any[]>([]);
   const [facilitiesLoading, setFacilitiesLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [inspectorPosition, setInspectorPosition] = useState<{ x: number; y: number } | null>(null);
+  
+  // Hydrate facilities for the building form
+  useEffect(() => {
+    setFacilitiesLoading(true);
+    api.get("/schools/facilities")
+      .then(res => setAvailableFacilities(res.data))
+      .catch(err => console.error("Failed to fetch facilities in 3D View", err))
+      .finally(() => setFacilitiesLoading(false));
+  }, []);
 
   const [isMapLoading, setIsMapLoading] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -640,21 +656,68 @@ const School3DView: React.FC<School3DViewProps> = ({
 
   const handleSaveBuilding = async (data: BuildingData) => {
     try {
-      setIsMapLoading(true);
-      if (data.id.startsWith("temp-")) {
-        const res = await api.post(`/schools/${school.id}/buildings`, data);
-        setSchoolBuildings((prev) => [...prev, res.data]);
-      } else {
-        const res = await api.patch(`/schools/buildings/${data.id}`, data);
-        setSchoolBuildings((prev) => 
-          prev.map((b) => (b.id === data.id ? res.data : b))
-        );
+      setIsSaving(true);
+      setSaveError(null);
+
+      const isNew = typeof data.id === "string" && data.id.startsWith("temp-");
+      const method = isNew ? "post" : "patch";
+      const url = isNew ? `/schools/${school.id}/buildings` : `/schools/buildings/${data.id}`;
+      
+      // STRICT Payload Sanitization for BuildingDto
+      const payload = {
+        name: data.buildingName,
+        code: data.buildingCode,
+        function: data.buildingFunction,
+        floors: parseInt(String(data.buildingFloors)) || 0,
+        area: parseFloat(String(data.buildingArea)) || 0,
+        yearBuilt: parseInt(String(data.buildingYearBuilt)) || 0,
+        condition: data.buildingCondition,
+        roofCondition: data.buildingRoofCondition,
+        structuralScore: parseFloat(String(data.buildingStructuralScore)) || 0,
+        notes: data.buildingNotes || "",
+        latitude: data.geolocation.latitude,
+        longitude: data.geolocation.longitude,
+        annotations: data.annotations || [],
+        media: data.media || [],
+        facilities: (data.facilities || []).map(f => ({
+          facility_id: f.facility_id,
+          facility_name: f.facility_name,
+          number_of_rooms: parseInt(String(f.number_of_rooms)) || 0
+        })),
+      };
+
+      const response = await api[method](url, payload);
+      if (response.data) {
+        const saved = response.data;
+        const mappedSaved: BuildingData = {
+           ...saved,
+           buildingName: saved.name || saved.buildingName || saved.buildingCode || "",
+           buildingCode: saved.buildingCode || saved.code || "",
+           buildingFunction: saved.function || saved.buildingFunction || "",
+           buildingFloors: String(saved.floors || saved.buildingFloors || ""),
+           buildingArea: String(saved.areaSquareMeters || saved.area || saved.buildingArea || ""),
+           buildingYearBuilt: String(saved.yearBuilt || saved.buildingYearBuilt || ""),
+           buildingCondition: saved.condition || saved.buildingCondition,
+           buildingRoofCondition: saved.roofCondition || saved.buildingRoofCondition,
+           buildingStructuralScore: String(saved.structuralScore || ""),
+           buildingNotes: saved.notes || "",
+           geolocation: { 
+             latitude: saved.centroidLat !== undefined ? parseFloat(String(saved.centroidLat)) : saved.geolocation?.latitude,
+             longitude: saved.centroidLng !== undefined ? parseFloat(String(saved.centroidLng)) : saved.geolocation?.longitude
+           },
+           facilities: saved.facilities || []
+        };
+
+        setSchoolBuildings(prev => isNew ? [...prev, mappedSaved] : prev.map(bg => bg.id === mappedSaved.id ? mappedSaved : bg));
+        if (activeBlock?.id === data.id || isNew) setActiveBlock(mappedSaved);
+        setDrawerOpen(false);
       }
-      setDrawerOpen(false);
-    } catch (err) {
-      console.error("Failed to save building", err);
+    } catch (err: any) { 
+      console.error("Failed to save building in 3D View", err);
+      const msg = err.response?.data?.message;
+      setSaveError(Array.isArray(msg) ? msg.join(", ") : (msg || "An unexpected error occurred while saving the building."));
     } finally {
-      setIsMapLoading(false);
+      setIsSaving(false);
     }
   };
 
@@ -1103,11 +1166,10 @@ const School3DView: React.FC<School3DViewProps> = ({
                 onLoad={(ds) => {
                   ds.entities.values.forEach((entity: any) => {
                     if (entity.polygon) {
-                      entity.polygon.material = Color.fromCssColorString(
-                        "rgba(0, 150, 255, 0.4)",
-                      ) as any;
+                      entity.polygon.material = Color.fromCssColorString("rgba(99, 102, 241, 0.05)") as any;
                       entity.polygon.outline = true as any;
-                      entity.polygon.outlineColor = Color.WHITE as any;
+                      entity.polygon.outlineColor = Color.fromCssColorString("#6366f1") as any;
+                      entity.polygon.outlineWidth = 4 as any;
                     }
                     if (entity.polyline) {
                       entity.polyline.width = 2 as any;
@@ -1294,6 +1356,59 @@ const School3DView: React.FC<School3DViewProps> = ({
                 }
               />
             )}
+
+            {viewMode === "3D" &&
+              !masterKmlUrl &&
+              schoolBuildings.map((building) => {
+                const footprint = building.annotations?.find(a => a.isFootprint);
+                if (!footprint || !footprint.coordinates) return null;
+
+                const polyPts = [];
+                for (let i = 0; i < footprint.coordinates.length; i += 2) {
+                  polyPts.push(Number(footprint.coordinates[i]), Number(footprint.coordinates[i+1]));
+                }
+                
+                const labelText = building.buildingName 
+                  ? `${building.buildingName} - ${Number(building.buildingArea).toFixed(1)}m²`
+                  : `${Number(building.buildingArea).toFixed(1)}m²`;
+
+                return (
+                  <Entity
+                    key={`footprint-${building.id}`}
+                    name={building.buildingName}
+                    description={building.buildingNotes}
+                  >
+                    <PolygonGraphics
+                      hierarchy={Cartesian3.fromDegreesArray(polyPts) as any}
+                      material={Color.fromCssColorString("rgba(99, 102, 241, 0.05)") as any}
+                      outline={true as any}
+                      outlineColor={Color.fromCssColorString("#6366f1") as any}
+                      outlineWidth={4 as any}
+                      height={0}
+                    />
+                    <Entity
+                      position={Cartesian3.fromDegrees(
+                        building.geolocation.longitude!,
+                        building.geolocation.latitude!,
+                        10
+                      )}
+                    >
+                      <LabelGraphics
+                        text={labelText}
+                        font="bold 16px 'Plus Jakarta Sans', sans-serif"
+                        fillColor={Color.WHITE}
+                        outlineColor={Color.BLACK}
+                        outlineWidth={3}
+                        style={LabelStyle.FILL_AND_OUTLINE}
+                        verticalOrigin={VerticalOrigin.BOTTOM}
+                        pixelOffset={new Cartesian2(0, -20)}
+                        disableDepthTestDistance={Number.POSITIVE_INFINITY}
+                        distanceDisplayCondition={new DistanceDisplayCondition(0, 500)}
+                      />
+                    </Entity>
+                  </Entity>
+                );
+              })}
 
             {viewMode === "3D" &&
               !masterKmlUrl &&
@@ -1490,6 +1605,22 @@ const School3DView: React.FC<School3DViewProps> = ({
           </div>
         )}
       </Card>
+      
+      {drawerOpen && drawerBuilding && (
+        <BuildingFormDrawer
+          isOpen={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          building={drawerBuilding}
+          buildingIndex={schoolBuildings.findIndex(b => b.id === drawerBuilding?.id)}
+          onSave={handleSaveBuilding}
+          availableFacilities={availableFacilities}
+          facilitiesLoading={facilitiesLoading}
+          isSaving={isSaving}
+          errorMessage={saveError}
+          schoolLat={fallbackLocation.lat}
+          schoolLng={fallbackLocation.lng}
+        />
+      )}
     </div>
   );
 };

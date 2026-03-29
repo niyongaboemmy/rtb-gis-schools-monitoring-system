@@ -13,6 +13,7 @@ interface MapHudProps {
   measureResult: string | null;
   infoFeature: { name: string; description?: string } | null;
   onCloseInfo: () => void;
+  onSaveMeasurement?: () => void;
 }
 
 export const MapHud: React.FC<MapHudProps> = ({
@@ -27,6 +28,7 @@ export const MapHud: React.FC<MapHudProps> = ({
   measureResult,
   infoFeature,
   onCloseInfo,
+  onSaveMeasurement,
 }) => {
   return (
     <>
@@ -84,6 +86,16 @@ export const MapHud: React.FC<MapHudProps> = ({
                 <span className="text-xs font-black text-amber-200">
                   {measureResult}
                 </span>
+                {onSaveMeasurement && (
+                  <Button
+                    variant="ghost" 
+                    size="sm"
+                    className="ml-2 h-7 px-3 rounded-xl bg-amber-400/20 text-amber-200 font-bold hover:bg-amber-400/30 border border-amber-400/30 transition-all text-[10px] uppercase tracking-widest"
+                    onClick={onSaveMeasurement}
+                  >
+                    Save to Map
+                  </Button>
+                )}
               </>
             )}
           </div>

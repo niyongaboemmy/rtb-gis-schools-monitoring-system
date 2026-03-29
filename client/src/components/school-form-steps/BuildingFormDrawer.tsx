@@ -165,6 +165,8 @@ interface BuildingFormDrawerProps {
   onClose: () => void;
   availableFacilities?: AvailableFacility[];
   facilitiesLoading?: boolean;
+  isSaving?: boolean;
+  errorMessage?: string | null;
   /** School's coordinates for auto-centering the geo modal */
   schoolLat?: number | null;
   schoolLng?: number | null;
@@ -180,6 +182,8 @@ export function BuildingFormDrawer({
   onClose,
   availableFacilities,
   facilitiesLoading,
+  isSaving,
+  errorMessage,
   schoolLat,
   schoolLng,
 }: BuildingFormDrawerProps) {
@@ -276,45 +280,54 @@ export function BuildingFormDrawer({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-60 bg-background/60 backdrop-blur-sm"
+              className="fixed inset-0 z-60 bg-black/40 backdrop-blur-sm"
               onClick={onClose}
             />
 
-            {/* Drawer panel */}
+            {/* Floating Drawer Panel */}
             <motion.div
               key="drawer-panel"
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 30, stiffness: 300 }}
-              className="fixed right-0 top-0 z-61 h-full w-full max-w-lg bg-background border-l border-border shadow-2xl flex flex-col"
+              initial={{ x: "-100%", opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: "-100%", opacity: 0 }}
+              transition={{ type: "spring", damping: 30, stiffness: 220 }}
+              className="fixed left-6 top-6 bottom-6 z-61 w-full max-w-[380px] bg-background/90 backdrop-blur-3xl border border-white/10 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.5)] flex flex-col rounded-[32px] overflow-hidden"
             >
               {/* Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-border/30 shrink-0">
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/5 shrink-0">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-primary/10">
-                    <Building2 className="w-4 h-4 text-primary" />
+                  <div className="p-2.5 rounded-2xl bg-primary shadow-lg border border-primary/20 text-white">
+                    <Building2 className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-foreground text-sm">
-                      {isNew ? "New Building" : `Building #${buildingIndex + 1}`}
+                    <h3 className="font-bold text-base text-white leading-tight">
+                      {isNew ? "New Block" : `Edit Block`}
                     </h3>
                     {!isNew && draft.buildingName && (
-                      <p className="text-xs text-muted-foreground">{draft.buildingName}</p>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-white/30 truncate max-w-[150px]">{draft.buildingName}</p>
                     )}
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex items-center justify-center w-8 h-8 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  className="p-1.5 rounded-full text-white/20 hover:text-white hover:bg-white/10 transition-all active:scale-90 group"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
                 </button>
               </div>
 
               {/* Scrollable body */}
               <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+                {errorMessage && (
+                  <div className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 text-xs text-destructive flex items-start gap-2.5 animate-in fade-in slide-in-from-top-2 mb-4">
+                    <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <div className="flex-1">
+                      <p className="font-bold uppercase tracking-wider mb-0.5">Validation Error</p>
+                      <p className="opacity-90">{errorMessage}</p>
+                    </div>
+                  </div>
+                )}
 
                 {/* 1 — Location + Identity */}
                 <section className="space-y-4">
@@ -420,12 +433,10 @@ export function BuildingFormDrawer({
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-                        <Maximize2 className="w-3 h-3 text-muted-foreground" />
-                        Area (m²)
+                        <Maximize2 className="w-3 h-3 text-primary" />
+                        Total Footprint Area (m²)
                       </label>
                       <Input
-                        type="number"
-                        step="any"
                         placeholder="e.g. 500"
                         value={draft.buildingArea}
                         onChange={(e) => set("buildingArea", e.target.value)}
@@ -580,10 +591,19 @@ export function BuildingFormDrawer({
                 </Button>
                 <Button
                   type="button"
-                  onClick={() => { onSave(draft); onClose(); }}
-                  disabled={!draft.buildingName.trim()}
+                  onClick={() => onSave(draft)}
+                  disabled={!draft.buildingName.trim() || isSaving}
                 >
-                  {isNew ? "Add Building" : "Save Changes"}
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : isNew ? (
+                    "Add Building"
+                  ) : (
+                    "Save Changes"
+                  )}
                 </Button>
               </div>
             </motion.div>

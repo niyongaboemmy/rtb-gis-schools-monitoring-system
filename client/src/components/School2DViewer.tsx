@@ -2,7 +2,9 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import "ol/ol.css";
 import Overlay from "ol/Overlay";
 import VectorSource from "ol/source/Vector";
-import { fromLonLat } from "ol/proj";
+import { fromLonLat, toLonLat } from "ol/proj";
+import { AnimatePresence, motion } from "framer-motion";
+import { CheckCircle2, AlertCircle, MapPin, X } from "lucide-react";
 
 import { BlockInspector } from "./BlockInspector";
 import { BuildingFormDrawer } from "./school-form-steps/BuildingFormDrawer";
@@ -16,6 +18,8 @@ import { MapToolbar } from "./2dviewercomponents/MapToolbar";
 import { MapHud } from "./2dviewercomponents/MapHud";
 import { BasicInfoModal } from "./2dviewercomponents/BasicInfoModal";
 import { MapNavigator } from "./2dviewercomponents/MapNavigator";
+import { LayerManager } from "./2dviewercomponents/LayerManager";
+import { BuildingsListPanel } from "./2dviewercomponents/BuildingsListPanel";
 
 // Hooks
 import { useMapSetup } from "./2dviewercomponents/hooks/useMapSetup";
@@ -35,6 +39,8 @@ export default function School2DViewer({
   onSelectBuilding,
   initialBuildingId,
   tifFilePath,
+  pickerMode = false,
+  onPickerSelect,
 }: School2DViewerProps) {
   // ── Derived State & URLs ──────────────────────────────────────────────────
   const buildUrl = useCallback((path: string | undefined, subfolder: string) => {
@@ -61,13 +67,15 @@ export default function School2DViewer({
   const geojsonLayerRef = useRef<any>(null);
   const placesLayerRef = useRef<any>(null);
   const blockOverlayRef = useRef<Overlay | null>(null);
+  const blockOverlayElementRef = useRef<HTMLDivElement | null>(null);
   const measureSourceRef = useRef(new VectorSource());
   const tooltipOverlayRef = useRef<Overlay | null>(null);
   const groundOverlayLayersRef = useRef<any[]>([]);
   const overlayExtentRef = useRef<[number, number, number, number] | null>(null);
-  const mapInternalDrawRef = useRef<any>(null);
   const mapSelectedFeatureRef = useRef<any>(null);
   const loadingStartTimeRef = useRef<number>(Date.now());
+  /** Shared drawing-state flag between useMapSetup click guard & useMapInteractions */
+  const isDrawingRef = useRef<boolean>(false);
 
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("Initialising map…");
@@ -76,7 +84,8 @@ export default function School2DViewer({
   const [decodingCount, setDecodingCount] = useState(0);
   const [measurementMode, setMeasurementMode] = useState<"none" | "distance" | "area">("none");
   const [measureResult, setMeasureResult] = useState<string | null>(null);
-  const [showPlacesOverlay, setShowPlacesOverlay] = useState(true);
+  const [showPlacesOverlay, setShowPlacesOverlay] = useState(false);
+  const [showBuildingsList, setShowBuildingsList] = useState(false);
   const [showNavigator, setShowNavigator] = useState(false);
   const [showBasicInfo, setShowBasicInfo] = useState(false);
   const [showOpacitySlider, setShowOpacitySlider] = useState(false);
@@ -89,12 +98,43 @@ export default function School2DViewer({
   const [selectedFeatureName, setSelectedFeatureName] = useState<string | null>(null);
   const [infoFeature, setInfoFeature] = useState<any>(null);
   const [basemapStyle, setBasemapStyle] = useState<any>("google");
+  const [visibleLayers, setVisibleLayers] = useState<Set<number>>(new Set());
+  const [manifest, setManifest] = useState<any>(school.kmz2dManifest || null);
 
   const [activeBlock, setActiveBlock] = useState<BuildingData | null>(null);
   const [isBlockInspectorOpen, setIsBlockInspectorOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerBuilding, setDrawerBuilding] = useState<BuildingData | null>(null);
   const [schoolBuildings, setSchoolBuildings] = useState<BuildingData[]>(effectiveBuildings);
+  const [availableFacilities, setAvailableFacilities] = useState<any[]>([]);
+  const [facilitiesLoading, setFacilitiesLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [siteAnnotations, setSiteAnnotations] = useState<any[]>(school.kmz2dSiteAnnotations || []);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "warning" | null }>({ message: "", type: null });
+
+  // Picker mode: selected building before confirming
+  const [pickerSelected, setPickerSelected] = useState<any>(null);
+
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const showToast = useCallback((message: string, type: "success" | "warning") => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToast({ message, type });
+    toastTimeoutRef.current = setTimeout(() => setToast({ message: "", type: null }), 5000);
+  }, []);
+
+  useEffect(() => {
+    return () => { if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); };
+  }, []);
+
+  // Fetch facilities for the building form
+  useEffect(() => {
+    setFacilitiesLoading(true);
+    api.get("/schools/facilities")
+      .then(res => setAvailableFacilities(res.data))
+      .catch(err => console.error("Failed to fetch facilities", err))
+      .finally(() => setFacilitiesLoading(false));
+  }, []);
 
   // ── Basemap URL Helper ────────────────────────────────────────────────────
   const getBasemapUrl = useCallback((style: string) => {
@@ -109,10 +149,15 @@ export default function School2DViewer({
   }, []);
 
   // ── Hooks ──────────────────────────────────────────────────────────────────
-  const { mapRef, mapReady, basemapLayerRef, basemapLabelLayerRef, blocksLayerRef, annotationLayerRef, ghostLayerRef } = useMapSetup({
+  const { mapRef, mapReady, basemapLayerRef, basemapLabelLayerRef, blocksLayerRef, annotationLayerRef, ghostLayerRef, hoverLayerRef, selectedLayerRef } = useMapSetup({
     containerRef, fallbackLocation, onSelectBuilding, effectiveBuildings, setCurrentLat, setCurrentLng,
     setActiveBlock, setIsBlockInspectorOpen, setSelectedFeatureName, setInfoFeature, getBasemapUrl,
-    activeDrawRef: mapInternalDrawRef, blockOverlayRef, measureSourceRef, kmlLayerRef, geojsonLayerRef, placesLayerRef
+    isDrawingRef,
+    blockOverlayRef, measureSourceRef, kmlLayerRef, geojsonLayerRef, placesLayerRef,
+    pickerMode,
+    onPickerSelect: (building: any) => {
+      setPickerSelected(building);
+    },
   });
 
   useKmzLoader({
@@ -121,16 +166,51 @@ export default function School2DViewer({
     kmlLayerRef, groundOverlayLayersRef, overlayExtentRef
   });
 
+  // Keep manifest and initial visibility in sync when kmz finishes loading
+  useEffect(() => {
+    if (features.length > 0 || (groundOverlayLayersRef.current.length > 0)) {
+       setManifest(school.kmz2dManifest);
+       const initial = new Set<number>();
+       (school.kmz2dManifest?.groundOverlays || []).forEach((_: any, i: number) => initial.add(i));
+       setVisibleLayers(initial);
+    }
+  }, [features, school.kmz2dManifest]);
+
+  // Sync Layer Visibility to OpenLayers
+  useEffect(() => {
+    groundOverlayLayersRef.current.forEach((layer, idx) => {
+       layer.setVisible(visibleLayers.has(idx));
+    });
+  }, [visibleLayers]);
+
+  // Sync places overlay visibility
+  useEffect(() => {
+    if (placesLayerRef.current) {
+      placesLayerRef.current.setVisible(showPlacesOverlay);
+    }
+  }, [showPlacesOverlay]);
+
   useMapInteractions({
     mapRef, mapReady, activeTool, setActiveTool, measurementMode, setMeasureResult,
     tooltipOverlayRef, measureSourceRef, activeBlock,
-    handleSaveBuilding: async (d) => handleSaveBuilding(d), setDrawerBuilding, setDrawerOpen
+    handleSaveBuilding: async (d) => handleSaveBuilding(d), setDrawerBuilding, setDrawerOpen,
+    hoverLayerRef, selectedLayerRef, blocksLayerRef, kmlLayerRef, geojsonLayerRef, placesLayerRef, annotationLayerRef,
+    isDrawingRef,
   });
 
-  useSpatialDataSync({
-    mapRef, mapReady, schoolBuildings, blocksLayerRef, annotationLayerRef,
-    effectivePlacesOverlay, placesOverlayUrl, showPlacesOverlay, placesLayerRef,
-    geojson, geojsonLayerRef
+  const { setBuildings: setHookBuildings } = useSpatialDataSync({
+    mapRef,
+    mapReady,
+    schoolId: school.id,
+    blocksLayerRef,
+    annotationLayerRef,
+    effectivePlacesOverlay,
+    placesOverlayUrl,
+    showPlacesOverlay,
+    placesLayerRef,
+    geojson,
+    geojsonLayerRef,
+    onBuildingsLoaded: (b) => setSchoolBuildings(b),
   });
 
   const { flyToFeature, exportPng } = useMapMethods({
@@ -145,9 +225,14 @@ export default function School2DViewer({
       if (style !== "ghost" && style !== "offline") {
         layer.setVisible(true);
         const url = getBasemapUrl(style);
-        const source: any = layer.getSource();
-        source.setUrl(url); source.refresh();
-      } else layer.setVisible(false);
+        const source = layer.getSource();
+        if (source) {
+          source.setUrl(url);
+          source.refresh();
+        }
+      } else {
+        layer.setVisible(false);
+      }
     }
     ghostLayerRef.current?.setVisible(style === "ghost" || style === "offline");
     basemapLabelLayerRef.current?.setVisible(style === "satellite" || style === "nsdi");
@@ -155,17 +240,143 @@ export default function School2DViewer({
 
   const handleSaveBuilding = async (data: BuildingData) => {
     try {
-      const isNew = data.id.startsWith("new-");
-      const method = isNew ? "post" : "put";
-      const url = isNew ? `/schools/${school.id}/buildings` : `/schools/${school.id}/buildings/${data.id}`;
-      const response = await api[method](url, data);
+      setIsSaving(true);
+      setSaveError(null);
+      
+      const isNew = typeof data.id === "string" && data.id.startsWith("new-");
+      const method = isNew ? "post" : "patch";
+      const url = isNew ? `/schools/${school.id}/buildings` : `/schools/buildings/${data.id}`;
+      
+      const payload = {
+        name: data.buildingName,
+        code: data.buildingCode,
+        function: data.buildingFunction,
+        floors: parseInt(String(data.buildingFloors)) || 0,
+        area: parseFloat(String(data.buildingArea)) || 0,
+        yearBuilt: parseInt(String(data.buildingYearBuilt)) || 0,
+        condition: data.buildingCondition,
+        roofCondition: data.buildingRoofCondition,
+        structuralScore: parseFloat(String(data.buildingStructuralScore)) || 0,
+        notes: data.buildingNotes || "",
+        latitude: data.geolocation.latitude,
+        longitude: data.geolocation.longitude,
+        annotations: (data.annotations || []).filter(
+          (a): a is NonNullable<typeof a> => 
+            a !== null && typeof a === 'object' && !Array.isArray(a)
+        ),
+        media: data.media || [],
+        facilities: (data.facilities || []).map(f => ({
+          facility_id: f.facility_id,
+          facility_name: f.facility_name,
+          number_of_rooms: parseInt(String(f.number_of_rooms)) || 0
+        })),
+      };
+
+      const response = await api[method](url, payload);
       if (response.data) {
         const saved = response.data;
-        setSchoolBuildings(prev => isNew ? [...prev, saved] : prev.map(bg => bg.id === saved.id ? saved : bg));
-        if (activeBlock?.id === data.id || isNew) setActiveBlock(saved);
+        const mappedSaved: BuildingData = {
+           ...saved,
+           buildingName: saved.name || saved.buildingName || saved.buildingCode || "",
+           buildingCode: saved.buildingCode || saved.code || "",
+           buildingFunction: saved.function || saved.buildingFunction || "",
+           buildingFloors: String(saved.floors || saved.buildingFloors || ""),
+           buildingArea: String(saved.areaSquareMeters || saved.area || saved.buildingArea || ""),
+           buildingYearBuilt: String(saved.yearBuilt || saved.buildingYearBuilt || ""),
+           buildingCondition: saved.condition || saved.buildingCondition,
+           buildingRoofCondition: saved.roofCondition || saved.buildingRoofCondition,
+           buildingStructuralScore: String(saved.structuralScore || ""),
+           buildingNotes: saved.notes || "",
+           geolocation: { 
+             latitude: saved.centroidLat !== undefined ? parseFloat(String(saved.centroidLat)) : saved.geolocation?.latitude,
+             longitude: saved.centroidLng !== undefined ? parseFloat(String(saved.centroidLng)) : saved.geolocation?.longitude
+           },
+           facilities: saved.facilities || [],
+           annotations: saved.annotations || data.annotations || []
+        };
+
+        setSchoolBuildings(prev => isNew ? [...prev, mappedSaved] : prev.map(bg => bg.id === mappedSaved.id ? mappedSaved : bg));
+        if (activeBlock?.id === data.id || isNew) setActiveBlock(mappedSaved);
         setDrawerOpen(false);
+        showToast(`Building "${mappedSaved.buildingName}" saved successfully.`, "success");
       }
-    } catch (err) { console.error("Failed to save building", err); }
+    } catch (err: any) { 
+      console.error("Failed to save building", err);
+      const msg = err.response?.data?.message;
+      const errorMsg = Array.isArray(msg) ? msg.join(", ") : (msg || "An unexpected error occurred while saving the building.");
+      setSaveError(errorMsg);
+      showToast("Failed to save building.", "warning");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  const handleDeleteBuilding = async (id: string) => {
+    try {
+      await api.delete(`/schools/buildings/${id}`);
+      setSchoolBuildings((prev) => prev.filter((b) => b.id !== id));
+      setHookBuildings((prev) => prev.filter((b) => b.id !== id));
+      if (activeBlock?.id === id) {
+        setIsBlockInspectorOpen(false);
+        setActiveBlock(null);
+      }
+      showToast("Building deleted successfully.", "success");
+    } catch (err: any) {
+      console.error("Failed to delete building", err);
+      showToast("Failed to delete building. Check logs.", "warning");
+    }
+  };
+
+  const handleSaveMeasurement = async () => {
+    if (!measureResult) return;
+    try {
+      const features = measureSourceRef.current.getFeatures();
+      if (features.length === 0) return;
+      
+      const feat = features[0];
+      const geom = feat.getGeometry();
+      if (!geom) return;
+
+      const typeMap: any = { 'LineString': 'line', 'Polygon': 'polygon', 'Point': 'point' };
+      const type = typeMap[geom.getType()] || 'point';
+      
+      let coords = (geom as any).getCoordinates();
+      if (type === 'point') coords = toLonLat(coords);
+      else if (type === 'line') coords = coords.map((c: any) => toLonLat(c));
+      else if (type === 'polygon') coords = coords[0].map((c: any) => toLonLat(c));
+
+      const payload = {
+        id: `site-${Date.now()}`,
+        type,
+        label: measureResult,
+        coordinates: coords,
+        style: { color: measurementMode === 'area' ? '#fbbf24' : '#10b981' }
+      };
+
+      const res = await api.post(`/schools/${school.id}/kmz/2d/site-annotations`, payload);
+      if (res.data) {
+        setSiteAnnotations(res.data.annotations || []);
+        showToast("Measurement saved to map!", "success");
+      }
+      
+      measureSourceRef.current.clear();
+      setMeasureResult(null);
+      setMeasurementMode("none");
+    } catch (err) {
+      console.error("Failed to save measurement", err);
+      showToast("Failed to save measurement.", "warning");
+    }
+  };
+
+  const handleDeleteAnnotation = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this annotation?")) return;
+    try {
+      const res = await api.delete(`/schools/${school.id}/kmz/2d/site-annotations/${id}`);
+      if (res.data) {
+        setSiteAnnotations(res.data.annotations || []);
+      }
+    } catch (err) {
+      console.error("Failed to delete annotation", err);
+    }
   };
 
   // ── Overlay (runs once map is ready) ─────────────────────────────────────
@@ -173,11 +384,24 @@ export default function School2DViewer({
     if (!mapReady) return;
     const map = mapRef.current;
     if (!map) return;
-    const inspectorEl = document.getElementById("block-inspector-container");
-    if (inspectorEl && !blockOverlayRef.current) {
-      const over = new Overlay({ element: inspectorEl, autoPan: { animation: { duration: 250 } }, positioning: "bottom-center", offset: [0, -10] });
-      map.addOverlay(over); blockOverlayRef.current = over;
+    
+    if (blockOverlayElementRef.current && !blockOverlayRef.current) {
+      const over = new Overlay({ 
+        element: blockOverlayElementRef.current, 
+        autoPan: { animation: { duration: 250 } }, 
+        positioning: "bottom-center", 
+        offset: [0, -10] 
+      });
+      map.addOverlay(over); 
+      blockOverlayRef.current = over;
     }
+
+    return () => {
+      if (blockOverlayRef.current) {
+        map.removeOverlay(blockOverlayRef.current);
+        blockOverlayRef.current = null;
+      }
+    };
   }, [mapReady]);
 
   useEffect(() => {
@@ -193,8 +417,36 @@ export default function School2DViewer({
     }
   }, [initialBuildingId, schoolBuildings, mapReady]);
 
+  const renderToast = () => (
+    <AnimatePresence>
+      {toast.type && (
+        <motion.div
+          initial={{ opacity: 0, y: 50, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+          className={cn(
+            "fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-2xl shadow-2xl backdrop-blur-xl border flex items-center gap-3",
+            toast.type === "success"
+              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
+              : "bg-amber-500/10 border-amber-500/20 text-amber-500"
+          )}
+        >
+          {toast.type === "success" ? (
+            <CheckCircle2 className="w-5 h-5" />
+          ) : (
+            <AlertCircle className="w-5 h-5" />
+          )}
+          <span className="text-[10px] font-black uppercase tracking-widest leading-none">
+            {toast.message}
+          </span>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-[#0f1117] w-full h-full">
+      {renderToast()}
       <div ref={containerRef} className="absolute inset-0" />
       
       <LoadingOverlay 
@@ -203,13 +455,69 @@ export default function School2DViewer({
         loadingMessage={loadingMessage} 
         loadingStartTime={loadingStartTimeRef.current} 
       />
+
+      {/* ── Picker Mode Banner ───────────────────────────────────────────── */}
+      {pickerMode && (
+        <div className="absolute top-0 left-0 right-0 z-40 flex items-center justify-between px-6 py-3 bg-primary/90 backdrop-blur-md border-b border-white/10 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center animate-pulse">
+              <MapPin className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-white/60">Picker Mode</p>
+              <p className="text-sm font-bold text-white">
+                {pickerSelected ? `Selected: ${pickerSelected.buildingName || "Building"}` : "Click a building on the map to select it"}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {pickerSelected && (
+              <button
+                onClick={() => {
+                  if (onPickerSelect) onPickerSelect(pickerSelected);
+                  if (onClose) onClose();
+                }}
+                className="px-4 py-2 rounded-xl bg-white text-primary font-black text-xs uppercase tracking-widest hover:bg-white/90 transition-all shadow-lg"
+              >
+                ✓ Confirm Selection
+              </button>
+            )}
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-all text-white"
+                title="Cancel"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       
+      {showBuildingsList && (
+        <BuildingsListPanel
+          buildings={schoolBuildings}
+          onClose={() => setShowBuildingsList(false)}
+          onDelete={async (id) => await handleDeleteBuilding(id)}
+          onSelect={(b) => {
+            setActiveBlock(b);
+            setIsBlockInspectorOpen(true);
+            if (b.geolocation?.latitude && b.geolocation?.longitude) {
+              const coord = fromLonLat([Number(b.geolocation.longitude), Number(b.geolocation.latitude)]);
+              blockOverlayRef.current?.setPosition(coord);
+              mapRef.current?.getView().animate({ center: coord, zoom: 21, duration: 800 });
+            }
+          }}
+        />
+      )}
+
       <MapToolbar 
-        onClose={onClose} 
+        onClose={!pickerMode ? onClose : undefined} 
         showNavigator={showNavigator} 
         setShowNavigator={setShowNavigator} 
-        showPlacesOverlay={showPlacesOverlay} 
-        setShowPlacesOverlay={setShowPlacesOverlay} 
+        showBuildingsList={showBuildingsList}
+        setShowBuildingsList={setShowBuildingsList} 
         showOpacitySlider={showOpacitySlider} 
         setShowOpacitySlider={setShowOpacitySlider} 
         basemapStyle={basemapStyle} 
@@ -230,6 +538,8 @@ export default function School2DViewer({
         setKmzOpacity={setKmzOpacity} 
         visuals={visuals}
         setVisuals={setVisuals}
+        showPlacesOverlay={showPlacesOverlay}
+        setShowPlacesOverlay={setShowPlacesOverlay}
       />
       
       <MapHud 
@@ -244,26 +554,98 @@ export default function School2DViewer({
         measureResult={measureResult} 
         infoFeature={infoFeature} 
         onCloseInfo={() => setInfoFeature(null)} 
+        onSaveMeasurement={handleSaveMeasurement}
       />
       
-      {showNavigator && <MapNavigator features={features} selectedFeatureName={selectedFeatureName} onFlyTo={flyToFeature} onClose={() => setShowNavigator(false)} />}
+      {showNavigator && (
+        <LayerManager 
+          schoolId={school.id}
+          manifest={manifest}
+          onUpdateManifest={setManifest}
+          visibleLayers={visibleLayers}
+          setVisibleLayers={setVisibleLayers}
+          onClose={() => setShowNavigator(false)}
+          schoolBuildings={schoolBuildings}
+          siteAnnotations={siteAnnotations}
+          onDeleteAnnotation={handleDeleteAnnotation}
+          onSelectBuilding={(b) => {
+            setActiveBlock(b);
+            setIsBlockInspectorOpen(true);
+            const coord = fromLonLat([Number(b.geolocation.longitude), Number(b.geolocation.latitude)]);
+            blockOverlayRef.current?.setPosition(coord);
+            mapRef.current?.getView().animate({ center: coord, zoom: 21, duration: 800 });
+          }}
+          onFlyToAnnotation={(ann) => {
+            const coords = ann.type === 'point' ? ann.coordinates : 
+                          ann.type === 'line' ? ann.coordinates[0] : ann.coordinates[0];
+            const coord = fromLonLat([Number(coords[0]), Number(coords[1])]);
+            mapRef.current?.getView().animate({ center: coord, zoom: 20, duration: 800 });
+          }}
+        />
+      )}
+
+      {/* Legacy Navigator — fallback if features are present */}
+      {showNavigator && features.length > 0 && false && (
+         <MapNavigator features={features} selectedFeatureName={selectedFeatureName} onFlyTo={flyToFeature} onClose={() => setShowNavigator(false)} />
+      )}
       
       {showBasicInfo && <BasicInfoModal school={school} onClose={() => setShowBasicInfo(false)} />}
 
-      <div id="block-inspector-container" className={cn("z-40 transition-opacity", isBlockInspectorOpen ? "opacity-100" : "opacity-0 pointer-events-none")}>
-        {activeBlock && <BlockInspector building={activeBlock} onClose={() => setIsBlockInspectorOpen(false)} onEdit={() => { setDrawerBuilding(activeBlock); setDrawerOpen(true); setIsBlockInspectorOpen(false); }} onUpdateBuilding={async (b) => { setActiveBlock(b); setSchoolBuildings(prev => prev.map(old => old.id === b.id ? b : old)); }} onAddAnnotation={() => setActiveTool("annotate_point")} onUploadMedia={() => {}} />}
-      </div>
+      {/* Left-side Fixed Inspector Panel — hidden in picker mode */}
+      {!pickerMode && (
+        <div 
+          className={cn(
+            "absolute top-0 left-0 bottom-0 z-40 transition-all duration-500 pointer-events-none",
+            isBlockInspectorOpen ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-full"
+          )}
+        >
+          {activeBlock && (
+            <div className="pointer-events-auto shadow-2xl">
+              <BlockInspector 
+                building={activeBlock} 
+                onClose={() => {
+                  setIsBlockInspectorOpen(false);
+                  setTimeout(() => setActiveBlock(null), 300);
+                }} 
+                onEdit={() => { 
+                  setDrawerBuilding(activeBlock); 
+                  setDrawerOpen(true); 
+                  setIsBlockInspectorOpen(false); 
+                }} 
+                onUpdateBuilding={async (b) => { 
+                  setActiveBlock(b); 
+                  setSchoolBuildings(prev => prev.map(old => old.id === b.id ? b : old)); 
+                }} 
+                onAddAnnotation={() => setActiveTool("annotate_point")} 
+                onUploadMedia={() => {}} 
+                on3DView={() => {
+                  const params = new URLSearchParams();
+                  if (school?.id) params.set("schoolId", school.id);
+                  if (school?.name) params.set("schoolName", school.name);
+                  if (activeBlock?.id) params.set("buildingId", activeBlock.id);
+                  window.open(`http://localhost:5175?${params.toString()}`, "_blank");
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
-      <BuildingFormDrawer
-        isOpen={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        building={drawerBuilding}
-        buildingIndex={-1}
-        onSave={handleSaveBuilding}
-        availableFacilities={[]}
-        schoolLat={fallbackLocation.lat}
-        schoolLng={fallbackLocation.lng}
-      />
+      {!pickerMode && (
+        <BuildingFormDrawer
+          isOpen={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          building={drawerBuilding}
+          buildingIndex={schoolBuildings.findIndex(b => b.id === drawerBuilding?.id)}
+          onSave={handleSaveBuilding}
+          availableFacilities={availableFacilities}
+          facilitiesLoading={facilitiesLoading}
+          isSaving={isSaving}
+          errorMessage={saveError}
+          schoolLat={fallbackLocation.lat}
+          schoolLng={fallbackLocation.lng}
+        />
+      )}
     </div>
   );
 }
