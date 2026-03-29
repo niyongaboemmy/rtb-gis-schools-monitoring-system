@@ -1,8 +1,62 @@
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useState, useCallback, memo } from "react";
 import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
+import { MeshoptDecoder } from "meshoptimizer";
+import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-mesh-bvh";
+
+(THREE.BufferGeometry.prototype as any).computeBoundsTree = computeBoundsTree;
+(THREE.BufferGeometry.prototype as any).disposeBoundsTree = disposeBoundsTree;
+THREE.Mesh.prototype.raycast = acceleratedRaycast;
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+// ─── Components to dramatically speed up text input without re-rendering the whole App ────────
+const LocalInput = memo(({ value, onChangeValue, onEnter, onBlur, ...props }: any) => {
+  const [val, setVal] = useState(value || "");
+  useEffect(() => { setVal(value || ""); }, [value]);
+  return (
+    <input 
+      value={val} 
+      onChange={e => {
+        setVal(e.target.value);
+        if (onChangeValue) onChangeValue(e.target.value);
+      }} 
+      onBlur={(e) => onBlur?.(e, val)}
+      onKeyDown={e => {
+        if (e.key === "Enter" && onEnter) {
+          e.preventDefault();
+          onEnter(val);
+        }
+        props.onKeyDown?.(e);
+      }}
+      {...props} 
+    />
+  );
+});
+
+const LocalTextArea = memo(({ value, onChangeValue, onEnter, onBlur, ...props }: any) => {
+  const [val, setVal] = useState(value || "");
+  useEffect(() => { setVal(value || ""); }, [value]);
+  return (
+    <textarea 
+      value={val} 
+      onChange={e => {
+        setVal(e.target.value);
+        if (onChangeValue) onChangeValue(e.target.value);
+      }} 
+      onBlur={(e) => onBlur?.(e, val)}
+      onKeyDown={e => {
+        if (e.key === "Enter" && !e.shiftKey && onEnter) {
+          e.preventDefault();
+          onEnter(val);
+        }
+        props.onKeyDown?.(e);
+      }}
+      {...props} 
+    />
+  );
+});
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,6 +71,10 @@ type Unit = "m" | "cm" | "mm" | "km" | "ft" | "in";
 interface MeasurePoint { x: number; y: number; z: number; }
 interface MeasureLine { id: string; points: MeasurePoint[]; mode: "distance" | "area" | "perimeter"; result: number; unit: Unit; label: string; color: string; }
 interface Annotation { id: string; point: MeasurePoint; text: string; color: string; }
+interface MediaItem { id: string; filename: string; url: string; title: string; type: "image" | "video"; }
+interface Reply { id: string; text: string; author: string; timestamp: number; }
+interface Comment { id: string; text: string; author: string; timestamp: number; replies: Reply[]; }
+interface MediaPoint { id: string; point: MeasurePoint; title: string; addedBy: string; comment?: string; comments: Comment[]; items: MediaItem[]; }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -25,6 +83,7 @@ const LS_MODE_KEY = "glb_viewer_mode_v1";
 const LS_MEASURES_KEY = "glb_viewer_measures_v1";
 const LS_ANNOTATIONS_KEY = "glb_viewer_annotations_v1";
 const LS_UNIT_KEY = "glb_viewer_unit_v1";
+const LS_MEDIA_KEY = "glb_viewer_media_v1";
 
 const MODE_LABELS: Record<RenderMode, string> = { unlit: "Unlit (Metashape-style)", lit: "Lit (PBR)", wireframe: "Wireframe" };
 const UNIT_LABELS: Record<Unit, string> = { m: "Meters (m)", cm: "Centimeters (cm)", mm: "Millimeters (mm)", km: "Kilometers (km)", ft: "Feet (ft)", in: "Inches (in)" };
@@ -34,7 +93,7 @@ const AREA_SUFFIX: Record<Unit, string> = { m: "m²", cm: "cm²", mm: "mm²", km
 
 const MEASURE_COLORS = ["#3b82f6", "#2563eb", "#00d4aa", "#ffb347", "#7ec8e3", "#ff7f50"];
 const ANNOT_COLORS = ["#00d4aa", "#2563eb", "#ffb347", "#7ec8e3", "#93c5fd", "#ffffff"];
-const NAV_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "w", "a", "s", "d", "W", "A", "S", "D", "q", "e", "Q", "E", "r", "f", "R", "F", " "]);
+const NAV_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "w", "a", "s", "d", "W", "A", "S", "D", "q", "e", "Q", "E", "r", "f", "R", "F", "Shift"]);
 const SPEED_STEPS = [0.001, 0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -44,6 +103,7 @@ function formatTime(ms: number) { return ms < 1000 ? `${ms}ms` : `${(ms / 1000).
 function nearestSpeedIdx(v: number) { return SPEED_STEPS.reduce((b, s, i) => Math.abs(s - v) < Math.abs(SPEED_STEPS[b] - v) ? i : b, Math.floor(SPEED_STEPS.length / 2)); }
 function fmtSpeed(v: number) { if (v < 0.01) return v.toFixed(3); if (v < 0.1) return v.toFixed(2); if (v < 10) return v.toFixed(1); return v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v.toFixed(0); }
 function uid() { return Math.random().toString(36).slice(2, 9); }
+function timeAgo(ts: number): string { const d = (Date.now() - ts) / 1000; if (d < 60) return "just now"; if (d < 3600) return `${Math.floor(d / 60)}m ago`; if (d < 86400) return `${Math.floor(d / 3600)}h ago`; return `${Math.floor(d / 86400)}d ago`; }
 
 function convertDist(meters: number, unit: Unit) { return meters * UNIT_FACTOR[unit]; }
 function fmtDist(meters: number, unit: Unit) { return `${convertDist(meters, unit).toFixed(3)} ${UNIT_SUFFIX[unit]}`; }
@@ -80,19 +140,53 @@ function loadJson<T>(key: string, def: T): T { try { const s = localStorage.getI
 function saveJson(key: string, val: unknown) { try { localStorage.setItem(key, JSON.stringify(val)); } catch { } }
 function getHomeKey(fileName: string) { return `glb_home_${fileName.replace(/[^a-zA-Z0-9]/g, "_")}`; }
 
+function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result as string);
+    r.onerror = () => rej(new Error("Failed to read file"));
+    r.readAsDataURL(file);
+  });
+}
+
 // ─── Shared DRACO loader (pre-warmed, reused across loads) ───────────────────
 const sharedDracoLoader = new DRACOLoader();
 sharedDracoLoader.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.6/");
 sharedDracoLoader.preload();
 
+const _dummyRenderer = new THREE.WebGLRenderer();
+const sharedKtx2Loader = new KTX2Loader();
+sharedKtx2Loader.setTranscoderPath("https://www.gstatic.com/basis-universal/versioned/2021-04-15-basis/");
+sharedKtx2Loader.detectSupport(_dummyRenderer);
+_dummyRenderer.dispose();
+
 // ─── Overlay canvas helpers ───────────────────────────────────────────────────
 
+// Reusable vector — avoids GC pressure in per-frame projection calls
+const _pv = new THREE.Vector3();
+
 function project3Dto2D(pt: MeasurePoint, camera: THREE.Camera, w: number, h: number): [number, number] | null {
-  const v = new THREE.Vector3(pt.x, pt.y, pt.z);
-  v.project(camera);
-  // WebGL standard check: if z > 1, the point is behind the camera
-  if (v.z < -1 || v.z > 1) return null;
-  return [(v.x * 0.5 + 0.5) * w, (-v.y * 0.5 + 0.5) * h];
+  _pv.set(pt.x, pt.y, pt.z);
+  _pv.project(camera);
+  if (_pv.z < -1 || _pv.z > 1) return null;
+  return [(_pv.x * 0.5 + 0.5) * w, (-_pv.y * 0.5 + 0.5) * h];
+}
+
+// Inline proximity test — zero allocation, returns hit id or null
+function hitMediaPoint(
+  pts: MediaPoint[], camera: THREE.Camera,
+  cx: number, cy: number, W: number, H: number
+): string | null {
+  for (const mp of pts) {
+    _pv.set(mp.point.x, mp.point.y, mp.point.z);
+    _pv.project(camera);
+    if (_pv.z < -1 || _pv.z > 1) continue;
+    const sx = (_pv.x * 0.5 + 0.5) * W;
+    const sy = (-_pv.y * 0.5 + 0.5) * H;
+    const dx = sx - cx, dy = sy - cy;
+    if (dx * dx + dy * dy < 484) return mp.id; // radius 22px
+  }
+  return null;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -103,6 +197,7 @@ export default function GLBViewer() {
   const params = new URLSearchParams(window.location.search);
   const schoolId = params.get("schoolId") ?? "";
   const schoolName = params.get("schoolName") ?? "";
+  const viewerUser = params.get("viewerUser") ?? "Guest";
 
   const mountRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -120,8 +215,16 @@ export default function GLBViewer() {
   const origMatsRef = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
   const unlitMatsRef = useRef<Map<THREE.Mesh, THREE.MeshBasicMaterial>>(new Map());
   const raycasterRef = useRef(new THREE.Raycaster());
+  const clickDebounceRef = useRef(0);
 
   const hoverPtRef = useRef<MeasurePoint | null>(null);
+  // Cached accurate raycast — precomputed on mousemove (throttled ~30fps) for zero-latency click placement
+  const lastAccuratePtRef = useRef<MeasurePoint | null>(null);
+  const lastRaycastTimeRef = useRef(0);
+  // Camera history for back/forward navigation
+  const camHistoryRef = useRef<CameraHome[]>([]);
+  const camHistoryIdxRef = useRef<number>(-1);
+  const pushCameraHistoryFnRef = useRef<() => void>(() => { });
 
   const [phase, setPhase] = useState<"idle" | "loading" | "viewing">("idle");
   const [progress, setProgress] = useState(0);
@@ -162,8 +265,9 @@ export default function GLBViewer() {
           home: cameraHomeRef.current,
           annotations: annotationsRef.current,
           measures: measuresRef.current,
+          mediaPoints: mediaPointsRef.current,
         }),
-      }).catch(() => {});
+      }).catch(() => { });
     }, 800);
   }, [schoolId]);
   const [showMeasurePanel, setShowMeasurePanel] = useState(false);
@@ -174,13 +278,61 @@ export default function GLBViewer() {
   // Annotate modal state
   const [editAnnotId, setEditAnnotId] = useState<string | null>(null);
   const [annotInput, setAnnotInput] = useState("");
+  const annotInputRef = useRef("");
   const [annotPendingPt, setAnnotPendingPt] = useState<MeasurePoint | null>(null);
   const [annotColor, setAnnotColor] = useState<string>(ANNOT_COLORS[0]);
+
+  // Media points state
+  const [mediaPoints, setMediaPoints] = useState<MediaPoint[]>(() => {
+    const raw = loadJson<any[]>(LS_MEDIA_KEY, []);
+    return raw.map(mp => ({
+      ...mp,
+      addedBy: mp.addedBy ?? "Unknown",
+      comments: mp.comments ?? (mp.comment ? [{ id: uid(), text: mp.comment, author: "Unknown", timestamp: Date.now(), replies: [] }] : []),
+    }));
+  });
+  const mediaPointsRef = useRef<MediaPoint[]>([]);
+  useEffect(() => { mediaPointsRef.current = mediaPoints; }, [mediaPoints]);
+  const addMediaModeRef = useRef(false);
+  const measureModeRef = useRef<MeasureMode>(null);
+  const showMediaModalRef = useRef(false);
+  const viewerWrapperRef = useRef<HTMLDivElement>(null);
+  const mediaHoverRef = useRef<string | null>(null);
+  const [addMediaMode, setAddMediaMode] = useState(false);
+  const [showMediaModal, setShowMediaModal] = useState(false);
+  const [mediaModalPointId, setMediaModalPointId] = useState<string | null>(null);
+  const [mediaModalTab, setMediaModalTab] = useState<"images" | "videos" | "comments" | "all">("images");
+  const [mediaUploadLoading, setMediaUploadLoading] = useState(false);
+  
+  // Decoupled input states with refs to prevent massive App.tsx re-renders
+  const [mediaEditTitle, setMediaEditTitle] = useState("");
+  const mediaEditTitleRef = useRef("");
+  const [mediaCommentInput, setMediaCommentInput] = useState("");
+  const mediaCommentInputRef = useRef("");
+  const [mediaItemTitleInput, setMediaItemTitleInput] = useState("");
+  const mediaItemTitleInputRef = useRef("");
+  const [lightboxItem, setLightboxItem] = useState<MediaItem | null>(null);
+  const [camHistIdx, setCamHistIdx] = useState(-1);
+  const [camHistLen, setCamHistLen] = useState(0);
+  const [newCommentText, setNewCommentText] = useState("");
+  const newCommentTextRef = useRef("");
+  const [replyTexts, setReplyTexts] = useState<Record<string, string>>({});
+  const replyTextsRef = useRef<Record<string, string>>({});
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isAddingPoint, setIsAddingPoint] = useState(false);
+
+  // Sync mode refs (used in event handlers to avoid stale closures + React re-renders)
+  useEffect(() => { addMediaModeRef.current = addMediaMode; }, [addMediaMode]);
+  useEffect(() => { measureModeRef.current = measureMode; }, [measureMode]);
+  useEffect(() => { showMediaModalRef.current = showMediaModal; }, [showMediaModal]);
 
   // Persist (localStorage + server)
   useEffect(() => { saveJson(LS_MEASURES_KEY, measures); scheduleSave(); }, [measures, scheduleSave]);
   useEffect(() => { saveJson(LS_ANNOTATIONS_KEY, annotations); scheduleSave(); }, [annotations, scheduleSave]);
   useEffect(() => { saveJson(LS_UNIT_KEY, unit); }, [unit]);
+  useEffect(() => { saveJson(LS_MEDIA_KEY, mediaPoints); scheduleSave(); }, [mediaPoints, scheduleSave]);
 
   const applyRenderMode = useCallback((mode: RenderMode) => {
     const model = modelRef.current; if (!model) return;
@@ -223,6 +375,9 @@ export default function GLBViewer() {
     };
     model.traverse(child => {
       const mesh = child as THREE.Mesh; if (!mesh.isMesh) return;
+      if (mesh.geometry && !(mesh.geometry as any).boundsTree) {
+        (mesh.geometry as any).computeBoundsTree();
+      }
       origMatsRef.current.set(mesh, mesh.material);
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       mats.forEach((m: any) => { ["map", "normalMap", "roughnessMap", "metalnessMap", "emissiveMap", "aoMap"].forEach(k => upgradeTex(m[k])); });
@@ -237,7 +392,7 @@ export default function GLBViewer() {
     // ── Auto-correct: center X/Z, snap bottom to Y=0 ────────────────────────
     model.updateMatrixWorld(true);
     let box = new THREE.Box3().setFromObject(model);
-    if (box.isEmpty()) box.set(new THREE.Vector3(-1,-1,-1), new THREE.Vector3(1,1,1));
+    if (box.isEmpty()) box.set(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1));
 
     const rawCenter = box.getCenter(new THREE.Vector3());
     model.position.set(-rawCenter.x, -box.min.y, -rawCenter.z);
@@ -256,7 +411,7 @@ export default function GLBViewer() {
     camera.near = distance * 0.0001; camera.far = distance * 100; camera.updateProjectionMatrix();
 
     let savedHome: CameraHome | null = null;
-    try { const s = localStorage.getItem(getHomeKey(fileName)); if (s) savedHome = JSON.parse(s); } catch {}
+    try { const s = localStorage.getItem(getHomeKey(fileName)); if (s) savedHome = JSON.parse(s); } catch { }
 
     // Server-side state takes priority over localStorage
     if (schoolId) {
@@ -267,8 +422,9 @@ export default function GLBViewer() {
           if (serverState.home) savedHome = serverState.home;
           if (serverState.annotations?.length) setAnnotations(serverState.annotations);
           if (serverState.measures?.length) setMeasures(serverState.measures);
+          if (serverState.mediaPoints?.length) setMediaPoints(serverState.mediaPoints.map((mp: any) => ({ ...mp, addedBy: mp.addedBy ?? "Unknown", comments: mp.comments ?? (mp.comment ? [{ id: uid(), text: mp.comment, author: "Unknown", timestamp: Date.now(), replies: [] }] : []) })));
         }
-      } catch {}
+      } catch { }
     }
 
     if (savedHome) {
@@ -285,6 +441,8 @@ export default function GLBViewer() {
     }
 
     controls.minDistance = camera.near * 10; controls.maxDistance = camera.far; controls.update();
+    // Seed the history with the initial view so Back is immediately available
+    setTimeout(() => pushCameraHistoryFnRef.current(), 120);
     const autoSpeed = Math.max(0.001, maxDim * 0.003); moveSpeedRef.current = autoSpeed; setSpeedIdx(nearestSpeedIdx(autoSpeed));
 
     // Grid snapped to Y=0 (ground plane)
@@ -470,7 +628,30 @@ export default function GLBViewer() {
     // Draw the active annotation being placed
     if (annotPendingPt) drawDot(annotPendingPt, annotColor, 7);
 
-  }, [measures, measureMode, unit, annotations, annotPendingPt, visibility, annotColor]);
+    // 4. Media Points
+    if (visibility === "all" || visibility === "annotations") {
+      mediaPoints.forEach(mp => {
+        const proj = project3Dto2D(mp.point, camera, W, H); if (!proj) return;
+        const [x, y] = proj;
+        // Glow ring
+        ctx.beginPath(); ctx.arc(x, y, 15, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(251,191,36,0.12)"; ctx.fill();
+        // Circle
+        ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2);
+        ctx.fillStyle = addMediaMode ? "rgba(251,191,36,0.95)" : "rgba(251,191,36,0.82)";
+        ctx.fill();
+        ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.setLineDash([]); ctx.stroke();
+        // Icon
+        ctx.font = "11px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText("📸", x, y);
+        ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+        // Label
+        const lbl = `${mp.title || "Media"}${mp.items.length ? ` (${mp.items.length})` : ""}`;
+        drawLabel(mp.point, lbl, "#fbbf24", -26);
+      });
+    }
+
+  }, [measures, measureMode, unit, annotations, annotPendingPt, visibility, annotColor, mediaPoints, addMediaMode]);
 
   const drawOverlayRef = useRef<() => void>(() => { });
   useEffect(() => { drawOverlayRef.current = drawOverlay; }, [drawOverlay]);
@@ -499,6 +680,13 @@ export default function GLBViewer() {
     controls.enableDamping = true; controls.dampingFactor = 0.06; controls.minDistance = 0.001; controls.maxDistance = 1_000_000;
     controlsRef.current = controls;
 
+    // Camera history — push snapshot 300ms after orbit/pan/zoom ends
+    const histDebounce = { t: null as ReturnType<typeof setTimeout> | null };
+    controls.addEventListener("end", () => {
+      if (histDebounce.t) clearTimeout(histDebounce.t);
+      histDebounce.t = setTimeout(() => pushCameraHistoryFnRef.current(), 300);
+    });
+
     const _vDir = new THREE.Vector3(), _right = new THREE.Vector3(), _forward = new THREE.Vector3(), _wu = new THREE.Vector3(0, 1, 0);
 
     const animate = () => {
@@ -511,12 +699,12 @@ export default function GLBViewer() {
         _right.crossVectors(_forward, _wu).normalize();
         _vDir.set(0, 0, 0);
 
-        const sp = moveSpeedRef.current * 0.08;
+        const sp = moveSpeedRef.current * (keys.has("Shift") ? 0.32 : 0.08);
         if (keys.has("ArrowUp") || keys.has("w") || keys.has("W")) _vDir.addScaledVector(_forward, sp);
         if (keys.has("ArrowDown") || keys.has("s") || keys.has("S")) _vDir.addScaledVector(_forward, -sp);
         if (keys.has("ArrowLeft") || keys.has("a") || keys.has("A")) _vDir.addScaledVector(_right, -sp);
         if (keys.has("ArrowRight") || keys.has("d") || keys.has("D")) _vDir.addScaledVector(_right, sp);
-        if (keys.has("e") || keys.has("E") || keys.has(" ")) _vDir.addScaledVector(_wu, sp);
+        if (keys.has("e") || keys.has("E")) _vDir.addScaledVector(_wu, sp);
         if (keys.has("q") || keys.has("Q") || keys.has("f") || keys.has("F")) _vDir.addScaledVector(_wu, -sp);
 
         velocityRef.current.add(_vDir);
@@ -583,19 +771,33 @@ export default function GLBViewer() {
 
   useEffect(() => {
     if (phase !== "viewing") return;
+    const movStopDebounce = { t: null as ReturnType<typeof setTimeout> | null };
     const onDown = (e: KeyboardEvent) => {
+      // Space = immediate full stop
+      if (e.key === " ") { e.preventDefault(); if (!measureMode) { velocityRef.current.set(0, 0, 0); keysRef.current.clear(); } return; }
       if (!NAV_KEYS.has(e.key)) return;
       if (measureMode) return;
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault();
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) e.preventDefault();
       keysRef.current.add(e.key);
     };
-    const onUp = (e: KeyboardEvent) => { keysRef.current.delete(e.key); };
+    const onUp = (e: KeyboardEvent) => {
+      keysRef.current.delete(e.key);
+      // Push camera history 400ms after all movement keys released
+      if (NAV_KEYS.has(e.key) && keysRef.current.size === 0) {
+        if (movStopDebounce.t) clearTimeout(movStopDebounce.t);
+        movStopDebounce.t = setTimeout(() => pushCameraHistoryFnRef.current(), 400);
+      }
+    };
     const onEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setPendingPts([]); setMeasureMode(null); hoverPtRef.current = null; setAnnotPendingPt(null); }
+      if (e.key === "Escape") { setPendingPts([]); setMeasureMode(null); hoverPtRef.current = null; setAnnotPendingPt(null); setAddMediaMode(false); setShowMediaModal(false); setLightboxItem(null); }
       if (e.key === "Enter" && measureMode && pendingPts.length >= 2) finalizeMeasure();
     };
     window.addEventListener("keydown", onDown); window.addEventListener("keyup", onUp); window.addEventListener("keydown", onEsc);
-    return () => { window.removeEventListener("keydown", onDown); window.removeEventListener("keyup", onUp); window.removeEventListener("keydown", onEsc); keysRef.current.clear(); velocityRef.current.set(0, 0, 0); };
+    return () => {
+      window.removeEventListener("keydown", onDown); window.removeEventListener("keyup", onUp); window.removeEventListener("keydown", onEsc);
+      keysRef.current.clear(); velocityRef.current.set(0, 0, 0);
+      if (movStopDebounce.t) clearTimeout(movStopDebounce.t);
+    };
   }, [phase, measureMode, pendingPts, finalizeMeasure]);
 
   useEffect(() => {
@@ -655,32 +857,101 @@ export default function GLBViewer() {
   const handleOverlayMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!measureMode) { hoverPtRef.current = null; return; }
     hoverPtRef.current = getFastHoverRaycastPt(e);
+    // Throttled accurate mesh raycast so annotation click is instant (zero latency on click)
+    if (measureMode === "annotate") {
+      const now = performance.now();
+      if (now - lastRaycastTimeRef.current > 33) {
+        lastRaycastTimeRef.current = now;
+        const canvas = overlayRef.current; const camera = cameraRef.current; const model = modelRef.current;
+        if (canvas && camera && model) {
+          const rect = canvas.getBoundingClientRect();
+          const mouse = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+          raycasterRef.current.setFromCamera(mouse, camera);
+          const hits = raycasterRef.current.intersectObject(model, true);
+          if (hits.length) {
+            lastAccuratePtRef.current = { x: hits[0].point.x, y: hits[0].point.y, z: hits[0].point.z };
+          } else {
+            const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+            const p = camera.position.clone().add(dir.multiplyScalar(10));
+            lastAccuratePtRef.current = { x: p.x, y: p.y, z: p.z };
+          }
+        }
+      }
+    }
   }, [measureMode, getFastHoverRaycastPt]);
 
   const handleOverlayClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Always stop propagation — wrapper's handleViewerClick must NOT also fire for canvas clicks
+    e.stopPropagation();
+
+    if (addMediaMode) {
+      // Debounce: ignore clicks within 400ms of the last one (prevents double-fire from StrictMode / fast taps)
+      const now = Date.now();
+      if (now - clickDebounceRef.current < 400) return;
+      if (isAddingPoint) return; // Prevent multiple points from a single click event
+
+      const canvas = overlayRef.current; const camera = cameraRef.current;
+      if (!canvas || !camera) return;
+
+      // Hit-test existing markers first
+      const rect = canvas.getBoundingClientRect();
+      const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+      const hitId = hitMediaPoint(mediaPointsRef.current, camera, cx, cy, canvas.width, canvas.height);
+      if (hitId) {
+        const mp = mediaPointsRef.current.find(m => m.id === hitId); if (!mp) return;
+        setMediaModalPointId(mp.id); setMediaEditTitle(mp.title);
+        setMediaModalTab("images"); setShowMediaModal(true);
+        return;
+      }
+
+      if (showMediaModalRef.current) return; // modal already open — don't create another point
+      showMediaModalRef.current = true; // Lock immediately to prevent race conditions & double-creation
+
+      clickDebounceRef.current = now;
+      // Use pre-computed cached raycast pt for zero-latency placement
+      const cached = lastAccuratePtRef.current; lastAccuratePtRef.current = null;
+      setIsAddingPoint(true); // Set flag
+      const pt = cached ?? (() => {
+        const model = modelRef.current; if (!model) return null;
+        const mouse = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+        raycasterRef.current.setFromCamera(mouse, camera);
+        const hits = raycasterRef.current.intersectObject(model, true);
+        if (hits.length) return { x: hits[0].point.x, y: hits[0].point.y, z: hits[0].point.z } as MeasurePoint;
+        const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+        const p = camera.position.clone().add(dir.multiplyScalar(10));
+        return { x: p.x, y: p.y, z: p.z } as MeasurePoint;
+      })();
+      if (!pt) return;
+
+      const newId = uid();
+      setMediaPoints(prev => [...prev, { id: newId, point: pt, title: "", addedBy: viewerUser, comments: [], items: [] }]);
+      setMediaModalPointId(newId); setMediaEditTitle(""); setMediaModalTab("images"); setShowMediaModal(true);
+      // Reset flag after modal logic is complete
+      setTimeout(() => {
+        setIsAddingPoint(false);
+      }, 100);
+    }
+
     if (!measureMode) return;
 
     if (measureMode === "annotate") {
-      // Annotations still use the accurate mesh raycast for surface-precise placement
-      const pt = getAccurateRaycastPt(e); if (!pt) return;
+      const pt = lastAccuratePtRef.current ?? getAccurateRaycastPt(e);
+      lastAccuratePtRef.current = null;
+      if (!pt) return;
       setAnnotPendingPt(pt); setAnnotInput(""); setEditAnnotId(null); setAnnotColor(ANNOT_COLORS[0]);
       return;
     }
 
-    // For measurements: use the already-computed hover position — instant, no mesh raycast latency
     const pt = hoverPtRef.current; if (!pt) return;
-
     const prev = pendingPtsRef.current;
     if (prev.length > 0) {
       const last = prev[prev.length - 1];
-      const dist = new THREE.Vector3(last.x, last.y, last.z).distanceTo(new THREE.Vector3(pt.x, pt.y, pt.z));
-      if (dist < 0.000001) return;
+      if (new THREE.Vector3(last.x, last.y, last.z).distanceTo(new THREE.Vector3(pt.x, pt.y, pt.z)) < 0.000001) return;
     }
     const next = [...prev, pt];
-    // Update ref immediately so animation loop draws the point THIS frame
     pendingPtsRef.current = next;
     setPendingPts(next);
-  }, [measureMode, getAccurateRaycastPt]);
+  }, [addMediaMode, measureMode, getAccurateRaycastPt, viewerUser]);
 
   const handleOverlayDoubleClick = useCallback(() => {
     if (!measureMode || measureMode === "annotate") return;
@@ -723,11 +994,47 @@ export default function GLBViewer() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ home, annotations: annotationsRef.current, measures: measuresRef.current }),
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     setHomeSaved(true); setSaveFlash(true); setTimeout(() => setSaveFlash(false), 1200);
   }, [schoolId]);
+
+  // ── Camera history ───────────────────────────────────────────────────────────
+  const pushCameraHistory = useCallback(() => {
+    const cam = cameraRef.current; const ctrl = controlsRef.current; if (!cam || !ctrl) return;
+    const entry: CameraHome = { position: { x: cam.position.x, y: cam.position.y, z: cam.position.z }, target: { x: ctrl.target.x, y: ctrl.target.y, z: ctrl.target.z }, near: cam.near, far: cam.far };
+    const hist = camHistoryRef.current.slice(0, camHistoryIdxRef.current + 1);
+    hist.push(entry);
+    if (hist.length > 50) hist.shift();
+    camHistoryRef.current = hist;
+    const newIdx = hist.length - 1;
+    camHistoryIdxRef.current = newIdx;
+    setCamHistIdx(newIdx); setCamHistLen(hist.length);
+  }, []);
+  useEffect(() => { pushCameraHistoryFnRef.current = pushCameraHistory; }, [pushCameraHistory]);
+
+  const goBack = useCallback(() => {
+    const idx = camHistoryIdxRef.current - 1; if (idx < 0) return;
+    const entry = camHistoryRef.current[idx];
+    const cam = cameraRef.current; const ctrl = controlsRef.current; if (!cam || !ctrl || !entry) return;
+    cam.position.set(entry.position.x, entry.position.y, entry.position.z);
+    cam.near = entry.near; cam.far = entry.far; cam.updateProjectionMatrix();
+    ctrl.target.set(entry.target.x, entry.target.y, entry.target.z); ctrl.update();
+    velocityRef.current.set(0, 0, 0);
+    camHistoryIdxRef.current = idx; setCamHistIdx(idx);
+  }, []);
+
+  const goForward = useCallback(() => {
+    const idx = camHistoryIdxRef.current + 1; if (idx >= camHistoryRef.current.length) return;
+    const entry = camHistoryRef.current[idx];
+    const cam = cameraRef.current; const ctrl = controlsRef.current; if (!cam || !ctrl || !entry) return;
+    cam.position.set(entry.position.x, entry.position.y, entry.position.z);
+    cam.near = entry.near; cam.far = entry.far; cam.updateProjectionMatrix();
+    ctrl.target.set(entry.target.x, entry.target.y, entry.target.z); ctrl.update();
+    velocityRef.current.set(0, 0, 0);
+    camHistoryIdxRef.current = idx; setCamHistIdx(idx);
+  }, []);
 
   const speedUp = useCallback(() => { setSpeedIdx(p => { const n = Math.min(p + 1, SPEED_STEPS.length - 1); moveSpeedRef.current = SPEED_STEPS[n]; return n; }); }, []);
   const speedDown = useCallback(() => { setSpeedIdx(p => { const n = Math.max(p - 1, 0); moveSpeedRef.current = SPEED_STEPS[n]; return n; }); }, []);
@@ -749,7 +1056,7 @@ export default function GLBViewer() {
 
     const url = out.toDataURL("image/png");
     const slug = schoolName ? schoolName.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") : "rtb_3d_viewer";
-    const a = document.createElement("a"); a.href = url; a.download = `${slug}_${new Date().toISOString().slice(0,10)}.png`; a.click();
+    const a = document.createElement("a"); a.href = url; a.download = `${slug}_${new Date().toISOString().slice(0, 10)}.png`; a.click();
     setScreenshotFlash(true); setTimeout(() => setScreenshotFlash(false), 1400);
   }, []);
 
@@ -769,7 +1076,10 @@ export default function GLBViewer() {
         reader.readAsArrayBuffer(file);
       });
       setProgress(78); setProgressLabel("Parsing GLB…");
-      const loader = new GLTFLoader(); loader.setDRACOLoader(sharedDracoLoader);
+      const loader = new GLTFLoader(); 
+      loader.setDRACOLoader(sharedDracoLoader);
+      loader.setKTX2Loader(sharedKtx2Loader);
+      loader.setMeshoptDecoder(MeshoptDecoder);
       const gltf = await new Promise<GLTF>((resolve, reject) => { loader.parse(arrayBuffer, "", g => resolve(g), (e: ErrorEvent) => reject(e)); });
       await finalizeGLTF(gltf, file.name, file.size, startTime);
     } catch (err: any) { setError(err?.message || "Failed to load model"); setPhase("idle"); }
@@ -783,7 +1093,10 @@ export default function GLBViewer() {
     const startTime = Date.now();
     let fileSize = 0;
     try {
-      const loader = new GLTFLoader(); loader.setDRACOLoader(sharedDracoLoader);
+      const loader = new GLTFLoader(); 
+      loader.setDRACOLoader(sharedDracoLoader);
+      loader.setKTX2Loader(sharedKtx2Loader);
+      loader.setMeshoptDecoder(MeshoptDecoder);
       const gltf = await new Promise<GLTF>((resolve, reject) => {
         loader.load(
           url,
@@ -809,7 +1122,7 @@ export default function GLBViewer() {
       .then(r => r.ok ? r.json() : Promise.reject(new Error("No 3D model found for this school")))
       .then(data => loadGLBFromURL(`${FILE_SERVER}${data.url}`, data.filename))
       .catch(err => setError(err.message));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleFile = useCallback((file: File) => { if (!file.name.toLowerCase().endsWith(".glb")) { setError("Only .glb files are supported."); return; } loadGLB(file); }, [loadGLB]);
@@ -818,15 +1131,153 @@ export default function GLBViewer() {
 
   // ── Annotation dialog ────────────────────────────────────────────────────────
   const submitAnnotation = () => {
-    if (!annotInput.trim()) { setAnnotPendingPt(null); return; }
+    const text = annotInputRef.current;
+    if (!text.trim()) { setAnnotPendingPt(null); return; }
     if (editAnnotId) {
-      setAnnotations(prev => prev.map(a => a.id === editAnnotId ? { ...a, text: annotInput, color: annotColor } : a));
+      setAnnotations(prev => prev.map(a => a.id === editAnnotId ? { ...a, text, color: annotColor } : a));
       setEditAnnotId(null);
     } else if (annotPendingPt) {
-      setAnnotations(prev => [...prev, { id: uid(), point: annotPendingPt, text: annotInput, color: annotColor }]);
+      setAnnotations(prev => [...prev, { id: uid(), point: annotPendingPt, text, color: annotColor }]);
     }
-    setAnnotPendingPt(null); setAnnotInput("");
+    setAnnotPendingPt(null); 
+    setAnnotInput(""); annotInputRef.current = "";
   };
+
+  // ── Viewer-wrapper hover (zero-allocation, direct DOM cursor — no React re-render) ──
+  const handleViewerMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (measureModeRef.current || !viewerWrapperRef.current) return;
+    const camera = cameraRef.current; const overlay = overlayRef.current;
+    if (!camera || !overlay) return;
+
+    // Hit-test existing media point markers
+    const pts = mediaPointsRef.current;
+    if (pts.length) {
+      const rect = overlay.getBoundingClientRect();
+      const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+      const found = hitMediaPoint(pts, camera, cx, cy, overlay.width, overlay.height);
+      if (found !== mediaHoverRef.current) {
+        mediaHoverRef.current = found;
+        viewerWrapperRef.current.style.cursor = found ? "pointer" : (addMediaModeRef.current ? "crosshair" : "");
+      }
+    } else if (mediaHoverRef.current) {
+      mediaHoverRef.current = null;
+      viewerWrapperRef.current.style.cursor = addMediaModeRef.current ? "crosshair" : "";
+    }
+
+    // Throttled accurate mesh raycast — precomputes click destination so placement is instant
+    if (addMediaModeRef.current) {
+      const now = performance.now();
+      if (now - lastRaycastTimeRef.current > 33) {
+        lastRaycastTimeRef.current = now;
+        const model = modelRef.current;
+        if (model) {
+          const rect = overlay.getBoundingClientRect();
+          const mouse = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+          raycasterRef.current.setFromCamera(mouse, camera);
+          const hits = raycasterRef.current.intersectObject(model, true);
+          if (hits.length) {
+            lastAccuratePtRef.current = { x: hits[0].point.x, y: hits[0].point.y, z: hits[0].point.z };
+          } else {
+            const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+            const p = camera.position.clone().add(dir.multiplyScalar(10));
+            lastAccuratePtRef.current = { x: p.x, y: p.y, z: p.z };
+          }
+        }
+      }
+    }
+  }, []);
+
+  // ── Viewer-wrapper click: only fires when overlay canvas is non-interactive (pointer-events:none)
+  //    i.e. when NOT in measureMode AND NOT in addMediaMode
+  const handleViewerClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (measureModeRef.current || addMediaModeRef.current) return;
+    const camera = cameraRef.current; const overlay = overlayRef.current;
+    if (!camera || !overlay) return;
+    const rect = overlay.getBoundingClientRect();
+    const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+    const hitId = hitMediaPoint(mediaPointsRef.current, camera, cx, cy, overlay.width, overlay.height);
+    if (!hitId) return;
+    const mp = mediaPointsRef.current.find(m => m.id === hitId); if (!mp) return;
+    setMediaModalPointId(mp.id); 
+    setMediaEditTitle(mp.title); mediaEditTitleRef.current = mp.title;
+    setMediaCommentInput(mp.comment || ""); mediaCommentInputRef.current = mp.comment || "";
+    setMediaModalTab("images"); setShowMediaModal(true);
+  }, []);
+
+  // ── Media helpers ─────────────────────────────────────────────────────────────
+  const downloadItem = useCallback((item: MediaItem) => {
+    const a = document.createElement("a");
+    a.href = item.url; a.download = item.filename; a.click();
+  }, []);
+
+  const openMediaPoint = useCallback((mp: MediaPoint) => {
+    setMediaModalPointId(mp.id);
+    setMediaEditTitle(mp.title); mediaEditTitleRef.current = mp.title;
+    setMediaCommentInput(mp.comment || ""); mediaCommentInputRef.current = mp.comment || "";
+    setMediaModalTab("images");
+    setShowMediaModal(true);
+  }, []);
+  const uploadMediaFile = useCallback(async (file: File, itemTitle: string, pointId: string) => {
+    const type: "image" | "video" = file.type.startsWith("video/") ? "video" : "image";
+    setMediaUploadLoading(true); setUploadError(null);
+    try {
+      let url: string;
+      if (schoolId) {
+        const form = new FormData();
+        form.append("file", file);
+        const resp = await fetch(`${FILE_SERVER}/schools/${schoolId}/media`, { method: "POST", body: form });
+        if (resp.ok) {
+          const data = await resp.json();
+          url = data.url.startsWith("http") ? data.url : `${FILE_SERVER}${data.url.startsWith('/') ? '' : '/'}${data.url}`;
+        } else {
+          const errText = await resp.text().catch(() => "");
+          setUploadError(`Server error (${resp.status})${errText ? ": " + errText.slice(0, 80) : ""} — saved locally instead`);
+          url = await readFileAsDataURL(file);
+        }
+      } else {
+        url = await readFileAsDataURL(file);
+      }
+      const item: MediaItem = { id: uid(), filename: file.name, url, title: itemTitle.trim() || file.name, type };
+      setMediaPoints(prev => prev.map(mp => mp.id === pointId ? { ...mp, items: [...mp.items, item] } : mp));
+    } catch (err: any) {
+      setUploadError(`Upload failed: ${err?.message ?? "Unknown error"} — saved locally instead`);
+      try { const url = await readFileAsDataURL(file); const item: MediaItem = { id: uid(), filename: file.name, url, title: itemTitle.trim() || file.name, type }; setMediaPoints(prev => prev.map(mp => mp.id === pointId ? { ...mp, items: [...mp.items, item] } : mp)); } catch { }
+    }
+    setMediaUploadLoading(false); setMediaItemTitleInput("");
+  }, [schoolId]);
+
+  const submitComment = useCallback((pointId: string) => {
+    if (!newCommentText.trim()) return;
+    const newComment: Comment = {
+      id: uid(),
+      text: newCommentText.trim(),
+      author: viewerUser,
+      timestamp: Date.now(),
+      replies: []
+    };
+    setMediaPoints(prev => prev.map(mp => mp.id === pointId ? { ...mp, comments: [...mp.comments, newComment] } : mp));
+    setNewCommentText("");
+  }, [newCommentText, viewerUser]);
+
+  const submitReply = useCallback((pointId: string, commentId: string) => {
+    const text = replyTexts[commentId];
+    if (!text || !text.trim()) return;
+    const newReply: Reply = {
+      id: uid(),
+      text: text.trim(),
+      author: viewerUser,
+      timestamp: Date.now()
+    };
+    setMediaPoints(prev => prev.map(mp => {
+      if (mp.id !== pointId) return mp;
+      return {
+        ...mp,
+        comments: mp.comments.map(c => c.id === commentId ? { ...c, replies: [...(c.replies || []), newReply] } : c)
+      };
+    }));
+    setReplyTexts(prev => ({ ...prev, [commentId]: "" }));
+    setReplyingTo(null);
+  }, [replyTexts, viewerUser]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -987,6 +1438,87 @@ export default function GLBViewer() {
         .help-divider{height:1px;background:rgba(255,255,255,0.05)}
         .help-tip{padding:12px 14px;border-radius:10px;background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(157,122,255,0.8);line-height:1.8}
         .callout{padding:12px 14px;border-radius:10px;background:rgba(50,200,100,0.06);border:1px solid rgba(50,200,100,0.2);font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(96,232,160,0.9);line-height:1.9}
+
+        /* ── Media modal ─────────────────────────────────────────────────── */
+        .media-link-btn{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;border:1px solid rgba(251,191,36,0.4);background:rgba(251,191,36,0.08);color:#fbbf24;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;cursor:pointer;transition:background .12s,border-color .12s,transform .12s;white-space:nowrap}
+        .media-link-btn:hover{background:rgba(251,191,36,0.18);border-color:rgba(251,191,36,0.65);transform:translateY(-1px)}
+        .media-link-count{font-size:9px;padding:1px 6px;background:rgba(251,191,36,0.22);border-radius:10px}
+        /* Backdrop: always in DOM, GPU-composited opacity toggle, zero backdrop-filter */
+        .media-backdrop{position:absolute;inset:0;z-index:70;background:rgba(0,0,0,0.78);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.06s linear;will-change:opacity}
+        .media-backdrop.open{opacity:1;pointer-events:all}
+        .media-modal{width:720px;max-width:96vw;max-height:88vh;background:#0d1429;border:1px solid rgba(255,255,255,0.11);border-radius:20px;box-shadow:0 24px 80px rgba(0,0,0,0.9);display:flex;flex-direction:column;overflow:hidden;transform:scale(0.97) translateY(5px);opacity:0;transition:transform 0.08s ease-out,opacity 0.06s linear;will-change:transform,opacity}
+        .media-backdrop.open .media-modal{transform:none;opacity:1}
+        .mm-header{display:flex;align-items:center;justify-content:space-between;padding:18px 22px 14px;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0;gap:16px}
+        .mm-title-wrap{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
+        .mm-title-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:rgba(251,191,36,0.6)}
+        .mm-title-input{font-size:15px;font-weight:700;letter-spacing:-0.4px;background:transparent;border:none;outline:none;color:#e8e8f0;width:100%;padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.07);transition:border-color .12s}
+        .mm-title-input:focus{border-bottom-color:rgba(251,191,36,0.6)}
+        .mm-title-input::placeholder{color:rgba(232,232,240,0.28)}
+        .mm-comment-field{width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:7px;padding:7px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(232,232,240,0.7);resize:none;outline:none;transition:border .1s;line-height:1.5;margin-top:6px}
+        .mm-comment-field:focus{border-color:rgba(251,191,36,0.4)}
+        .mm-comment-field::placeholder{color:rgba(232,232,240,0.22)}
+        .mm-close{width:30px;height:30px;border-radius:8px;border:none;background:rgba(255,255,255,0.06);color:rgba(232,232,240,0.6);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:background .1s,color .1s;flex-shrink:0}
+        .mm-close:hover{background:rgba(255,71,120,0.2);color:#ff7090}
+        .mm-tabs{display:flex;padding:0 22px;border-bottom:1px solid rgba(255,255,255,0.07);flex-shrink:0;background:rgba(0,0,0,0.1)}
+        .mm-tab{padding:11px 16px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:rgba(232,232,240,0.38);cursor:pointer;border:none;background:transparent;border-bottom:2px solid transparent;transition:color .1s,border-color .1s;white-space:nowrap;display:flex;align-items:center;gap:6px;margin-bottom:-1px}
+        .mm-tab:hover{color:rgba(232,232,240,0.72)}
+        .mm-tab.active{color:#93c5fd;border-bottom-color:#3b82f6}
+        .mm-tab.tab-all.active{color:#fbbf24;border-bottom-color:#fbbf24}
+        .mm-body{flex:1;overflow-y:auto;padding:20px 22px;display:flex;flex-direction:column;gap:16px;min-height:0}
+        .mm-body::-webkit-scrollbar{width:4px}
+        .mm-body::-webkit-scrollbar-track{background:transparent}
+        .mm-body::-webkit-scrollbar-thumb{background:rgba(59,130,246,0.3);border-radius:2px}
+        .mm-upload{border:2px dashed rgba(59,130,246,0.2);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px;background:rgba(59,130,246,0.02);transition:border-color .12s,background .12s}
+        .mm-upload:hover{border-color:rgba(59,130,246,0.45);background:rgba(59,130,246,0.05)}
+        .mm-upload-row{display:flex;gap:10px;align-items:center}
+        .mm-title-field{flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.09);border-radius:8px;padding:8px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#e8e8f0;outline:none;transition:border .12s}
+        .mm-title-field:focus{border-color:rgba(59,130,246,0.5)}
+        .mm-title-field::placeholder{color:rgba(232,232,240,0.28)}
+        .mm-upload-btn{height:34px;padding:0 16px;border-radius:9px;border:none;background:linear-gradient(135deg,#3b82f6,#60a5fa);color:#fff;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;cursor:pointer;transition:transform .1s,box-shadow .1s;white-space:nowrap}
+        .mm-upload-btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 4px 16px rgba(59,130,246,0.35)}
+        .mm-upload-btn:disabled{opacity:0.5;cursor:default}
+        .mm-hint{font-family:'JetBrains Mono',monospace;font-size:9px;color:rgba(232,232,240,0.28)}
+        .mm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:12px}
+        .mm-card{border-radius:12px;border:1px solid rgba(255,255,255,0.07);overflow:hidden;background:rgba(255,255,255,0.02);position:relative;transition:border-color .1s,background .1s}
+        .mm-card:hover{border-color:rgba(59,130,246,0.3);background:rgba(255,255,255,0.04)}
+        .mm-card img{width:100%;aspect-ratio:4/3;object-fit:cover;background:rgba(255,255,255,0.03);display:block;cursor:zoom-in;transition:opacity .08s}
+        .mm-card img:hover{opacity:0.85}
+        .mm-card video{width:100%;aspect-ratio:4/3;display:block;background:#060b1a}
+        .mm-card-info{padding:8px 10px}
+        .mm-card-title{font-family:'JetBrains Mono',monospace;font-size:9px;color:rgba(232,232,240,0.65);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .mm-card-del{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:6px;border:none;background:rgba(6,11,26,0.8);color:rgba(255,112,112,0.65);font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .08s,color .08s,opacity .08s;opacity:0}
+        .mm-card:hover .mm-card-del{opacity:1}
+        .mm-card-del:hover{background:rgba(255,71,71,0.28);color:#ff7070}
+        .mm-card-expand{position:absolute;top:6px;left:6px;width:22px;height:22px;border-radius:6px;border:none;background:rgba(6,11,26,0.8);color:rgba(255,255,255,0.55);font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .08s,color .08s,opacity .08s;opacity:0}
+        .mm-card:hover .mm-card-expand{opacity:1}
+        .mm-card-expand:hover{background:rgba(59,130,246,0.55);color:#fff}
+        .mm-card-dl{position:absolute;bottom:36px;right:6px;width:22px;height:22px;border-radius:6px;border:none;background:rgba(6,11,26,0.8);color:rgba(255,255,255,0.55);font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .08s,color .08s,opacity .08s;opacity:0}
+        .mm-card:hover .mm-card-dl{opacity:1}
+        .mm-card-dl:hover{background:rgba(50,200,100,0.5);color:#fff}
+        .mm-point-comment{font-family:'JetBrains Mono',monospace;font-size:9px;color:rgba(232,232,240,0.45);font-style:italic;padding:0 2px 6px;line-height:1.5}
+        .mm-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:48px 20px;color:rgba(232,232,240,0.2);font-family:'JetBrains Mono',monospace;font-size:11px;text-align:center}
+        .mm-empty-icon{font-size:34px;opacity:0.3}
+        .mm-point-section{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:14px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.015)}
+        .mm-point-header{display:flex;align-items:center;gap:10px}
+        .mm-point-dot{width:10px;height:10px;border-radius:50%;background:#fbbf24;flex-shrink:0}
+        .mm-point-name{font-size:12px;font-weight:700;color:#fbbf24;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .mm-point-cnt{font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 7px;background:rgba(251,191,36,0.1);border-radius:20px;color:rgba(251,191,36,0.65)}
+        .mm-open-btn{padding:3px 10px;border-radius:7px;border:1px solid rgba(251,191,36,0.25);background:transparent;color:rgba(251,191,36,0.65);font-family:'JetBrains Mono',monospace;font-size:9px;cursor:pointer;transition:background .1s,color .1s;white-space:nowrap}
+        .mm-open-btn:hover{background:rgba(251,191,36,0.1);color:#fbbf24}
+        .mm-del-pt{padding:3px 8px;border-radius:7px;border:1px solid rgba(255,71,71,0.2);background:transparent;color:rgba(255,112,112,0.5);font-family:'JetBrains Mono',monospace;font-size:9px;cursor:pointer;transition:background .1s,color .1s}
+        .mm-del-pt:hover{background:rgba(255,71,71,0.12);color:#ff7070}
+        /* ── Lightbox ──────────────────────────────────────────────────────── */
+        .lightbox{position:absolute;inset:0;z-index:90;background:rgba(0,0,0,0.96);display:flex;align-items:center;justify-content:center;cursor:zoom-out;opacity:0;pointer-events:none;transition:opacity 0.07s linear;will-change:opacity}
+        .lightbox.open{opacity:1;pointer-events:all}
+        .lightbox-media-wrap{display:flex;align-items:center;justify-content:center;max-width:95vw;max-height:94vh;transform:scale(0.95);transition:transform 0.08s ease-out;will-change:transform}
+        .lightbox.open .lightbox-media-wrap{transform:scale(1)}
+        .lightbox img{max-width:95vw;max-height:92vh;object-fit:contain;border-radius:6px;box-shadow:0 0 100px rgba(0,0,0,0.7);display:block;cursor:default}
+        .lightbox video{max-width:95vw;max-height:92vh;border-radius:6px;box-shadow:0 0 100px rgba(0,0,0,0.7);display:block}
+        .lightbox-close{position:absolute;top:16px;right:16px;width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.85);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .1s,transform .1s}
+        .lightbox-close:hover{background:rgba(255,71,120,0.38);transform:scale(1.1)}
+        .lightbox-caption{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(255,255,255,0.5);background:rgba(0,0,0,0.55);padding:5px 14px;border-radius:20px;white-space:nowrap;max-width:80vw;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+        .lightbox-dl{position:absolute;top:16px;right:64px;width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.85);font-size:17px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .1s,transform .1s}
+        .lightbox-dl:hover{background:rgba(50,200,100,0.38);transform:scale(1.1)}
       `}</style>
 
       <title>{schoolName ? `${schoolName} · 3D Viewer — RTB GIS` : "RTB GIS · 3D Viewer"}</title>
@@ -1011,6 +1543,12 @@ export default function GLBViewer() {
               <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: "rgba(232,232,240,0.3)", letterSpacing: "0.3px" }}>
                 {stats.triangles.toLocaleString()}▲ · {stats.meshes}⬡ · {stats.textures}◈
               </span>
+            )}
+            {mediaPoints.length > 0 && (
+              <button className="media-link-btn"
+                onClick={() => { setMediaModalTab("all"); setMediaModalPointId(null); setShowMediaModal(true); }}>
+                📸 Media <span className="media-link-count">{mediaPoints.reduce((n, mp) => n + mp.items.length, 0)}</span>
+              </button>
             )}
             <span className="badge">Measure · Annotate · Screenshot</span>
           </div>
@@ -1047,7 +1585,9 @@ export default function GLBViewer() {
         )}
 
         {phase === "viewing" && (
-          <div className="viewer-wrapper">
+          <div className="viewer-wrapper" ref={viewerWrapperRef}
+            onMouseMove={handleViewerMouseMove}
+            onClick={handleViewerClick}>
             {progress < 100 && (
               <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24, background: "rgba(6,11,26,0.78)", backdropFilter: "blur(6px)" }}>
                 <div className="spinner-ring" />
@@ -1059,7 +1599,8 @@ export default function GLBViewer() {
 
             <div ref={mountRef} className="viewer-canvas" />
 
-            <canvas ref={overlayRef} className={`overlay-canvas${measureMode ? "  interactive" : ""}`}
+            <canvas ref={overlayRef} className={`overlay-canvas${(measureMode || addMediaMode) ? "  interactive" : ""}`}
+              style={{ cursor: addMediaMode ? "crosshair" : undefined }}
               onMouseMove={handleOverlayMouseMove}
               onClick={handleOverlayClick}
               onDoubleClick={handleOverlayDoubleClick}
@@ -1073,6 +1614,11 @@ export default function GLBViewer() {
                   data-tip={homeSaved ? "Update auto-home position" : "Save view as auto-home"} onClick={handleSaveHome} style={{ fontSize: 13 }}>
                   {saveFlash ? "✓" : homeSaved ? "🏠" : "📍"}
                 </button>
+                <div className="tb-divider" />
+                <button className="tb-btn" data-tip="Back (camera history)" onClick={goBack}
+                  disabled={camHistIdx <= 0} style={{ fontSize: 16, fontWeight: 700 }}>‹</button>
+                <button className="tb-btn" data-tip="Forward (camera history)" onClick={goForward}
+                  disabled={camHistIdx >= camHistLen - 1} style={{ fontSize: 16, fontWeight: 700 }}>›</button>
               </div>
 
               <div className="speed-group">
@@ -1089,6 +1635,17 @@ export default function GLBViewer() {
                 <button className={`tb-btn${screenshotFlash ? " flash" : ""}`} data-tip="Screenshot & download"
                   onClick={handleScreenshot} style={{ fontSize: 13 }}>{screenshotFlash ? "✓" : "📷"}</button>
                 <div className="tb-divider" />
+                <button className={`tb-btn${addMediaMode ? " active" : ""}`}
+                  data-tip={addMediaMode ? "Exit media mode (Esc)" : "Add / view media points"}
+                  style={{ fontSize: 13, color: addMediaMode ? "#fbbf24" : undefined }}
+                  onClick={() => { setAddMediaMode(v => !v); if (!addMediaMode) { setMeasureMode(null); setPendingPts([]); } }}>
+                  📸
+                  {mediaPoints.length > 0 && (
+                    <span style={{ position: "absolute", top: 2, right: 2, width: 14, height: 14, borderRadius: "50%", background: "#fbbf24", color: "#000", fontSize: 8, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'JetBrains Mono',monospace" }}>
+                      {mediaPoints.length}
+                    </span>
+                  )}
+                </button>
                 <button className={`tb-btn${showHelp ? " active" : ""}`} data-tip="Keyboard shortcuts"
                   onClick={() => setShowHelp(v => !v)}>?</button>
               </div>
@@ -1103,6 +1660,18 @@ export default function GLBViewer() {
                     <span className="mode-dot" />{MODE_LABELS[m]}{m === "unlit" && <span className="mode-tag">recommended</span>}
                   </button>
                 ))}
+              </div>
+            )}
+
+            {/* Media mode hint bar */}
+            {addMediaMode && progress === 100 && (
+              <div style={{ position: "absolute", top: 16, left: "50%", transform: "translateX(-50%)", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.4)", borderRadius: 12, padding: "8px 18px", display: "flex", alignItems: "center", gap: 10, zIndex: 25, backdropFilter: "blur(16px)" }}>
+                <span style={{ fontSize: 13 }}>📸</span>
+                <span style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 10, color: "#fbbf24", fontWeight: 600 }}>
+                  Media Mode — Click to place a point · Click existing point to view/add media
+                </span>
+                <button style={{ padding: "3px 10px", borderRadius: 7, border: "1px solid rgba(251,191,36,0.35)", background: "transparent", color: "rgba(251,191,36,0.7)", fontFamily: "'JetBrains Mono',monospace", fontSize: 9, cursor: "pointer" }}
+                  onClick={() => setAddMediaMode(false)}>✕ Exit</button>
               </div>
             )}
 
@@ -1143,6 +1712,11 @@ export default function GLBViewer() {
                 <button className={`meas-btn annotate-btn${measureMode === "annotate" ? " active" : ""}`}
                   onClick={() => toggleMode("annotate")}>
                   🏷 Annotate
+                </button>
+                <button className={`meas-btn${addMediaMode ? " active" : ""}`}
+                  style={{ color: addMediaMode ? "#fbbf24" : undefined, borderColor: addMediaMode ? "rgba(251,191,36,0.5)" : undefined, background: addMediaMode ? "rgba(251,191,36,0.15)" : undefined }}
+                  onClick={() => { setAddMediaMode(v => !v); if (addMediaMode) return; setMeasureMode(null); setPendingPts([]); }}>
+                  📸 Media{mediaPoints.length > 0 ? ` (${mediaPoints.length})` : ""}
                 </button>
 
                 {/* 👁️ Smart Visibility Toggles */}
@@ -1241,16 +1815,254 @@ export default function GLBViewer() {
                   ))}
                 </div>
 
-                <textarea className="ad-textarea" placeholder="Type your note…" value={annotInput} autoFocus
+                <LocalTextArea className="ad-textarea" placeholder="Type your note…" value={annotInput} autoFocus
                   style={{ color: annotColor }}
-                  onChange={e => setAnnotInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitAnnotation(); } if (e.key === "Escape") { setAnnotPendingPt(null); setEditAnnotId(null); } }} />
+                  onChangeValue={(v: string) => { setAnnotInput(v); annotInputRef.current = v; }}
+                  onKeyDown={(e: any) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitAnnotation(); } if (e.key === "Escape") { setAnnotPendingPt(null); setEditAnnotId(null); } }} />
                 <div className="ad-row">
                   <button className="ad-cancel" onClick={() => { setAnnotPendingPt(null); setEditAnnotId(null); }}>Cancel</button>
                   <button className="ad-save" onClick={submitAnnotation}>Save</button>
                 </div>
               </div>
             )}
+
+            {/* ── Media Modal — always mounted, CSS class toggle = instant open ── */}
+            {(() => {
+              const closeModal = () => {
+                if (mediaModalPointId) {
+                  const mp = mediaPoints.find(m => m.id === mediaModalPointId);
+                  // Optimistically remove the point if canceled without adding any data
+                  if (mp && !mp.title.trim() && mp.items.length === 0 && mp.comments.length === 0) {
+                    setMediaPoints(prev => prev.filter(m => m.id !== mediaModalPointId));
+                  }
+                }
+                setIsAddingPoint(false); // Reset flag when modal closes
+                setShowMediaModal(false);
+              };
+              const savePointMeta = (id: string, title: string, comment: string) =>
+                setMediaPoints(prev => prev.map(mp => mp.id === id ? { ...mp, title, comment } : mp));
+              return (
+                <div className={`media-backdrop${showMediaModal ? " open" : ""}`} onClick={closeModal}>
+                  <div className="media-modal" onClick={e => e.stopPropagation()}>
+                    <div className="mm-header">
+                      {mediaModalPointId ? (
+                        <div className="mm-title-wrap">
+                          <div className="mm-title-label">
+                            📍 Point {(() => { const mp = mediaPoints.find(m => m.id === mediaModalPointId); return mp ? <span style={{ textTransform: 'none', marginLeft: '6px', color: 'rgba(232,232,240,0.5)' }}>— Added by: {mp.addedBy}</span> : null; })()}
+                          </div>
+                          <LocalInput className="mm-title-input" placeholder="Point title…"
+                            value={mediaEditTitle}
+                            autoFocus
+                            onChangeValue={(v: string) => { setMediaEditTitle(v); mediaEditTitleRef.current = v; }}
+                            onBlur={() => savePointMeta(mediaModalPointId, mediaEditTitleRef.current, mediaCommentInputRef.current)}
+                            onKeyDown={(e: any) => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") { e.stopPropagation(); closeModal(); } }} />
+                          <LocalTextArea className="mm-comment-field" placeholder="Add a comment or description…" rows={2}
+                            value={mediaCommentInput}
+                            onChangeValue={(v: string) => { setMediaCommentInput(v); mediaCommentInputRef.current = v; }}
+                            onBlur={() => savePointMeta(mediaModalPointId, mediaEditTitleRef.current, mediaCommentInputRef.current)}
+                            onKeyDown={(e: any) => e.stopPropagation()} />
+                        </div>
+                      ) : (
+                        <div className="mm-title-wrap">
+                          <div className="mm-title-label">📸 Gallery</div>
+                          <div style={{ fontSize: 15, fontWeight: 700, color: "#e8e8f0" }}>All Media Points</div>
+                        </div>
+                      )}
+                      <button className="mm-close" onClick={closeModal}>✕</button>
+                    </div>
+
+                    <div className="mm-tabs">
+                      {mediaModalPointId && <>
+                        <button className={`mm-tab${mediaModalTab === "images" ? " active" : ""}`} onClick={() => setMediaModalTab("images")}>
+                          📷 Images{(() => { const n = mediaPoints.find(m => m.id === mediaModalPointId)?.items.filter(i => i.type === "image").length ?? 0; return n ? ` (${n})` : ""; })()}
+                        </button>
+                        <button className={`mm-tab${mediaModalTab === "videos" ? " active" : ""}`} onClick={() => setMediaModalTab("videos")}>
+                          🎬 Videos{(() => { const n = mediaPoints.find(m => m.id === mediaModalPointId)?.items.filter(i => i.type === "video").length ?? 0; return n ? ` (${n})` : ""; })()}
+                        </button>
+                        <button className={`mm-tab${mediaModalTab === "comments" ? " active" : ""}`} onClick={() => setMediaModalTab("comments")}>
+                          💬 Comments{(() => { const n = mediaPoints.find(m => m.id === mediaModalPointId)?.comments.length ?? 0; return n ? ` (${n})` : ""; })()}
+                        </button>
+                        <button className={`mm-tab${mediaModalTab === "comments" ? " active" : ""}`} onClick={() => setMediaModalTab("comments")}>
+                          💬 Comments{(() => { const n = mediaPoints.find(m => m.id === mediaModalPointId)?.comments.length ?? 0; return n ? ` (${n})` : ""; })()}
+                        </button>
+                      </>}
+                      <button className={`mm-tab tab-all${mediaModalTab === "all" ? " active" : ""}`} onClick={() => setMediaModalTab("all")}>
+                        🗂 All Points{mediaPoints.length ? ` (${mediaPoints.length})` : ""}
+                      </button>
+                    </div>
+
+                    <div className="mm-body">
+                      {mediaModalPointId && (mediaModalTab === "images" || mediaModalTab === "videos") && (() => {
+                        const mp = mediaPoints.find(m => m.id === mediaModalPointId);
+                        if (!mp) return null;
+                        const isImg = mediaModalTab === "images";
+                        const items = mp.items.filter(i => i.type === (isImg ? "image" : "video"));
+                        return <>
+                          <div className="mm-upload">
+                            {uploadError && <div className="mm-upload-error">⚠️ {uploadError}</div>}
+                            <div className="mm-upload-row">
+                              <LocalInput className="mm-title-field" placeholder={`Title for this ${isImg ? "image" : "video"}…`}
+                                value={mediaItemTitleInput} onChangeValue={(v: string) => { setMediaItemTitleInput(v); mediaItemTitleInputRef.current = v; }}
+                                onKeyDown={(e: any) => e.stopPropagation()} />
+                              <label className="mm-upload-btn" style={{ cursor: mediaUploadLoading ? "default" : "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                {mediaUploadLoading ? "⏳ Uploading…" : `＋ ${isImg ? "Image" : "Video"}`}
+                                <input type="file" accept={isImg ? "image/*" : "video/*"} style={{ display: "none" }}
+                                  disabled={mediaUploadLoading}
+                                  onChange={async e => { const file = e.target.files?.[0]; if (!file) return; await uploadMediaFile(file, mediaItemTitleInputRef.current, mp.id); setMediaItemTitleInput(""); mediaItemTitleInputRef.current = ""; e.target.value = ""; }} />
+                              </label>
+                            </div>
+                            <div className="mm-hint">{isImg ? "JPEG · PNG · WebP · GIF" : "MP4 · WebM · MOV"} · Title optional</div>
+                          </div>
+                          {items.length === 0
+                            ? <div className="mm-empty"><div className="mm-empty-icon">{isImg ? "🖼️" : "🎬"}</div><div>No {mediaModalTab} added yet.<br />Upload one above.</div></div>
+                            : <div className="mm-grid">
+                              {items.map(item => (
+                                <div className="mm-card" key={item.id}>
+                                  {item.type === "image" && (
+                                    <a href={item.url} target="_blank" rel="noopener noreferrer" title="View full size" onClick={(e) => { e.preventDefault(); setLightboxItem(item); }}>
+                                      <img src={item.url} alt={item.title} decoding="async" loading="lazy" style={{ objectFit: 'cover', width: '100%', height: '100%' }} />
+                                    </a>
+                                  )}
+                                  {item.type !== "image" && (
+                                    <video src={item.url} controls preload="metadata" onClick={(e) => e.stopPropagation()} />
+                                  )}
+                                  <div className="mm-card-info"><div className="mm-card-title" title={item.title}>{item.title}</div></div>
+                                  <button className="mm-card-expand" title="Fullscreen" onClick={() => setLightboxItem(item)}>⤢</button>
+                                  <button className="mm-card-dl" title="Download" onClick={() => downloadItem(item)}>↓</button>
+                                  <button className="mm-card-del" onClick={() => setMediaPoints(prev => prev.map(m => m.id === mp.id ? { ...m, items: m.items.filter(i => i.id !== item.id) } : m))}>✕</button>
+                                </div>
+                              ))}
+                            </div>
+                          }
+                        </>;
+                      })()}
+
+                      {mediaModalPointId && mediaModalTab === "comments" && (() => {
+                        const mp = mediaPoints.find(m => m.id === mediaModalPointId);
+                        if (!mp) return null;
+                        return (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                            {mp.comments.map(c => (
+                              <div key={c.id} style={{ padding: "12px", borderRadius: "12px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                                  <span style={{ fontSize: "11px", fontWeight: "bold", color: "#60a5fa" }}>{c.author}</span>
+                                  <span style={{ fontSize: "9px", color: "rgba(232,232,240,0.4)" }}>{timeAgo(c.timestamp)}</span>
+                                </div>
+                                <div style={{ fontSize: "11px", color: "#e8e8f0", marginBottom: "8px", lineHeight: "1.5" }}>{c.text}</div>
+
+                                <div style={{ paddingLeft: "12px", borderLeft: "2px solid rgba(255,255,255,0.1)", display: "flex", flexDirection: "column", gap: "8px" }}>
+                                  {c.replies?.map(r => (
+                                    <div key={r.id} style={{ padding: "8px", borderRadius: "8px", background: "rgba(255,255,255,0.02)" }}>
+                                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
+                                        <span style={{ fontSize: "10px", fontWeight: "bold", color: "#60e8a0" }}>{r.author}</span>
+                                        <span style={{ fontSize: "8px", color: "rgba(232,232,240,0.4)" }}>{timeAgo(r.timestamp)}</span>
+                                      </div>
+                                      <div style={{ fontSize: "10px", color: "rgba(232,232,240,0.8)" }}>{r.text}</div>
+                                    </div>
+                                  ))}
+
+                                  {replyingTo === c.id ? (
+                                    <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
+                                      <LocalInput className="mm-title-field" placeholder="Write a reply..." autoFocus
+                                        value={replyTexts[c.id] || ""} onChangeValue={(v: string) => { setReplyTexts(prev => ({ ...prev, [c.id]: v })); replyTextsRef.current[c.id] = v; }}
+                                        onKeyDown={(e: any) => { if (e.key === "Enter") submitReply(mp.id, c.id); }} />
+                                      <button style={{ padding: "4px 10px", background: "rgba(59,130,246,0.2)", color: "#60a5fa", borderRadius: "6px", fontSize: "9px", fontWeight: "bold", border: "none", cursor: "pointer" }} onClick={() => submitReply(mp.id, c.id)}>Reply</button>
+                                      <button style={{ padding: "4px 10px", background: "rgba(255,255,255,0.05)", color: "rgba(232,232,240,0.5)", borderRadius: "6px", fontSize: "9px", border: "none", cursor: "pointer" }} onClick={() => setReplyingTo(null)}>Cancel</button>
+                                    </div>
+                                  ) : (
+                                    <button style={{ fontSize: "9px", color: "rgba(232,232,240,0.5)", background: "transparent", border: "none", cursor: "pointer", textAlign: "left", alignSelf: "flex-start", padding: "4px 0" }} onClick={() => setReplyingTo(c.id)}>↳ Reply</button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                            <div style={{ display: "flex", gap: "8px", marginTop: "8px", paddingTop: "16px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+                              <LocalInput className="mm-title-field" placeholder="Add a new comment..."
+                                        value={newCommentText} onChangeValue={(v: string) => { setNewCommentText(v); newCommentTextRef.current = v; }}
+                                        onKeyDown={(e: any) => { if (e.key === "Enter") submitComment(mp.id); }} />
+                              <button style={{ padding: "0 16px", background: "linear-gradient(135deg, #3b82f6, #60a5fa)", color: "#fff", borderRadius: "8px", fontSize: "10px", fontWeight: "bold", border: "none", cursor: "pointer" }} onClick={() => submitComment(mp.id)}>Post</button>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {mediaModalTab === "all" && (
+                        mediaPoints.length === 0
+                          ? <div className="mm-empty"><div className="mm-empty-icon">📍</div><div>No media points yet.<br />Click <strong>📸 Media</strong> in the toolbar below, then click the model to place a point.</div></div>
+                          : mediaPoints.map(mp => (
+                            <div className="mm-point-section" key={mp.id}>
+                              <div className="mm-point-header">
+                                <div className="mm-point-dot" />
+                                <div className="mm-point-name">{mp.title || "(Untitled point)"}</div>
+                                <div className="mm-point-cnt">{mp.items.length} item{mp.items.length !== 1 ? "s" : ""}</div>
+                                <button className="mm-open-btn" onClick={() => openMediaPoint(mp)}>Open →</button>
+                                <button className="mm-del-pt" onClick={() => { if (window.confirm("Are you sure you want to delete this media point?")) { setMediaPoints(prev => prev.filter(m => m.id !== mp.id)); if (mediaModalPointId === mp.id) closeModal(); } }}>Delete</button>
+                              </div>
+                              {mp.comment && <div className="mm-point-comment">{mp.comment}</div>}
+                              {mp.items.length > 0 && (
+                                <div className="mm-grid">
+                                  {mp.items.map(item => (
+                                    <div className="mm-card" key={item.id}>
+                                      {item.type === "image" && (
+                                        <img src={item.url} alt={item.title || ""} decoding="async" loading="lazy" onClick={() => setLightboxItem(item)} />
+                                      )}
+                                      {item.type !== "image" && (
+                                        <video src={item.url} controls preload="metadata" onClick={e => e.stopPropagation()} />
+                                      )}
+                                      <div className="mm-card-info"><div className="mm-card-title" title={item.title}>{item.title}</div></div>
+                                      <button className="mm-card-expand" title="Fullscreen" onClick={() => setLightboxItem(item)}>⤢</button>
+                                      <button className="mm-card-dl" title="Download" onClick={() => downloadItem(item)}>↓</button>
+                                    </div>))}
+                                  {mp.items.length > 3 && <div className="mm-more-items" onClick={() => openMediaPoint(mp)}>+{mp.items.length - 3} more</div>}
+                                </div>
+                              )}
+                            </div>
+                          ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── Confirmation Modal ────────────────────────────────────────── */}
+            {confirmDeleteId && (
+              <div className="confirm-backdrop" onClick={() => setConfirmDeleteId(null)}>
+                <div className="confirm-dialog" onClick={e => e.stopPropagation()}>
+                  <h4>Confirm Deletion</h4>
+                  <p>Are you sure you want to permanently delete this media point? This action cannot be undone.</p>
+                  <div className="confirm-actions">
+                    <button onClick={() => setConfirmDeleteId(null)}>Cancel</button>
+                    <button className="danger" onClick={() => {
+                      const pointId = confirmDeleteId;
+                      setMediaPoints(prev => prev.filter(m => m.id !== pointId));
+                      if (mediaModalPointId === pointId) { setMediaModalPointId(null); setShowMediaModal(false); }
+                      setConfirmDeleteId(null);
+                    }}>Delete</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Lightbox — GPU-composited, zero React re-render on toggle ── */}
+            <div className={`lightbox${lightboxItem ? " open" : ""}`} onClick={() => setLightboxItem(null)}>
+              {lightboxItem && (
+                <div className="lightbox-media-wrap" onClick={(e) => e.stopPropagation()}>
+                  {lightboxItem.type === "image" && (
+                    <img src={lightboxItem.url} alt={lightboxItem.title || ""} decoding="async" />
+                  )}
+                  {lightboxItem.type !== "image" && (
+                    <video src={lightboxItem.url} controls autoPlay onClick={(e) => e.stopPropagation()} />
+                  )}
+                </div>
+              )}
+              <button className="lightbox-close" onClick={() => setLightboxItem(null)}>✕</button>
+              {lightboxItem && (
+                <button className="lightbox-dl" onClick={() => downloadItem(lightboxItem)} title="Download">↓</button>
+              )}
+              {lightboxItem?.title && (
+                <div className="lightbox-caption">{lightboxItem.title}</div>
+              )}
+            </div>
 
             {saveFlash && <div className="home-toast">📍 Auto-Home position saved for this map</div>}
             {screenshotFlash && <div className="screenshot-toast">📷 High-Res Screenshot saved!</div>}
@@ -1297,7 +2109,7 @@ export default function GLBViewer() {
                     <div className="help-section">
                       <div className="help-section-label">⌨️ Fly navigation</div>
                       <div className="help-grid">
-                        {[{ keys: ["W", "↑"], desc: "Walk Forward" }, { keys: ["S", "↓"], desc: "Walk Backward" }, { keys: ["A", "←"], desc: "Strafe left" }, { keys: ["D", "→"], desc: "Strafe right" }, { keys: ["E", "Space"], desc: "Fly up" }, { keys: ["Q", "F"], desc: "Fly down" }].map(r => (
+                        {[{ keys: ["W", "↑"], desc: "Walk forward" }, { keys: ["S", "↓"], desc: "Walk backward" }, { keys: ["A", "←"], desc: "Strafe left" }, { keys: ["D", "→"], desc: "Strafe right" }, { keys: ["E"], desc: "Fly up" }, { keys: ["Q", "F"], desc: "Fly down" }, { keys: ["Shift"], desc: "4× speed boost (hold)" }, { keys: ["Space"], desc: "Immediate stop" }, { keys: ["‹ btn"], desc: "Camera history back" }, { keys: ["› btn"], desc: "Camera history forward" }].map(r => (
                           <div className="help-row" key={r.desc}><div className="help-keys">{r.keys.map(k => <span className="kbd" key={k}>{k}</span>)}</div><div className="help-desc">{r.desc}</div></div>
                         ))}
                       </div>

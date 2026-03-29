@@ -103,6 +103,32 @@ app.put('/schools/:schoolId/viewer-state', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── School media upload ───────────────────────────────────────────────────
+const schoolMediaStorage = multer.diskStorage({
+  destination: (req, _file, cb) => {
+    const dir = path.join(schoolsDir, req.params.schoolId, 'media');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    cb(null, `media-${Date.now()}-${uuid()}${path.extname(file.originalname)}`);
+  },
+});
+
+const schoolMediaUpload = multer({
+  storage: schoolMediaStorage,
+  limits: { fileSize: 200 * 1024 * 1024 },
+});
+
+app.post('/schools/:schoolId/media', schoolMediaUpload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file provided' });
+  res.json({
+    success: true,
+    url: `/files/schools/${req.params.schoolId}/media/${req.file.filename}`,
+    filename: req.file.filename,
+  });
+});
+
 app.get('/health', (_req, res) =>
   res.json({ status: 'ok', port: PORT, storageDir: STORAGE_DIR }),
 );
