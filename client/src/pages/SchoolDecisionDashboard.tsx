@@ -932,7 +932,7 @@ export default function SchoolDecisionDashboard() {
                             <img
                               src={
                                 schoolData.thumbnailUrl
-                                  ? `${FILE_SERVER_URL}${schoolData.thumbnailUrl.startsWith("/") ? "" : "/"}${schoolData.thumbnailUrl}`
+                                  ? `${FILE_SERVER_URL}/${schoolData.thumbnailUrl.replace(/^(?:\/?files\/)+/, "")}`
                                   : `${FILE_SERVER_URL}/schools/${id}/kmz_content/b0.png`
                               }
                               alt="School Structure"

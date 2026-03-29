@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import "ol/ol.css";
 import OLMap from "ol/Map";
 import View from "ol/View";
@@ -24,6 +24,7 @@ import { LineString, Polygon } from "ol/geom";
 import Overlay from "ol/Overlay";
 import Feature from "ol/Feature";
 import JSZip from "jszip";
+
 import rwandaBoundaries from "../assets/maps/rwanda-boundaries.json";
 import {
   X,
@@ -81,83 +82,72 @@ interface GroundOverlayData {
   drawOrder: number;
 }
 
+
 interface UnpackedKmzFile {
   kmlText: string;
-  kmlBlob: Blob;
   sourceUri: string;
   cleanup: () => void;
   allKmlTexts: Map<string, string>;
-  assetMap: Map<string, string>;
+  assetBlobs: Map<string, Blob>;
 }
 
 async function unpackKmzFile(file: File): Promise<UnpackedKmzFile> {
   const createdBlobUrls: string[] = [];
   const buffer = await file.arrayBuffer();
   const sourceUri = `https://local-kmz-host/${encodeURIComponent(file.name)}`;
-  const sig = new Uint8Array(buffer, 0, 2);
-  const isZip = sig[0] === 0x50 && sig[1] === 0x4b;
-  let kmlText = "";
-  const allKmlTexts = new Map<string, string>();
+  const zip = await JSZip.loadAsync(buffer);
+
+  // Extract all non-KML files as blob URLs and maintain raw Blobs
   const assetMap = new Map<string, string>();
+  const assetBlobs = new Map<string, Blob>();
+  await Promise.all(
+    Object.keys(zip.files)
+      .filter((n) => !n.toLowerCase().endsWith(".kml") && !zip.files[n].dir)
+      .map(async (name) => {
+        const blob = await zip.files[name].async("blob");
+        const url = URL.createObjectURL(blob);
+        createdBlobUrls.push(url);
+        assetMap.set(name, url);
+        assetBlobs.set(url, blob); // Map the URL back to the Blob for direct access
+        
+        // Also map by basename for relative resolution
+        const base = name.split("/").pop() ?? "";
+        if (base && !assetMap.has(base)) assetMap.set(base, url);
+      }),
+  );
 
-  if (isZip) {
-    const zip = await new JSZip().loadAsync(buffer);
+  // Parse all KMLs and potentially identify the primary one
+  const allKmlTexts = new Map<string, string>();
+  const kmlEntries = Object.keys(zip.files).filter((n) =>
+    n.toLowerCase().endsWith(".kml"),
+  );
 
-    // Extract all non-KML files as blob URLs
-    await Promise.all(
-      Object.keys(zip.files)
-        .filter((n) => !n.toLowerCase().endsWith(".kml") && !zip.files[n].dir)
-        .map(async (name) => {
-          const blob = await zip.files[name].async("blob");
-          const url = URL.createObjectURL(blob);
-          createdBlobUrls.push(url);
-          assetMap.set(name, url);
-          // Also map by basename for relative resolution
-          const base = name.split("/").pop() ?? "";
-          if (base && !assetMap.has(base)) assetMap.set(base, url);
-        }),
-    );
+  for (const kmlPath of kmlEntries) {
+    const rawText = await zip.files[kmlPath].async("text");
+    const kmlDir = kmlPath.includes("/")
+      ? kmlPath.split("/").slice(0, -1).join("/")
+      : "";
 
-    // Rewrite hrefs in every KML file found in the archive
-    const kmlEntries = Object.keys(zip.files).filter((n) =>
-      n.toLowerCase().endsWith(".kml"),
-    );
-    for (const kmlPath of kmlEntries) {
-      const rawText = await zip.files[kmlPath].async("text");
-      const kmlDir = kmlPath.includes("/")
-        ? kmlPath.split("/").slice(0, -1).join("/")
-        : "";
-      const rewritten = rawText.replace(/<href>([^<]+)<\/href>/gi, (_, raw) => {
-        const path = raw.trim();
-        const withDir = kmlDir ? `${kmlDir}/${path}` : path;
-        const resolved =
-          assetMap.get(withDir) ??
-          assetMap.get(path) ??
-          assetMap.get(path.split("/").pop() ?? "") ??
-          null;
-        return resolved ? `<href>${resolved}</href>` : `<href>${path}</href>`;
-      });
-      allKmlTexts.set(kmlPath, rewritten);
-    }
-
-    const rootKml =
-      kmlEntries.find((n) => n.toLowerCase() === "doc.kml") ?? kmlEntries[0];
-    if (!rootKml) throw new Error("No .kml found.");
-    kmlText = allKmlTexts.get(rootKml) ?? "";
-  } else {
-    kmlText = new TextDecoder("utf-8").decode(buffer);
-    allKmlTexts.set("doc.kml", kmlText);
+    // Rewrite hrefs to point to local blob URLs
+    const rewritten = rawText.replace(/<href>([^<]+)<\/href>/gi, (_, raw) => {
+      const path = raw.trim();
+      const withDir = kmlDir ? `${kmlDir}/${path}` : path;
+      const resolved = assetMap.get(withDir) ?? assetMap.get(path) ?? assetMap.get(path.split("/").pop() ?? "") ?? null;
+      if (resolved) return `<href>${resolved}</href>`;
+      return `<href>${path}</href>`;
+    });
+    allKmlTexts.set(kmlPath, rewritten);
   }
 
+  const rootKml = kmlEntries.find((n) => n.toLowerCase() === "doc.kml") ?? kmlEntries[0];
+  if (!rootKml) throw new Error("No .kml found in KMZ.");
+
   return {
-    kmlText,
-    kmlBlob: new Blob([kmlText], {
-      type: "application/vnd.google-earth.kml+xml",
-    }),
+    kmlText: allKmlTexts.get(rootKml)!,
     sourceUri,
     cleanup: () => createdBlobUrls.forEach((u) => URL.revokeObjectURL(u)),
     allKmlTexts,
-    assetMap,
+    assetBlobs,
   };
 }
 
@@ -273,29 +263,41 @@ const geojsonStyle = new Style({
 
 const placesStyleFunction = (feature: any) => {
   const name = getFeatureName(feature);
+  const type = feature.getGeometry()?.getType();
+
+  if (type === "Point") {
+    // Premium Map Pin Icon for points
+    return new Style({
+      image: new CircleStyle({
+        radius: 8,
+        fill: new Fill({ color: "rgba(251, 191, 36, 0.95)" }),
+        stroke: new Stroke({ color: "#fff", width: 2 }),
+      }),
+      text: name
+        ? new Text({
+            text: name,
+            font: "bold 13px 'Inter', system-ui, sans-serif",
+            fill: new Fill({ color: "#fff" }),
+            stroke: new Stroke({ color: "rgba(0, 0, 0, 0.8)", width: 3 }),
+            offsetY: 20,
+            overflow: true,
+          })
+        : undefined,
+    });
+  }
 
   return new Style({
-    // Make fill transparent to remove the orange background inside polygons
-    fill: new Fill({ color: "transparent" }),
-    // Keep a visible border for polygons/boundaries
+    fill: new Fill({ color: "rgba(251, 191, 36, 0.1)" }), // subtle tint for polygons
     stroke: new Stroke({ color: "rgba(251, 191, 36, 0.95)", width: 2.5 }),
-    image: new CircleStyle({
-      radius: 6,
-      fill: new Fill({ color: "rgba(251, 191, 36, 0.95)" }),
-      stroke: new Stroke({ color: "#1a1a2e", width: 2 }),
-    }),
     text: name
       ? new Text({
           text: name,
           font: "bold 13px 'Inter', system-ui, sans-serif",
           fill: new Fill({ color: "#fff" }),
           stroke: new Stroke({ color: "rgba(0, 0, 0, 0.8)", width: 3 }),
-          offsetY: 14,
+          offsetY: 0,
           overflow: true,
-          placement:
-            feature.getGeometry()?.getType() === "LineString"
-              ? "line"
-              : "point",
+          placement: type === "LineString" ? "line" : "point",
         })
       : undefined,
   });
@@ -323,34 +325,40 @@ export default function School2DViewer({
   initialBuildingId,
 }: School2DViewerProps) {
   // ── Derive spatial URLs locally ───────────────────────────────────────────
-  const buildUrl = (path: string | undefined, subfolder: string) => {
+  const buildUrl = useCallback((path: string | undefined, subfolder: string) => {
     if (!path) return undefined;
     if (path.startsWith("http")) return path;
-    const cleanPath = path.replace(/^\/?files\//, ""); // Remove 'files/' or '/files/' prefix
-    if (cleanPath.includes("/")) {
-      // It's probably a full relative path like "schools/123/kmz/file.kmz"
-      return `${FILE_SERVER_URL}/${cleanPath}`;
+    if (path.startsWith("blob:")) return path;
+    
+    // Remove known redundant prefixes (including redundant slashes)
+    let clean = path.replace(/^\/?(?:files\/)+/i, "");
+    clean = clean.replace(/^\/?(?:public\/uploads\/)+/i, "");
+    
+    if (clean.includes("/")) {
+      return `${FILE_SERVER_URL}/${clean.replace(/^\/+/, "")}`;
     }
-    // Just a filename
-    return `${FILE_SERVER_URL}/schools/${school.id}/${subfolder}/${cleanPath}`;
-  };
+    return `${FILE_SERVER_URL}/schools/${school.id}/${subfolder}/${clean}`;
+  }, [school.id]);
 
-  const kmz3dUrl = buildUrl(school.kmzFilePath, "kmz");
-  const kmzUrl = buildUrl(school.kmz2dFilePath, "kmz_2d") ?? kmz3dUrl;
-  const placesOverlayUrl = buildUrl(
-    school.placesOverlayFilePath,
-    "places-overlay",
-  );
-  const tifUrl = buildUrl(school.tifFilePath, "tif");
+  const { kmzUrl, tifUrl, placesOverlayUrl, fallbackLocation, effectiveBuildings, effectivePlacesOverlay, geojson } = useMemo(() => {
+    const k3d = buildUrl(school.kmzFilePath, "kmz");
+    const k2d = buildUrl(school.kmz2dFilePath, "kmz_2d") ?? k3d;
+    const poUrl = buildUrl(school.placesOverlayFilePath, "places-overlay");
+    const tUrl = buildUrl(school.tifFilePath, "tif");
 
-  const fallbackLocation = {
-    lat: Number(school.latitude) || 0,
-    lng: Number(school.longitude) || 0,
-  };
-
-  const effectiveBuildings = buildings ?? school.buildings ?? [];
-  const effectivePlacesOverlay = placesOverlay ?? school.placesOverlayData;
-  const geojson = school.geojsonContent;
+    return {
+      kmzUrl: k2d,
+      tifUrl: tUrl,
+      placesOverlayUrl: poUrl,
+      fallbackLocation: {
+        lat: Number(school.latitude) || 0,
+        lng: Number(school.longitude) || 0,
+      },
+      effectiveBuildings: buildings ?? school.buildings ?? [],
+      effectivePlacesOverlay: placesOverlay ?? school.placesOverlayData,
+      geojson: school.geojsonContent,
+    };
+  }, [school, buildings, placesOverlay, buildUrl]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<OLMap | null>(null);
@@ -370,10 +378,22 @@ export default function School2DViewer({
   const overlayExtentRef = useRef<[number, number, number, number] | null>(
     null,
   );
+  const loadedKmzRef = useRef<string | null>(null);
+  const lastSchoolIdRef = useRef<string | null>(null);
+
+  // Cross-render persistent image cache for 100% stability during refreshes
+  const bitmapsRef = useRef<Map<string, ImageBitmap>>(new Map());
+  const thumbsRef = useRef<Map<string, ImageBitmap>>(new Map());
+  const pendingDecodesRef = useRef<Map<string, Promise<void>>>(new Map());
+  const kmlTextRef = useRef<string | null>(null);
+  const finalOverlaysRef = useRef<GroundOverlayData[]>([]);
+  const layersAttachedRef = useRef<boolean>(false);
 
   const [showBasicInfo, setShowBasicInfo] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("Initialising map…");
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const loadingStartTimeRef = useRef<number>(Date.now());
   const [isTileLoading, setIsTileLoading] = useState(false);
   const [measurementMode, setMeasurementMode] = useState<
     "none" | "distance" | "area"
@@ -400,7 +420,7 @@ export default function School2DViewer({
     | "ghost"
     | "google"
     | "google-hybrid"
-  >("google");
+  >("satellite");
   const [kmzOpacity, setKmzOpacity] = useState(1);
   const [showOpacitySlider, setShowOpacitySlider] = useState(false);
   const [infoFeature, setInfoFeature] = useState<{
@@ -417,11 +437,32 @@ export default function School2DViewer({
       street: "https://{a-c}.tile.openstreetmap.org/{z}/{x}/{y}.png",
       nsdi: "https://geodata.rw/geoserver/gwc/service/wmts?layer=rwanda:orto_2008&style=&tilematrixset=EPSG:900913&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/png&TileMatrix=EPSG:900913:{z}&TileCol={x}&TileRow={y}",
       offline: `${FILE_SERVER_URL}/maps/rwanda.pmtiles`,
-      google: "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-      "google-hybrid": "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+      google: "https://mt{0-3}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+      "google-hybrid": "https://mt{0-3}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
     };
     return urls[style];
   };
+
+  // ── Persistent Resource Manager ───────────────────────────────────────────
+  // This effect ensures that the image cache stays ALIVE exactly as long as 
+  // you are viewing this school. It is physically impossible to clear it 
+  // until the school.id actually changes. This prevents the "20-minute reset".
+  useEffect(() => {
+    return () => {
+      // CLEAR EVERYTHING only when switching schools
+      bitmapsRef.current.forEach((b) => b.close());
+      thumbsRef.current.forEach((t) => t.close());
+      bitmapsRef.current.clear();
+      thumbsRef.current.clear();
+      pendingDecodesRef.current.clear();
+      kmlTextRef.current = null;
+      finalOverlaysRef.current = [];
+      layersAttachedRef.current = false;
+      overlayExtentRef.current = null;   // prevent stale extent from previous school
+      cleanupKmzRef.current?.();
+      cleanupKmzRef.current = null;
+    };
+  }, [school.id]);
 
   const ghostLayerRef = useRef<VectorLayer | null>(null);
   const offlineLayerRef = useRef<VectorTileLayer | null>(null);
@@ -444,24 +485,21 @@ export default function School2DViewer({
 
       // Handle standard raster layers
       if (layer) {
-        if (
-          style !== "ghost" &&
-          style !== "offline"
-        ) {
+        if (style !== "ghost" && style !== "offline") {
           layer.setVisible(true);
           const url = getBasemapUrl(style);
           if (url) {
             const source = layer.getSource() as XYZ;
             source.setUrl(url);
-            
-            // Fix Overzooming: Most tilesets (like Esri) stop at level 19. 
+
+            // Fix Overzooming: Most tilesets (like Esri) stop at level 19.
             // We tell OL to scale them if we go beyond that.
             if (style === "satellite" || style === "nsdi") {
               // @ts-ignore
-              source.maxZoom = 19; 
+              source.maxZoom = 19;
             } else {
               // @ts-ignore
-              source.maxZoom = 23; 
+              source.maxZoom = 23;
             }
             source.refresh();
           }
@@ -472,16 +510,33 @@ export default function School2DViewer({
 
       // Handle Ghost (GeoJSON) layer
       if (ghostLayerRef.current) {
-        ghostLayerRef.current.setVisible(style === "ghost" || style === "offline");
+        ghostLayerRef.current.setVisible(
+          style === "ghost" || style === "offline",
+        );
       }
 
       // Handle PMTiles (Offline) layer
       if (offlineLayerRef.current) {
-        offlineLayerRef.current.setVisible(style === "offline");
+        if (style === "offline") {
+          // Lazy-load the PMTiles source to avoid 404 on maps where it's missing
+          if (!offlineLayerRef.current.getSource()) {
+            const pmtilesUrl = `${FILE_SERVER_URL}/maps/rwanda.pmtiles`;
+            const offlineSource = new PMTilesVectorSource({
+              url: pmtilesUrl,
+              attributions: ["© OpenStreetMap"],
+            });
+            offlineLayerRef.current.setSource(offlineSource as any);
+          }
+          offlineLayerRef.current.setVisible(true);
+        } else {
+          offlineLayerRef.current.setVisible(false);
+        }
       }
 
       // Show/hide label overlay
-      basemapLabelLayerRef.current?.setVisible(style === "satellite" || style === "nsdi");
+      basemapLabelLayerRef.current?.setVisible(
+        style === "satellite" || style === "nsdi",
+      );
     },
     [],
   );
@@ -490,6 +545,8 @@ export default function School2DViewer({
   useEffect(() => {
     groundOverlayLayersRef.current.forEach((l) => l.setOpacity(kmzOpacity));
   }, [kmzOpacity]);
+
+
 
   // Fit to KMZ overlay extent
   const fitToKmzExtent = useCallback(() => {
@@ -534,7 +591,7 @@ export default function School2DViewer({
     if (!containerRef.current || mapRef.current) return;
 
     const basemapSrc = new XYZ({
-      url: getBasemapUrl("google"),
+      url: getBasemapUrl("satellite"),
       attributions: "© Google, Esri, DigitalGlobe",
       maxZoom: 19, // Use 19 as the 'tile' limit to enable overzooming up to 23
       crossOrigin: "anonymous",
@@ -593,17 +650,10 @@ export default function School2DViewer({
     map.addLayer(ghostLayer);
     ghostLayerRef.current = ghostLayer;
 
-    // 2. Offline Layer (PMTiles)
-    const pmtilesUrl = `${FILE_SERVER_URL}/maps/rwanda.pmtiles`;
-    const offlineSource = new PMTilesVectorSource({
-      url: pmtilesUrl,
-      attributions: ["© OpenStreetMap"],
-    });
+    // 2. Offline Layer (PMTiles) - Placeholder layer; source added lazily to avoid 404 console noise
     const offlineLayer = new VectorTileLayer({
-      source: offlineSource,
       visible: false,
       zIndex: -1,
-      // Minimalist style for offline browsing
       style: new Style({
         stroke: new Stroke({ color: "#e2e8f0", width: 1 }),
         fill: new Fill({ color: "#f8fafc" }),
@@ -612,7 +662,15 @@ export default function School2DViewer({
     map.addLayer(offlineLayer);
     offlineLayerRef.current = offlineLayer;
 
-    map.addControl(new ScaleLine({ units: "metric" }));
+    map.addControl(
+      new ScaleLine({
+        units: "metric",
+        minWidth: 100,
+        bar: true,
+        steps: 4,
+        text: true,
+      }),
+    );
 
     // Pointer move → telemetry HUD
     map.on("pointermove", (evt: any) => {
@@ -700,10 +758,21 @@ export default function School2DViewer({
 
   // ── Load KML/KMZ ────────────────────────────────────────────────────────
   useEffect(() => {
+    let ignore = false;
+    const abortController = new AbortController();
+    
     const map = mapRef.current;
     if (!map) return;
 
-    const loadGroundOverlays = (overlays: GroundOverlayData[]) => {
+    const loadGroundOverlays = (
+      overlays: GroundOverlayData[],
+      assetBlobs?: Map<string, Blob>,
+    ) => {
+      // If layers are already attached for this school, do NOT remove and re-add them (prevents flicker)
+      if (layersAttachedRef.current) {
+        return;
+      }
+
       groundOverlayLayersRef.current.forEach((l) => map.removeLayer(l));
       groundOverlayLayersRef.current = [];
 
@@ -737,25 +806,41 @@ export default function School2DViewer({
       }
       const levels = Array.from(groupedByLevel.keys()).sort((a, b) => a - b);
 
-      // ImageBitmaps kept alive while layers are on the map
-      const bitmaps: Map<string, ImageBitmap> = new Map();
-      const thumbs: Map<string, ImageBitmap> = new Map();
-      const pendingDecodes: Map<string, Promise<void>> = new Map();
+      // ImageBitmaps kept alive while layers are on the map (and across renders)
+      const bitmaps = bitmapsRef.current;
+      const thumbs = thumbsRef.current;
+      const pendingDecodes = pendingDecodesRef.current;
       const tileGrid = createXYZ({ maxZoom: 25, tileSize: 256 });
+      
+      // Throttling for UI updates to prevent React-induced lag
+      let activeDecodes = 0;
+      let lastStateUpdate = 0;
+      const throttleSetDecodingCount = (count: number) => {
+        const now = Date.now();
+        if (now - lastStateUpdate > 300 || count === 0) {
+          setDecodingCount(count);
+          lastStateUpdate = now;
+        }
+      };
 
       // ── Progressive async loader (fire-and-forget) ────────────────────────
       const loadLevels = async () => {
         setIsTileLoading(true);
 
-        const fetchWithRetry = async (url: string, retries = 2): Promise<Blob> => {
+        const fetchWithRetry = async (
+          url: string,
+          retries = 2,
+          signal?: AbortSignal,
+        ): Promise<Blob> => {
           for (let i = 0; i <= retries; i++) {
             try {
-              const res = await fetch(url);
+              const res = await fetch(url, { signal });
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
               return await res.blob();
-            } catch (err) {
+            } catch (err: any) {
+              if (err.name === 'AbortError') throw err;
               if (i === retries) throw err;
-              await new Promise(r => setTimeout(r, 1000 * (i + 1))); // Exponential backoff
+              await new Promise((r) => setTimeout(r, 1000 * (i + 1))); // Exponential backoff
             }
           }
           throw new Error("Failed after retries");
@@ -779,8 +864,10 @@ export default function School2DViewer({
             // ─────────────────────────────────────────────────────────────────
             // CASE A: Cloud Optimized GeoTIFF (Highest Performance)
             // ─────────────────────────────────────────────────────────────────
-            const isTif = ov.imageUrl.toLowerCase().endsWith(".tif") || ov.imageUrl.toLowerCase().endsWith(".tiff");
-            
+            const isTif =
+              ov.imageUrl.toLowerCase().endsWith(".tif") ||
+              ov.imageUrl.toLowerCase().endsWith(".tiff");
+
             if (isTif) {
               const source = new GeoTIFFSource({
                 sources: [{ url: ov.imageUrl }],
@@ -812,16 +899,28 @@ export default function School2DViewer({
               tileSize: 256,
               interpolate: true,
               wrapX: false,
-              loader: async (z: number, x: number, y: number): Promise<ImageBitmap> => {
+              loader: async (
+                z: number,
+                x: number,
+                y: number,
+              ): Promise<ImageBitmap> => {
                 const te = tileGrid.getTileCoordExtent([z, x, y]);
+                
+                // OOM Protection: Skip tiles that are too small to be visible
+                const resolution = te[2] - te[0];
+                const pixelWidth = (extWd / resolution) * 256;
+                
                 const ix = getIntersection(te, ovExt);
 
-                if (isExtentEmpty(ix)) {
+                if (isExtentEmpty(ix) || pixelWidth < 4) {
                   const canvas = new OffscreenCanvas(256, 256);
                   return canvas.transferToImageBitmap();
                 }
 
-                const createTileFromBitmap = (bm: ImageBitmap, tbm?: ImageBitmap | null) => {
+                const createTileFromBitmap = (
+                  bm: ImageBitmap,
+                  tbm?: ImageBitmap | null,
+                ) => {
                   const [ixW, ixS, ixE, ixN] = ix;
                   const [tW, tS, tE, tN] = te;
                   const tileWd = tE - tW;
@@ -834,7 +933,7 @@ export default function School2DViewer({
 
                   const fullSrcW = ((ixE - ixW) / extWd) * bm.width;
                   let chosenBm = bm;
-                  
+
                   // Use thumbnail if downsampling aggressively
                   if (tbm && fullSrcW > dstW * 4) {
                     chosenBm = tbm;
@@ -849,14 +948,27 @@ export default function School2DViewer({
                   const ctx = canvas.getContext("2d")!;
                   ctx.imageSmoothingEnabled = true;
                   ctx.imageSmoothingQuality = "high";
-                  ctx.drawImage(chosenBm, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH);
+                  ctx.drawImage(
+                    chosenBm,
+                    srcX,
+                    srcY,
+                    srcW,
+                    srcH,
+                    dstX,
+                    dstY,
+                    dstW,
+                    dstH,
+                  );
                   return canvas.transferToImageBitmap();
                 };
 
                 // 1. Check if bitmap is already decoded
                 let existing = bitmaps.get(ov.imageUrl);
                 if (existing) {
-                  return createTileFromBitmap(existing, thumbs.get(ov.imageUrl));
+                  return createTileFromBitmap(
+                    existing,
+                    thumbs.get(ov.imageUrl),
+                  );
                 }
 
                 // 2. Not decoded? Check for a pending decode promise
@@ -865,28 +977,47 @@ export default function School2DViewer({
                   // 3. Start a new decode task
                   pending = (async () => {
                     try {
-                      setDecodingCount((prev) => prev + 1);
-                      const blob = await fetchWithRetry(ov.imageUrl);
+                      if (ignore) return;
+                      
+                      // Throttling: Wait if too many decodes are active
+                      while (activeDecodes >= 8 && !ignore) {
+                        await new Promise((r) => setTimeout(r, 50));
+                      }
+                      if (ignore) return;
+
+                      activeDecodes++;
+                      throttleSetDecodingCount(activeDecodes);
+
+                      let blob: Blob;
+                      // PERFORMANCE: Use direct Blob access if available from JSZip (bypasses fetch network flood)
+                      const localBlob = assetBlobs?.get(ov.imageUrl);
+                      if (localBlob) {
+                        blob = localBlob;
+                      } else {
+                        blob = await fetchWithRetry(ov.imageUrl, 2, abortController.signal);
+                      }
+                      
+                      if (ignore) return;
                       const bm = await createImageBitmap(blob);
                       bitmaps.set(ov.imageUrl, bm);
-                      
+
                       // Create thumbnail for overview levels
                       if (bm.width > 2048 || bm.height > 2048) {
                         const scale = 1024 / Math.max(bm.width, bm.height);
                         const tbm = await createImageBitmap(bm, {
                           resizeWidth: Math.round(bm.width * scale),
                           resizeHeight: Math.round(bm.height * scale),
-                          resizeQuality: "high"
+                          resizeQuality: "high",
                         });
                         thumbs.set(ov.imageUrl, tbm);
                       }
                     } catch (err) {
                       console.error(`[Pool] Failed to decode ${ov.imageUrl}:`, err);
-                      // Clear pending so we can try again later if needed
                       pendingDecodes.delete(ov.imageUrl);
                       throw err;
                     } finally {
-                      setDecodingCount((prev) => Math.max(0, prev - 1));
+                      activeDecodes = Math.max(0, activeDecodes - 1);
+                      throttleSetDecodingCount(activeDecodes);
                     }
                   })();
                   pendingDecodes.set(ov.imageUrl, pending);
@@ -897,7 +1028,10 @@ export default function School2DViewer({
                   await pending;
                   existing = bitmaps.get(ov.imageUrl);
                   if (existing) {
-                    return createTileFromBitmap(existing, thumbs.get(ov.imageUrl));
+                    return createTileFromBitmap(
+                      existing,
+                      thumbs.get(ov.imageUrl),
+                    );
                   }
                 } catch (err) {
                   // Fallback to empty if both attempts failed
@@ -919,20 +1053,20 @@ export default function School2DViewer({
             groundOverlayLayersRef.current.push(tileLayer);
           }
 
-          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          );
         }
         mapRef.current?.once("rendercomplete", () => setIsTileLoading(false));
       };
 
       void loadLevels();
+      layersAttachedRef.current = true;
 
+      // The actual Blob cleanup is captured here but only called by the Persistent effect above
       const prevCleanup = cleanupKmzRef.current;
       cleanupKmzRef.current = () => {
         prevCleanup?.();
-        bitmaps.forEach((b) => b.close());
-        thumbs.forEach((t) => t.close());
-        bitmaps.clear();
-        thumbs.clear();
       };
 
       return minX !== Infinity
@@ -943,8 +1077,11 @@ export default function School2DViewer({
     const loadKml = async (
       kmlText: string,
       groundOverlays?: GroundOverlayData[],
+      assetBlobs?: Map<string, Blob>,
     ) => {
-      const kmlFormat = new KML({ extractStyles: false });
+      // extractStyles: true — preserve KML's own icon/style definitions
+      // The blob-URL rewriting in unpackKmzFile ensures icon hrefs resolve correctly
+      const kmlFormat = new KML({ extractStyles: true });
       let parsed: Feature[];
       try {
         parsed = kmlFormat.readFeatures(kmlText, {
@@ -955,8 +1092,29 @@ export default function School2DViewer({
         parsed = [];
       }
 
+      // Style function: use the KML's own style when available; fall back to default
+      const kmlStyleFunction = (feature: any) => {
+        const featureStyle = feature.getStyle();
+        if (featureStyle) {
+          // If it's a function, call it
+          if (typeof featureStyle === "function")
+            return featureStyle(feature, 1);
+          // If it's an array of styles, use them directly
+          if (Array.isArray(featureStyle) && featureStyle.length > 0)
+            return featureStyle;
+          // Single style object — use it
+          if (featureStyle instanceof Style) return featureStyle;
+        }
+        // No KML style found — use our attractive fallback
+        return kmlStyle;
+      };
+
       const source = new VectorSource({ features: parsed });
-      const layer = new VectorLayer({ source, style: kmlStyle, zIndex: 30 });
+      const layer = new VectorLayer({
+        source,
+        style: kmlStyleFunction as any,
+        zIndex: 30,
+      });
       if (kmlLayerRef.current) map.removeLayer(kmlLayerRef.current);
       map.addLayer(layer);
       kmlLayerRef.current = layer;
@@ -964,7 +1122,7 @@ export default function School2DViewer({
       // Ground overlay tiles take priority for extent fitting
       const overlayExtent =
         groundOverlays && groundOverlays.length > 0
-          ? loadGroundOverlays(groundOverlays)
+          ? loadGroundOverlays(groundOverlays, assetBlobs)
           : null;
 
       const fitExtent =
@@ -976,12 +1134,14 @@ export default function School2DViewer({
             : null;
         })();
 
-      if (fitExtent) {
+      if (fitExtent && overlayExtentRef.current === null) {
         overlayExtentRef.current = fitExtent;
-        map.getView().fit(fitExtent, {
-          padding: [60, 60, 60, 60],
-          duration: 600,
-        });
+        if (!ignore) {
+          map.getView().fit(fitExtent, {
+            padding: [60, 60, 60, 60],
+            duration: 600,
+          });
+        }
       }
 
       // Collect named features for the navigator
@@ -990,68 +1150,134 @@ export default function School2DViewer({
         .filter(
           (item): item is { name: string; feature: Feature } => !!item.name,
         );
-      setFeatures((prev) => {
-        const current = new Map(prev.map((p) => [p.name, p]));
-        named.forEach((n) => current.set(n.name, n));
-        return Array.from(current.values());
-      });
-      setIsLoading(false);
+      
+      if (!ignore) {
+        setFeatures((prev) => {
+          const current = new Map(prev.map((p) => [p.name, p]));
+          named.forEach((n) => current.set(n.name, n));
+          return Array.from(current.values());
+        });
+        setIsLoading(false);
+      }
     };
 
     const run = async () => {
+      if (ignore) return;
+      loadingStartTimeRef.current = Date.now();
+      
+      // If same KMZ file, we skip the heavy network fetch, but we still proceed 
+      // to call loadKml further down so it can re-attach the layers to the map
+      if (school.id === lastSchoolIdRef.current && kmzUrl === loadedKmzRef.current) {
+         setLoadingProgress(100);
+         setIsLoading(false);
+         // Don't return early! We need to ensure layers are attached if they were cleared
+      } else {
+         lastSchoolIdRef.current = school.id;
+         setLoadingProgress(5);
+      }
+
       // Prioritize direct GeoTIFF if available
       if (tifUrl) {
         setLoadingMessage("Initialising high-res GeoTIFF…");
-        loadGroundOverlays([{
-          north: 90, south: -90, east: 180, west: -180, // Extent will be derived from metadata usually
-          imageUrl: tifUrl,
-          drawOrder: 0
-        }]);
+        setLoadingProgress(30);
+        loadGroundOverlays([
+          {
+            north: 90,
+            south: -90,
+            east: 180,
+            west: -180,
+            imageUrl: tifUrl,
+            drawOrder: 0,
+          },
+        ]);
+        setLoadingProgress(80);
       }
 
       if (kmzUrl) {
         setLoadingMessage("Fetching spatial data…");
         try {
-          const res = await fetch(kmzUrl);
-          const contentType = res.headers.get("content-type") ?? "";
-          const isZip =
-            kmzUrl.toLowerCase().endsWith(".kmz") ||
-            contentType.includes("zip") ||
-            contentType.includes("kmz");
+          let kmlText = "";
+          let finalOverlays: GroundOverlayData[] = [];
+          let currentAssetBlobs: Map<string, Blob> | undefined = undefined;
 
-          if (isZip) {
-            const blob = await res.blob();
-            const file = new File([blob], "data.kmz", { type: blob.type });
-            cleanupKmzRef.current?.();
-            const unpacked = await unpackKmzFile(file);
-            cleanupKmzRef.current = unpacked.cleanup;
-
-            // Collect GroundOverlay tiles from ALL KML files in the archive
-            const allOverlays: GroundOverlayData[] = [];
-            for (const kmlText of unpacked.allKmlTexts.values()) {
-              allOverlays.push(...parseGroundOverlaysFromKml(kmlText));
+          // STABILITY GUARD: If same KMZ file, use cached text/overlays to avoid re-fetch/re-unzip
+          if (school.id === lastSchoolIdRef.current && kmzUrl === loadedKmzRef.current && kmlTextRef.current) {
+            kmlText = kmlTextRef.current;
+            finalOverlays = finalOverlaysRef.current;
+            setLoadingProgress(100);
+            setIsLoading(false);
+            // Layers already on map — skip loadKml to prevent view reset
+            if (layersAttachedRef.current) {
+              return;
             }
-
-            await loadKml(
-              unpacked.kmlText,
-              allOverlays.length > 0 ? allOverlays : undefined,
-            );
           } else {
-            const text = await res.text();
-            await loadKml(text);
+            lastSchoolIdRef.current = school.id;
+            setLoadingProgress(5);
+            const isZip = kmzUrl.toLowerCase().endsWith(".kmz");
+
+            if (isZip) {
+              setLoadingMessage("Fetching spatial data archive…");
+              const kmzRes = await fetch(kmzUrl, { signal: abortController.signal });
+              if (!kmzRes.ok) throw new Error(`HTTP ${kmzRes.status}`);
+              const blob = await kmzRes.blob();
+              if (ignore) return;
+              
+              setLoadingMessage("Unpacking drone imagery locally…");
+              const unpacked = await unpackKmzFile(new File([blob], "data.kmz"));
+              if (ignore) {
+                unpacked.cleanup();
+                return;
+              }
+              cleanupKmzRef.current = unpacked.cleanup;
+              currentAssetBlobs = unpacked.assetBlobs;
+              kmlText = unpacked.kmlText;
+
+              // Collect overlays from all unpacked KMLs
+              for (const kt of unpacked.allKmlTexts.values()) {
+                finalOverlays.push(...parseGroundOverlaysFromKml(kt));
+              }
+            } else {
+              setLoadingMessage("Fetching KML…");
+              const res = await fetch(kmzUrl, { signal: abortController.signal });
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              kmlText = await res.text();
+            }
+            
+            // Update persistence cache
+            kmlTextRef.current = kmlText;
+            finalOverlaysRef.current = finalOverlays;
           }
-        } catch (err) {
+
+          if (ignore) return;
+          setLoadingProgress(90);
+          await loadKml(kmlText, finalOverlays.length > 0 ? finalOverlays : undefined, currentAssetBlobs);
+          loadedKmzRef.current = kmzUrl ?? "no-kmz";
+        } catch (err: any) {
+          if (err.name === 'AbortError') return;
           console.error("[School2DViewer] KML fetch failed", err);
-          setIsLoading(false);
+          if (!ignore) setIsLoading(false);
         }
+        if (!ignore) setLoadingProgress(100);
         return;
       }
 
       // No spatial file — just centre on fallback
-      setIsLoading(false);
+      if (!ignore) {
+        setLoadingProgress(100);
+        setIsLoading(false);
+      }
     };
 
     run();
+    
+    return () => {
+      ignore = true;
+      abortController.abort();
+      
+      // DO NOT call cleanupKmzRef.current() here anymore! 
+      // It will wipe the memory that we want to persist during refreshes.
+      // We only call it inside run() when switching schools.
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kmzUrl, tifUrl]);
 
@@ -1085,7 +1311,8 @@ export default function School2DViewer({
     if (!map) return;
 
     const loadPlaces = async (kmlText: string) => {
-      const kmlFormat = new KML({ extractStyles: false });
+      // Use extractStyles: true so that KML icons display correctly in places overlay too
+      const kmlFormat = new KML({ extractStyles: true });
       let parsed: Feature[];
       try {
         parsed = kmlFormat.readFeatures(kmlText, {
@@ -1095,10 +1322,58 @@ export default function School2DViewer({
       } catch {
         parsed = [];
       }
+
+      // Hybrid style: respect KML icon styles, but always add the label text overlay
+      const placesKmlStyleFunction = (feature: any) => {
+        const name = getFeatureName(feature);
+        const featureStyle = feature.getStyle();
+        const styles: Style[] = [];
+
+        // Use the KML's own style if available
+        if (featureStyle) {
+          if (typeof featureStyle === "function") {
+            const s = featureStyle(feature, 1);
+            if (Array.isArray(s)) styles.push(...s);
+            else if (s) styles.push(s);
+          } else if (Array.isArray(featureStyle)) {
+            styles.push(...featureStyle);
+          } else if (featureStyle instanceof Style) {
+            styles.push(featureStyle);
+          }
+        }
+
+        // If no KML style, use our default places fallback
+        if (styles.length === 0) {
+          styles.push(placesStyleFunction(feature));
+        } else {
+          // Add text label on top of existing KML style
+          if (name) {
+            styles.push(
+              new Style({
+                text: new Text({
+                  text: name,
+                  font: "bold 13px 'Inter', system-ui, sans-serif",
+                  fill: new Fill({ color: "#fff" }),
+                  stroke: new Stroke({ color: "rgba(0, 0, 0, 0.8)", width: 3 }),
+                  offsetY: 22,
+                  overflow: true,
+                  placement:
+                    feature.getGeometry()?.getType() === "LineString"
+                      ? "line"
+                      : "point",
+                }),
+              }),
+            );
+          }
+        }
+
+        return styles;
+      };
+
       const source = new VectorSource({ features: parsed });
       const layer = new VectorLayer({
         source,
-        style: placesStyleFunction,
+        style: placesKmlStyleFunction as any,
         zIndex: 40,
         visible: showPlacesOverlay,
       });
@@ -1186,6 +1461,7 @@ export default function School2DViewer({
     const map = mapRef.current;
     if (!map) return;
 
+    let ignore = false;
     stopDraw();
     if (measurementMode === "none") {
       setMeasureResult(null);
@@ -1200,10 +1476,35 @@ export default function School2DViewer({
       style: measureStyle,
     });
 
-    draw.on("drawstart", () => {
+    draw.on("drawstart", (evt) => {
       measureSourceRef.current.clear();
       setMeasureResult(null);
       tooltipOverlayRef.current?.setPosition(undefined);
+
+      const feature = evt.feature;
+      let sketch = feature.getGeometry();
+      
+      // Real-time measurement update during drawing
+      sketch?.on("change", (e: any) => {
+        const geom = e.target;
+        let result = "";
+        let tooltipPos: number[] | undefined;
+
+        if (geom instanceof LineString) {
+          const meters = getLength(geom, { projection: "EPSG:3857", radius: 6378137 });
+          result = formatLength(meters);
+          tooltipPos = geom.getLastCoordinate();
+        } else if (geom instanceof Polygon) {
+          const sqm = getArea(geom, { projection: "EPSG:3857", radius: 6378137 });
+          result = formatArea(sqm);
+          tooltipPos = geom.getInteriorPoint().getCoordinates();
+        }
+
+        if (!ignore) {
+          setMeasureResult(result);
+          if (tooltipPos) tooltipOverlayRef.current?.setPosition(tooltipPos);
+        }
+      });
     });
 
     draw.on("drawend", (evt) => {
@@ -1214,16 +1515,12 @@ export default function School2DViewer({
       let tooltipPos: number[] | undefined;
 
       if (geom instanceof LineString) {
-        const cloned = geom
-          .clone()
-          .transform("EPSG:3857", "EPSG:4326") as LineString;
-        result = formatLength(getLength(cloned));
+        const meters = getLength(geom, { projection: "EPSG:3857", radius: 6378137 });
+        result = formatLength(meters);
         tooltipPos = geom.getLastCoordinate();
       } else if (geom instanceof Polygon) {
-        const cloned = geom
-          .clone()
-          .transform("EPSG:3857", "EPSG:4326") as Polygon;
-        result = formatArea(getArea(cloned));
+        const sqm = getArea(geom, { projection: "EPSG:3857", radius: 6378137 });
+        result = formatArea(sqm);
         tooltipPos = geom.getInteriorPoint().getCoordinates();
       }
 
@@ -1234,7 +1531,10 @@ export default function School2DViewer({
     map.addInteraction(draw);
     activeDrawRef.current = draw;
 
-    return () => stopDraw();
+    return () => {
+      ignore = true;
+      stopDraw();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measurementMode]);
 
@@ -1348,30 +1648,104 @@ export default function School2DViewer({
       )}
 
       {/* ── Loading overlay ───────────────────────────────────────────────── */}
+      {/* ── Premium Loading Overlay ─────────────────────────────────────── */}
       {(isLoading || isTileLoading || decodingCount > 0) && (
-        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-[#0f1117]/90 backdrop-blur-sm">
-          <div className="flex items-center justify-center h-16 w-16 rounded-full bg-blue-500/10 border border-blue-500/20">
-            <Globe className="h-8 w-8 text-blue-400 animate-pulse" />
-          </div>
-          <div className="text-center space-y-1">
-            <p className="text-xs font-black uppercase tracking-widest text-white/80">
-              {decodingCount > 0 ? "Optimizing Quality..." : loadingMessage}
-            </p>
-            {decodingCount > 0 && (
-              <p className="text-[10px] text-blue-300/60 animate-pulse">
-                Rendering {decodingCount} high-res native textures...
-              </p>
-            )}
-            <div className="flex items-center gap-1 justify-center pt-2">
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="h-1 w-1 rounded-full bg-blue-400 animate-bounce"
-                  style={{ animationDelay: `${i * 0.15}s` }}
+        <div className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-[#0a0d14]/90 backdrop-blur-xl transition-all duration-700">
+          {/* Decorative background glow */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-[120px] pointer-events-none" />
+          
+          <div className="relative z-10 w-full max-w-md px-8 text-center animate-in fade-in zoom-in duration-500">
+            {/* Main Visual: Animated Scanning Ring */}
+            <div className="relative mx-auto mb-10 h-32 w-32">
+              <div className="absolute inset-0 rounded-full border-4 border-white/5" />
+              <svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 100 100">
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="48"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                  strokeDasharray="301.59"
+                  strokeDashoffset={301.59 - (301.59 * loadingProgress) / 100}
+                  className="text-blue-500 transition-all duration-700 ease-out"
+                  strokeLinecap="round"
                 />
-              ))}
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center">
+                  <span className="text-3xl font-bold text-white tabular-nums tracking-tight">
+                    {Math.round(loadingProgress)}%
+                  </span>
+                </div>
+              </div>
+              {/* Spinning highlight */}
+              <div 
+                className="absolute inset-0 rounded-full border-t-2 border-blue-400/40" 
+                style={{ animation: "spin 1.5s linear infinite" }}
+              />
+            </div>
+
+            {/* Status Information */}
+            <div className="space-y-2 mb-8">
+              <h2 className="text-2xl font-bold text-white tracking-tight drop-shadow-sm">
+                {isLoading ? "Synchronising School Assets" : "Decoding High-Res Imagery"}
+              </h2>
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-blue-400 font-semibold text-xs py-1 px-3 rounded-full bg-blue-500/10 border border-blue-500/20 inline-block uppercase tracking-widest">
+                  {decodingCount > 0 ? `Optimizing ${decodingCount} tiles…` : loadingMessage}
+                </span>
+              </div>
+            </div>
+
+            {/* Performance Metrics Dashboard */}
+            <div className="grid grid-cols-2 gap-4 p-5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm mb-10 shadow-inner">
+              <div className="text-left">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">Session Elapsed</p>
+                <p className="text-lg font-mono font-medium text-white/90">
+                  {Math.floor((Date.now() - loadingStartTimeRef.current) / 1000)}s
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">Live Decodes</p>
+                <div className="flex items-center justify-end gap-1.5">
+                  <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                  <p className="text-lg font-mono font-medium text-white/90">
+                    {bitmapsRef.current.size} active
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Progress Bar Container */}
+            <div className="relative w-full h-1.5 bg-white/10 rounded-full overflow-hidden mb-4 shadow-inner">
+              <div 
+                className="h-full bg-linear-to-r from-blue-600 via-indigo-500 to-blue-400 transition-all duration-700 ease-out"
+                style={{ 
+                  width: `${loadingProgress}%`,
+                  boxShadow: "0 0 16px rgba(59,130,246,0.6)"
+                }}
+              />
+              <div className="absolute inset-y-0 left-0 w-full h-full opacity-20 bg-shimmer pointer-events-none" />
+            </div>
+            
+            <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-white/30 px-1">
+              <span>System Integrity Validated</span>
+              <span className="text-blue-400/60 animate-pulse">Initializing GIS engine…</span>
             </div>
           </div>
+
+          <style>{`
+            @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+            @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes zoom-in { from { transform: scale(0.95); } to { transform: scale(1); } }
+            .bg-shimmer {
+              background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
+              background-size: 200% 100%;
+              animation: shimmer 2s infinite linear;
+            }
+            @keyframes shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+          `}</style>
         </div>
       )}
 
@@ -1390,8 +1764,6 @@ export default function School2DViewer({
               <X className="h-4 w-4" />
             </Button>
           )}
-
-
 
           {/* Feature navigator */}
           <Button
@@ -1577,12 +1949,10 @@ export default function School2DViewer({
             size="icon"
             className="h-9 w-9 rounded-xl"
             onClick={() =>
-              mapRef.current
-                ?.getView()
-                .animate({
-                  zoom: (mapRef.current.getView().getZoom() ?? 19) + 1,
-                  duration: 200,
-                })
+              mapRef.current?.getView().animate({
+                zoom: (mapRef.current.getView().getZoom() ?? 19) + 1,
+                duration: 200,
+              })
             }
             title="Zoom in"
           >
@@ -1595,12 +1965,10 @@ export default function School2DViewer({
             size="icon"
             className="h-9 w-9 rounded-xl"
             onClick={() =>
-              mapRef.current
-                ?.getView()
-                .animate({
-                  zoom: (mapRef.current.getView().getZoom() ?? 19) - 1,
-                  duration: 200,
-                })
+              mapRef.current?.getView().animate({
+                zoom: (mapRef.current.getView().getZoom() ?? 19) - 1,
+                duration: 200,
+              })
             }
             title="Zoom out"
           >
@@ -1809,14 +2177,18 @@ export default function School2DViewer({
       {showBasicInfo && (
         <div className="absolute inset-0 z-[110] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="relative w-full max-w-lg bg-black/60 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl p-8 text-white overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500" />
+            <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-blue-500 via-indigo-500 to-purple-500" />
 
             <div className="flex items-start justify-between mb-8">
               <div>
-                <h2 className="text-2xl font-bold tracking-tight mb-1">{school.name}</h2>
+                <h2 className="text-2xl font-bold tracking-tight mb-1">
+                  {school.name}
+                </h2>
                 <div className="flex items-center gap-2 text-sm text-white/50 font-medium tracking-wide">
                   <MapPin className="h-3.5 w-3.5" />
-                  {[school.province, school.district, school.sector].filter(Boolean).join(" • ") || "Location Unknown"}
+                  {[school.province, school.district, school.sector]
+                    .filter(Boolean)
+                    .join(" • ") || "Location Unknown"}
                 </div>
               </div>
               <Button
@@ -1831,27 +2203,53 @@ export default function School2DViewer({
 
             <div className="grid grid-cols-2 gap-y-6 gap-x-8">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">School Code</p>
-                <p className="text-lg font-mono font-medium">{school.code || "N/A"}</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">
+                  School Code
+                </p>
+                <p className="text-lg font-mono font-medium">
+                  {school.code || "N/A"}
+                </p>
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">Level</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">
+                  Level
+                </p>
                 <p className="text-lg font-medium">{school.level || "N/A"}</p>
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">Type</p>
-                <p className="text-lg font-medium capitalize">{school.type?.toLowerCase() || "N/A"}</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">
+                  Type
+                </p>
+                <p className="text-lg font-medium capitalize">
+                  {school.type?.toLowerCase() || "N/A"}
+                </p>
               </div>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">Status</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">
+                  Status
+                </p>
                 <div className="flex items-center gap-2">
-                  <div className={cn("h-2 w-2 rounded-full", school.status === "ACTIVE" ? "bg-emerald-400" : "bg-amber-400")} />
-                  <p className="text-lg font-medium capitalize">{school.status?.toLowerCase() || "Active"}</p>
+                  <div
+                    className={cn(
+                      "h-2 w-2 rounded-full",
+                      school.status === "ACTIVE"
+                        ? "bg-emerald-400"
+                        : "bg-amber-400",
+                    )}
+                  />
+                  <p className="text-lg font-medium capitalize">
+                    {school.status?.toLowerCase() || "Active"}
+                  </p>
                 </div>
               </div>
               <div className="col-span-2">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">Coordinates</p>
-                <p className="text-sm font-mono text-white/70">{Number(school.latitude).toFixed(6)}, {Number(school.longitude).toFixed(6)}</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">
+                  Coordinates
+                </p>
+                <p className="text-sm font-mono text-white/70">
+                  {Number(school.latitude).toFixed(6)},{" "}
+                  {Number(school.longitude).toFixed(6)}
+                </p>
               </div>
             </div>
           </div>
