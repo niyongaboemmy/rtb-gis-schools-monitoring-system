@@ -105,6 +105,27 @@ export class SchoolBuilding {
     altitudeMode?: string;
   };
 
+  @Column({ type: 'jsonb', nullable: true })
+  annotations: {
+    id: string;
+    type: 'text' | 'point' | 'line' | 'polygon';
+    content: string;
+    coordinates?: number[];
+    isFootprint?: boolean;
+    areaSquareMeters?: number;
+    style?: any;
+    createdAt: string;
+  }[];
+
+  @Column({ type: 'jsonb', nullable: true })
+  media: {
+    id: string;
+    url: string;
+    type: 'image' | 'video';
+    title?: string;
+    createdAt: string;
+  }[];
+
   @CreateDateColumn()
   createdAt: Date;
 

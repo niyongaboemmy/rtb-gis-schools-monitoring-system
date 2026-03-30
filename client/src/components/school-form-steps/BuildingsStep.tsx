@@ -41,6 +41,23 @@ export interface BuildingData {
   buildingNotes: string;
   facilities: FacilityItem[];
   geolocation: BuildingGeoLocation;
+  annotations?: {
+    id: string;
+    type: "text" | "point" | "line" | "polygon";
+    content: string;
+    coordinates?: number[];
+    isFootprint?: boolean;
+    areaSquareMeters?: number;
+    style?: any;
+    createdAt: string;
+  }[];
+  media?: {
+    id: string;
+    url: string;
+    type: "image" | "video";
+    title?: string;
+    createdAt: string;
+  }[];
 }
 
 interface BuildingsStepProps {
@@ -98,6 +115,8 @@ const createEmptyBuilding = (): BuildingData => ({
   buildingNotes: "",
   facilities: [],
   geolocation: { latitude: null, longitude: null },
+  annotations: [],
+  media: [],
 });
 
 export function BuildingsStep({

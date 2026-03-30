@@ -20,7 +20,6 @@ interface SchoolStatsCardsProps {
   totalStaff: number;
   totalTeachers: number;
   maleTeachers: number;
-  femaleTeachers: number;
   buildings: any[];
   avgBuildingYear: number;
   formatNumber: (num: number | undefined | null) => string;
@@ -34,39 +33,37 @@ export const SchoolStatsCards = React.memo(
     totalStaff,
     totalTeachers,
     maleTeachers,
-    femaleTeachers,
     buildings,
     avgBuildingYear,
     formatNumber,
   }: SchoolStatsCardsProps) => {
     return (
-      <div className="col-span-2 grid gap-4 grid-cols-12 w-full h-max">
+      <div className="grid gap-3 grid-cols-12 w-full h-max">
         {/* Total Students */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0 }}
-          whileHover={{ scale: 1.02, y: -5 }}
-          className="col-span-6"
+          className="col-span-4"
         >
-          <Card className="border border-border/20 bg-blue-50 dark:bg-blue-950/30 rounded-2xl transition-all dark:border-blue-900/30 duration-300 hover:bg-blue-100/80 dark:hover:bg-blue-900/40">
-            <CardContent className="p-5">
+          <Card className="border border-border/20 bg-card/40 backdrop-blur-sm rounded-2xl transition-all duration-300 hover:bg-card/60">
+            <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-600/70">
-                    Total Students
+                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-0.5">
+                    Students
                   </p>
-                  <p className="text-2xl font-black text-blue-700 dark:text-blue-300 mt-1">
+                  <p className="text-xl font-black text-foreground">
                     {formatNumber(totalStudents)}
                   </p>
                 </div>
-                <div className="w-12 h-12 bg-blue-500/20 rounded-2xl flex items-center justify-center">
-                  <Users className="w-6 h-6 text-blue-600" />
+                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                  <Users className="w-5 h-5 text-primary" />
                 </div>
               </div>
-              <div className="mt-3 flex items-center gap-2 text-[10px] text-blue-600/70">
-                <TrendingUp className="w-3 h-3" />
-                <span>Capacity: {formatNumber(totalCapacity)}</span>
+              <div className="mt-2 flex items-center gap-1.5 text-[9px] font-bold text-muted-foreground/50">
+                <TrendingUp className="w-3 h-3 text-emerald-500/50" />
+                <span>Cap: {formatNumber(totalCapacity)}</span>
               </div>
             </CardContent>
           </Card>
@@ -77,32 +74,26 @@ export const SchoolStatsCards = React.memo(
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          whileHover={{ scale: 1.02, y: -5 }}
-          className="col-span-6"
+          className="col-span-4"
         >
-          <Card className="border border-border/20 bg-blue-50 dark:bg-blue-950/30 rounded-2xl transition-all dark:border-blue-900/30 duration-300 hover:bg-blue-100/80 dark:hover:bg-blue-900/40">
-            <CardContent className="p-5">
+          <Card className="border border-border/20 bg-card/40 backdrop-blur-sm rounded-2xl transition-all duration-300 hover:bg-card/60">
+            <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-600/70">
-                    All Staff
+                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-0.5">
+                    Total Staff
                   </p>
-                  <p className="text-2xl font-black text-blue-700 dark:text-blue-300 mt-1">
+                  <p className="text-xl font-black text-foreground">
                     {formatNumber(totalStaff)}
                   </p>
                 </div>
-                <div className="w-12 h-12 bg-blue-500/20 rounded-2xl flex items-center justify-center">
-                  <TeacherIcon className="w-6 h-6 text-blue-600" />
+                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
+                  <TeacherIcon className="w-5 h-5 text-primary" />
                 </div>
               </div>
-              <div className="mt-3 flex items-center gap-2 text-[10px] text-blue-600/70">
-                <Target className="w-3 h-3" />
-                <span>
-                  Gender Ratio:{" "}
-                  {totalTeachers > 0
-                    ? `${maleTeachers}:${femaleTeachers}`
-                    : "N/A"}
-                </span>
+              <div className="mt-2 flex items-center gap-1.5 text-[9px] font-bold text-muted-foreground/50">
+                <Target className="w-3 h-3 text-blue-500/50" />
+                <span>Ratio: {totalTeachers > 0 ? `${Math.round((maleTeachers/totalTeachers)*100)}% M` : "N/A"}</span>
               </div>
             </CardContent>
           </Card>
@@ -113,32 +104,26 @@ export const SchoolStatsCards = React.memo(
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          whileHover={{ scale: 1.02, y: -5 }}
-          className="col-span-6"
+          className="col-span-4"
         >
-          <Card className="border border-border/20 bg-emerald-50 dark:bg-emerald-950/30 rounded-2xl transition-all dark:border-blue-900/30 duration-300 hover:bg-emerald-100/80 dark:hover:bg-emerald-900/40">
-            <CardContent className="p-5">
+          <Card className="border border-border/20 bg-card/40 backdrop-blur-sm rounded-2xl transition-all duration-300 hover:bg-card/60">
+            <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600/70">
-                    Buildings
+                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-0.5">
+                    Blocks
                   </p>
-                  <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300 mt-1">
+                  <p className="text-xl font-black text-foreground">
                     {buildings.length}
                   </p>
                 </div>
-                <div className="w-12 h-12 bg-emerald-500/20 rounded-2xl flex items-center justify-center">
-                  <Building2 className="w-6 h-6 text-emerald-600" />
+                <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center">
+                  <Building2 className="w-5 h-5 text-emerald-500" />
                 </div>
               </div>
-              <div className="mt-3 flex items-center gap-2 text-[10px] text-emerald-600/70">
-                <Activity className="w-3 h-3" />
-                <span>
-                  Avg Year:{" "}
-                  {avgBuildingYear > 0
-                    ? avgBuildingYear
-                    : parseFloat(String(schoolData.establishedYear)) || "N/A"}
-                </span>
+              <div className="mt-2 flex items-center gap-1.5 text-[9px] font-bold text-muted-foreground/50">
+                <Activity className="w-3 h-3 text-emerald-500/50" />
+                <span>Avg Year: {avgBuildingYear > 0 ? avgBuildingYear : "N/A"}</span>
               </div>
             </CardContent>
           </Card>
@@ -148,52 +133,66 @@ export const SchoolStatsCards = React.memo(
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          whileHover={{ scale: 1.02, y: -5 }}
-          className="col-span-6"
+          transition={{ delay: 0.3 }}
+          className="col-span-4"
         >
-          <Card className="border border-border/20 bg-green-50 dark:bg-green-950/30 rounded-2xl transition-all dark:border-blue-900/30 duration-300 hover:bg-green-100/80 dark:hover:bg-green-900/40">
-            <CardContent className="p-5">
+          <Card className="border border-border/20 bg-card/40 backdrop-blur-sm rounded-2xl transition-all duration-300 hover:bg-card/60">
+            <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-green-600/70">
-                    Land Usage (ha)
+                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-0.5">
+                    Land (ha)
                   </p>
-                  <p className="text-2xl font-black text-green-700 dark:text-green-300 mt-1">
+                  <p className="text-xl font-black text-foreground">
                     {schoolData.usedLandArea !== undefined
                       ? `${Math.round(parseFloat(String(schoolData.usedLandArea))) || 0} / ${Math.round((parseFloat(String(schoolData.usedLandArea)) || 0) + (parseFloat(String(schoolData.unusedLandArea)) || 0))}`
                       : "--"}
                   </p>
                 </div>
-                <div className="w-12 h-12 bg-green-500/20 rounded-2xl flex items-center justify-center">
-                  <MapPin className="w-6 h-6 text-green-600" />
+                <div className="w-10 h-10 bg-amber-500/10 rounded-xl flex items-center justify-center">
+                  <MapPin className="w-5 h-5 text-amber-500" />
                 </div>
               </div>
-              {schoolData.usedLandArea !== undefined &&
-                schoolData.unusedLandArea !== undefined && (
-                  <div className="mt-3">
-                    <div className="flex justify-between text-[10px] text-green-600/70 mb-1">
-                      <span>Used / Total</span>
-                      <span>
-                        {Math.round(
-                          (parseFloat(schoolData.usedLandArea) /
-                            (parseFloat(schoolData.usedLandArea || 0) +
-                              parseFloat(schoolData.unusedLandArea || 0))) *
-                            100,
-                        )}
-                        %
-                      </span>
-                    </div>
-                    <div className="w-full bg-green-200 dark:bg-green-900/30 rounded-full h-2">
-                      <div
-                        className="h-2 rounded-full bg-green-500 transition-all"
-                        style={{
-                          width: `${Math.round((parseFloat(schoolData.usedLandArea || 0) / (parseFloat(schoolData.usedLandArea || 0) + parseFloat(schoolData.unusedLandArea || 0))) * 100)}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
+              {schoolData.usedLandArea !== undefined && schoolData.unusedLandArea !== undefined && (
+                <div className="mt-2 w-full bg-muted/30 rounded-full h-1 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-amber-500 transition-all duration-1000"
+                    style={{
+                      width: `${Math.round((parseFloat(schoolData.usedLandArea || 0) / (parseFloat(schoolData.usedLandArea || 0) + parseFloat(schoolData.unusedLandArea || 0))) * 100)}%`,
+                    }}
+                  />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* TVET Trades */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="col-span-4"
+        >
+          <Card className="border border-border/20 bg-card/40 backdrop-blur-sm rounded-2xl transition-all duration-300 hover:bg-card/60">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-0.5">
+                    Trades
+                  </p>
+                  <p className="text-xl font-black text-foreground">
+                    {schoolData.educationPrograms?.length || 0}
+                  </p>
+                </div>
+                <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
+                  <GraduationCap className="w-5 h-5 text-blue-500" />
+                </div>
+              </div>
+              <div className="mt-2 flex items-center gap-1.5 text-[9px] font-bold text-muted-foreground/50">
+                <Target className="w-3 h-3 text-blue-500/50" />
+                <span>Active Programs</span>
+              </div>
             </CardContent>
           </Card>
         </motion.div>
@@ -203,52 +202,28 @@ export const SchoolStatsCards = React.memo(
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
-          whileHover={{ scale: 1.02, y: -5 }}
-          className="col-span-6"
+          className="col-span-4"
         >
-          <Card className="border border-border/20 bg-slate-50 dark:bg-slate-950/30 rounded-2xl transition-all dark:border-blue-700/30 duration-300 hover:bg-slate-100/80 dark:hover:bg-slate-900/40">
-            <CardContent className="p-5">
+          <Card className="border border-border/20 bg-card/40 backdrop-blur-sm rounded-2xl transition-all duration-300 hover:bg-card/60">
+            <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-600/70 dark:text-gray-300/50">
-                    Accessibility
+                  <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 mb-0.5">
+                    Access
                   </p>
-                  <p className="text-2xl font-black text-slate-700 dark:text-slate-300 mt-1">
+                  <p className="text-xl font-black text-foreground">
                     {schoolData.roadStatusPercentage
                       ? `${parseFloat(String(schoolData.roadStatusPercentage))}%`
                       : "--"}
                   </p>
                 </div>
-                <div className="w-12 h-12 bg-slate-500/20 rounded-2xl flex items-center justify-center">
-                  <MapIcon className="w-6 h-6 text-slate-600" />
+                <div className="w-10 h-10 bg-slate-500/10 rounded-xl flex items-center justify-center">
+                  <MapIcon className="w-5 h-5 text-slate-500" />
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* TVET Trades */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.55 }}
-          whileHover={{ scale: 1.02, y: -5 }}
-          className="col-span-6"
-        >
-          <Card className="border border-border/20 bg-teal-50 dark:bg-teal-950/30 rounded-2xl transition-all dark:border-blue-900/30 duration-300 hover:bg-teal-100/80 dark:hover:bg-teal-900/40">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-teal-600/70">
-                    TVET Trades
-                  </p>
-                  <p className="text-2xl font-black text-teal-700 dark:text-teal-300 mt-1">
-                    {schoolData.educationPrograms?.length || 0}
-                  </p>
-                </div>
-                <div className="w-12 h-12 bg-teal-500/20 rounded-2xl flex items-center justify-center">
-                  <GraduationCap className="w-6 h-6 text-teal-600" />
-                </div>
+              <div className="mt-2 flex items-center gap-1.5 text-[9px] font-bold text-muted-foreground/50">
+                <Activity className="w-3 h-3 text-slate-500/50" />
+                <span>Road Connectivity</span>
               </div>
             </CardContent>
           </Card>

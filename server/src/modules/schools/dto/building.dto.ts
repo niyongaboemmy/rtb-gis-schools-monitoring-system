@@ -7,7 +7,7 @@ import {
   IsArray,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import {
   BuildingCondition,
   RoofCondition,
@@ -84,6 +84,37 @@ export class BuildingDto {
   @IsNumber()
   @IsOptional()
   longitude?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Object)
+  @Transform(({ value }) => {
+    if (!Array.isArray(value)) return [];
+    // Filter out null, undefined, and nested empty arrays (e.g. [[]])
+    return value.filter(
+      (item: any) =>
+        item !== null &&
+        item !== undefined &&
+        typeof item === 'object' &&
+        !Array.isArray(item),
+    );
+  })
+  annotations?: Record<string, any>[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Object)
+  @Transform(({ value }) => {
+    if (!Array.isArray(value)) return [];
+    return value.filter(
+      (item: any) =>
+        item !== null &&
+        item !== undefined &&
+        typeof item === 'object' &&
+        !Array.isArray(item),
+    );
+  })
+  media?: Record<string, any>[];
 
   @ApiPropertyOptional({ type: [FacilityItemDto] })
   @IsArray()

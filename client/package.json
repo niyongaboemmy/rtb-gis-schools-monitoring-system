@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@devrw/rwanda-location": "^1.1.2",
+    "@radix-ui/react-progress": "^1.1.2",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tailwindcss/vite": "^4.2.2",
@@ -28,8 +29,10 @@
     "leaflet": "^1.9.4",
     "lucide-react": "^0.577.0",
     "ol": "^10.8.0",
+    "ol-pmtiles": "^2.0.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-dropzone": "^15.0.0",
     "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.13.1",
     "recharts": "^3.8.0",

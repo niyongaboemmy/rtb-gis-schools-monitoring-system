@@ -25,6 +25,7 @@ import { UpdateSchoolDto } from './dto/update-school.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PriorityLevel } from './entities/school.entity';
 import { ComplianceLevel } from './entities/school-facility-survey.entity';
+import { BuildingDto } from './dto/building.dto';
 
 @ApiTags('schools')
 @Controller('schools')
@@ -98,6 +99,35 @@ export class SchoolsController {
     return this.schoolsService.getFacilitySurvey(id);
   }
 
+  @Get(':id/buildings')
+  @ApiOperation({
+    summary: 'Get buildings for a school with optional BBOX filtering',
+  })
+  @ApiQuery({ name: 'minLat', required: false, type: Number })
+  @ApiQuery({ name: 'maxLat', required: false, type: Number })
+  @ApiQuery({ name: 'minLng', required: false, type: Number })
+  @ApiQuery({ name: 'maxLng', required: false, type: Number })
+  getBuildings(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('minLat') minLat?: string,
+    @Query('maxLat') maxLat?: string,
+    @Query('minLng') minLng?: string,
+    @Query('maxLng') maxLng?: string,
+  ) {
+    const parseNum = (val?: string) => {
+      if (val === undefined || val === null || val === '') return undefined;
+      const n = parseFloat(val);
+      return isFinite(n) ? n : undefined;
+    };
+
+    return this.schoolsService.findBuildings(id, {
+      minLat: parseNum(minLat),
+      maxLat: parseNum(maxLat),
+      minLng: parseNum(minLng),
+      maxLng: parseNum(maxLng),
+    });
+  }
+
   @Post(':id/survey/initialize')
   @ApiOperation({ summary: 'Initialize a new facility survey for a school' })
   initializeSurvey(
@@ -148,5 +178,31 @@ export class SchoolsController {
   @ApiOperation({ summary: 'Delete a school' })
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.schoolsService.remove(id);
+  }
+
+  // ============ Building Routes ============
+
+  @Post(':id/buildings')
+  @ApiOperation({ summary: 'Add a new building to a school' })
+  addBuilding(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() buildingDto: BuildingDto,
+  ) {
+    return this.schoolsService.addBuilding(id, buildingDto);
+  }
+
+  @Patch('buildings/:id')
+  @ApiOperation({ summary: 'Update a specific building' })
+  updateBuilding(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() buildingDto: BuildingDto,
+  ) {
+    return this.schoolsService.updateBuilding(id, buildingDto);
+  }
+
+  @Delete('buildings/:id')
+  @ApiOperation({ summary: 'Remove a specific building' })
+  removeBuilding(@Param('id', ParseUUIDPipe) id: string) {
+    return this.schoolsService.removeBuilding(id);
   }
 }

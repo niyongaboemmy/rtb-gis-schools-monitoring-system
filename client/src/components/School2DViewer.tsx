@@ -1,341 +1,37 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import "ol/ol.css";
-import OLMap from "ol/Map";
-import View from "ol/View";
-import TileLayer from "ol/layer/Tile";
-import VectorLayer from "ol/layer/Vector";
-import VectorSource from "ol/source/Vector";
-import XYZ from "ol/source/XYZ";
-import KML from "ol/format/KML";
-import GeoJSONFormat from "ol/format/GeoJSON";
-import Draw from "ol/interaction/Draw";
-import { getLength, getArea } from "ol/sphere";
-import { fromLonLat, toLonLat, transformExtent } from "ol/proj";
-import { getIntersection, isEmpty as isExtentEmpty } from "ol/extent";
-import DataTile from "ol/source/DataTile";
-import GeoTIFFSource from "ol/source/GeoTIFF";
-import WebGLTileLayer from "ol/layer/WebGLTile";
-import { createXYZ } from "ol/tilegrid";
-import ScaleLine from "ol/control/ScaleLine";
-import { Fill, Stroke, Style, Circle as CircleStyle, Text } from "ol/style";
-import { LineString, Polygon } from "ol/geom";
 import Overlay from "ol/Overlay";
-import Feature from "ol/Feature";
-import JSZip from "jszip";
-import {
-  X,
-  Globe,
-  Ruler,
-  Square,
-  MapPin,
-  Search,
-  Eye,
-  EyeOff,
-  Layers,
-  Trash2,
-  ZoomIn,
-  ZoomOut,
-  Home,
-  Satellite,
-  Moon,
-  Map as MapIcon2,
-  Download,
-  Info,
-  SlidersHorizontal,
-} from "lucide-react";
-import { Button } from "./ui/button";
-import { Card } from "./ui/card";
-import { FILE_SERVER_URL } from "../lib/api";
+import VectorSource from "ol/source/Vector";
+import { fromLonLat, toLonLat } from "ol/proj";
+import { AnimatePresence, motion } from "framer-motion";
+import { CheckCircle2, AlertCircle, MapPin, X } from "lucide-react";
+
+import { BlockInspector } from "./BlockInspector";
+import { BuildingFormDrawer } from "./school-form-steps/BuildingFormDrawer";
+import type { BuildingData } from "./school-form-steps/BuildingsStep";
+import { api, FILE_SERVER_URL } from "../lib/api";
 import { cn } from "../lib/utils";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Props (identical to School3DViewProps for drop-in compatibility)
-// ─────────────────────────────────────────────────────────────────────────────
-interface School2DViewerProps {
-  /** Raw school object from the API */
-  school: any;
-  /** Override buildings list */
-  buildings?: any[];
-  /** Override places overlay */
-  placesOverlay?: any;
-  onClose?: () => void;
-  isEmbed?: boolean;
-  onSelectBuilding?: (building: any) => void;
-  initialBuildingId?: string;
-  /** High-resolution Cloud Optimized GeoTIFF path */
-  tifFilePath?: string;
-}
+// Subcomponents
+import { LoadingOverlay } from "./2dviewercomponents/LoadingOverlay";
+import { MapToolbar } from "./2dviewercomponents/MapToolbar";
+import { MapHud } from "./2dviewercomponents/MapHud";
+import { BasicInfoModal } from "./2dviewercomponents/BasicInfoModal";
+import { MapNavigator } from "./2dviewercomponents/MapNavigator";
+import { LayerManager } from "./2dviewercomponents/LayerManager";
+import { BuildingsListPanel } from "./2dviewercomponents/BuildingsListPanel";
+import { AnnotationPickerModal, ANNOTATION_ICONS } from "./2dviewercomponents/AnnotationPickerModal";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Custom Animations (Inline CSS Injection)
-// ─────────────────────────────────────────────────────────────────────────────
-const styles = `
-  @keyframes scan {
-    0% { transform: translateY(0); opacity: 0; }
-    50% { opacity: 1; }
-    100% { transform: translateY(100vh); opacity: 0; }
-  }
-  .animate-scan {
-    animation: scan 3s linear infinite;
-  }
-  .animate-spin-slow {
-    animation: spin 8s linear infinite;
-  }
-`;
+// Hooks
+import { useMapSetup } from "./2dviewercomponents/hooks/useMapSetup";
+import { useKmzLoader } from "./2dviewercomponents/hooks/useKmzLoader";
+import { useMapInteractions } from "./2dviewercomponents/hooks/useMapInteractions";
+import { useSpatialDataSync } from "./2dviewercomponents/hooks/useSpatialDataSync";
+import { useMapMethods } from "./2dviewercomponents/hooks/useMapMethods";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
-interface GroundOverlayData {
-  north: number;
-  south: number;
-  east: number;
-  west: number;
-  imageUrl: string;
-  drawOrder: number;
-}
+// Utils
+import type { School2DViewerProps } from "./2dviewercomponents/MapUtils";
 
-interface UnpackedKmzFile {
-  kmlText: string;
-  kmlBlob: Blob;
-  sourceUri: string;
-  cleanup: () => void;
-  allKmlTexts: Map<string, string>;
-  assetMap: Map<string, string>;
-}
-
-async function unpackKmzFile(
-  file: File,
-  onProgress?: (p: number) => void,
-): Promise<UnpackedKmzFile> {
-  const createdBlobUrls: string[] = [];
-  const buffer = await file.arrayBuffer();
-  const sourceUri = `https://local-kmz-host/${encodeURIComponent(file.name)}`;
-  const sig = new Uint8Array(buffer, 0, 2);
-  const isZip = sig[0] === 0x50 && sig[1] === 0x4b;
-  let kmlText = "";
-  const allKmlTexts = new Map<string, string>();
-  const assetMap = new Map<string, string>();
-
-  if (isZip) {
-    const zip = await new JSZip().loadAsync(buffer);
-    const totalFiles = Object.keys(zip.files).length;
-    let processedFiles = 0;
-
-    // Extract all non-KML files as blob URLs
-    await Promise.all(
-      Object.keys(zip.files)
-        .filter((n) => !n.toLowerCase().endsWith(".kml") && !zip.files[n].dir)
-        .map(async (name) => {
-          const blob = await zip.files[name].async("blob");
-          const url = URL.createObjectURL(blob);
-          createdBlobUrls.push(url);
-          assetMap.set(name, url);
-          // Also map by basename for relative resolution
-          const base = name.split("/").pop() ?? "";
-          if (base && !assetMap.has(base)) assetMap.set(base, url);
-
-          processedFiles++;
-          if (onProgress) onProgress((processedFiles / totalFiles) * 80); // 80% for extraction
-        }),
-    );
-
-    // Rewrite hrefs in every KML file found in the archive
-    const kmlEntries = Object.keys(zip.files).filter((n) =>
-      n.toLowerCase().endsWith(".kml"),
-    );
-    for (const kmlPath of kmlEntries) {
-      const rawText = await zip.files[kmlPath].async("text");
-      const kmlDir = kmlPath.includes("/")
-        ? kmlPath.split("/").slice(0, -1).join("/")
-        : "";
-      const rewritten = rawText.replace(/<href>([^<]+)<\/href>/gi, (_, raw) => {
-        const path = raw.trim();
-        const withDir = kmlDir ? `${kmlDir}/${path}` : path;
-        const resolved =
-          assetMap.get(withDir) ??
-          assetMap.get(path) ??
-          assetMap.get(path.split("/").pop() ?? "") ??
-          null;
-        return resolved ? `<href>${resolved}</href>` : `<href>${path}</href>`;
-      });
-      allKmlTexts.set(kmlPath, rewritten);
-    }
-
-    const rootKml =
-      kmlEntries.find((n) => n.toLowerCase() === "doc.kml") ?? kmlEntries[0];
-    if (!rootKml) throw new Error("No .kml found.");
-    kmlText = allKmlTexts.get(rootKml) ?? "";
-  } else {
-    kmlText = new TextDecoder("utf-8").decode(buffer);
-    allKmlTexts.set("doc.kml", kmlText);
-  }
-
-  return {
-    kmlText,
-    kmlBlob: new Blob([kmlText], {
-      type: "application/vnd.google-earth.kml+xml",
-    }),
-    sourceUri,
-    cleanup: () => createdBlobUrls.forEach((u) => URL.revokeObjectURL(u)),
-    allKmlTexts,
-    assetMap,
-  };
-}
-
-/** Parse every <GroundOverlay> block in a (rewritten) KML text. */
-function parseGroundOverlaysFromKml(kmlText: string): GroundOverlayData[] {
-  const overlays: GroundOverlayData[] = [];
-  const re = /<GroundOverlay[^>]*>([\s\S]*?)<\/GroundOverlay>/gi;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(kmlText)) !== null) {
-    const xml = m[1];
-    const north = parseFloat(
-      xml.match(/<north>([\d.+\-eE]+)<\/north>/)?.[1] ?? "nan",
-    );
-    const south = parseFloat(
-      xml.match(/<south>([\d.+\-eE]+)<\/south>/)?.[1] ?? "nan",
-    );
-    const east = parseFloat(
-      xml.match(/<east>([\d.+\-eE]+)<\/east>/)?.[1] ?? "nan",
-    );
-    const west = parseFloat(
-      xml.match(/<west>([\d.+\-eE]+)<\/west>/)?.[1] ?? "nan",
-    );
-    const drawOrder = parseInt(
-      xml.match(/<drawOrder>(\d+)<\/drawOrder>/)?.[1] ?? "0",
-      10,
-    );
-    const iconHref =
-      xml
-        .match(/<Icon[^>]*>[\s\S]*?<href>([^<]*)<\/href>[\s\S]*?<\/Icon>/i)?.[1]
-        ?.trim() ?? "";
-
-    if (
-      isNaN(north) ||
-      isNaN(south) ||
-      isNaN(east) ||
-      isNaN(west) ||
-      north <= south ||
-      east <= west ||
-      !iconHref
-    )
-      continue;
-
-    overlays.push({ north, south, east, west, imageUrl: iconHref, drawOrder });
-  }
-  return overlays;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-function getFeatureName(feat: Feature): string | undefined {
-  const keys = ["name", "Name", "NAME", "title"];
-  for (const k of keys) {
-    const val = feat.get(k);
-    if (val) return String(val);
-  }
-  return feat.getId()?.toString();
-}
-
-function getFeatureDescription(feat: Feature): string | undefined {
-  const keys = ["description", "Description", "desc", "info"];
-  for (const k of keys) {
-    const val = feat.get(k);
-    if (val) return String(val);
-  }
-  return undefined;
-}
-
-function formatLength(meters: number): string {
-  return meters > 1000
-    ? `${(meters / 1000).toFixed(2)} km`
-    : `${meters.toFixed(1)} m`;
-}
-
-function formatArea(sqm: number): string {
-  return sqm > 10_000
-    ? `${(sqm / 1_000_000).toFixed(4)} km²`
-    : `${sqm.toFixed(1)} m²`;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Styles
-// ─────────────────────────────────────────────────────────────────────────────
-const kmlStyle = new Style({
-  fill: new Fill({ color: "rgba(59, 130, 246, 0.25)" }),
-  stroke: new Stroke({ color: "rgba(59, 130, 246, 0.9)", width: 2 }),
-  image: new CircleStyle({
-    radius: 6,
-    fill: new Fill({ color: "rgba(59, 130, 246, 0.9)" }),
-    stroke: new Stroke({ color: "white", width: 1.5 }),
-  }),
-});
-
-const kmlSelectedStyle = new Style({
-  fill: new Fill({ color: "rgba(99, 179, 237, 0.35)" }),
-  stroke: new Stroke({ color: "#63b3ed", width: 3 }),
-  image: new CircleStyle({
-    radius: 8,
-    fill: new Fill({ color: "#63b3ed" }),
-    stroke: new Stroke({ color: "white", width: 2 }),
-  }),
-});
-
-const geojsonStyle = new Style({
-  fill: new Fill({ color: "rgba(34, 197, 94, 0.2)" }),
-  stroke: new Stroke({ color: "rgba(34, 197, 94, 0.8)", width: 2 }),
-  image: new CircleStyle({
-    radius: 5,
-    fill: new Fill({ color: "rgba(34, 197, 94, 0.8)" }),
-    stroke: new Stroke({ color: "white", width: 1.5 }),
-  }),
-});
-
-const placesStyleFunction = (feature: any) => {
-  const name = getFeatureName(feature);
-
-  return new Style({
-    // Make fill transparent to remove the orange background inside polygons
-    fill: new Fill({ color: "transparent" }),
-    // Keep a visible border for polygons/boundaries
-    stroke: new Stroke({ color: "rgba(251, 191, 36, 0.95)", width: 2.5 }),
-    image: new CircleStyle({
-      radius: 6,
-      fill: new Fill({ color: "rgba(251, 191, 36, 0.95)" }),
-      stroke: new Stroke({ color: "#1a1a2e", width: 2 }),
-    }),
-    text: name
-      ? new Text({
-          text: name,
-          font: "bold 13px 'Inter', system-ui, sans-serif",
-          fill: new Fill({ color: "#fff" }),
-          stroke: new Stroke({ color: "rgba(0, 0, 0, 0.8)", width: 3 }),
-          offsetY: 14,
-          overflow: true,
-          placement:
-            feature.getGeometry()?.getType() === "LineString"
-              ? "line"
-              : "point",
-        })
-      : undefined,
-  });
-};
-
-const measureStyle = new Style({
-  fill: new Fill({ color: "rgba(251, 191, 36, 0.15)" }),
-  stroke: new Stroke({ color: "#fbbf24", width: 2, lineDash: [6, 4] }),
-  image: new CircleStyle({
-    radius: 5,
-    fill: new Fill({ color: "#fbbf24" }),
-    stroke: new Stroke({ color: "white", width: 1.5 }),
-  }),
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Component
-// ─────────────────────────────────────────────────────────────────────────────
 export default function School2DViewer({
   school,
   buildings,
@@ -343,1619 +39,706 @@ export default function School2DViewer({
   onClose,
   onSelectBuilding,
   initialBuildingId,
+  tifFilePath,
+  pickerMode = false,
+  onPickerSelect,
 }: School2DViewerProps) {
-  // Inject custom animations
-  useEffect(() => {
-    const styleSheet = document.createElement("style");
-    styleSheet.innerText = styles;
-    document.head.appendChild(styleSheet);
-    return () => {
-      document.head.removeChild(styleSheet);
-    };
-  }, []);
-
-  // ── Derive spatial URLs locally ───────────────────────────────────────────
-  const buildUrl = (path: string | undefined, subfolder: string) => {
+  // ── Derived State & URLs ──────────────────────────────────────────────────
+  const buildUrl = useCallback((path: string | undefined, subfolder: string) => {
     if (!path) return undefined;
-    if (path.startsWith("http")) return path;
-    const cleanPath = path.replace(/^\/?files\//, ""); // Remove 'files/' or '/files/' prefix
-    if (cleanPath.includes("/")) {
-      // It's probably a full relative path like "schools/123/kmz/file.kmz"
-      return `${FILE_SERVER_URL}/${cleanPath}`;
-    }
-    // Just a filename
-    return `${FILE_SERVER_URL}/schools/${school.id}/${subfolder}/${cleanPath}`;
-  };
+    if (path.startsWith("http") || path.startsWith("blob:")) return path;
+    const clean = path.replace(/^\/?(?:files\/|public\/uploads\/)+/i, "").replace(/^\/+/, "");
+    if (clean.includes("/")) return `${FILE_SERVER_URL}/${clean}`;
+    return `${FILE_SERVER_URL}/schools/${school.id}/${subfolder}/${clean}`;
+  }, [school.id]);
 
-  const kmz3dUrl = buildUrl(school.kmzFilePath, "kmz");
-  const kmzUrl = buildUrl(school.kmz2dFilePath, "kmz_2d") ?? kmz3dUrl;
-  const placesOverlayUrl = buildUrl(
-    school.placesOverlayFilePath,
-    "places-overlay",
-  );
-  const tifUrl = buildUrl(school.tifFilePath, "tif");
+  const { kmzUrl, tifUrl, placesOverlayUrl, fallbackLocation, effectiveBuildings, effectivePlacesOverlay, geojson } = useMemo(() => ({
+    kmzUrl: buildUrl(school.kmz2dFilePath || school.kmzFilePath, "kmz_2d"),
+    tifUrl: buildUrl(tifFilePath || school.tifFilePath, "tif"),
+    placesOverlayUrl: buildUrl(school.placesOverlayFilePath, "places-overlay"),
+    fallbackLocation: { lat: Number(school.latitude) || 0, lng: Number(school.longitude) || 0 },
+    effectiveBuildings: buildings ?? school.buildings ?? [],
+    effectivePlacesOverlay: placesOverlay ?? school.placesOverlayData,
+    geojson: school.geojsonContent,
+  }), [school, buildings, placesOverlay, buildUrl, tifFilePath]);
 
-  const fallbackLocation = {
-    lat: Number(school.latitude) || 0,
-    lng: Number(school.longitude) || 0,
-  };
-
-  const effectiveBuildings = buildings ?? school.buildings ?? [];
-  const effectivePlacesOverlay = placesOverlay ?? school.placesOverlayData;
-  const geojson = school.geojsonContent;
-
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<OLMap | null>(null);
-  const kmlLayerRef = useRef<VectorLayer | null>(null);
-  const geojsonLayerRef = useRef<VectorLayer | null>(null);
-  const placesLayerRef = useRef<VectorLayer | null>(null);
-  const measureLayerRef = useRef<VectorLayer | null>(null);
-  const measureSourceRef = useRef<VectorSource>(new VectorSource());
-  const activeDrawRef = useRef<Draw | null>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
+  // ── Refs & Basic State ─────────────────────────────────────────────────────
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const kmlLayerRef = useRef<any>(null);
+  const geojsonLayerRef = useRef<any>(null);
+  const placesLayerRef = useRef<any>(null);
+  const blockOverlayRef = useRef<Overlay | null>(null);
+  const blockOverlayElementRef = useRef<HTMLDivElement | null>(null);
+  const measureSourceRef = useRef(new VectorSource());
   const tooltipOverlayRef = useRef<Overlay | null>(null);
-  const cleanupKmzRef = useRef<(() => void) | null>(null);
   const groundOverlayLayersRef = useRef<any[]>([]);
-  const selectedFeatureRef = useRef<Feature | null>(null);
-  const basemapLayerRef = useRef<TileLayer<XYZ> | null>(null);
-  const basemapLabelLayerRef = useRef<TileLayer<XYZ> | null>(null);
-  const overlayExtentRef = useRef<[number, number, number, number] | null>(
-    null,
-  );
+  const overlayExtentRef = useRef<[number, number, number, number] | null>(null);
+  const mapSelectedFeatureRef = useRef<any>(null);
+  const loadingStartTimeRef = useRef<number>(Date.now());
+  /** Shared drawing-state flag between useMapSetup click guard & useMapInteractions */
+  const isDrawingRef = useRef<boolean>(false);
 
-  const [showBasicInfo, setShowBasicInfo] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("Initialising map…");
-  const [loadProgress, setLoadProgress] = useState(0);
-  const [estimatedSeconds, setEstimatedSeconds] = useState<number | null>(null);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [isTileLoading, setIsTileLoading] = useState(false);
-  const [measurementMode, setMeasurementMode] = useState<
-    "none" | "distance" | "area"
-  >("none");
+  const [decodingCount, setDecodingCount] = useState(0);
+  const [measurementMode, setMeasurementMode] = useState<"none" | "distance" | "area">("none");
   const [measureResult, setMeasureResult] = useState<string | null>(null);
-  const [showPlacesOverlay, setShowPlacesOverlay] = useState(true);
+  const [showPlacesOverlay, setShowPlacesOverlay] = useState(false);
+  const [showBuildingsList, setShowBuildingsList] = useState(false);
   const [showNavigator, setShowNavigator] = useState(false);
-  const [features, setFeatures] = useState<
-    Array<{ name: string; feature: Feature }>
-  >([]);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [showBasicInfo, setShowBasicInfo] = useState(false);
+  const [showOpacitySlider, setShowOpacitySlider] = useState(false);
+  const [kmzOpacity, setKmzOpacity] = useState(1);
+  const [visuals, setVisuals] = useState({ brightness: 1, contrast: 1, saturation: 1 });
+  const [activeTool, setActiveTool] = useState<any>("none");
   const [currentLat, setCurrentLat] = useState(fallbackLocation.lat);
   const [currentLng, setCurrentLng] = useState(fallbackLocation.lng);
-  const [decodingCount, setDecodingCount] = useState(0);
-  const [selectedFeatureName, setSelectedFeatureName] = useState<string | null>(
-    null,
-  );
-  const [basemapStyle, setBasemapStyle] = useState<
-    "satellite" | "dark" | "street"
-  >("satellite");
-  const [kmzOpacity, setKmzOpacity] = useState(1);
-  const [showOpacitySlider, setShowOpacitySlider] = useState(false);
-  const [infoFeature, setInfoFeature] = useState<{
-    name: string;
-    description?: string;
-  } | null>(null);
+  const [features, setFeatures] = useState<any[]>([]);
+  const [selectedFeatureName, setSelectedFeatureName] = useState<string | null>(null);
+  const [infoFeature, setInfoFeature] = useState<any>(null);
+  const [basemapStyle, setBasemapStyle] = useState<any>("google");
+  const [visibleLayers, setVisibleLayers] = useState<Set<number>>(new Set());
+  const [manifest, setManifest] = useState<any>(school.kmz2dManifest || null);
 
-  // Basemap URL resolver
-  const getBasemapUrl = (style: "satellite" | "dark" | "street") =>
-    ({
-      // Google Hybrid (Satellite + Road Labels)
-      satellite: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
-      // Google Dark style (approximated via CartoDB Dark Matter)
+  const [activeBlock, setActiveBlock] = useState<BuildingData | null>(null);
+  const [isBlockInspectorOpen, setIsBlockInspectorOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerBuilding, setDrawerBuilding] = useState<BuildingData | null>(null);
+  const [schoolBuildings, setSchoolBuildings] = useState<BuildingData[]>(effectiveBuildings);
+  const [availableFacilities, setAvailableFacilities] = useState<any[]>([]);
+  const [facilitiesLoading, setFacilitiesLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [siteAnnotations, setSiteAnnotations] = useState<any[]>(school.siteAnnotations || []);
+  const [pendingAnnotation, setPendingAnnotation] = useState<any>(null);
+  const [annotationTooltip, setAnnotationTooltip] = useState<{ ann: any; x: number; y: number } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "warning" | null }>({ message: "", type: null });
+
+  // Picker mode: selected building before confirming
+  const [pickerSelected, setPickerSelected] = useState<any>(null);
+
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const showToast = useCallback((message: string, type: "success" | "warning") => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToast({ message, type });
+    toastTimeoutRef.current = setTimeout(() => setToast({ message: "", type: null }), 5000);
+  }, []);
+
+  useEffect(() => {
+    return () => { if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); };
+  }, []);
+
+  // Fetch facilities for the building form
+  useEffect(() => {
+    setFacilitiesLoading(true);
+    api.get("/schools/facilities")
+      .then(res => setAvailableFacilities(res.data))
+      .catch(err => console.error("Failed to fetch facilities", err))
+      .finally(() => setFacilitiesLoading(false));
+  }, []);
+
+  // ── Basemap URL Helper ────────────────────────────────────────────────────
+  const getBasemapUrl = useCallback((style: string) => {
+    const urls: any = {
+      satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       dark: "https://{a-c}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-      // Google Street style (standard OSM as reliable fallback)
-      street: "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
-    })[style];
+      street: "https://{a-c}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      nsdi: "https://geodata.rw/geoserver/gwc/service/wmts?layer=rwanda:orto_2008&style=&tilematrixset=EPSG:900913&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/png&TileMatrix=EPSG:900913:{z}&TileCol={x}&TileRow={y}",
+      google: "https://mt{0-3}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+    };
+    return urls[style] || urls.google;
+  }, []);
 
-  // Switch basemap
-  const switchBasemap = useCallback(
-    (style: "satellite" | "dark" | "street") => {
-      setBasemapStyle(style);
-      const layer = basemapLayerRef.current;
-      if (layer) {
-        (layer.getSource() as XYZ).setUrl(getBasemapUrl(style));
-      }
-      // Show/hide label overlay only for satellite
-      basemapLabelLayerRef.current?.setVisible(style === "satellite");
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+  // ── Hooks ──────────────────────────────────────────────────────────────────
+  const { mapRef, mapReady, basemapLayerRef, basemapLabelLayerRef, blocksLayerRef, annotationLayerRef, ghostLayerRef, hoverLayerRef, selectedLayerRef } = useMapSetup({
+    containerRef, fallbackLocation, onSelectBuilding, effectiveBuildings, setCurrentLat, setCurrentLng,
+    setActiveBlock, setIsBlockInspectorOpen, setSelectedFeatureName, setInfoFeature, getBasemapUrl,
+    isDrawingRef,
+    blockOverlayRef, measureSourceRef, kmlLayerRef, geojsonLayerRef, placesLayerRef,
+    pickerMode,
+    onPickerSelect: (building: any) => {
+      setPickerSelected(building);
     },
-    [],
-  );
+    onAnnotationHover: (ann, x, y) => {
+      setAnnotationTooltip(ann ? { ann, x, y } : null);
+    },
+  });
 
-  // Update KMZ ground overlay opacity
+  useKmzLoader({
+    mapRef, mapReady, kmzUrl, tifUrl, schoolId: school.id, kmzOpacity, visuals,
+    setIsLoading, setLoadingMessage, setLoadingProgress, setIsTileLoading, setDecodingCount, setFeatures,
+    kmlLayerRef, groundOverlayLayersRef, overlayExtentRef
+  });
+
+  // Keep manifest and initial visibility in sync when kmz finishes loading
   useEffect(() => {
-    groundOverlayLayersRef.current.forEach((l) => l.setOpacity(kmzOpacity));
-  }, [kmzOpacity]);
-
-  // Fit to KMZ overlay extent
-  const fitToKmzExtent = useCallback(() => {
-    if (overlayExtentRef.current && mapRef.current) {
-      mapRef.current.getView().fit(overlayExtentRef.current, {
-        padding: [60, 60, 60, 60],
-        duration: 600,
-      });
+    if (features.length > 0 || (groundOverlayLayersRef.current.length > 0)) {
+       setManifest(school.kmz2dManifest);
+       const initial = new Set<number>();
+       (school.kmz2dManifest?.groundOverlays || []).forEach((_: any, i: number) => initial.add(i));
+       setVisibleLayers(initial);
     }
-  }, []);
+  }, [features, school.kmz2dManifest]);
 
-  // Export map as PNG
-  const exportMapPng = useCallback(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    map.once("rendercomplete", () => {
-      const canvas = document.createElement("canvas");
-      const size = map.getSize()!;
-      canvas.width = size[0];
-      canvas.height = size[1];
-      const ctx = canvas.getContext("2d")!;
-      Array.from(
-        document.querySelectorAll(
-          ".ol-layer canvas",
-        ) as NodeListOf<HTMLCanvasElement>,
-      ).forEach((c) => {
-        if (c.width > 0) {
-          ctx.globalAlpha = parseFloat(c.style.opacity) || 1;
-          ctx.drawImage(c, 0, 0);
-        }
-      });
-      const link = document.createElement("a");
-      link.href = canvas.toDataURL();
-      link.download = `school-map-${Date.now()}.png`;
-      link.click();
-    });
-    map.renderSync();
-  }, []);
-
-  // ── Map initialisation ──────────────────────────────────────────────────
+  // Sync Layer Visibility to OpenLayers
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-
-    const basemapSrc = new XYZ({
-      url: getBasemapUrl("satellite"),
-      attributions: "© Google, DigitalGlobe",
-      maxZoom: 23,
-      crossOrigin: "anonymous",
+    groundOverlayLayersRef.current.forEach((layer, idx) => {
+       layer.setVisible(visibleLayers.has(idx));
     });
-    const basemap = new TileLayer({
-      source: basemapSrc,
-      zIndex: 0,
-      preload: Infinity, // Preload lower-res tiles for smoothness
-    });
-    basemapLayerRef.current = basemap;
+  }, [visibleLayers]);
 
-    const labelSrc = new XYZ({
-      url: "https://mt1.google.com/vt/lyrs=h&x={x}&y={y}&z={z}",
-      maxZoom: 23,
-      crossOrigin: "anonymous",
-    });
-    const labelLayer = new TileLayer({
-      source: labelSrc,
-      zIndex: 1,
-      opacity: 0.9,
-      preload: Infinity,
-    });
-    basemapLabelLayerRef.current = labelLayer;
-
-    const measureSource = measureSourceRef.current;
-    const measureLayer = new VectorLayer({
-      source: measureSource,
-      style: measureStyle,
-      zIndex: 50,
-    });
-    measureLayerRef.current = measureLayer;
-
-    const map = new OLMap({
-      target: containerRef.current,
-      layers: [basemap, labelLayer, measureLayer],
-      view: new View({
-        center: fromLonLat([fallbackLocation.lng, fallbackLocation.lat]),
-        zoom: 19,
-        maxZoom: 25,
-      }),
-      controls: [],
-    });
-
-    map.addControl(new ScaleLine({ units: "metric" }));
-
-    // Pointer move → telemetry HUD
-    map.on("pointermove", (evt: any) => {
-      if (evt.dragging) return;
-      const [lng, lat] = toLonLat(evt.coordinate);
-      setCurrentLat(lat);
-      setCurrentLng(lng);
-    });
-
-    // Click → feature selection
-    map.on("click", (evt: any) => {
-      if (activeDrawRef.current) return; // don't select while drawing
-      let found = false;
-      map.forEachFeatureAtPixel(
-        evt.pixel,
-        (f: any, layer: any) => {
-          if (found) return;
-          if (
-            layer !== kmlLayerRef.current &&
-            layer !== geojsonLayerRef.current &&
-            layer !== placesLayerRef.current
-          )
-            return;
-          const feat = f as Feature;
-          const name = getFeatureName(feat);
-          const description = getFeatureDescription(feat);
-
-          // Reset previous selection
-          if (
-            selectedFeatureRef.current &&
-            selectedFeatureRef.current !== feat
-          ) {
-            selectedFeatureRef.current.setStyle(undefined);
-          }
-          feat.setStyle(kmlSelectedStyle);
-          selectedFeatureRef.current = feat;
-          setSelectedFeatureName(name ?? null);
-          setInfoFeature(name ? { name, description } : null);
-
-          // Try matching a building
-          if (name && onSelectBuilding) {
-            const building = effectiveBuildings.find(
-              (b: any) =>
-                b.name?.toLowerCase() === name.toLowerCase() ||
-                b.code?.toLowerCase() === name.toLowerCase(),
-            );
-            if (building) onSelectBuilding(building);
-          }
-          found = true;
-        },
-        { hitTolerance: 6 },
-      );
-      if (!found) {
-        if (selectedFeatureRef.current) {
-          selectedFeatureRef.current.setStyle(undefined);
-          selectedFeatureRef.current = null;
-        }
-        setSelectedFeatureName(null);
-        setInfoFeature(null);
-      }
-    });
-
-    // Tooltip overlay for measurements
-    if (tooltipRef.current) {
-      const overlay = new Overlay({
-        element: tooltipRef.current,
-        offset: [0, -15],
-        positioning: "bottom-center",
-      });
-      map.addOverlay(overlay);
-      tooltipOverlayRef.current = overlay;
+  // Sync places overlay visibility
+  useEffect(() => {
+    if (placesLayerRef.current) {
+      placesLayerRef.current.setVisible(showPlacesOverlay);
     }
-
-    mapRef.current = map;
-
-    return () => {
-      cleanupKmzRef.current?.();
-      groundOverlayLayersRef.current.forEach((l) => map.removeLayer(l));
-      groundOverlayLayersRef.current = [];
-      map.setTarget(undefined);
-      mapRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ── Load KML/KMZ ────────────────────────────────────────────────────────
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const loadGroundOverlays = (overlays: GroundOverlayData[]) => {
-      groundOverlayLayersRef.current.forEach((l) => map.removeLayer(l));
-      groundOverlayLayersRef.current = [];
-
-      if (overlays.length === 0) return null;
-
-      const sorted = [...overlays].sort((a, b) => a.drawOrder - b.drawOrder);
-
-      // ── Bounding extent (sync — loadKml needs it immediately to fit the view) ──
-      let minX = Infinity,
-        minY = Infinity,
-        maxX = -Infinity,
-        maxY = -Infinity;
-      for (const ov of sorted) {
-        const ext = transformExtent(
-          [ov.west, ov.south, ov.east, ov.north],
-          "EPSG:4326",
-          "EPSG:3857",
-        );
-        if (ext[0] < minX) minX = ext[0];
-        if (ext[1] < minY) minY = ext[1];
-        if (ext[2] > maxX) maxX = ext[2];
-        if (ext[3] > maxY) maxY = ext[3];
-      }
-
-      // ── Group by drawOrder so overlapping images paint in the correct order ──
-      const groupedByLevel = new Map<number, GroundOverlayData[]>();
-      for (const ov of sorted) {
-        if (!groupedByLevel.has(ov.drawOrder))
-          groupedByLevel.set(ov.drawOrder, []);
-        groupedByLevel.get(ov.drawOrder)!.push(ov);
-      }
-      const levels = Array.from(groupedByLevel.keys()).sort((a, b) => a - b);
-
-      // ImageBitmaps kept alive while layers are on the map
-      const bitmaps: Map<string, ImageBitmap> = new Map();
-      const thumbs: Map<string, ImageBitmap> = new Map();
-      const pendingDecodes: Map<string, Promise<void>> = new Map();
-      const tileGrid = createXYZ({ maxZoom: 25, tileSize: 256 });
-
-      // ── Progressive async loader (fire-and-forget) ────────────────────────
-      const loadLevels = async () => {
-        setIsTileLoading(true);
-        const totalImages =
-          Array.from(groupedByLevel.values()).reduce(
-            (sum, arr) => sum + arr.length,
-            0,
-          ) || 1;
-        let imagesDecoded = 0;
-        const startTime = Date.now();
-
-        const fetchWithRetry = async (
-          url: string,
-          retries = 2,
-        ): Promise<Blob> => {
-          for (let i = 0; i <= retries; i++) {
-            try {
-              const res = await fetch(url);
-              if (!res.ok) throw new Error(`HTTP ${res.status}`);
-              return await res.blob();
-            } catch (err) {
-              if (i === retries) throw err;
-              await new Promise((r) => setTimeout(r, 1000 * (i + 1))); // Exponential backoff
-            }
-          }
-          throw new Error("Failed after retries");
-        };
-
-        for (const level of levels) {
-          if (!mapRef.current) return;
-          const map = mapRef.current;
-          const batch = groupedByLevel.get(level) ?? [];
-
-          for (const ov of batch) {
-            if (!mapRef.current) return;
-
-            // Geographic extent of this overlay in EPSG:3857
-            const ovExt = transformExtent(
-              [ov.west, ov.south, ov.east, ov.north],
-              "EPSG:4326",
-              "EPSG:3857",
-            ) as [number, number, number, number];
-
-            // ─────────────────────────────────────────────────────────────────
-            // CASE A: Cloud Optimized GeoTIFF (Highest Performance)
-            // ─────────────────────────────────────────────────────────────────
-            const isTif =
-              ov.imageUrl.toLowerCase().endsWith(".tif") ||
-              ov.imageUrl.toLowerCase().endsWith(".tiff");
-
-            if (isTif) {
-              const source = new GeoTIFFSource({
-                sources: [{ url: ov.imageUrl }],
-                wrapX: false,
-                interpolate: true,
-              });
-
-              const layer = new WebGLTileLayer({
-                source,
-                zIndex: 5 + level,
-                opacity: kmzOpacity,
-                extent: ovExt,
-                preload: Infinity,
-              });
-
-              map.addLayer(layer);
-              groundOverlayLayersRef.current.push(layer);
-              continue; // Move to next overlay
-            }
-
-            // ─────────────────────────────────────────────────────────────────
-            // CASE B: Standard Image (JPG/PNG) - Optimized with Lazy Decoding
-            // ─────────────────────────────────────────────────────────────────
-            const [extW, extS, extE, extN] = ovExt;
-            const extWd = extE - extW;
-            const extHt = extN - extS;
-
-            const source = new DataTile({
-              tileGrid,
-              tileSize: 256,
-              interpolate: true,
-              wrapX: false,
-              loader: async (
-                z: number,
-                x: number,
-                y: number,
-              ): Promise<ImageBitmap> => {
-                const te = tileGrid.getTileCoordExtent([z, x, y]);
-                const ix = getIntersection(te, ovExt);
-
-                if (isExtentEmpty(ix)) {
-                  const canvas = new OffscreenCanvas(256, 256);
-                  return canvas.transferToImageBitmap();
-                }
-
-                const createTileFromBitmap = (
-                  bm: ImageBitmap,
-                  tbm?: ImageBitmap | null,
-                ) => {
-                  const [ixW, ixS, ixE, ixN] = ix;
-                  const [tW, tS, tE, tN] = te;
-                  const tileWd = tE - tW;
-                  const tileHt = tN - tS;
-
-                  const dstX = ((ixW - tW) / tileWd) * 256;
-                  const dstY = ((tN - ixN) / tileHt) * 256;
-                  const dstW = ((ixE - ixW) / tileWd) * 256;
-                  const dstH = ((ixN - ixS) / tileHt) * 256;
-
-                  const fullSrcW = ((ixE - ixW) / extWd) * bm.width;
-                  let chosenBm = bm;
-
-                  // Use thumbnail if downsampling aggressively
-                  if (tbm && fullSrcW > dstW * 4) {
-                    chosenBm = tbm;
-                  }
-
-                  const srcX = ((ixW - extW) / extWd) * chosenBm.width;
-                  const srcY = ((extN - ixN) / extHt) * chosenBm.height;
-                  const srcW = ((ixE - ixW) / extWd) * chosenBm.width;
-                  const srcH = ((ixN - ixS) / extHt) * chosenBm.height;
-
-                  const canvas = new OffscreenCanvas(256, 256);
-                  const ctx = canvas.getContext("2d")!;
-                  ctx.imageSmoothingEnabled = true;
-                  ctx.imageSmoothingQuality = "high";
-                  ctx.drawImage(
-                    chosenBm,
-                    srcX,
-                    srcY,
-                    srcW,
-                    srcH,
-                    dstX,
-                    dstY,
-                    dstW,
-                    dstH,
-                  );
-                  return canvas.transferToImageBitmap();
-                };
-
-                // 1. Check if bitmap is already decoded
-                let existing = bitmaps.get(ov.imageUrl);
-                if (existing) {
-                  return createTileFromBitmap(
-                    existing,
-                    thumbs.get(ov.imageUrl),
-                  );
-                }
-
-                // 2. Not decoded? Check for a pending decode promise
-                let pending = pendingDecodes.get(ov.imageUrl);
-                if (!pending) {
-                  // 3. Start a new decode task
-                  pending = (async () => {
-                    try {
-                      setDecodingCount((prev) => prev + 1);
-                      const blob = await fetchWithRetry(ov.imageUrl);
-                      const bm = await createImageBitmap(blob);
-                      bitmaps.set(ov.imageUrl, bm);
-
-                      imagesDecoded++;
-                      const progress = Math.min(
-                        98,
-                        80 + (imagesDecoded / totalImages) * 18,
-                      );
-                      setLoadProgress(progress);
-
-                      // TTC Heuristic: (avg time per image) * (remaining images)
-                      const elapsed = (Date.now() - startTime) / 1000;
-                      const avgTime = elapsed / imagesDecoded;
-                      const remaining = totalImages - imagesDecoded;
-                      setEstimatedSeconds(Math.ceil(avgTime * remaining));
-
-                      // Create thumbnail for overview levels
-                      if (bm.width > 2048 || bm.height > 2048) {
-                        const scale = 1024 / Math.max(bm.width, bm.height);
-                        const tbm = await createImageBitmap(bm, {
-                          resizeWidth: Math.round(bm.width * scale),
-                          resizeHeight: Math.round(bm.height * scale),
-                          resizeQuality: "high",
-                        });
-                        thumbs.set(ov.imageUrl, tbm);
-                      }
-                    } catch (err) {
-                      console.error(
-                        `[Pool] Failed to decode ${ov.imageUrl}:`,
-                        err,
-                      );
-                      // Clear pending so we can try again later if needed
-                      pendingDecodes.delete(ov.imageUrl);
-                      throw err;
-                    } finally {
-                      setDecodingCount((prev) => Math.max(0, prev - 1));
-                    }
-                  })();
-                  pendingDecodes.set(ov.imageUrl, pending);
-                }
-
-                // 4. Wait for the pending decode to complete (either first attempt or subsequent)
-                try {
-                  await pending;
-                  existing = bitmaps.get(ov.imageUrl);
-                  if (existing) {
-                    return createTileFromBitmap(
-                      existing,
-                      thumbs.get(ov.imageUrl),
-                    );
-                  }
-                } catch (err) {
-                  // Fallback to empty if both attempts failed
-                }
-
-                const canvas = new OffscreenCanvas(256, 256);
-                return canvas.transferToImageBitmap();
-              },
-            });
-
-            const tileLayer = new TileLayer({
-              source,
-              zIndex: 5 + level,
-              opacity: kmzOpacity,
-              extent: ovExt,
-              preload: Infinity,
-            });
-
-            map.addLayer(tileLayer);
-            groundOverlayLayersRef.current.push(tileLayer);
-          }
-
-          await new Promise<void>((resolve) =>
-            requestAnimationFrame(() => resolve()),
-          );
-        }
-        mapRef.current?.once("rendercomplete", () => setIsTileLoading(false));
-      };
-
-      void loadLevels();
-
-      const prevCleanup = cleanupKmzRef.current;
-      cleanupKmzRef.current = () => {
-        prevCleanup?.();
-        bitmaps.forEach((b) => b.close());
-        thumbs.forEach((t) => t.close());
-        bitmaps.clear();
-        thumbs.clear();
-      };
-
-      return minX !== Infinity
-        ? ([minX, minY, maxX, maxY] as [number, number, number, number])
-        : null;
-    };
-
-    const loadKml = async (
-      kmlText: string,
-      groundOverlays?: GroundOverlayData[],
-    ) => {
-      const kmlFormat = new KML({ extractStyles: false });
-      let parsed: Feature[];
-      try {
-        parsed = kmlFormat.readFeatures(kmlText, {
-          featureProjection: "EPSG:3857",
-          dataProjection: "EPSG:4326",
-        }) as Feature[];
-      } catch {
-        parsed = [];
-      }
-
-      const source = new VectorSource({ features: parsed });
-      const layer = new VectorLayer({ source, style: kmlStyle, zIndex: 30 });
-      if (kmlLayerRef.current) map.removeLayer(kmlLayerRef.current);
-      map.addLayer(layer);
-      kmlLayerRef.current = layer;
-
-      // Ground overlay tiles take priority for extent fitting
-      const overlayExtent =
-        groundOverlays && groundOverlays.length > 0
-          ? loadGroundOverlays(groundOverlays)
-          : null;
-
-      const fitExtent =
-        overlayExtent ??
-        (() => {
-          const e = source.getExtent();
-          return e && e[0] !== Infinity
-            ? (e as [number, number, number, number])
-            : null;
-        })();
-
-      if (fitExtent) {
-        overlayExtentRef.current = fitExtent;
-        map.getView().fit(fitExtent, {
-          padding: [60, 60, 60, 60],
-          duration: 600,
-        });
-      }
-
-      // Collect named features for the navigator
-      const named = parsed
-        .map((f) => ({ name: getFeatureName(f), feature: f }))
-        .filter(
-          (item): item is { name: string; feature: Feature } => !!item.name,
-        );
-      setFeatures((prev) => {
-        const current = new Map(prev.map((p) => [p.name, p]));
-        named.forEach((n) => current.set(n.name, n));
-        return Array.from(current.values());
-      });
-      setIsLoading(false);
-    };
-
-    const run = async () => {
-      // Prioritize direct GeoTIFF if available
-      if (tifUrl) {
-        setLoadingMessage("Initialising high-res GeoTIFF…");
-        loadGroundOverlays([
-          {
-            north: 90,
-            south: -90,
-            east: 180,
-            west: -180, // Extent will be derived from metadata usually
-            imageUrl: tifUrl,
-            drawOrder: 0,
-          },
-        ]);
-      }
-
-      if (kmzUrl) {
-        setLoadingMessage("Fetching spatial data…");
-        try {
-          const res = await fetch(kmzUrl);
-          const contentType = res.headers.get("content-type") ?? "";
-          const isZip =
-            kmzUrl.toLowerCase().endsWith(".kmz") ||
-            contentType.includes("zip") ||
-            contentType.includes("kmz");
-
-          if (isZip) {
-            const blob = await res.blob();
-            const file = new File([blob], "data.kmz", { type: blob.type });
-            cleanupKmzRef.current?.();
-            const unpacked = await unpackKmzFile(file, (p) => {
-              setLoadProgress(p);
-              setLoadingMessage("Unpacking spatial assets…");
-            });
-            cleanupKmzRef.current = unpacked.cleanup;
-
-            // Collect GroundOverlay tiles from ALL KML files in the archive
-            const allOverlays: GroundOverlayData[] = [];
-            for (const kmlText of unpacked.allKmlTexts.values()) {
-              allOverlays.push(...parseGroundOverlaysFromKml(kmlText));
-            }
-
-            await loadKml(
-              unpacked.kmlText,
-              allOverlays.length > 0 ? allOverlays : undefined,
-            );
-          } else {
-            const text = await res.text();
-            await loadKml(text);
-          }
-        } catch (err) {
-          console.error("[School2DViewer] KML fetch failed", err);
-          setIsLoading(false);
-        }
-        return;
-      }
-
-      // No spatial file — just centre on fallback
-      setIsLoading(false);
-    };
-
-    run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kmzUrl, tifUrl]);
-
-  // ── Load GeoJSON ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !geojson) return;
-
-    try {
-      const gjFormat = new GeoJSONFormat();
-      const parsed = gjFormat.readFeatures(geojson, {
-        featureProjection: "EPSG:3857",
-        dataProjection: "EPSG:4326",
-      }) as Feature[];
-
-      const source = new VectorSource({ features: parsed });
-      const layer = new VectorLayer({ source, style: geojsonStyle, zIndex: 8 });
-
-      if (geojsonLayerRef.current) map.removeLayer(geojsonLayerRef.current);
-      map.addLayer(layer);
-      geojsonLayerRef.current = layer;
-    } catch (err) {
-      console.error("[School2DViewer] GeoJSON load failed", err);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [geojson]);
-
-  // ── Load Places Overlay ──────────────────────────────────────────────────
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const loadPlaces = async (kmlText: string) => {
-      const kmlFormat = new KML({ extractStyles: false });
-      let parsed: Feature[];
-      try {
-        parsed = kmlFormat.readFeatures(kmlText, {
-          featureProjection: "EPSG:3857",
-          dataProjection: "EPSG:4326",
-        }) as Feature[];
-      } catch {
-        parsed = [];
-      }
-      const source = new VectorSource({ features: parsed });
-      const layer = new VectorLayer({
-        source,
-        style: placesStyleFunction,
-        zIndex: 40,
-        visible: showPlacesOverlay,
-      });
-      if (placesLayerRef.current) map.removeLayer(placesLayerRef.current);
-      map.addLayer(layer);
-      placesLayerRef.current = layer;
-
-      const named = parsed
-        .map((f) => ({ name: getFeatureName(f), feature: f }))
-        .filter(
-          (item): item is { name: string; feature: Feature } => !!item.name,
-        );
-      setFeatures((prev) => {
-        const current = new Map(prev.map((p) => [p.name, p]));
-        named.forEach((n) => current.set(n.name, n));
-        return Array.from(current.values());
-      });
-    };
-
-    if (
-      effectivePlacesOverlay?.features ||
-      effectivePlacesOverlay?.type === "FeatureCollection"
-    ) {
-      // GeoJSON format
-      try {
-        const gjFormat = new GeoJSONFormat();
-        const parsed = gjFormat.readFeatures(effectivePlacesOverlay, {
-          featureProjection: "EPSG:3857",
-          dataProjection: "EPSG:4326",
-        }) as Feature[];
-        const source = new VectorSource({ features: parsed });
-        const layer = new VectorLayer({
-          source,
-          style: placesStyleFunction,
-          zIndex: 40,
-          visible: showPlacesOverlay,
-        });
-        if (placesLayerRef.current) map.removeLayer(placesLayerRef.current);
-        map.addLayer(layer);
-        placesLayerRef.current = layer;
-
-        const named = parsed
-          .map((f) => ({ name: getFeatureName(f), feature: f }))
-          .filter(
-            (item): item is { name: string; feature: Feature } => !!item.name,
-          );
-        setFeatures((prev) => {
-          const current = new Map(prev.map((p) => [p.name, p]));
-          named.forEach((n) => current.set(n.name, n));
-          return Array.from(current.values());
-        });
-      } catch (err) {
-        console.error("[School2DViewer] Places overlay GeoJSON failed", err);
-      }
-      return;
-    }
-
-    if (placesOverlayUrl) {
-      fetch(placesOverlayUrl)
-        .then((r) => r.text())
-        .then(loadPlaces)
-        .catch((err) =>
-          console.error("[School2DViewer] Places overlay fetch failed", err),
-        );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectivePlacesOverlay, placesOverlayUrl]);
-
-  // ── Toggle places visibility ─────────────────────────────────────────────
-  useEffect(() => {
-    placesLayerRef.current?.setVisible(showPlacesOverlay);
   }, [showPlacesOverlay]);
 
-  // ── Measurement interaction ──────────────────────────────────────────────
-  const stopDraw = useCallback(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    if (activeDrawRef.current) {
-      map.removeInteraction(activeDrawRef.current);
-      activeDrawRef.current = null;
+  const handleSaveSiteAnnotation = async (payload: any) => {
+    try {
+      const res = await api.post(`/schools/${school.id}/kmz/2d/site-annotations`, payload);
+      if (res.data) {
+        setSiteAnnotations((prev: any[]) => [...prev, res.data]);
+        showToast("Annotation added successfully.", "success");
+      }
+    } catch (err: any) {
+      console.error("Failed to add site annotation", err);
+      showToast("Failed to add site annotation.", "warning");
     }
-  }, []);
+  };
 
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
+  useMapInteractions({
+    mapRef, mapReady, activeTool, setActiveTool, measurementMode, setMeasureResult,
+    tooltipOverlayRef, measureSourceRef, activeBlock,
+    handleSaveBuilding: async (d) => handleSaveBuilding(d),
+    handleSaveSiteAnnotation,
+    onAnnotationReady: (pending) => setPendingAnnotation(pending),
+    setDrawerBuilding, setDrawerOpen,
+    hoverLayerRef, selectedLayerRef, blocksLayerRef, kmlLayerRef, geojsonLayerRef, placesLayerRef, annotationLayerRef,
+    isDrawingRef,
+  });
 
-    stopDraw();
-    if (measurementMode === "none") {
-      setMeasureResult(null);
-      tooltipOverlayRef.current?.setPosition(undefined);
-      return;
+  const { setBuildings: setHookBuildings } = useSpatialDataSync({
+    mapRef,
+    mapReady,
+    schoolId: school.id,
+    blocksLayerRef,
+    annotationLayerRef,
+    effectivePlacesOverlay,
+    placesOverlayUrl,
+    showPlacesOverlay,
+    placesLayerRef,
+    geojson,
+    geojsonLayerRef,
+    onBuildingsLoaded: (b) => setSchoolBuildings(b),
+    siteAnnotations,
+  });
+
+  const { flyToFeature, exportPng } = useMapMethods({
+    mapRef, selectedFeatureRef: mapSelectedFeatureRef, setSelectedFeatureName
+  });
+
+  // ── Callbacks ─────────────────────────────────────────────────────────────
+  const switchBasemap = useCallback((style: any) => {
+    setBasemapStyle(style);
+    const layer = basemapLayerRef.current;
+    if (layer) {
+      if (style !== "ghost" && style !== "offline") {
+        layer.setVisible(true);
+        const url = getBasemapUrl(style);
+        const source = layer.getSource();
+        if (source) {
+          source.setUrl(url);
+          source.refresh();
+        }
+      } else {
+        layer.setVisible(false);
+      }
     }
+    ghostLayerRef.current?.setVisible(style === "ghost" || style === "offline");
+    basemapLabelLayerRef.current?.setVisible(style === "satellite" || style === "nsdi");
+  }, [getBasemapUrl, basemapLayerRef, ghostLayerRef, basemapLabelLayerRef]);
 
-    const type = measurementMode === "distance" ? "LineString" : "Polygon";
-    const draw = new Draw({
-      source: measureSourceRef.current,
-      type,
-      style: measureStyle,
-    });
+  const handleSaveBuilding = async (data: BuildingData) => {
+    try {
+      setIsSaving(true);
+      setSaveError(null);
+      
+      const isNew = typeof data.id === "string" && data.id.startsWith("new-");
+      const method = isNew ? "post" : "patch";
+      const url = isNew ? `/schools/${school.id}/buildings` : `/schools/buildings/${data.id}`;
+      
+      const payload = {
+        name: data.buildingName,
+        code: data.buildingCode,
+        function: data.buildingFunction,
+        floors: parseInt(String(data.buildingFloors)) || 0,
+        area: parseFloat(String(data.buildingArea)) || 0,
+        yearBuilt: parseInt(String(data.buildingYearBuilt)) || 0,
+        condition: data.buildingCondition,
+        roofCondition: data.buildingRoofCondition,
+        structuralScore: parseFloat(String(data.buildingStructuralScore)) || 0,
+        notes: data.buildingNotes || "",
+        latitude: data.geolocation.latitude,
+        longitude: data.geolocation.longitude,
+        annotations: (data.annotations || []).filter(
+          (a): a is NonNullable<typeof a> => 
+            a !== null && typeof a === 'object' && !Array.isArray(a)
+        ),
+        media: data.media || [],
+        facilities: (data.facilities || []).map(f => ({
+          facility_id: f.facility_id,
+          facility_name: f.facility_name,
+          number_of_rooms: parseInt(String(f.number_of_rooms)) || 0
+        })),
+      };
 
-    draw.on("drawstart", () => {
-      measureSourceRef.current.clear();
-      setMeasureResult(null);
-      tooltipOverlayRef.current?.setPosition(undefined);
-    });
+      const response = await api[method](url, payload);
+      if (response.data) {
+        const saved = response.data;
+        const mappedSaved: BuildingData = {
+           ...saved,
+           buildingName: saved.name || saved.buildingName || saved.buildingCode || "",
+           buildingCode: saved.buildingCode || saved.code || "",
+           buildingFunction: saved.function || saved.buildingFunction || "",
+           buildingFloors: String(saved.floors || saved.buildingFloors || ""),
+           buildingArea: String(saved.areaSquareMeters || saved.area || saved.buildingArea || ""),
+           buildingYearBuilt: String(saved.yearBuilt || saved.buildingYearBuilt || ""),
+           buildingCondition: saved.condition || saved.buildingCondition,
+           buildingRoofCondition: saved.roofCondition || saved.buildingRoofCondition,
+           buildingStructuralScore: String(saved.structuralScore || ""),
+           buildingNotes: saved.notes || "",
+           geolocation: { 
+             latitude: saved.centroidLat !== undefined ? parseFloat(String(saved.centroidLat)) : saved.geolocation?.latitude,
+             longitude: saved.centroidLng !== undefined ? parseFloat(String(saved.centroidLng)) : saved.geolocation?.longitude
+           },
+           facilities: saved.facilities || [],
+           annotations: saved.annotations || data.annotations || []
+        };
 
-    draw.on("drawend", (evt) => {
-      const geom = evt.feature.getGeometry();
+        setSchoolBuildings(prev => isNew ? [...prev, mappedSaved] : prev.map(bg => bg.id === mappedSaved.id ? mappedSaved : bg));
+        if (activeBlock?.id === data.id || isNew) setActiveBlock(mappedSaved);
+        setDrawerOpen(false);
+        showToast(`Building "${mappedSaved.buildingName}" saved successfully.`, "success");
+      }
+    } catch (err: any) { 
+      console.error("Failed to save building", err);
+      const msg = err.response?.data?.message;
+      const errorMsg = Array.isArray(msg) ? msg.join(", ") : (msg || "An unexpected error occurred while saving the building.");
+      setSaveError(errorMsg);
+      showToast("Failed to save building.", "warning");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  const handleDeleteBuilding = async (id: string) => {
+    try {
+      await api.delete(`/schools/buildings/${id}`);
+      setSchoolBuildings((prev) => prev.filter((b) => b.id !== id));
+      setHookBuildings((prev) => prev.filter((b) => b.id !== id));
+      if (activeBlock?.id === id) {
+        setIsBlockInspectorOpen(false);
+        setActiveBlock(null);
+      }
+      showToast("Building deleted successfully.", "success");
+    } catch (err: any) {
+      console.error("Failed to delete building", err);
+      showToast("Failed to delete building. Check logs.", "warning");
+    }
+  };
+
+  const handleSaveMeasurement = async () => {
+    if (!measureResult) return;
+    try {
+      const features = measureSourceRef.current.getFeatures();
+      if (features.length === 0) return;
+      
+      const feat = features[0];
+      const geom = feat.getGeometry();
       if (!geom) return;
 
-      let result = "";
-      let tooltipPos: number[] | undefined;
+      const typeMap: any = { 'LineString': 'line', 'Polygon': 'polygon', 'Point': 'point' };
+      const type = typeMap[geom.getType()] || 'point';
+      
+      let coords = (geom as any).getCoordinates();
+      if (type === 'point') coords = toLonLat(coords);
+      else if (type === 'line') coords = coords.map((c: any) => toLonLat(c));
+      else if (type === 'polygon') coords = coords[0].map((c: any) => toLonLat(c));
 
-      if (geom instanceof LineString) {
-        const cloned = geom
-          .clone()
-          .transform("EPSG:3857", "EPSG:4326") as LineString;
-        result = formatLength(getLength(cloned));
-        tooltipPos = geom.getLastCoordinate();
-      } else if (geom instanceof Polygon) {
-        const cloned = geom
-          .clone()
-          .transform("EPSG:3857", "EPSG:4326") as Polygon;
-        result = formatArea(getArea(cloned));
-        tooltipPos = geom.getInteriorPoint().getCoordinates();
+      const payload = {
+        id: `site-${Date.now()}`,
+        type,
+        label: measureResult,
+        coordinates: coords,
+        style: { color: measurementMode === 'area' ? '#fbbf24' : '#10b981' }
+      };
+
+      const res = await api.post(`/schools/${school.id}/kmz/2d/site-annotations`, payload);
+      if (res.data) {
+        setSiteAnnotations((prev: any[]) => [...prev, res.data]);
+        showToast("Measurement saved to map!", "success");
       }
+      
+      measureSourceRef.current.clear();
+      setMeasureResult(null);
+      setMeasurementMode("none");
+    } catch (err) {
+      console.error("Failed to save measurement", err);
+      showToast("Failed to save measurement.", "warning");
+    }
+  };
 
-      setMeasureResult(result);
-      if (tooltipPos) tooltipOverlayRef.current?.setPosition(tooltipPos);
-    });
+  const handleDeleteAnnotation = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this annotation?")) return;
+    try {
+      await api.delete(`/schools/${school.id}/kmz/2d/site-annotations/${id}`);
+      setSiteAnnotations((prev: any[]) => prev.filter((a: any) => a.id !== id));
+      showToast("Annotation removed.", "success");
+    } catch (err) {
+      console.error("Failed to delete annotation", err);
+      showToast("Failed to delete annotation.", "warning");
+    }
+  };
 
-    map.addInteraction(draw);
-    activeDrawRef.current = draw;
-
-    return () => stopDraw();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [measurementMode]);
-
-  // ── Navigator fly-to ─────────────────────────────────────────────────────
-  const flyToFeature = useCallback((feature: Feature) => {
+  // ── Overlay (runs once map is ready) ─────────────────────────────────────
+  useEffect(() => {
+    if (!mapReady) return;
     const map = mapRef.current;
     if (!map) return;
-    const geom = feature.getGeometry();
-    if (!geom) return;
-    const extent = geom.getExtent();
-    map.getView().fit(extent, {
-      padding: [80, 80, 80, 80],
-      duration: 600,
-      maxZoom: 20,
-    });
-    // Select it
-    if (selectedFeatureRef.current && selectedFeatureRef.current !== feature) {
-      selectedFeatureRef.current.setStyle(undefined);
+    
+    if (blockOverlayElementRef.current && !blockOverlayRef.current) {
+      const over = new Overlay({ 
+        element: blockOverlayElementRef.current, 
+        autoPan: { animation: { duration: 250 } }, 
+        positioning: "bottom-center", 
+        offset: [0, -10] 
+      });
+      map.addOverlay(over); 
+      blockOverlayRef.current = over;
     }
-    feature.setStyle(kmlSelectedStyle);
-    selectedFeatureRef.current = feature;
 
-    const name = getFeatureName(feature);
-    const description = getFeatureDescription(feature);
-    setSelectedFeatureName(name ?? null);
-    setInfoFeature(name ? { name, description } : null);
-  }, []);
+    return () => {
+      if (blockOverlayRef.current) {
+        map.removeOverlay(blockOverlayRef.current);
+        blockOverlayRef.current = null;
+      }
+    };
+  }, [mapReady]);
 
-  // ── Initial Focus ────────────────────────────────────────────────────────
   useEffect(() => {
-    if (
-      !initialBuildingId ||
-      isLoading ||
-      !mapRef.current ||
-      features.length === 0
-    )
-      return;
-
-    const target = features.find((f) => {
-      const bId = f.feature.get("id");
-      const name = f.feature.get("name")?.toString().toLowerCase();
-      // Try matching by ID or by name (since some KMLs use names as IDs)
-      return (
-        bId === initialBuildingId ||
-        name?.includes(initialBuildingId.toLowerCase())
-      );
-    });
-
-    if (target) {
-      flyToFeature(target.feature);
+    if (!initialBuildingId || schoolBuildings.length === 0 || !mapReady) return;
+    const b = schoolBuildings.find(sb => sb.id === initialBuildingId);
+    if (b && b.geolocation?.latitude && b.geolocation?.longitude) {
+      setTimeout(() => {
+        setActiveBlock(b); setIsBlockInspectorOpen(true);
+        const coord = fromLonLat([Number(b.geolocation.longitude), Number(b.geolocation.latitude)]);
+        blockOverlayRef.current?.setPosition(coord);
+        mapRef.current?.getView().animate({ center: coord, zoom: 21, duration: 800 });
+      }, 1000);
     }
-  }, [initialBuildingId, isLoading, features, flyToFeature]);
+  }, [initialBuildingId, schoolBuildings, mapReady]);
 
-  // ── Clear measurements ────────────────────────────────────────────────────
-  const clearMeasurements = useCallback(() => {
-    measureSourceRef.current.clear();
-    setMeasureResult(null);
-    tooltipOverlayRef.current?.setPosition(undefined);
-  }, []);
-
-  const filteredFeatures = features.filter((f) =>
-    f.name.toLowerCase().includes(searchQuery.toLowerCase()),
+  const renderToast = () => (
+    <AnimatePresence>
+      {toast.type && (
+        <motion.div
+          initial={{ opacity: 0, y: 50, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+          className={cn(
+            "fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-2xl shadow-2xl backdrop-blur-xl border flex items-center gap-3",
+            toast.type === "success"
+              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
+              : "bg-amber-500/10 border-amber-500/20 text-amber-500"
+          )}
+        >
+          {toast.type === "success" ? (
+            <CheckCircle2 className="w-5 h-5" />
+          ) : (
+            <AlertCircle className="w-5 h-5" />
+          )}
+          <span className="text-[10px] font-black uppercase tracking-widest leading-none">
+            {toast.message}
+          </span>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-[#0f1117] w-full h-full">
-      {/* ── Map container ─────────────────────────────────────────────────── */}
+      {renderToast()}
+
+      {/* Annotation Picker Modal */}
+      <AnnotationPickerModal
+        open={!!pendingAnnotation}
+        annotationType={pendingAnnotation?.type}
+        initialDescription={pendingAnnotation?.initialDescription}
+        onCancel={() => setPendingAnnotation(null)}
+        onConfirm={(iconType, title, description, mapColor) => {
+          if (!pendingAnnotation) return;
+          const finalAnn = {
+            ...pendingAnnotation,
+            icon: iconType,
+            title,
+            description,
+            label: title,     // kept for backward-compat display
+            content: title,
+            iconType,
+            style: { color: mapColor, iconType },
+            createdAt: new Date().toISOString(),
+          };
+          delete finalAnn.initialDescription;
+          if (pendingAnnotation.activeBlock) {
+            const updated = {
+              ...pendingAnnotation.activeBlock,
+              annotations: [...(pendingAnnotation.activeBlock.annotations || []), finalAnn],
+            };
+            handleSaveBuilding(updated);
+          } else {
+            handleSaveSiteAnnotation(finalAnn);
+          }
+          setPendingAnnotation(null);
+        }}
+      />
+
+      {/* Annotation Hover Tooltip */}
+      <AnimatePresence>
+        {annotationTooltip && (() => {
+          const ann = annotationTooltip.ann;
+          const iconType = ann.icon || ann.iconType || ann.style?.iconType || "pin";
+          const iconDef = ANNOTATION_ICONS.find(ic => ic.id === iconType) || ANNOTATION_ICONS[0];
+          const IconComp = iconDef.icon;
+          return (
+            <motion.div
+              key="ann-tooltip"
+              initial={{ opacity: 0, scale: 0.92, y: 6 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.88 }}
+              transition={{ duration: 0.15 }}
+              className="absolute z-100 pointer-events-none"
+              style={{ left: annotationTooltip.x + 14, top: annotationTooltip.y - 10 }}
+            >
+              <div className="max-w-[220px] bg-[#0f1117]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] px-3 py-2.5 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <div className={cn("p-1 rounded-lg border shrink-0", iconDef.bg, iconDef.border)}>
+                    <IconComp className={cn("w-3 h-3", iconDef.color)} />
+                  </div>
+                  <p className="text-[10px] font-black text-white uppercase tracking-wider leading-none truncate">
+                    {ann.title || ann.label}
+                  </p>
+                </div>
+                {ann.description && (
+                  <p className="text-[9px] text-white/50 font-medium leading-snug">
+                    {ann.description}
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+
       <div ref={containerRef} className="absolute inset-0" />
+      
+      <LoadingOverlay 
+        isLoading={isLoading} 
+        loadingProgress={loadingProgress} 
+        loadingMessage={loadingMessage} 
+        loadingStartTime={loadingStartTimeRef.current} 
+      />
 
-      {/* ── Floating Title & Info Button ──────────────────────────────────── */}
-      <div className="absolute top-6 left-1/2 -translate-x-1/2 z-40 pr-2 pl-6 py-2 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl flex items-center gap-4">
-        <h1 className="text-xl font-bold text-white tracking-wide truncate max-w-[250px] md:max-w-md">
-          {school.name}
-        </h1>
-        <Button
-          variant="secondary"
-          size="sm"
-          className="rounded-full bg-white/10 hover:bg-white/20 text-white border border-white/5 font-semibold"
-          onClick={() => setShowBasicInfo(true)}
-        >
-          <Info className="h-4 w-4 mr-1.5" />
-          Info
-        </Button>
-      </div>
-
-      {/* ── Tooltip overlay (OL uses DOM element) ────────────────────────── */}
-      <div
-        ref={tooltipRef}
-        className="pointer-events-none absolute rounded-lg bg-black/80 px-2 py-1 text-xs font-bold text-amber-300 border border-amber-400/30 whitespace-nowrap"
-        style={{ display: measureResult ? "block" : "none" }}
-      >
-        {measureResult}
-      </div>
-
-      {/* ── Background tile-loading indicator ───────────────────────────────── */}
-      {isTileLoading && !isLoading && (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full bg-black/70 backdrop-blur-sm px-3 py-1.5 border border-white/10 pointer-events-none">
-          <div className="flex items-center gap-0.5">
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className="h-1 w-1 rounded-full bg-blue-400 animate-bounce"
-                style={{ animationDelay: `${i * 0.12}s` }}
-              />
-            ))}
-          </div>
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-white/70">
-            Loading imagery…
-          </span>
-        </div>
-      )}
-
-      {/* ── Background Asset Stream HUD ────────────────────────────────────── */}
-      {(isTileLoading || decodingCount > 0) && !isLoading && (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2">
-          <div className="flex items-center gap-3 rounded-full bg-black/60 backdrop-blur-xl border border-white/10 px-4 py-2 shadow-2xl animate-in slide-in-from-bottom-4 duration-500">
-            <div className="flex items-center gap-1.5">
-              <div className="relative h-2 w-2">
-                <div className="absolute inset-0 rounded-full bg-blue-500 animate-ping" />
-                <div className="relative h-2 w-2 rounded-full bg-blue-500" />
-              </div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-white/90">
-                Streaming High-Res Assets
-              </span>
+      {/* ── Picker Mode Banner ───────────────────────────────────────────── */}
+      {pickerMode && (
+        <div className="absolute top-0 left-0 right-0 z-40 flex items-center justify-between px-6 py-3 bg-primary/90 backdrop-blur-md border-b border-white/10 shadow-lg">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center animate-pulse">
+              <MapPin className="w-4 h-4 text-white" />
             </div>
-            <div className="h-4 w-px bg-white/10" />
-            <div className="flex items-center gap-2">
-              <div className="h-1 w-24 rounded-full bg-white/10 overflow-hidden">
-                <div
-                  className="h-full bg-blue-500 transition-all duration-500 ease-out"
-                  style={{ width: `${loadProgress}%` }}
-                />
-              </div>
-              <span className="text-[9px] font-mono font-bold text-blue-300 w-8">
-                {Math.round(loadProgress)}%
-              </span>
-            </div>
-            {estimatedSeconds !== null && (
-              <>
-                <div className="h-4 w-px bg-white/10" />
-                <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest">
-                  TTC: {estimatedSeconds}s
-                </span>
-              </>
-            )}
-          </div>
-          {decodingCount > 0 && (
-            <p className="text-[9px] font-medium text-blue-400/60 tracking-wider uppercase animate-pulse">
-              Optimizing {decodingCount} texture clusters...
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* ── Modern SYNC Overlay (Only for initial KML/Data discovery) ────────── */}
-      {isLoading && (
-        <div className="absolute inset-0 z-[110] flex flex-col items-center justify-center bg-[#05070a]/95 backdrop-blur-2xl animate-out fade-out duration-700">
-          {/* Animated Background Scanner */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
-            <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-blue-500 to-transparent animate-scan" />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(37,99,235,0.05)_0%,transparent_70%)]" />
-          </div>
-
-          <div className="relative flex flex-col items-center max-w-sm w-full px-8">
-            {/* Progress Central Hub */}
-            <div className="relative mb-12">
-              {/* Outer Pulsing Rings */}
-              <div className="absolute -inset-8 rounded-full border border-blue-500/10 animate-ping [animation-duration:3s]" />
-              <div className="absolute -inset-16 rounded-full border border-blue-500/5 animate-ping [animation-duration:4s]" />
-
-              {/* Progress Ring */}
-              <svg className="h-32 w-32 -rotate-90">
-                <circle
-                  cx="64"
-                  cy="64"
-                  r="60"
-                  fill="transparent"
-                  stroke="rgba(255,255,255,0.05)"
-                  strokeWidth="4"
-                />
-                <circle
-                  cx="64"
-                  cy="64"
-                  r="60"
-                  fill="transparent"
-                  stroke="url(#progressGradient)"
-                  strokeWidth="4"
-                  strokeDasharray={377}
-                  strokeDashoffset={377 - (377 * loadProgress) / 100}
-                  strokeLinecap="round"
-                  className="transition-all duration-500 ease-out"
-                />
-                <defs>
-                  <linearGradient
-                    id="progressGradient"
-                    x1="0%"
-                    y1="0%"
-                    x2="100%"
-                    y2="100%"
-                  >
-                    <stop offset="0%" stopColor="#3b82f6" />
-                    <stop offset="100%" stopColor="#60a5fa" />
-                  </linearGradient>
-                </defs>
-              </svg>
-
-              {/* Central Icon/Percentage */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-2xl font-black text-white tracking-tighter">
-                  {Math.round(loadProgress)}%
-                </span>
-                <div className="flex gap-0.5 mt-1">
-                  {[0, 1, 2].map((i) => (
-                    <div
-                      key={i}
-                      className="h-1 w-1 rounded-full bg-blue-500 animate-bounce"
-                      style={{ animationDelay: `${i * 0.1}s` }}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Status Info */}
-            <div className="text-center space-y-4 w-full">
-              <div className="space-y-1">
-                <h3 className="text-sm font-black uppercase tracking-[0.2em] text-white/90">
-                  {decodingCount > 0 ? "Optimizing Assets" : "System Sync"}
-                </h3>
-                <p className="text-[11px] font-medium text-blue-400/80 tracking-widest uppercase animate-pulse">
-                  {loadingMessage}
-                </p>
-              </div>
-
-              {/* TTC Placeholder removed since it's in the background HUD now */}
-              <div className="pt-4 border-t border-white/5 flex items-center justify-between">
-                <div className="text-left">
-                  <p className="text-[9px] font-bold text-white/30 uppercase tracking-widest mb-0.5">
-                    Data Sync Status
-                  </p>
-                  <p className="text-xs font-mono font-bold text-blue-300">
-                    Synchronizing...
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[9px] font-bold text-white/30 uppercase tracking-widest mb-0.5">
-                    Connection
-                  </p>
-                  <p className="text-xs font-bold text-emerald-400">Stable</p>
-                </div>
-              </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-white/60">Picker Mode</p>
+              <p className="text-sm font-bold text-white">
+                {pickerSelected ? `Selected: ${pickerSelected.buildingName || "Building"}` : "Click a building on the map to select it"}
+              </p>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* ── Top-right toolbar ────────────────────────────────────────────── */}
-      <div className="absolute right-4 top-4 z-30 flex flex-col gap-2">
-        <Card className="bg-background/60 backdrop-blur-xl rounded-2xl border border-border/10 p-2 flex flex-col gap-1 shadow-xl">
-          {/* Close */}
-          {onClose && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-xl hover:bg-destructive/10 hover:text-destructive"
-              onClick={onClose}
-              title="Close viewer"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
-
-          {/* Feature navigator */}
-          <Button
-            variant={showNavigator ? "default" : "ghost"}
-            size="icon"
-            className="h-9 w-9 rounded-xl"
-            onClick={() => setShowNavigator((v) => !v)}
-            title="Feature navigator"
-          >
-            <Layers className="h-4 w-4" />
-          </Button>
-
-          {/* Places overlay toggle */}
-          <Button
-            variant={showPlacesOverlay ? "default" : "ghost"}
-            size="icon"
-            className={cn(
-              "h-9 w-9 rounded-xl",
-              showPlacesOverlay &&
-                "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30",
-            )}
-            onClick={() => setShowPlacesOverlay((v) => !v)}
-            title={
-              showPlacesOverlay ? "Hide places overlay" : "Show places overlay"
-            }
-          >
-            {showPlacesOverlay ? (
-              <Eye className="h-4 w-4" />
-            ) : (
-              <EyeOff className="h-4 w-4" />
-            )}
-          </Button>
-
-          {/* KMZ opacity */}
-          <Button
-            variant={showOpacitySlider ? "default" : "ghost"}
-            size="icon"
-            className="h-9 w-9 rounded-xl"
-            onClick={() => setShowOpacitySlider((v) => !v)}
-            title="KMZ layer opacity"
-          >
-            <SlidersHorizontal className="h-4 w-4" />
-          </Button>
-
-          <div className="h-px bg-border/20 mx-1" />
-
-          {/* Basemap: satellite */}
-          <Button
-            variant={basemapStyle === "satellite" ? "default" : "ghost"}
-            size="icon"
-            className="h-9 w-9 rounded-xl"
-            onClick={() => switchBasemap("satellite")}
-            title="Satellite basemap"
-          >
-            <Satellite className="h-4 w-4" />
-          </Button>
-
-          {/* Basemap: dark */}
-          <Button
-            variant={basemapStyle === "dark" ? "default" : "ghost"}
-            size="icon"
-            className="h-9 w-9 rounded-xl"
-            onClick={() => switchBasemap("dark")}
-            title="Dark basemap"
-          >
-            <Moon className="h-4 w-4" />
-          </Button>
-
-          {/* Basemap: street */}
-          <Button
-            variant={basemapStyle === "street" ? "default" : "ghost"}
-            size="icon"
-            className="h-9 w-9 rounded-xl"
-            onClick={() => switchBasemap("street")}
-            title="Street map"
-          >
-            <MapIcon2 className="h-4 w-4" />
-          </Button>
-
-          <div className="h-px bg-border/20 mx-1" />
-
-          {/* Distance measurement */}
-          <Button
-            variant={measurementMode === "distance" ? "default" : "ghost"}
-            size="icon"
-            className={cn(
-              "h-9 w-9 rounded-xl",
-              measurementMode === "distance" &&
-                "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30",
-            )}
-            onClick={() =>
-              setMeasurementMode((m) =>
-                m === "distance" ? "none" : "distance",
-              )
-            }
-            title="Measure distance"
-          >
-            <Ruler className="h-4 w-4" />
-          </Button>
-
-          {/* Area measurement */}
-          <Button
-            variant={measurementMode === "area" ? "default" : "ghost"}
-            size="icon"
-            className={cn(
-              "h-9 w-9 rounded-xl",
-              measurementMode === "area" &&
-                "bg-amber-500/20 text-amber-400 hover:bg-amber-500/30",
-            )}
-            onClick={() =>
-              setMeasurementMode((m) => (m === "area" ? "none" : "area"))
-            }
-            title="Measure area"
-          >
-            <Square className="h-4 w-4" />
-          </Button>
-
-          {/* Clear measurements */}
-          {measurementMode !== "none" && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-xl hover:bg-destructive/10 hover:text-destructive"
-              onClick={() => {
-                setMeasurementMode("none");
-                clearMeasurements();
-              }}
-              title="Clear measurements"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
-
-          <div className="h-px bg-border/20 mx-1" />
-
-          {/* Zoom in */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 rounded-xl"
-            onClick={() =>
-              mapRef.current?.getView().animate({
-                zoom: (mapRef.current.getView().getZoom() ?? 19) + 1,
-                duration: 200,
-              })
-            }
-            title="Zoom in"
-          >
-            <ZoomIn className="h-4 w-4" />
-          </Button>
-
-          {/* Zoom out */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 rounded-xl"
-            onClick={() =>
-              mapRef.current?.getView().animate({
-                zoom: (mapRef.current.getView().getZoom() ?? 19) - 1,
-                duration: 200,
-              })
-            }
-            title="Zoom out"
-          >
-            <ZoomOut className="h-4 w-4" />
-          </Button>
-
-          {/* Fit to KMZ extent */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 rounded-xl"
-            onClick={fitToKmzExtent}
-            title="Fit to school area"
-          >
-            <Home className="h-4 w-4" />
-          </Button>
-
-          {/* Export PNG */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 rounded-xl"
-            onClick={exportMapPng}
-            title="Export map as PNG"
-          >
-            <Download className="h-4 w-4" />
-          </Button>
-        </Card>
-      </div>
-
-      {/* ── Opacity slider panel ───────────────────────────────────────────── */}
-      {showOpacitySlider && (
-        <div className="absolute right-16 top-[72px] z-30 w-44">
-          <Card className="bg-background/70 backdrop-blur-xl rounded-2xl border border-border/10 shadow-xl p-4">
-            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-3">
-              KMZ Opacity
-            </p>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={kmzOpacity}
-              onChange={(e) => setKmzOpacity(parseFloat(e.target.value))}
-              className="w-full accent-blue-500"
-            />
-            <p className="text-center text-xs font-bold mt-1 text-blue-300">
-              {Math.round(kmzOpacity * 100)}%
-            </p>
-          </Card>
-        </div>
-      )}
-
-      {/* ── Feature navigator panel ───────────────────────────────────────── */}
-      {showNavigator && (
-        <div className="absolute left-4 top-4 z-30 w-72">
-          <Card className="bg-background/70 backdrop-blur-xl rounded-2xl border border-border/10 shadow-xl overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 pt-4 pb-2">
-              <div className="flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-blue-400" />
-                <span className="text-xs font-black uppercase tracking-widest">
-                  Features ({features.length})
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 rounded-full"
-                onClick={() => setShowNavigator(false)}
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
-
-            {/* Search */}
-            <div className="px-3 pb-2">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2 h-3 w-3 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Search features…"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full rounded-xl bg-muted/40 border border-border/20 pl-7 pr-3 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
-                />
-              </div>
-            </div>
-
-            {/* List */}
-            <div className="overflow-y-auto max-h-[380px] px-2 pb-3 space-y-0.5">
-              {filteredFeatures.length === 0 ? (
-                <p className="text-center text-xs text-muted-foreground py-6">
-                  No features found
-                </p>
-              ) : (
-                filteredFeatures.map(({ name, feature }) => (
-                  <button
-                    key={name}
-                    type="button"
-                    onClick={() => flyToFeature(feature)}
-                    className={cn(
-                      "w-full text-left rounded-xl px-3 py-2 text-xs transition-colors",
-                      selectedFeatureName === name
-                        ? "bg-primary/15 text-primary font-bold"
-                        : "hover:bg-muted/40 text-foreground/80",
-                    )}
-                  >
-                    {name}
-                  </button>
-                ))
-              )}
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* ── Feature info popup ────────────────────────────────────────────── */}
-      {infoFeature && (
-        <div className="absolute bottom-16 left-1/2 z-30 -translate-x-1/2 max-w-sm w-full px-4">
-          <div className="rounded-2xl bg-black/80 backdrop-blur-xl border border-white/10 px-4 py-3 shadow-2xl">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-2">
-                <Info className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
-                <div className="flex-1 overflow-auto max-h-[40vh] custom-scrollbar">
-                  <p className="text-xs font-bold text-white">
-                    {infoFeature.name}
-                  </p>
-                  {infoFeature.description && (
-                    <div
-                      className="text-[10px] text-white/80 mt-1 space-y-2 [&_table]:w-full [&_td]:py-1 [&_td:first-child]:font-semibold [&_td:first-child]:text-white/60"
-                      dangerouslySetInnerHTML={{
-                        __html: infoFeature.description,
-                      }}
-                    />
-                  )}
-                </div>
-              </div>
+          <div className="flex items-center gap-2">
+            {pickerSelected && (
               <button
                 onClick={() => {
-                  if (selectedFeatureRef.current) {
-                    selectedFeatureRef.current.setStyle(undefined);
-                    selectedFeatureRef.current = null;
-                  }
-                  setSelectedFeatureName(null);
-                  setInfoFeature(null);
+                  if (onPickerSelect) onPickerSelect(pickerSelected);
+                  if (onClose) onClose();
                 }}
-                className="text-muted-foreground hover:text-white transition-colors shrink-0 bg-white/5 rounded-full p-1 border border-white/10"
+                className="px-4 py-2 rounded-xl bg-white text-primary font-black text-xs uppercase tracking-widest hover:bg-white/90 transition-all shadow-lg"
               >
-                <X className="h-3.5 w-3.5" />
+                ✓ Confirm Selection
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Measurement mode banner ───────────────────────────────────────── */}
-      {measurementMode !== "none" && (
-        <div className="absolute top-4 left-1/2 z-30 -translate-x-1/2">
-          <div className="flex items-center gap-2 rounded-2xl bg-amber-500/15 backdrop-blur-xl border border-amber-400/30 px-4 py-2 shadow-xl">
-            {measurementMode === "distance" ? (
-              <Ruler className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-            ) : (
-              <Square className="h-3.5 w-3.5 text-amber-400 shrink-0" />
             )}
-            <span className="text-xs font-bold text-amber-300">
-              {measurementMode === "distance"
-                ? "Click to draw line — double-click to finish"
-                : "Click to draw polygon — double-click to finish"}
-            </span>
-            {measureResult && (
-              <>
-                <span className="mx-1 text-amber-400/50">·</span>
-                <span className="text-xs font-black text-amber-200">
-                  {measureResult}
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Bottom HUD ───────────────────────────────────────────────────── */}
-      <div className="absolute bottom-4 right-4 z-20">
-        <div className="rounded-xl bg-black/60 backdrop-blur-md border border-white/10 px-3 py-1.5 text-[10px] font-mono text-white/60 space-x-3">
-          <span>
-            {currentLat >= 0 ? "N" : "S"} {Math.abs(currentLat).toFixed(6)}°
-          </span>
-          <span>
-            {currentLng >= 0 ? "E" : "W"} {Math.abs(currentLng).toFixed(6)}°
-          </span>
-        </div>
-      </div>
-
-      {/* ── 2D badge ──────────────────────────────────────────────────────── */}
-      <div className="absolute bottom-4 left-4 z-20">
-        <div className="flex items-center gap-1.5 rounded-xl bg-blue-500/15 border border-blue-400/20 px-3 py-1.5">
-          <Globe className="h-3 w-3 text-blue-400" />
-          <span className="text-[10px] font-black uppercase tracking-widest text-blue-300">
-            2D · OpenLayers
-          </span>
-        </div>
-      </div>
-
-      {/* ── Basic Info Modal ────────────────────────────────────────────── */}
-      {showBasicInfo && (
-        <div className="absolute inset-0 z-110 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="relative w-full max-w-lg bg-black/60 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl p-8 text-white overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-blue-500 to-blue-500" />
-
-            <div className="flex items-start justify-between mb-8">
-              <div>
-                <h2 className="text-2xl font-bold tracking-tight mb-1">
-                  {school.name}
-                </h2>
-                <div className="flex items-center gap-2 text-sm text-white/50 font-medium tracking-wide">
-                  <MapPin className="h-3.5 w-3.5" />
-                  {[school.province, school.district, school.sector]
-                    .filter(Boolean)
-                    .join(" • ") || "Location Unknown"}
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-full bg-white/5 hover:bg-white/20 text-white/70 hover:text-white shrink-0"
-                onClick={() => setShowBasicInfo(false)}
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-all text-white"
+                title="Cancel"
               >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-y-6 gap-x-8">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">
-                  School Code
-                </p>
-                <p className="text-lg font-mono font-medium">
-                  {school.code || "N/A"}
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">
-                  Level
-                </p>
-                <p className="text-lg font-medium">{school.level || "N/A"}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">
-                  Type
-                </p>
-                <p className="text-lg font-medium capitalize">
-                  {school.type?.toLowerCase() || "N/A"}
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">
-                  Status
-                </p>
-                <div className="flex items-center gap-2">
-                  <div
-                    className={cn(
-                      "h-2 w-2 rounded-full",
-                      school.status === "ACTIVE"
-                        ? "bg-emerald-400"
-                        : "bg-amber-400",
-                    )}
-                  />
-                  <p className="text-lg font-medium capitalize">
-                    {school.status?.toLowerCase() || "Active"}
-                  </p>
-                </div>
-              </div>
-              <div className="col-span-2">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">
-                  Coordinates
-                </p>
-                <p className="text-sm font-mono text-white/70">
-                  {Number(school.latitude).toFixed(6)},{" "}
-                  {Number(school.longitude).toFixed(6)}
-                </p>
-              </div>
-            </div>
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
+      )}
+      
+      {showBuildingsList && (
+        <BuildingsListPanel
+          buildings={schoolBuildings}
+          onClose={() => setShowBuildingsList(false)}
+          onDelete={async (id) => await handleDeleteBuilding(id)}
+          onSelect={(b) => {
+            setActiveBlock(b);
+            setIsBlockInspectorOpen(true);
+            if (b.geolocation?.latitude && b.geolocation?.longitude) {
+              const coord = fromLonLat([Number(b.geolocation.longitude), Number(b.geolocation.latitude)]);
+              blockOverlayRef.current?.setPosition(coord);
+              mapRef.current?.getView().animate({ center: coord, zoom: 21, duration: 800 });
+            }
+          }}
+        />
+      )}
+
+      <MapToolbar 
+        onClose={!pickerMode ? onClose : undefined} 
+        showNavigator={showNavigator} 
+        setShowNavigator={setShowNavigator} 
+        showBuildingsList={showBuildingsList}
+        setShowBuildingsList={setShowBuildingsList} 
+        showOpacitySlider={showOpacitySlider} 
+        setShowOpacitySlider={setShowOpacitySlider} 
+        basemapStyle={basemapStyle} 
+        switchBasemap={switchBasemap} 
+        measurementMode={measurementMode} 
+        setMeasurementMode={setMeasurementMode} 
+        clearMeasurements={() => measureSourceRef.current.clear()} 
+        activeTool={activeTool} 
+        setActiveTool={setActiveTool} 
+        onZoomIn={() => mapRef.current?.getView().animate({ zoom: (mapRef.current.getView().getZoom() ?? 19) + 1 })} 
+        onZoomOut={() => mapRef.current?.getView().animate({ zoom: (mapRef.current.getView().getZoom() ?? 19) - 1 })} 
+        onHome={() => mapRef.current?.getView().animate({ center: fromLonLat([fallbackLocation.lng, fallbackLocation.lat]), zoom: 19 })} 
+        onFitExtent={() => overlayExtentRef.current && mapRef.current?.getView().fit(overlayExtentRef.current, { padding: [60,60,60,60] })} 
+        onExportPng={exportPng} 
+        showBasicInfo={showBasicInfo} 
+        setShowBasicInfo={setShowBasicInfo} 
+        kmzOpacity={kmzOpacity} 
+        setKmzOpacity={setKmzOpacity} 
+        visuals={visuals}
+        setVisuals={setVisuals}
+        showPlacesOverlay={showPlacesOverlay}
+        setShowPlacesOverlay={setShowPlacesOverlay}
+      />
+      
+      <MapHud 
+        school={school} 
+        setShowBasicInfo={setShowBasicInfo} 
+        isTileLoading={isTileLoading} 
+        decodingCount={decodingCount}
+        isLoading={isLoading} 
+        currentLat={currentLat} 
+        currentLng={currentLng} 
+        measurementMode={measurementMode} 
+        measureResult={measureResult} 
+        infoFeature={infoFeature} 
+        onCloseInfo={() => setInfoFeature(null)} 
+        onSaveMeasurement={handleSaveMeasurement}
+      />
+      
+      {showNavigator && (
+        <LayerManager 
+          schoolId={school.id}
+          manifest={manifest}
+          onUpdateManifest={setManifest}
+          visibleLayers={visibleLayers}
+          setVisibleLayers={setVisibleLayers}
+          onClose={() => setShowNavigator(false)}
+          schoolBuildings={schoolBuildings}
+          siteAnnotations={siteAnnotations}
+          onDeleteAnnotation={handleDeleteAnnotation}
+          onSelectBuilding={(b) => {
+            setActiveBlock(b);
+            setIsBlockInspectorOpen(true);
+            const coord = fromLonLat([Number(b.geolocation.longitude), Number(b.geolocation.latitude)]);
+            blockOverlayRef.current?.setPosition(coord);
+            mapRef.current?.getView().animate({ center: coord, zoom: 21, duration: 800 });
+          }}
+          onFlyToAnnotation={(ann) => {
+            const coords = ann.type === 'point' ? ann.coordinates : 
+                          ann.type === 'line' ? ann.coordinates[0] : ann.coordinates[0];
+            const coord = fromLonLat([Number(coords[0]), Number(coords[1])]);
+            mapRef.current?.getView().animate({ center: coord, zoom: 20, duration: 800 });
+          }}
+        />
+      )}
+
+      {/* Legacy Navigator — fallback if features are present */}
+      {showNavigator && features.length > 0 && false && (
+         <MapNavigator features={features} selectedFeatureName={selectedFeatureName} onFlyTo={flyToFeature} onClose={() => setShowNavigator(false)} />
+      )}
+      
+      {showBasicInfo && <BasicInfoModal school={school} onClose={() => setShowBasicInfo(false)} />}
+
+      {/* Left-side Fixed Inspector Panel — hidden in picker mode */}
+      {!pickerMode && (
+        <div 
+          className={cn(
+            "absolute top-0 left-0 bottom-0 z-40 transition-all duration-500 pointer-events-none",
+            isBlockInspectorOpen ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-full"
+          )}
+        >
+          {activeBlock && (
+            <div className="pointer-events-auto shadow-2xl">
+              <BlockInspector 
+                building={activeBlock} 
+                onClose={() => {
+                  setIsBlockInspectorOpen(false);
+                  setTimeout(() => setActiveBlock(null), 300);
+                }} 
+                onEdit={() => { 
+                  setDrawerBuilding(activeBlock); 
+                  setDrawerOpen(true); 
+                  setIsBlockInspectorOpen(false); 
+                }} 
+                onUpdateBuilding={async (b) => { 
+                  setActiveBlock(b); 
+                  setSchoolBuildings(prev => prev.map(old => old.id === b.id ? b : old)); 
+                }} 
+                onAddAnnotation={() => setActiveTool("annotate_point")} 
+                onUploadMedia={() => {}} 
+                on3DView={() => {
+                  const params = new URLSearchParams();
+                  if (school?.id) params.set("schoolId", school.id);
+                  if (school?.name) params.set("schoolName", school.name);
+                  if (activeBlock?.id) params.set("buildingId", activeBlock.id);
+                  window.open(`http://localhost:5175?${params.toString()}`, "_blank");
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {!pickerMode && (
+        <BuildingFormDrawer
+          isOpen={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          building={drawerBuilding}
+          buildingIndex={schoolBuildings.findIndex(b => b.id === drawerBuilding?.id)}
+          onSave={handleSaveBuilding}
+          availableFacilities={availableFacilities}
+          facilitiesLoading={facilitiesLoading}
+          isSaving={isSaving}
+          errorMessage={saveError}
+          schoolLat={fallbackLocation.lat}
+          schoolLng={fallbackLocation.lng}
+        />
       )}
     </div>
   );
