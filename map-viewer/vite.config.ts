@@ -7,6 +7,10 @@ export default defineConfig({
     port: 5175,
     strictPort: true,
     proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
       '/file-server': {
         target: 'http://localhost:3002',
         changeOrigin: true,

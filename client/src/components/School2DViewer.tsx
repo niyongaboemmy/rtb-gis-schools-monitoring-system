@@ -11,6 +11,7 @@ import { BuildingFormDrawer } from "./school-form-steps/BuildingFormDrawer";
 import type { BuildingData } from "./school-form-steps/BuildingsStep";
 import { api, FILE_SERVER_URL } from "../lib/api";
 import { cn } from "../lib/utils";
+import { useAuthStore } from "../store/authStore";
 
 // Subcomponents
 import { LoadingOverlay } from "./2dviewercomponents/LoadingOverlay";
@@ -717,6 +718,9 @@ export default function School2DViewer({
                   if (school?.id) params.set("schoolId", school.id);
                   if (school?.name) params.set("schoolName", school.name);
                   if (activeBlock?.id) params.set("buildingId", activeBlock.id);
+                  // Pass token for standalone viewer authentication
+                  const token = useAuthStore.getState().token || "";
+                  if (token) params.set("token", token);
                   window.open(`http://localhost:5175?${params.toString()}`, "_blank");
                 }}
               />

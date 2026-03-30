@@ -138,6 +138,9 @@ export default function GLBViewer() {
   const [saveFlash, setSaveFlash] = useState(false);
   const [renderMode, setRenderMode] = useState<RenderMode>(() => loadJson(LS_MODE_KEY, "unlit") as RenderMode);
 
+  const [dbSchool, setDbSchool] = useState<any>(null);
+  const [dbBuildings, setDbBuildings] = useState<any[]>([]);
+  const [dbMarkers, setDbMarkers] = useState<any[]>([]);
   // Measurement state
   const [measureMode, setMeasureMode] = useState<MeasureMode>(null);
   const [visibility, setVisibility] = useState<VisibilityMode>("all");
@@ -207,14 +210,21 @@ export default function GLBViewer() {
     startTime: number
   ) => {
     setProgress(90); setProgressLabel("Building scene…"); setPhase("viewing");
-    // Poll until initThree() has run and populated refs (runs after React re-renders the viewer DOM)
-    await new Promise<void>(resolve => {
-      const poll = () => {
-        if (sceneRef.current && cameraRef.current && controlsRef.current) resolve();
-        else setTimeout(poll, 16);
-      };
-      setTimeout(poll, 0);
-    });
+    
+    // FETCH DB DATA (Blocks & Annotations)
+    if (schoolId) {
+      try {
+        const res = await fetch(`/api/schools/${schoolId}`, {
+          headers: { "Authorization": `Bearer ${localStorage.getItem("token") || ""}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setDbSchool(data);
+        }
+      } catch (e) { console.error("Failed to fetch db school", e); }
+    }
+
+    // Poll until initThree()
 
     const scene = sceneRef.current!, camera = cameraRef.current!, controls = controlsRef.current!;
     const maxAniso = rendererRef.current?.capabilities.getMaxAnisotropy() ?? 16;
@@ -268,7 +278,7 @@ export default function GLBViewer() {
     const center = box.getCenter(new THREE.Vector3());
     const halfDiag = box.getBoundingSphere(new THREE.Sphere()).radius;
     const fovRad = camera.fov * (Math.PI / 180);
-    const distance = (halfDiag / Math.tan(fovRad / 2)) * 1.4;
+    const distance = (halfDiag / Math.tan(fovRad / 2)) * 1.1;
 
     camera.near = distance * 0.0001; camera.far = distance * 100; camera.updateProjectionMatrix();
 
@@ -331,8 +341,69 @@ export default function GLBViewer() {
     let triangles = 0, meshCount = 0, textureCount = 0; const seen = new Set<THREE.Texture>();
     model.traverse(child => { const mesh = child as THREE.Mesh; if (!mesh.isMesh) return; meshCount++; const geo = mesh.geometry; triangles += geo.index ? geo.index.count / 3 : geo.attributes.position.count / 3; const mats = Array.isArray(mesh.material) ? mesh.material as THREE.Material[] : [mesh.material as THREE.Material]; mats.forEach((m: any) => { ["map", "normalMap", "roughnessMap", "metalnessMap", "emissiveMap"].forEach(k => { if (m[k] && !seen.has(m[k])) { seen.add(m[k]); textureCount++; } }); }); });
     setStats({ fileName, fileSize, loadTime: Date.now() - startTime, triangles: Math.round(triangles), meshes: meshCount, textures: textureCount });
+    
+    // FETCH DB DATA (Blocks & Annotations)
+    if (schoolId) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get("token") || localStorage.getItem("rtb_access_token") || "";
+      
+      Promise.all([
+        fetch(`/api/v1/schools/${schoolId}`, { headers: { "Authorization": `Bearer ${token}` } }).then(res => res.ok ? res.json() : null),
+        fetch(`/api/v1/schools/${schoolId}/buildings`, { headers: { "Authorization": `Bearer ${token}` } }).then(res => res.ok ? res.json() : null)
+      ]).then(([school, buildings]) => {
+        if (school) setDbSchool(school);
+        if (buildings) setDbBuildings(buildings);
+      }).catch(e => console.error("Failed to fetch full school data", e));
+    }
+
     setProgress(100); setProgressLabel("Done!");
   }, [renderMode, applyRenderMode, schoolId]);
+
+  // Sync DB Markers and Ground Snapping (Hierarchical: Site-wide + Blocks + Internal)
+  useEffect(() => {
+    const model = modelRef.current;
+    if (!dbSchool || !model) { setDbMarkers([]); return; }
+    const latCenter = Number(dbSchool.latitude), lonCenter = Number(dbSchool.longitude);
+    if (!latCenter || !lonCenter) { setDbMarkers([]); return; }
+
+    const latFactor = 111320, lonFactor = 111320 * Math.cos(latCenter * Math.PI / 180);
+    const results: any[] = [], raycaster = new THREE.Raycaster();
+
+    const process = (lat: number, lon: number, label: string, type: "site" | "block" | "internal", id: string) => {
+      const dx = (lon - lonCenter) * lonFactor, dz = -(lat - latCenter) * latFactor;
+      raycaster.set(new THREE.Vector3(dx, 1000, dz), new THREE.Vector3(0, -1, 0));
+      const intersects = raycaster.intersectObject(model, true);
+      const y = intersects.length > 0 ? intersects[0].point.y : 0.5;
+      results.push({ id, x: dx, y, z: dz, label, type });
+    };
+
+    // 1. Site-wide Annotations (Emerald)
+    (dbSchool.siteAnnotations || []).forEach((a: any) => {
+      if (a.coordinates && a.type === "point") {
+        const [alon, alat] = a.coordinates;
+        process(alat, alon, a.title || a.label || "Site Item", "site", a.id);
+      }
+    });
+
+    // 2. Buildings Blocks (Blue)
+    (dbBuildings || []).forEach((b: any) => {
+      const lat = Number(b.latitude || b.centroidLat), lon = Number(b.longitude || b.centroidLng);
+      if (lat && lon) {
+        process(lat, lon, b.name || b.code || "Block", "block", b.id);
+        
+        // 3. Internal Building Annotations (Violet)
+        (b.annotations || []).forEach((ba: any) => {
+           const blat = Number(ba.latitude || ba.lat || (ba.coordinates?.[1]));
+           const blon = Number(ba.longitude || ba.lng || (ba.coordinates?.[0]));
+           if (blat && blon) {
+             process(blat, blon, ba.label || ba.content || "Space", "internal", ba.id);
+           }
+        });
+      }
+    });
+
+    setDbMarkers(results);
+  }, [dbSchool, dbBuildings]);
 
   const toggleMode = useCallback((mode: MeasureMode) => {
     setMeasureMode(prev => {
@@ -484,7 +555,35 @@ export default function GLBViewer() {
       }
     }
 
-    // 3. Annotations (Filtered)
+    // ─── DB Markers ───────────
+    const dbPulse = Math.sin(Date.now() / 250) * 0.4 + 1.2; // Pulsing 0.8 to 1.6
+    dbMarkers.forEach(m => {
+      const p = project3Dto2D(new THREE.Vector3(m.x, m.y, m.z), camera, W, H);
+      if (!p) return;
+      const [ex, ey] = p;
+
+      // Color Coding
+      let baseCol = "#3b82f6"; let glowCol = "rgba(59,130,246,0.2)";
+      if (m.type === "site") { baseCol = "#10b981"; glowCol = "rgba(16,185,129,0.2)"; }
+      else if (m.type === "internal") { baseCol = "#a855f7"; glowCol = "rgba(168,85,247,0.3)"; }
+
+      // Pulse Glow
+      ctx.beginPath(); ctx.arc(ex, ey, 8 * dbPulse, 0, Math.PI * 2);
+      ctx.fillStyle = glowCol; ctx.fill();
+
+      // Main Outer Ring
+      ctx.beginPath(); ctx.arc(ex, ey, 6, 0, Math.PI * 2);
+      ctx.fillStyle = baseCol; ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.setLineDash([]); ctx.stroke();
+
+      // High-contrast Label
+      ctx.font = "bold 9px 'JetBrains Mono', monospace"; 
+      ctx.fillStyle = "#fff"; ctx.textAlign = "center";
+      ctx.shadowBlur = 6; ctx.shadowColor = "rgba(0,0,0,1)";
+      ctx.fillText(m.label, ex, ey - 10);
+      ctx.shadowBlur = 0;
+    });
+
+    if (visibility === "none") return;
     if (visibility === "all" || visibility === "annotations") {
       annotations.forEach(a => {
         drawDot(a.point, a.color, 7);
@@ -793,7 +892,8 @@ export default function GLBViewer() {
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
-    const dist = maxDim * 1.6;
+    // closer zoom factor (1.2 instead of 1.6)
+    const dist = maxDim * 1.2;
 
     // Reset velocity so it doesn't continue gliding
     velocityRef.current.set(0, 0, 0);
