@@ -131,6 +131,9 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const origMatsRef = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
   const unlitMatsRef = useRef<Map<THREE.Mesh, THREE.MeshBasicMaterial>>(new Map());
   const raycasterRef = useRef(new THREE.Raycaster());
+  // Bounding-box center in scene space after rotation+centering.
+  // scene(0,0) = bbox center, NOT school GPS — this offset corrects the geo projection.
+  const modelRawCenterRef = useRef<{ x: number; z: number }>({ x: 0, z: 0 });
 
   const hoverPtRef = useRef<MeasurePoint | null>(null);
 
@@ -149,6 +152,8 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const [dbSchool, setDbSchool] = useState<any>(null);
   const [dbBuildings, setDbBuildings] = useState<any[]>([]);
   const [dbMarkers, setDbMarkers] = useState<any[]>([]);
+  // Projected 3D paths for site annotation lines/polygons
+  const [dbSiteShapes, setDbSiteShapes] = useState<Array<{ id: string; type: 'line' | 'polygon'; pts: MeasurePoint[]; label: string; color: string }>>([]);
   // Measurement state
   const [measureMode, setMeasureMode] = useState<MeasureMode>(null);
   const [visibility, setVisibility] = useState<VisibilityMode>("all");
@@ -267,6 +272,9 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
     // ── Auto-correct: strict grounding at (0,0,0) ──────────────────────────
     const rawCenter = box.getCenter(new THREE.Vector3());
+    // Store bbox center so geo-projection can correct for it:
+    // scene(0,0) = bbox center ≠ school GPS — annotations must subtract this offset.
+    modelRawCenterRef.current = { x: rawCenter.x, z: rawCenter.z };
     // Positioning at exactly 0,0,0 with local offset correction
     model.position.set(-rawCenter.x, -box.min.y, -rawCenter.z);
     model.updateMatrixWorld(true);
@@ -361,47 +369,98 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   // Sync DB Markers and Ground Snapping (Hierarchical: Site-wide + Blocks + Internal)
   useEffect(() => {
     const model = modelRef.current;
-    if (!dbSchool || !model) { setDbMarkers([]); return; }
+    if (!dbSchool || !model) { setDbMarkers([]); setDbSiteShapes([]); return; }
     const latCenter = Number(dbSchool.latitude), lonCenter = Number(dbSchool.longitude);
-    if (!latCenter || !lonCenter) { setDbMarkers([]); return; }
+    if (!latCenter || !lonCenter) { setDbMarkers([]); setDbSiteShapes([]); return; }
 
     const latFactor = 111320, lonFactor = 111320 * Math.cos(latCenter * Math.PI / 180);
-    const results: any[] = [], raycaster = new THREE.Raycaster();
+    const markers: any[] = [];
+    const shapes: typeof dbSiteShapes = [];
+    const raycaster = new THREE.Raycaster();
 
-    const process = (lat: number, lon: number, label: string, type: "site" | "block" | "internal", id: string) => {
-      const dx = (lon - lonCenter) * lonFactor, dz = -(lat - latCenter) * latFactor;
-      raycaster.set(new THREE.Vector3(dx, 1000, dz), new THREE.Vector3(0, -1, 0));
-      const intersects = raycaster.intersectObject(model, true);
-      const y = intersects.length > 0 ? intersects[0].point.y : 0.5;
-      results.push({ id, x: dx, y, z: dz, label, type });
+    // scene(0,0) is the model's bbox center, not the school's GPS.
+    // rawCenter (stored when finalizeGLTF placed the model) is the offset
+    // between the school GPS and what ended up at scene origin.
+    // Subtracting it corrects every geo→scene projection.
+    const { x: rcX, z: rcZ } = modelRawCenterRef.current;
+
+    const toXZ = (lon: number, lat: number) => ({
+      x: (lon - lonCenter) * lonFactor - rcX,
+      z: -(lat - latCenter) * latFactor - rcZ,
+    });
+
+    const groundY = (x: number, z: number): number => {
+      raycaster.set(new THREE.Vector3(x, 1000, z), new THREE.Vector3(0, -1, 0));
+      const hits = raycaster.intersectObject(model, true);
+      return hits.length > 0 ? hits[0].point.y : 0.3;
     };
 
-    // 1. Site-wide Annotations (Emerald)
+    const addMarker = (lat: number, lon: number, label: string, type: "site" | "block" | "internal", id: string) => {
+      const { x, z } = toXZ(lon, lat);
+      markers.push({ id, x, y: groundY(x, z), z, label, type });
+    };
+
+    // ── 1. Site-wide annotations ─────────────────────────────────────────
     (dbSchool.siteAnnotations || []).forEach((a: any) => {
-      if (a.coordinates && a.type === "point") {
-        const [alon, alat] = a.coordinates;
-        process(alat, alon, a.title || a.label || "Site Item", "site", a.id);
+      if (!a.coordinates?.length) return;
+      const label = a.label || a.description || "Site";
+
+      if (a.type === "point") {
+        // coordinates: [lon, lat]
+        addMarker(a.coordinates[1], a.coordinates[0], label, "site", a.id);
+
+      } else if (a.type === "line") {
+        // coordinates: flat [lon1, lat1, lon2, lat2, ...]
+        // Use y=0.3 for all vertices (no per-vertex raycasting — would freeze the thread)
+        const pts: MeasurePoint[] = [];
+        for (let i = 0; i + 1 < a.coordinates.length; i += 2) {
+          const { x, z } = toXZ(a.coordinates[i], a.coordinates[i + 1]);
+          pts.push({ x, y: 0.3, z });
+        }
+        if (pts.length >= 2) {
+          shapes.push({ id: a.id, type: "line", pts, label, color: "#10b981" });
+          // Single raycast only for the label marker at midpoint
+          const mid = pts[Math.floor(pts.length / 2)];
+          markers.push({ id: `${a.id}-lbl`, x: mid.x, y: groundY(mid.x, mid.z), z: mid.z, label, type: "site" });
+        }
+
+      } else if (a.type === "polygon") {
+        // coordinates: flat [lon1, lat1, lon2, lat2, ..., lon1, lat1]
+        const pts: MeasurePoint[] = [];
+        for (let i = 0; i + 1 < a.coordinates.length; i += 2) {
+          const { x, z } = toXZ(a.coordinates[i], a.coordinates[i + 1]);
+          pts.push({ x, y: 0.3, z });
+        }
+        if (pts.length >= 3) {
+          shapes.push({ id: a.id, type: "polygon", pts, label, color: "#10b981" });
+          // Single raycast only for the centroid label marker
+          const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+          const cz = pts.reduce((s, p) => s + p.z, 0) / pts.length;
+          markers.push({ id: `${a.id}-lbl`, x: cx, y: groundY(cx, cz), z: cz, label, type: "site" });
+        }
       }
     });
 
-    // 2. Buildings Blocks (Blue)
+    // ── 2. Buildings (Blue) ──────────────────────────────────────────────
     (dbBuildings || []).forEach((b: any) => {
       const lat = Number(b.latitude || b.centroidLat), lon = Number(b.longitude || b.centroidLng);
       if (lat && lon) {
-        process(lat, lon, b.name || b.code || "Block", "block", b.id);
+        addMarker(lat, lon, b.name || b.code || "Block", "block", b.id);
 
-        // 3. Internal Building Annotations (Violet)
+        // ── 3. Building annotations (Violet) ──────────────────────────
         (b.annotations || []).forEach((ba: any) => {
-          const blat = Number(ba.latitude || ba.lat || (ba.coordinates?.[1]));
-          const blon = Number(ba.longitude || ba.lng || (ba.coordinates?.[0]));
-          if (blat && blon) {
-            process(blat, blon, ba.label || ba.content || "Space", "internal", ba.id);
+          if (!ba.coordinates?.length) return;
+          if (ba.type === "point" || !ba.type) {
+            const blat = Number(ba.coordinates[1] ?? ba.lat ?? ba.latitude);
+            const blon = Number(ba.coordinates[0] ?? ba.lng ?? ba.longitude);
+            if (blat && blon) addMarker(blat, blon, ba.label || ba.content || "Space", "internal", ba.id);
           }
         });
       }
     });
 
-    setDbMarkers(results);
+    setDbMarkers(markers);
+    setDbSiteShapes(shapes);
   }, [dbSchool, dbBuildings]);
 
   const toggleMode = useCallback((mode: MeasureMode) => {
@@ -582,7 +641,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       ctx.shadowBlur = 0;
     });
 
-    if (visibility === "none") return;
+    if (visibility === "clear") return;
     if (visibility === "all" || visibility === "annotations") {
       annotations.forEach(a => {
         drawDot(a.point, a.color, 7);
@@ -600,10 +659,35 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       });
     }
 
+    // ─── Site annotation shapes (lines & polygons) ───────────────────
+    dbSiteShapes.forEach(shape => {
+      if (shape.pts.length < 2) return;
+      const projPts = shape.pts.map(p => project3Dto2D(p, camera, W, H));
+      if (projPts.every(p => !p)) return;
+
+      ctx.beginPath(); ctx.setLineDash([]);
+      ctx.strokeStyle = "#10b981"; ctx.lineWidth = 2;
+      ctx.fillStyle = "rgba(16,185,129,0.1)";
+
+      let started = false;
+      projPts.forEach(p => {
+        if (!p) { started = false; return; }
+        if (!started) { ctx.moveTo(p[0], p[1]); started = true; }
+        else ctx.lineTo(p[0], p[1]);
+      });
+
+      if (shape.type === "polygon") {
+        const first = projPts.find(p => !!p);
+        if (first && started) ctx.lineTo(first[0], first[1]);
+        ctx.fill();
+      }
+      ctx.stroke();
+    });
+
     // Draw the active annotation being placed
     if (annotPendingPt) drawDot(annotPendingPt, annotColor, 7);
 
-  }, [measures, measureMode, unit, annotations, annotPendingPt, visibility, annotColor]);
+  }, [measures, measureMode, unit, annotations, annotPendingPt, visibility, annotColor, dbSiteShapes]);
 
   const drawOverlayRef = useRef<() => void>(() => { });
   useEffect(() => { drawOverlayRef.current = drawOverlay; }, [drawOverlay]);
