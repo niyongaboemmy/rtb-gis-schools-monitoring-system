@@ -55,11 +55,7 @@ export default function SchoolMap({
         }}
         onSelect={(mode) => {
           if (mode === "3D") {
-            const params = new URLSearchParams();
-            if (school?.id) params.set("schoolId", school.id);
-            if (school?.name) params.set("schoolName", school.name);
-            window.open(`http://localhost:5175?${params.toString()}`, "_blank");
-            if (onClose) onClose();
+            window.open(`/schools/${school.id}/3d-explorer`, "_blank");
             return;
           }
           setViewerMode(mode);

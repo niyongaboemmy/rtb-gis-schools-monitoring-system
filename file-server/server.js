@@ -65,28 +65,21 @@ app.post('/upload', upload.array('files', MAX_FILES), (req, res) => {
   }
 });
 
-app.use('/files', express.static(STORAGE_DIR, {
-  setHeaders(res) {
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-  },
-}));
-
 // ── School 3D model lookup ────────────────────────────────────────────────
-app.get('/schools/:schoolId/3d', (req, res) => {
+app.get('/files/schools/:schoolId/3d', (req, res) => {
   const dir = path.join(schoolsDir, req.params.schoolId, '3d');
   if (!fs.existsSync(dir)) return res.status(404).json({ error: 'No 3D folder found' });
   const files = fs.readdirSync(dir).filter(f => f.toLowerCase().endsWith('.glb'));
   if (!files.length) return res.status(404).json({ error: 'No GLB file found' });
   const filename = files[0];
   res.json({
-    url: `/files/schools/${req.params.schoolId}/3d/${filename}`,
+    url: `/schools/${req.params.schoolId}/3d/${filename}`,
     filename,
   });
 });
 
 // ── School viewer state (home position, annotations, measures) ───────────
-app.get('/schools/:schoolId/viewer-state', (req, res) => {
+app.get('/files/schools/:schoolId/viewer-state', (req, res) => {
   const file = path.join(schoolsDir, req.params.schoolId, 'viewer-state.json');
   if (!fs.existsSync(file)) return res.json({ home: null, annotations: [], measures: [] });
   try {
@@ -94,7 +87,7 @@ app.get('/schools/:schoolId/viewer-state', (req, res) => {
   } catch { res.json({ home: null, annotations: [], measures: [] }); }
 });
 
-app.put('/schools/:schoolId/viewer-state', (req, res) => {
+app.put('/files/schools/:schoolId/viewer-state', (req, res) => {
   const dir = path.join(schoolsDir, req.params.schoolId);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   try {
@@ -102,6 +95,18 @@ app.put('/schools/:schoolId/viewer-state', (req, res) => {
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+app.use('/files', express.static(STORAGE_DIR, {
+  setHeaders(res, filePath) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (filePath.endsWith('.glb')) {
+      // GLB models rarely change — cache for 1 week; serve stale for 1 day while revalidating
+      res.setHeader('Cache-Control', 'public, max-age=604800, stale-while-revalidate=86400');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+    }
+  },
+}));
 
 app.get('/health', (_req, res) =>
   res.json({ status: 'ok', port: PORT, storageDir: STORAGE_DIR }),
