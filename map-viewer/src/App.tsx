@@ -87,8 +87,11 @@ sharedDracoLoader.preload();
 
 // ─── Overlay canvas helpers ───────────────────────────────────────────────────
 
-function project3Dto2D(pt: MeasurePoint, camera: THREE.Camera, w: number, h: number): [number, number] | null {
+function project3Dto2D(pt: MeasurePoint, camera: THREE.PerspectiveCamera, w: number, h: number): [number, number] | null {
   const v = new THREE.Vector3(pt.x, pt.y, pt.z);
+  // Ensure the camera matrix is up to date before projection
+  camera.updateMatrixWorld();
+  camera.updateProjectionMatrix();
   v.project(camera);
   // WebGL standard check: if z > 1, the point is behind the camera
   if (v.z < -1 || v.z > 1) return null;
@@ -233,20 +236,34 @@ export default function GLBViewer() {
     });
 
     scene.add(model); modelRef.current = model;
-
-    // ── Auto-correct: center X/Z, snap bottom to Y=0 ────────────────────────
+    
+    // ── Auto-correct Orientation: detect if map is Z-up (appearing vertical) ─────
     model.updateMatrixWorld(true);
-    let box = new THREE.Box3().setFromObject(model);
-    if (box.isEmpty()) box.set(new THREE.Vector3(-1,-1,-1), new THREE.Vector3(1,1,1));
+    let box = new THREE.Box3();
+    model.traverse(c => { if ((c as THREE.Mesh).isMesh) box.expandByObject(c); });
+    let size = box.getSize(new THREE.Vector3());
 
+    // If the model is much taller (Y) than it is deep (Z), it's likely a vertical map
+    // that should be horizontal. Map objects are typically wide in X,Z.
+    if (size.y > size.z * 1.5 && size.x > size.z * 0.5) {
+      console.log("Detecting vertical map orientation, rotating by -90° around X axis...");
+      model.rotation.x = -Math.PI / 2;
+      model.updateMatrixWorld(true);
+      box.setFromObject(model);
+      size = box.getSize(new THREE.Vector3());
+    }
+
+    // ── Auto-correct: strict grounding at (0,0,0) ──────────────────────────
     const rawCenter = box.getCenter(new THREE.Vector3());
+    // Positioning at exactly 0,0,0 with local offset correction
     model.position.set(-rawCenter.x, -box.min.y, -rawCenter.z);
     model.updateMatrixWorld(true);
-    box = new THREE.Box3().setFromObject(model);
+    // Refresh box for camera fitting and stats
+    box.setFromObject(model);
 
     applyRenderMode(renderMode);
 
-    const size = box.getSize(new THREE.Vector3());
+    size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
     const center = box.getCenter(new THREE.Vector3());
     const halfDiag = box.getBoundingSphere(new THREE.Sphere()).radius;
@@ -277,11 +294,29 @@ export default function GLBViewer() {
       controls.target.set(savedHome.target.x, savedHome.target.y, savedHome.target.z);
       cameraHomeRef.current = savedHome; setHomeSaved(true);
     } else {
-      // Aerial top-down: camera above and to the side at ~45°
-      const hp = new THREE.Vector3(distance * 0.6, distance * 0.8, distance * 0.6);
-      camera.position.copy(hp); camera.lookAt(center); controls.target.copy(center);
+      // cinematic landing animation logic starts here
+      const hp = new THREE.Vector3(distance * 0.8, distance * 1.2, distance * 0.8);
+      const startPos = hp.clone().add(new THREE.Vector3(0, distance * 2, distance));
+      camera.position.copy(startPos);
+      camera.lookAt(center);
+      controls.target.copy(center);
+      
+      // smooth glide to home
       cameraHomeRef.current = { position: { x: hp.x, y: hp.y, z: hp.z }, target: { x: center.x, y: center.y, z: center.z }, near: camera.near, far: camera.far };
       setHomeSaved(false);
+
+      // trigger cinematic glide
+      const glideStartTime = Date.now();
+      const glideDur = 2500;
+      const step = () => {
+        const elapsed = Date.now() - glideStartTime;
+        const t = Math.min(1, elapsed / glideDur);
+        const ease = 1 - Math.pow(1 - t, 4); // OutQuart
+        camera.position.lerpVectors(startPos, hp, ease);
+        controls.update();
+        if (t < 1) requestAnimationFrame(step);
+      };
+      step();
     }
 
     controls.minDistance = camera.near * 10; controls.maxDistance = camera.far; controls.update();
@@ -652,8 +687,13 @@ export default function GLBViewer() {
 
   // ── Mouse Events ─────────────────────────────────────────────────────────────
 
+  const raycastThrottleRef = useRef<number>(0);
   const handleOverlayMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!measureMode) { hoverPtRef.current = null; return; }
+    // Throttled raycasting: only calculate every ~32ms (30fps) for hover
+    const now = Date.now();
+    if (now - raycastThrottleRef.current < 32) return;
+    raycastThrottleRef.current = now;
     hoverPtRef.current = getFastHoverRaycastPt(e);
   }, [measureMode, getFastHoverRaycastPt]);
 
@@ -731,6 +771,47 @@ export default function GLBViewer() {
 
   const speedUp = useCallback(() => { setSpeedIdx(p => { const n = Math.min(p + 1, SPEED_STEPS.length - 1); moveSpeedRef.current = SPEED_STEPS[n]; return n; }); }, []);
   const speedDown = useCallback(() => { setSpeedIdx(p => { const n = Math.max(p - 1, 0); moveSpeedRef.current = SPEED_STEPS[n]; return n; }); }, []);
+
+  const toggleOrientation = useCallback(() => {
+    const model = modelRef.current; if (!model) return;
+    // Rotate model by 90 degrees around X to flip between Y-up and Z-up
+    model.rotation.x -= Math.PI / 2;
+    model.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    model.position.set(-center.x, -box.min.y, -center.z);
+    model.updateMatrixWorld(true);
+    // Update camera to view the new orientation
+    handleResetCamera();
+  }, [handleResetCamera]);
+
+  const setView = useCallback((dir: "top" | "front" | "back" | "left" | "right") => {
+    const model = modelRef.current; if (!model) return;
+    const cam = cameraRef.current, ctrl = controlsRef.current; if (!cam || !ctrl) return;
+
+    const box = new THREE.Box3().setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const dist = maxDim * 1.6;
+
+    // Reset velocity so it doesn't continue gliding
+    velocityRef.current.set(0, 0, 0);
+
+    const pos = center.clone();
+    switch (dir) {
+      case "top": pos.y += dist; break;
+      case "front": pos.z += dist; break;
+      case "back": pos.z -= dist; break;
+      case "left": pos.x -= dist; break;
+      case "right": pos.x += dist; break;
+    }
+
+    cam.position.copy(pos);
+    cam.lookAt(center);
+    ctrl.target.copy(center);
+    ctrl.update();
+  }, []);
 
   const handleScreenshot = useCallback(() => {
     const renderer = rendererRef.current; const overlayCanvas = overlayRef.current;
@@ -872,35 +953,34 @@ export default function GLBViewer() {
         .viewer-canvas canvas{display:block}
         .overlay-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5}
         .overlay-canvas.interactive{pointer-events:all;cursor:crosshair}
-        .toolbar{position:absolute;top:16px;left:16px;display:flex;flex-direction:column;gap:8px;z-index:20}
-        .tb-group{display:flex;flex-direction:column;gap:3px;background:rgba(6,11,26,0.88);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.09);border-radius:12px;padding:5px}
-        .tb-btn{width:36px;height:36px;border-radius:8px;border:none;background:transparent;color:rgba(232,232,240,0.6);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .18s ease;font-size:15px;position:relative;flex-shrink:0;user-select:none}
-        .tb-btn:hover{background:rgba(59,130,246,0.18);color:#93c5fd}
-        .tb-btn.active{background:rgba(59,130,246,0.3);color:#93c5fd}
+        .toolbar{position:absolute;top:20px;left:20px;display:flex;flex-direction:column;gap:12px;z-index:20}
+        .tb-group{display:flex;flex-direction:column;gap:4px;background:rgba(6,11,26,0.65);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:6px;box-shadow:0 8px 32px rgba(0,0,0,0.4)}
+        .tb-btn{width:38px;height:38px;border-radius:10px;border:none;background:transparent;color:rgba(232,232,240,0.6);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s cubic-bezier(0.4,0,0.2,1);font-size:16px;position:relative;flex-shrink:0;user-select:none}
+        .tb-btn:hover{background:rgba(255,255,255,0.06);color:#fff;transform:scale(1.05)}
+        .tb-btn.active{background:linear-gradient(135deg,rgba(59,130,246,0.3),rgba(37,99,235,0.4));color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.1)}
         .tb-btn.flash{background:rgba(50,220,120,0.25);color:#60e8a0}
         .tb-btn.danger:hover{background:rgba(255,71,71,0.18);color:#ff9090}
-        .tb-btn:active{transform:scale(0.9)}
-        .tb-btn:disabled{opacity:0.25;cursor:default;transform:none}
-        .tb-divider{height:1px;background:rgba(255,255,255,0.07);margin:2px 4px}
+        .tb-btn:active{transform:scale(0.95)}
+        .tb-divider{height:1px;background:rgba(255,255,255,0.08);margin:4px 6px}
         .tb-btn[data-tip]:hover::after{content:attr(data-tip);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);white-space:nowrap;background:rgba(6,11,26,0.97);border:1px solid rgba(255,255,255,0.1);border-radius:7px;padding:5px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#e8e8f0;letter-spacing:0.3px;pointer-events:none;z-index:100}
         .speed-group{display:flex;flex-direction:column;gap:0;background:rgba(6,11,26,0.88);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.09);border-radius:12px;padding:5px;align-items:center}
         .speed-label{font-family:'JetBrains Mono',monospace;font-size:9px;color:rgba(232,232,240,0.35);text-transform:uppercase;letter-spacing:0.8px;padding:2px 0 3px;text-align:center;width:100%}
         .speed-val{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:#60a5fa;padding:3px 0;text-align:center;min-width:36px;letter-spacing:-0.3px}
         .speed-track{width:26px;height:3px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden;margin:1px 0 3px}
         .speed-fill{height:100%;background:linear-gradient(90deg,#3b82f6,#2563eb);border-radius:3px;transition:width .15s ease}
-        .mode-panel{position:absolute;top:16px;right:16px;display:flex;flex-direction:column;gap:4px;z-index:20}
-        .mode-label-hdr{font-family:'JetBrains Mono',monospace;font-size:9px;color:rgba(232,232,240,0.3);text-transform:uppercase;letter-spacing:1px;padding:0 4px 2px;text-align:right}
-        .mode-btn{padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(6,11,26,0.88);backdrop-filter:blur(16px);color:rgba(232,232,240,0.45);font-family:'JetBrains Mono',monospace;font-size:10px;cursor:pointer;transition:all .18s ease;text-align:left;display:flex;align-items:center;gap:7px;white-space:nowrap}
-        .mode-btn:hover{background:rgba(59,130,246,0.12);color:#93c5fd;border-color:rgba(59,130,246,0.3)}
-        .mode-btn.active{background:rgba(59,130,246,0.2);color:#93c5fd;border-color:rgba(59,130,246,0.5)}
-        .mode-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,0.15);flex-shrink:0}
-        .mode-btn.active .mode-dot{background:#60a5fa}
-        .mode-tag{font-size:8px;padding:1px 5px;border-radius:4px;background:rgba(50,220,120,0.15);border:1px solid rgba(50,220,120,0.3);color:#60e8a0;margin-left:auto}
-        .stats-panel{position:absolute;bottom:16px;left:16px;background:rgba(6,11,26,0.88);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.09);border-radius:14px;padding:12px 16px;display:flex;gap:16px;align-items:center;z-index:20}
-        .stat-item{display:flex;flex-direction:column;gap:2px}
-        .stat-val{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;color:#60a5fa}
-        .stat-lbl{font-size:9px;color:rgba(232,232,240,0.35);text-transform:uppercase;letter-spacing:0.6px}
-        .stat-div{width:1px;height:26px;background:rgba(255,255,255,0.07);flex-shrink:0}
+        .mode-panel{position:absolute;top:20px;right:20px;display:flex;flex-direction:column;gap:6px;z-index:20}
+        .mode-label-hdr{font-family:'Inter',sans-serif;font-size:10px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:1.5px;padding:0 8px 4px;text-align:right}
+        .mode-btn{padding:9px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(6,11,26,0.65);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);color:rgba(232,232,240,0.45);font-family:'JetBrains Mono',monospace;font-size:11px;cursor:pointer;transition:all .2s ease;text-align:left;display:flex;align-items:center;gap:10px;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,0.2)}
+        .mode-btn:hover{background:rgba(255,255,255,0.06);color:#fff;border-color:rgba(255,255,255,0.15)}
+        .mode-btn.active{background:rgba(59,130,246,0.15);color:#fff;border-color:rgba(59,130,246,0.4);font-weight:600}
+        .mode-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.1);flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.1)}
+        .mode-btn.active .mode-dot{background:#3b82f6;box-shadow:0 0 10px rgba(59,130,246,0.8)}
+        .mode-tag{font-size:9px;padding:2px 7px;border-radius:6px;background:rgba(50,220,120,0.1);border:1px solid rgba(50,220,120,0.25);color:#60e8a0;margin-left:auto;font-weight:600;letter-spacing:0.3px}
+        .stats-panel{position:absolute;bottom:20px;left:20px;background:rgba(6,11,26,0.65);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:14px 20px;display:flex;gap:20px;align-items:center;z-index:20;box-shadow:0 8px 32px rgba(0,0,0,0.4)}
+        .stat-item{display:flex;flex-direction:column;gap:3px}
+        .stat-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#60a5fa;letter-spacing:-0.4px}
+        .stat-lbl{font-size:9px;font-weight:600;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:1px}
+        .stat-div{width:1px;height:24px;background:rgba(255,255,255,0.08);flex-shrink:0}
         .home-toast{position:absolute;bottom:80px;left:16px;background:rgba(50,200,100,0.12);border:1px solid rgba(50,200,100,0.3);border-radius:8px;padding:7px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#60e8a0;z-index:30;pointer-events:none;animation:toastIn .2s ease,toastOut .3s ease .9s forwards}
         .screenshot-toast{position:absolute;bottom:80px;right:16px;background:rgba(50,150,255,0.12);border:1px solid rgba(50,150,255,0.3);border-radius:8px;padding:7px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#70b8ff;z-index:30;pointer-events:none;animation:toastIn .2s ease,toastOut .3s ease 1.1s forwards}
         @keyframes toastIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -951,20 +1031,20 @@ export default function GLBViewer() {
         .mp-empty-icon{font-size:28px;opacity:0.3}
 
         /* 🚀 Fast Annot dialog + Color Picker */
-        .annot-dialog{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#0d1429;border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:20px;width:300px;z-index:60;box-shadow:0 32px 80px rgba(0,0,0,0.8);animation:popIn .05s ease-out forwards}
+        .annot-dialog{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(13,20,41,0.85);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.12);border-radius:20px;padding:24px;width:320px;z-index:60;box-shadow:0 32px 80px rgba(0,0,0,0.8);animation:popIn .05s ease-out forwards}
         @keyframes popIn{from{transform:translate(-50%,-45%) scale(0.95);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
-        .ad-title{font-size:13px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px}
-        .ad-colors{display:flex;gap:8px;margin-bottom:12px;}
-        .ad-color-btn{width:22px;height:22px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:transform 0.15s;}
-        .ad-color-btn:hover{transform:scale(1.15);}
-        .ad-color-btn.active{border-color:#ffffff;box-shadow:0 0 0 2px rgba(255,255,255,0.2);}
-        .ad-textarea{width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:9px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:11px;resize:vertical;min-height:70px;outline:none;transition:border .15s;line-height:1.6}
-        .ad-textarea:focus{border-color:rgba(59,130,246,0.5)}
-        .ad-row{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
-        .ad-cancel{padding:7px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:rgba(232,232,240,0.5);font-family:'JetBrains Mono',monospace;font-size:10px;cursor:pointer;transition:all .15s}
-        .ad-cancel:hover{background:rgba(255,255,255,0.06)}
-        .ad-save{padding:7px 18px;border-radius:8px;border:none;background:linear-gradient(135deg,#3b82f6,#60a5fa);color:#fff;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;cursor:pointer;transition:all .15s}
-        .ad-save:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(59,130,246,0.4)}
+        .ad-title{font-size:14px;font-weight:800;margin-bottom:18px;display:flex;align-items:center;gap:10px;letter-spacing:-0.2px}
+        .ad-colors{display:flex;gap:10px;margin-bottom:16px;}
+        .ad-color-btn{width:24px;height:24px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:all 0.2s cubic-bezier(0.4,0,0.2,1);box-shadow:0 4px 12px rgba(0,0,0,0.3)}
+        .ad-color-btn:hover{transform:scale(1.25);z-index:1}
+        .ad-color-btn.active{border-color:#ffffff;transform:scale(1.1);box-shadow:0 0 0 4px rgba(255,255,255,0.1)}
+        .ad-textarea{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px;font-family:'JetBrains Mono',monospace;font-size:12px;resize:vertical;min-height:90px;outline:none;transition:all .2s;line-height:1.6;color:#fff}
+        .ad-textarea:focus{border-color:rgba(59,130,246,0.5);background:rgba(255,255,255,0.08)}
+        .ad-row{display:flex;gap:10px;margin-top:20px;justify-content:flex-end}
+        .ad-cancel{padding:9px 18px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:rgba(232,232,240,0.5);font-family:'Inter',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s}
+        .ad-cancel:hover{background:rgba(255,255,255,0.06);color:#fff}
+        .ad-save{padding:9px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;font-family:'Inter',sans-serif;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;box-shadow:0 4px 12px rgba(37,99,235,0.3)}
+        .ad-save:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(37,99,235,0.5)}
 
         /* Help */
         .help-backdrop{position:absolute;inset:0;z-index:50;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:bfadeIn .18s ease}
@@ -1068,11 +1148,32 @@ export default function GLBViewer() {
             {/* Left toolbar */}
             <div className="toolbar">
               <div className="tb-group">
-                <button className="tb-btn" data-tip="Reset to home" onClick={handleResetCamera}>⊙</button>
-                <button className={`tb-btn${saveFlash ? " flash" : ""}`}
-                  data-tip={homeSaved ? "Update auto-home position" : "Save view as auto-home"} onClick={handleSaveHome} style={{ fontSize: 13 }}>
-                  {saveFlash ? "✓" : homeSaved ? "🏠" : "📍"}
+                <button className="tb-btn" data-tip="Reset to current home" onClick={handleResetCamera}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                 </button>
+                <button className={`tb-btn${saveFlash ? " flash" : ""}`}
+                  data-tip={homeSaved ? "Update auto-home position" : "Save view as auto-home"} onClick={handleSaveHome}>
+                  {saveFlash ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                  ) : homeSaved ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  )}
+                </button>
+                <button className="tb-btn" data-tip="Rotate axis (Flip)" onClick={toggleOrientation}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 21l-4-4 4-4"/><path d="M3 17h18a2 2 0 0 0 2-2v-2"/><path d="M17 3l4 4-4 4"/><path d="M21 7H3a2 2 0 0 0-2 2v2"/></svg>
+                </button>
+                <div className="tb-divider" />
+                <button className="tb-btn" data-tip="Top View" onClick={() => setView("top")} style={{ fontSize: 9, fontWeight: 800 }}>TOP</button>
+                <div style={{ display: "flex", gap: 2 }}>
+                  <button className="tb-btn" data-tip="Front" onClick={() => setView("front")} style={{ fontSize: 8, fontWeight: 800, width: 28 }}>FRT</button>
+                  <button className="tb-btn" data-tip="Back" onClick={() => setView("back")} style={{ fontSize: 8, fontWeight: 800, width: 28 }}>BCK</button>
+                </div>
+                <div style={{ display: "flex", gap: 2 }}>
+                  <button className="tb-btn" data-tip="Left" onClick={() => setView("left")} style={{ fontSize: 8, fontWeight: 800, width: 28 }}>LFT</button>
+                  <button className="tb-btn" data-tip="Right" onClick={() => setView("right")} style={{ fontSize: 8, fontWeight: 800, width: 28 }}>RGT</button>
+                </div>
               </div>
 
               <div className="speed-group">
@@ -1085,12 +1186,22 @@ export default function GLBViewer() {
 
               <div className="tb-group">
                 <button className={`tb-btn${showMeasurePanel ? " active" : ""}`} data-tip="Measurements panel"
-                  onClick={() => setShowMeasurePanel(v => !v)} style={{ fontSize: 13 }}>📐</button>
+                  onClick={() => setShowMeasurePanel(v => !v)}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m19.07 4.93-1.41 1.41"/><path d="m15.53 8.47-1.41 1.41"/><path d="M12 12 5 19"/><path d="m11.3 7.8 1.4-1.4"/><path d="m14.8 11.3 1.4-1.4"/><path d="m7.8 11.3 1.4-1.4"/><path d="m11.3 14.8 1.4-1.4"/><path d="m8.5 7.1 7.1 7.1"/><rect width="20" height="20" x="2" y="2" rx="2"/></svg>
+                </button>
                 <button className={`tb-btn${screenshotFlash ? " flash" : ""}`} data-tip="Screenshot & download"
-                  onClick={handleScreenshot} style={{ fontSize: 13 }}>{screenshotFlash ? "✓" : "📷"}</button>
+                  onClick={handleScreenshot}>
+                  {screenshotFlash ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                  )}
+                </button>
                 <div className="tb-divider" />
                 <button className={`tb-btn${showHelp ? " active" : ""}`} data-tip="Keyboard shortcuts"
-                  onClick={() => setShowHelp(v => !v)}>?</button>
+                  onClick={() => setShowHelp(v => !v)}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                </button>
               </div>
             </div>
 
