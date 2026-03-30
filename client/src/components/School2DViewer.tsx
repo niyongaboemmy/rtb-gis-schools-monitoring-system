@@ -20,6 +20,7 @@ import { BasicInfoModal } from "./2dviewercomponents/BasicInfoModal";
 import { MapNavigator } from "./2dviewercomponents/MapNavigator";
 import { LayerManager } from "./2dviewercomponents/LayerManager";
 import { BuildingsListPanel } from "./2dviewercomponents/BuildingsListPanel";
+import { AnnotationPickerModal, ANNOTATION_ICONS } from "./2dviewercomponents/AnnotationPickerModal";
 
 // Hooks
 import { useMapSetup } from "./2dviewercomponents/hooks/useMapSetup";
@@ -110,7 +111,9 @@ export default function School2DViewer({
   const [facilitiesLoading, setFacilitiesLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [siteAnnotations, setSiteAnnotations] = useState<any[]>(school.kmz2dSiteAnnotations || []);
+  const [siteAnnotations, setSiteAnnotations] = useState<any[]>(school.siteAnnotations || []);
+  const [pendingAnnotation, setPendingAnnotation] = useState<any>(null);
+  const [annotationTooltip, setAnnotationTooltip] = useState<{ ann: any; x: number; y: number } | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "warning" | null }>({ message: "", type: null });
 
   // Picker mode: selected building before confirming
@@ -158,6 +161,9 @@ export default function School2DViewer({
     onPickerSelect: (building: any) => {
       setPickerSelected(building);
     },
+    onAnnotationHover: (ann, x, y) => {
+      setAnnotationTooltip(ann ? { ann, x, y } : null);
+    },
   });
 
   useKmzLoader({
@@ -190,10 +196,26 @@ export default function School2DViewer({
     }
   }, [showPlacesOverlay]);
 
+  const handleSaveSiteAnnotation = async (payload: any) => {
+    try {
+      const res = await api.post(`/schools/${school.id}/kmz/2d/site-annotations`, payload);
+      if (res.data) {
+        setSiteAnnotations((prev: any[]) => [...prev, res.data]);
+        showToast("Annotation added successfully.", "success");
+      }
+    } catch (err: any) {
+      console.error("Failed to add site annotation", err);
+      showToast("Failed to add site annotation.", "warning");
+    }
+  };
+
   useMapInteractions({
     mapRef, mapReady, activeTool, setActiveTool, measurementMode, setMeasureResult,
     tooltipOverlayRef, measureSourceRef, activeBlock,
-    handleSaveBuilding: async (d) => handleSaveBuilding(d), setDrawerBuilding, setDrawerOpen,
+    handleSaveBuilding: async (d) => handleSaveBuilding(d),
+    handleSaveSiteAnnotation,
+    onAnnotationReady: (pending) => setPendingAnnotation(pending),
+    setDrawerBuilding, setDrawerOpen,
     hoverLayerRef, selectedLayerRef, blocksLayerRef, kmlLayerRef, geojsonLayerRef, placesLayerRef, annotationLayerRef,
     isDrawingRef,
   });
@@ -211,6 +233,7 @@ export default function School2DViewer({
     geojson,
     geojsonLayerRef,
     onBuildingsLoaded: (b) => setSchoolBuildings(b),
+    siteAnnotations,
   });
 
   const { flyToFeature, exportPng } = useMapMethods({
@@ -354,7 +377,7 @@ export default function School2DViewer({
 
       const res = await api.post(`/schools/${school.id}/kmz/2d/site-annotations`, payload);
       if (res.data) {
-        setSiteAnnotations(res.data.annotations || []);
+        setSiteAnnotations((prev: any[]) => [...prev, res.data]);
         showToast("Measurement saved to map!", "success");
       }
       
@@ -370,12 +393,12 @@ export default function School2DViewer({
   const handleDeleteAnnotation = async (id: string) => {
     if (!confirm("Are you sure you want to delete this annotation?")) return;
     try {
-      const res = await api.delete(`/schools/${school.id}/kmz/2d/site-annotations/${id}`);
-      if (res.data) {
-        setSiteAnnotations(res.data.annotations || []);
-      }
+      await api.delete(`/schools/${school.id}/kmz/2d/site-annotations/${id}`);
+      setSiteAnnotations((prev: any[]) => prev.filter((a: any) => a.id !== id));
+      showToast("Annotation removed.", "success");
     } catch (err) {
       console.error("Failed to delete annotation", err);
+      showToast("Failed to delete annotation.", "warning");
     }
   };
 
@@ -447,6 +470,77 @@ export default function School2DViewer({
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-[#0f1117] w-full h-full">
       {renderToast()}
+
+      {/* Annotation Picker Modal */}
+      <AnnotationPickerModal
+        open={!!pendingAnnotation}
+        annotationType={pendingAnnotation?.type}
+        initialDescription={pendingAnnotation?.initialDescription}
+        onCancel={() => setPendingAnnotation(null)}
+        onConfirm={(iconType, title, description, mapColor) => {
+          if (!pendingAnnotation) return;
+          const finalAnn = {
+            ...pendingAnnotation,
+            icon: iconType,
+            title,
+            description,
+            label: title,     // kept for backward-compat display
+            content: title,
+            iconType,
+            style: { color: mapColor, iconType },
+            createdAt: new Date().toISOString(),
+          };
+          delete finalAnn.initialDescription;
+          if (pendingAnnotation.activeBlock) {
+            const updated = {
+              ...pendingAnnotation.activeBlock,
+              annotations: [...(pendingAnnotation.activeBlock.annotations || []), finalAnn],
+            };
+            handleSaveBuilding(updated);
+          } else {
+            handleSaveSiteAnnotation(finalAnn);
+          }
+          setPendingAnnotation(null);
+        }}
+      />
+
+      {/* Annotation Hover Tooltip */}
+      <AnimatePresence>
+        {annotationTooltip && (() => {
+          const ann = annotationTooltip.ann;
+          const iconType = ann.icon || ann.iconType || ann.style?.iconType || "pin";
+          const iconDef = ANNOTATION_ICONS.find(ic => ic.id === iconType) || ANNOTATION_ICONS[0];
+          const IconComp = iconDef.icon;
+          return (
+            <motion.div
+              key="ann-tooltip"
+              initial={{ opacity: 0, scale: 0.92, y: 6 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.88 }}
+              transition={{ duration: 0.15 }}
+              className="absolute z-100 pointer-events-none"
+              style={{ left: annotationTooltip.x + 14, top: annotationTooltip.y - 10 }}
+            >
+              <div className="max-w-[220px] bg-[#0f1117]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] px-3 py-2.5 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <div className={cn("p-1 rounded-lg border shrink-0", iconDef.bg, iconDef.border)}>
+                    <IconComp className={cn("w-3 h-3", iconDef.color)} />
+                  </div>
+                  <p className="text-[10px] font-black text-white uppercase tracking-wider leading-none truncate">
+                    {ann.title || ann.label}
+                  </p>
+                </div>
+                {ann.description && (
+                  <p className="text-[9px] text-white/50 font-medium leading-snug">
+                    {ann.description}
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+
       <div ref={containerRef} className="absolute inset-0" />
       
       <LoadingOverlay 

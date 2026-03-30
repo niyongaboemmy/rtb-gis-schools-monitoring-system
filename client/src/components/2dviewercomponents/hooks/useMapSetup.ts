@@ -43,6 +43,7 @@ interface UseMapSetupProps {
   placesLayerRef: React.MutableRefObject<any>;
   pickerMode?: boolean;
   onPickerSelect?: (building: any) => void;
+  onAnnotationHover?: (ann: any | null, x: number, y: number) => void;
 }
 
 export function useMapSetup({
@@ -63,6 +64,7 @@ export function useMapSetup({
   kmlLayerRef,
   geojsonLayerRef,
   placesLayerRef,
+  onAnnotationHover,
 }: UseMapSetupProps) {
   const mapRef = useRef<OLMap | null>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -234,10 +236,23 @@ export function useMapSetup({
       if (feature) {
         map.getTargetElement().style.cursor = "pointer";
         const clone = (feature as any).clone();
-        clone.setStyle(null); // Clear feature style so it inherits hoverLayer's blue style
+        clone.setStyle(null);
         hoverSource.addFeature(clone);
+        // Show description tooltip for site annotations
+        if (feature.get("isSiteAnnotation") && onAnnotationHover) {
+          const ann = feature.get("annotationData");
+          if (ann?.description) {
+            const pix = map.getEventPixel(evt.originalEvent);
+            onAnnotationHover(ann, pix[0], pix[1]);
+          } else {
+            onAnnotationHover(null, 0, 0);
+          }
+        } else if (onAnnotationHover) {
+          onAnnotationHover(null, 0, 0);
+        }
       } else {
         map.getTargetElement().style.cursor = "";
+        onAnnotationHover?.(null, 0, 0);
       }
     });
 

@@ -11,7 +11,6 @@ import {
   MapPin,
   Search,
   CheckCircle2,
-  Navigation2
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -20,6 +19,7 @@ import { cn } from "../../lib/utils";
 import { api } from "../../lib/api";
 import { OverlayUploader } from "./OverlayUploader";
 import type { BuildingData } from "../school-form-steps/BuildingsStep";
+import { ANNOTATION_ICONS } from "./AnnotationPickerModal";
 
 interface LayerManagerProps {
   schoolId: string;
@@ -211,38 +211,51 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
                 <p className="text-[10px] uppercase font-black tracking-widest opacity-40">No site features</p>
               </div>
             ) : (
-              filteredAnnotations.map((ann: any) => (
-                <div 
-                  key={ann.id}
-                  onClick={() => onFlyToAnnotation(ann)}
-                  className="group flex items-center justify-between p-2.5 rounded-2xl transition-all border border-transparent hover:bg-white/10 hover:border-white/10 cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20 shadow-inner">
-                      <Navigation2 className="h-5 w-5 text-amber-500 rotate-45" />
+              filteredAnnotations.map((ann: any) => {
+                const iconType = ann.icon || ann.iconType || ann.style?.iconType || "pin";
+                const iconDef = ANNOTATION_ICONS.find(ic => ic.id === iconType) || ANNOTATION_ICONS[0];
+                const IconComp = iconDef.icon;
+                return (
+                  <div
+                    key={ann.id}
+                    onClick={() => onFlyToAnnotation(ann)}
+                    className="group flex items-center justify-between p-2.5 rounded-2xl transition-all border border-transparent hover:bg-white/10 hover:border-white/10 cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "h-10 w-10 rounded-xl flex items-center justify-center border shadow-inner",
+                        iconDef.bg, iconDef.border
+                      )}>
+                        <IconComp className={cn("h-5 w-5", iconDef.color)} />
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[11px] font-bold text-foreground/90 leading-tight">
+                          {ann.title || ann.label || "Untitled Annotation"}
+                        </span>
+                        <span className={cn("text-[9px] uppercase font-black tracking-tighter", iconDef.color + "/60")}>
+                          {iconDef.label} · {ann.type}
+                        </span>
+                        {ann.description && (
+                          <span className="text-[8px] text-white/30 font-medium mt-0.5 truncate max-w-[140px]">
+                            {ann.description}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[11px] font-bold text-foreground/90 leading-tight">
-                        {ann.label || "Untitled Annotation"}
-                      </span>
-                      <span className="text-[9px] text-amber-500/60 uppercase font-black tracking-tighter">
-                        {ann.type} Measurement
-                      </span>
+
+                    <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-all">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-xl hover:text-destructive hover:bg-destructive/10"
+                        onClick={(e) => { e.stopPropagation(); onDeleteAnnotation(ann.id); }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
-                  
-                  <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-all">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8 rounded-xl hover:text-destructive hover:bg-destructive/10"
-                      onClick={(e) => { e.stopPropagation(); onDeleteAnnotation(ann.id); }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </>
         )}

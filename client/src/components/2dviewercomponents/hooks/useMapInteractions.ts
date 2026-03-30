@@ -25,6 +25,8 @@ interface UseMapInteractionsProps {
   measureSourceRef: React.MutableRefObject<any>;
   activeBlock: BuildingData | null;
   handleSaveBuilding: (data: BuildingData) => Promise<void>;
+  handleSaveSiteAnnotation: (payload: any) => Promise<void>;
+  onAnnotationReady: (pending: any) => void;
   setDrawerBuilding: (data: BuildingData) => void;
   setDrawerOpen: (open: boolean) => void;
   hoverLayerRef: React.MutableRefObject<any>;
@@ -47,7 +49,9 @@ export function useMapInteractions({
   tooltipOverlayRef,
   measureSourceRef,
   activeBlock,
-  handleSaveBuilding,
+  handleSaveBuilding: _handleSaveBuilding,
+  handleSaveSiteAnnotation: _handleSaveSiteAnnotation,
+  onAnnotationReady,
   setDrawerBuilding,
   setDrawerOpen,
   hoverLayerRef,
@@ -248,6 +252,7 @@ export function useMapInteractions({
       let annoCoords: number[] = [];
       let footprintCoords: number[] = [];
 
+      let initialDescription = "";
       if (geom instanceof OLPoint) {
         const [lon, la] = toLonLat(rawCoords);
         lng = lon; lat = la;
@@ -256,11 +261,14 @@ export function useMapInteractions({
         const first = toLonLat(rawCoords[0]);
         lng = first[0]; lat = first[1];
         annoCoords = rawCoords.map((c: any) => toLonLat(c)).flat();
+        initialDescription = `Length: ${formatLength(getLength(geom))}`;
       } else if (geom instanceof Polygon) {
         const interior = geom.getInteriorPoint().getCoordinates();
         const interiorLonLat = toLonLat(interior);
         lng = interiorLonLat[0]; lat = interiorLonLat[1];
         footprintCoords = rawCoords[0].map((c: any) => toLonLat(c)).flat();
+        annoCoords = footprintCoords;
+        initialDescription = `Area: ${formatArea(getArea(geom))}`;
       } else {
         const first = toLonLat(Array.isArray(rawCoords[0]) ? (Array.isArray(rawCoords[0][0]) ? rawCoords[0][0] : rawCoords[0]) : rawCoords);
         lng = first[0]; lat = first[1];
@@ -307,18 +315,17 @@ export function useMapInteractions({
         setDrawerOpen(true);
       } else if (activeTool.startsWith("annotate")) {
         const annType = activeTool.split("_")[1];
-        if (activeBlock) {
-          const newAnn = {
-            id: `ann-${Date.now()}`,
-            type: annType as any,
-            content: annType === "text" ? "Label" : "New annotation",
-            coordinates: annoCoords,
-            style: annType === "text" ? { fontSize: 12, color: "#ffffff" } : {},
-            createdAt: new Date().toISOString(),
-          };
-          const updated = { ...activeBlock, annotations: [...(activeBlock.annotations || []), newAnn] };
-          handleSaveBuilding(updated);
-        }
+
+        // Fire onAnnotationReady so parent can show the AnnotationPickerModal
+        const pendingPayload = {
+          id: `ann-${Date.now()}`,
+          type: annType as any,
+          coordinates: annoCoords,
+          footprintCoords,
+          activeBlock,
+          initialDescription,
+        };
+        onAnnotationReady(pendingPayload);
       }
       setActiveTool("select");
     });

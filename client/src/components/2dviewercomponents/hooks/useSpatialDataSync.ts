@@ -12,6 +12,7 @@ import {
   placesStyleFunction,
   geojsonStyle,
   blockStyle,
+  siteAnnotationStyle,
 } from "../MapUtils";
 import type { BuildingData } from "../../school-form-steps/BuildingsStep";
 import { api } from "../../../lib/api";
@@ -29,6 +30,7 @@ interface UseSpatialDataSyncProps {
   geojson?: any;
   geojsonLayerRef: React.MutableRefObject<VectorLayer | null>;
   onBuildingsLoaded?: (buildings: BuildingData[]) => void;
+  siteAnnotations?: any[];
 }
 
 export function useSpatialDataSync({
@@ -44,6 +46,7 @@ export function useSpatialDataSync({
   geojson,
   geojsonLayerRef,
   onBuildingsLoaded,
+  siteAnnotations = [],
 }: UseSpatialDataSyncProps) {
   const [buildings, setBuildings] = useState<BuildingData[]>([]);
   const lastExtentRef = useRef<string>("");
@@ -215,7 +218,42 @@ export function useSpatialDataSync({
         }
       });
     });
-  }, [buildings, mapReady, blocksLayerRef, annotationLayerRef]);
+
+    // ── Render Site-Level Annotations (not tied to any building) ─────────
+    siteAnnotations.forEach((ann: any) => {
+      if (!ann?.coordinates) return;
+      const rawPts = ann.coordinates;
+      if (!rawPts || rawPts.length === 0) return;
+
+      let pairs: [number, number][];
+      if (Array.isArray(rawPts[0])) {
+        pairs = rawPts.map((c: any) => [Number(c[0]), Number(c[1])] as [number, number]);
+      } else {
+        pairs = [];
+        for (let i = 0; i + 1 < rawPts.length; i += 2) {
+          pairs.push([Number(rawPts[i]), Number(rawPts[i + 1])]);
+        }
+      }
+      if (pairs.length === 0) return;
+
+      let siteFeat: Feature | null = null;
+      if (ann.type === "text" || ann.type === "point") {
+        siteFeat = new Feature({ geometry: new OLPoint(fromLonLat(pairs[0])) });
+      } else if (ann.type === "line") {
+        siteFeat = new Feature({ geometry: new LineString(pairs.map((p) => fromLonLat(p))) });
+      } else if (ann.type === "polygon") {
+        siteFeat = new Feature({ geometry: new Polygon([pairs.map((p) => fromLonLat(p))]) });
+      }
+
+      if (siteFeat) {
+        siteFeat.set("isSiteAnnotation", true);
+        siteFeat.set("annotationData", ann);
+        siteFeat.set("siteLabel", ann.label || ann.content || "");
+        siteFeat.setStyle((f: any) => siteAnnotationStyle(f));
+        aSrc.addFeature(siteFeat);
+      }
+    });
+  }, [buildings, siteAnnotations, mapReady, blocksLayerRef, annotationLayerRef]);
 
   // ── Load Places Overlay ──────────────────────────────────────────────────
   useEffect(() => {

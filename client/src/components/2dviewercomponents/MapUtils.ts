@@ -213,6 +213,77 @@ export const annotationStyle = new Style({
   }),
 });
 
+/** Maps iconType → emoji for inline map label prefix. */
+const ICON_EMOJI_MAP: Record<string, string> = {
+  pin:          "📍",
+  warning:      "⚠️",
+  info:         "ℹ️",
+  danger:       "🚨",
+  construction: "🚧",
+  flag:         "🚩",
+  maintenance:  "🔧",
+  poi:          "⭐",
+  inspection:   "🔍",
+  water:        "💧",
+  power:        "⚡",
+  green:        "🌳",
+  facility:     "🏫",
+  path:         "👣",
+  parking:      "🅿️",
+};
+
+/** Style for site-level annotations (not tied to any building block). */
+export function siteAnnotationStyle(feature: Feature): Style {
+  const ann = feature.get("annotationData");
+  const rawLabel: string = feature.get("siteLabel") || ann?.title || ann?.label || ann?.content || "";
+  const isText = ann?.type === "text" || ann?.type === "point";
+  const pinColor: string = ann?.style?.color || "#8b5cf6";
+
+  // Prefix title with icon emoji if iconType is known
+  const iconType: string = ann?.icon || ann?.iconType || ann?.style?.iconType || "";
+  const emoji = ICON_EMOJI_MAP[iconType] || "";
+  const label = rawLabel ? (emoji ? `${emoji} ${rawLabel}` : rawLabel) : "";
+
+  if (isText) {
+    return new Style({
+      image: new CircleStyle({
+        radius: 7,
+        fill: new Fill({ color: pinColor }),
+        stroke: new Stroke({ color: "#ffffff", width: 2 }),
+      }),
+      text: label ? new Text({
+        text: label,
+        font: "bold 13px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif",
+        fill: new Fill({ color: "#ffffff" }),
+        stroke: new Stroke({ color: "rgba(10, 10, 20, 0.9)", width: 4 }),
+        offsetY: -20,
+        overflow: true,
+        backgroundFill: new Fill({ color: `${pinColor}cc` }),
+        padding: [3, 7, 3, 7],
+      }) : undefined,
+    });
+  }
+
+  // Lines and polygons
+  return new Style({
+    fill: new Fill({ color: `${pinColor}26` }),
+    stroke: new Stroke({ color: pinColor, width: 2.5, lineDash: [6, 4] }),
+    image: new CircleStyle({
+      radius: 6,
+      fill: new Fill({ color: pinColor }),
+      stroke: new Stroke({ color: "#fff", width: 1.5 }),
+    }),
+    text: label ? new Text({
+      text: label,
+      font: "bold 11px 'Inter', system-ui, sans-serif",
+      fill: new Fill({ color: "#ffffff" }),
+      stroke: new Stroke({ color: "rgba(10, 10, 20, 0.85)", width: 3 }),
+      offsetY: -14,
+      overflow: true,
+    }) : undefined,
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Utilities
 // ─────────────────────────────────────────────────────────────────────────────
