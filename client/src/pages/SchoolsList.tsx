@@ -223,7 +223,7 @@ export default function SchoolsList() {
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: i * 0.03 }}
-                          className="group border-b border-gray-200 dark:border-gray-800 last:border-0 hover:bg-muted/30 transition-all duration-200"
+                          className="group border-b border-gray-200 dark:border-gray-900 last:border-0 hover:bg-muted/30 transition-all duration-200 dark:bg-black/30"
                         >
                           <TableCell
                             onClick={() =>

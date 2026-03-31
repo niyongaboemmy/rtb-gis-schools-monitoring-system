@@ -8,7 +8,11 @@ import { Input } from "../ui/input";
 import { RichDropdown } from "../ui/rich-dropdown";
 import type { DropdownOption } from "../ui/rich-dropdown";
 import { Button } from "../ui/button";
-import type { BuildingData, FacilityItem, BuildingGeoLocation } from "./BuildingsStep";
+import type {
+  BuildingData,
+  FacilityItem,
+  BuildingGeoLocation,
+} from "./BuildingsStep";
 import { BuildingGeoLocationModal } from "./BuildingGeoLocationModal";
 import {
   X,
@@ -59,11 +63,15 @@ const createEmptyFacility = (): FacilityItem => ({
 // ── Mini-map helpers ──────────────────────────────────────────────────────────
 
 // Fix Leaflet default marker icons
-delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
+delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })
+  ._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
-  iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
-  shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+  iconRetinaUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
+  iconUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
+  shadowUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
 });
 
 const miniPinIcon = L.divIcon({
@@ -93,12 +101,19 @@ interface MiniMapPreviewProps {
   onOpen: () => void;
 }
 
-function MiniMapPreview({ lat: rawLat, lng: rawLng, onOpen }: MiniMapPreviewProps) {
+function MiniMapPreview({
+  lat: rawLat,
+  lng: rawLng,
+  onOpen,
+}: MiniMapPreviewProps) {
   const rwandaCenter: [number, number] = [-1.9403, 29.8739];
   // lat/lng may arrive as strings from the DB — always normalise to number
-  const lat = rawLat !== null && rawLat !== undefined ? parseFloat(String(rawLat)) : null;
-  const lng = rawLng !== null && rawLng !== undefined ? parseFloat(String(rawLng)) : null;
-  const hasLocation = lat !== null && !isNaN(lat) && lng !== null && !isNaN(lng);
+  const lat =
+    rawLat !== null && rawLat !== undefined ? parseFloat(String(rawLat)) : null;
+  const lng =
+    rawLng !== null && rawLng !== undefined ? parseFloat(String(rawLng)) : null;
+  const hasLocation =
+    lat !== null && !isNaN(lat) && lng !== null && !isNaN(lng);
   const center: [number, number] = hasLocation ? [lat!, lng!] : rwandaCenter;
 
   if (!hasLocation) {
@@ -119,7 +134,10 @@ function MiniMapPreview({ lat: rawLat, lng: rawLng, onOpen }: MiniMapPreviewProp
   }
 
   return (
-    <div className="relative rounded-xl overflow-hidden border border-border/30 h-36 group cursor-pointer" onClick={onOpen}>
+    <div
+      className="relative rounded-xl overflow-hidden border border-border/30 h-36 group cursor-pointer"
+      onClick={onOpen}
+    >
       <MapContainer
         center={center}
         zoom={17}
@@ -190,10 +208,27 @@ export function BuildingFormDrawer({
   const [draft, setDraft] = useState<BuildingData | null>(null);
   const [geoModalOpen, setGeoModalOpen] = useState(false);
 
-  // Sync draft whenever the drawer opens
+  // Sync draft whenever the drawer opens or building changes
   useEffect(() => {
-    if (isOpen && building) setDraft({ ...building, facilities: [...building.facilities] });
+    if (isOpen && building) {
+      setDraft({
+        ...building,
+        facilities: building.facilities ? [...building.facilities] : [],
+      });
+    } else if (!isOpen) {
+      // Clear draft after a short delay to allow exit animation to finish smoothly
+      const timer = setTimeout(() => setDraft(null), 1000);
+      return () => clearTimeout(timer);
+    }
   }, [isOpen, building]);
+
+  // Synchronous sync during render to prevent blank frame on first open
+  if (isOpen && building && !draft) {
+    setDraft({
+      ...building,
+      facilities: building.facilities ? [...building.facilities] : [],
+    });
+  }
 
   // Escape key — only when geo modal is not open
   useEffect(() => {
@@ -221,44 +256,72 @@ export function BuildingFormDrawer({
       const average = (bScore + rScore) / 2;
       const currentScore = parseFloat(draft.buildingStructuralScore) || 0;
       if (Math.abs(currentScore - average) > 0.01) {
-        setDraft(prev => prev ? { ...prev, buildingStructuralScore: average.toString() } : prev);
+        setDraft((prev) =>
+          prev
+            ? { ...prev, buildingStructuralScore: average.toString() }
+            : prev,
+        );
       }
     }
   }, [draft?.buildingCondition, draft?.buildingRoofCondition]);
 
-  if (!draft) return null;
+  // Remove the early return null to allow AnimatePresence and Portal stability
+  // if (!draft) return null;
 
-  const set = (field: keyof BuildingData, value: string | FacilityItem[] | BuildingGeoLocation) =>
-    setDraft((prev) => (prev ? { ...prev, [field]: value } : prev));
+  const set = (
+    field: keyof BuildingData,
+    value: string | FacilityItem[] | BuildingGeoLocation,
+  ) => setDraft((prev) => (prev ? { ...prev, [field]: value } : prev));
 
   // Facilities
-  const addFacility = () => set("facilities", [...draft.facilities, createEmptyFacility()]);
+  const addFacility = () => {
+    if (!draft) return;
+    set("facilities", [...draft.facilities, createEmptyFacility()]);
+  };
 
   const selectFacility = (i: number, facilityId: string) => {
-    const found = (availableFacilities || []).find((f) => f.facilityId === facilityId);
+    if (!draft) return;
+    const found = (availableFacilities || []).find(
+      (f) => f.facilityId === facilityId,
+    );
     set(
       "facilities",
       draft.facilities.map((f, idx) =>
-        idx === i ? { ...f, facility_id: found?.facilityId ?? "", facility_name: found?.title ?? "" } : f,
+        idx === i
+          ? {
+              ...f,
+              facility_id: found?.facilityId ?? "",
+              facility_name: found?.title ?? "",
+            }
+          : f,
       ),
     );
   };
 
-  const setRooms = (i: number, raw: string) =>
+  const setRooms = (i: number, raw: string) => {
+    if (!draft) return;
     set(
       "facilities",
       draft.facilities.map((f, idx) =>
         idx === i ? { ...f, number_of_rooms: parseInt(raw) || 1 } : f,
       ),
     );
+  };
 
-  const removeFacility = (i: number) =>
-    set("facilities", draft.facilities.filter((_, idx) => idx !== i));
+  const removeFacility = (i: number) => {
+    if (!draft) return;
+    set(
+      "facilities",
+      draft.facilities.filter((_, idx) => idx !== i),
+    );
+  };
 
-  const facilityOptions: DropdownOption[] = (availableFacilities || []).map((af) => ({
-    value: af.facilityId,
-    label: af.title,
-  }));
+  const facilityOptions: DropdownOption[] = (availableFacilities || []).map(
+    (af) => ({
+      value: af.facilityId,
+      label: af.title,
+    }),
+  );
 
   const handleGeoSave = (lat: number, lng: number) => {
     setDraft((prev) =>
@@ -271,7 +334,7 @@ export function BuildingFormDrawer({
   return createPortal(
     <>
       <AnimatePresence>
-        {isOpen && (
+        {isOpen && draft && (
           <>
             {/* Backdrop */}
             <motion.div
@@ -280,7 +343,7 @@ export function BuildingFormDrawer({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-60 bg-black/40 backdrop-blur-sm"
+              className="fixed inset-0 z-[9998] bg-black/40 backdrop-blur-sm"
               onClick={onClose}
             />
 
@@ -291,7 +354,7 @@ export function BuildingFormDrawer({
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: "-100%", opacity: 0 }}
               transition={{ type: "spring", damping: 30, stiffness: 220 }}
-              className="fixed left-6 top-6 bottom-6 z-61 w-full max-w-[380px] bg-background/90 backdrop-blur-3xl border border-white/10 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.5)] flex flex-col rounded-[32px] overflow-hidden"
+              className="fixed left-6 top-6 bottom-6 z-[9999] w-full max-w-[380px] bg-background/90 backdrop-blur-3xl border border-white/10 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.5)] flex flex-col rounded-[32px] overflow-hidden pointer-events-auto"
             >
               {/* Header */}
               <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/5 shrink-0">
@@ -304,7 +367,9 @@ export function BuildingFormDrawer({
                       {isNew ? "New Block" : `Edit Block`}
                     </h3>
                     {!isNew && draft.buildingName && (
-                      <p className="text-[9px] font-black uppercase tracking-widest text-white/30 truncate max-w-[150px]">{draft.buildingName}</p>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-white/30 truncate max-w-[150px]">
+                        {draft.buildingName}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -323,7 +388,9 @@ export function BuildingFormDrawer({
                   <div className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 text-xs text-destructive flex items-start gap-2.5 animate-in fade-in slide-in-from-top-2 mb-4">
                     <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
                     <div className="flex-1">
-                      <p className="font-bold uppercase tracking-wider mb-0.5">Validation Error</p>
+                      <p className="font-bold uppercase tracking-wider mb-0.5">
+                        Validation Error
+                      </p>
                       <p className="opacity-90">{errorMessage}</p>
                     </div>
                   </div>
@@ -392,7 +459,9 @@ export function BuildingFormDrawer({
                       <Input
                         placeholder="e.g. Classroom, Admin"
                         value={draft.buildingFunction}
-                        onChange={(e) => set("buildingFunction", e.target.value)}
+                        onChange={(e) =>
+                          set("buildingFunction", e.target.value)
+                        }
                       />
                     </div>
                     <div className="col-span-2 space-y-1.5">
@@ -406,7 +475,9 @@ export function BuildingFormDrawer({
                         max="2030"
                         placeholder="e.g. 2015"
                         value={draft.buildingYearBuilt}
-                        onChange={(e) => set("buildingYearBuilt", e.target.value)}
+                        onChange={(e) =>
+                          set("buildingYearBuilt", e.target.value)
+                        }
                       />
                     </div>
                   </div>
@@ -471,20 +542,33 @@ export function BuildingFormDrawer({
                   {draft.facilities.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-6 rounded-xl border border-dashed border-border/40 text-center gap-2">
                       <DoorOpen className="w-6 h-6 text-muted-foreground/40" />
-                      <p className="text-xs text-muted-foreground">No facilities added yet</p>
-                      <button type="button" onClick={addFacility} className="text-xs text-primary hover:underline">
+                      <p className="text-xs text-muted-foreground">
+                        No facilities added yet
+                      </p>
+                      <button
+                        type="button"
+                        onClick={addFacility}
+                        className="text-xs text-primary hover:underline"
+                      >
                         Add one
                       </button>
                     </div>
                   ) : (
                     <div className="space-y-2">
                       <div className="grid grid-cols-[1fr_90px_32px] gap-2 px-1">
-                        <span className="text-xs font-medium text-muted-foreground">Facility</span>
-                        <span className="text-xs font-medium text-muted-foreground">Rooms</span>
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Facility
+                        </span>
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Rooms
+                        </span>
                         <span />
                       </div>
                       {draft.facilities.map((f, i) => (
-                        <div key={i} className="grid grid-cols-[1fr_90px_32px] gap-2 items-center">
+                        <div
+                          key={i}
+                          className="grid grid-cols-[1fr_90px_32px] gap-2 items-center"
+                        >
                           <RichDropdown
                             options={facilityOptions}
                             value={f.facility_id}
@@ -612,16 +696,18 @@ export function BuildingFormDrawer({
       </AnimatePresence>
 
       {/* Geo location modal — rendered separately so it sits above the drawer */}
-      <BuildingGeoLocationModal
-        isOpen={geoModalOpen}
-        onClose={() => setGeoModalOpen(false)}
-        onSave={handleGeoSave}
-        initialLat={draft.geolocation.latitude}
-        initialLng={draft.geolocation.longitude}
-        schoolLat={schoolLat}
-        schoolLng={schoolLng}
-        buildingName={draft.buildingName || undefined}
-      />
+      {draft && (
+        <BuildingGeoLocationModal
+          isOpen={geoModalOpen}
+          onClose={() => setGeoModalOpen(false)}
+          onSave={handleGeoSave}
+          initialLat={draft.geolocation.latitude}
+          initialLng={draft.geolocation.longitude}
+          schoolLat={schoolLat}
+          schoolLng={schoolLng}
+          buildingName={draft.buildingName || undefined}
+        />
+      )}
     </>,
     document.body,
   );

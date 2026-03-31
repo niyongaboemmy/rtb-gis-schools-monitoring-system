@@ -1,152 +1,141 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { BookOpen, FlaskConical, Monitor, Home, Coffee, Trophy, Droplets, Zap, Wifi, Shield, Building2, ClipboardCheck } from "lucide-react";
-import { Card, CardContent } from "../ui/card";
-import { Button } from "../ui/button";
+import { Building2, Users } from "lucide-react";
+import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
+import { Badge } from "../ui/badge";
 import { cn } from "../../lib/utils";
-import { Permission, type PermissionType } from "../../lib/permissions";
 
 interface FacilityBreakdownProps {
-  facilityStats: any;
-  setSelectedFacilityGroup: (group: any) => void;
-  setIsFacilityModalOpen: (open: boolean) => void;
-  setIsSurveyModalOpen: (open: boolean) => void;
-  isAuthorized: (permission?: PermissionType) => boolean;
+  buildings: any[];
 }
 
-const getFacilityIcon = (facilityName: string) => {
-  const n = facilityName.toLowerCase();
-  if (n.includes("classroom") || n.includes("library")) return BookOpen;
-  if (n.includes("lab") || n.includes("laboratory")) return FlaskConical;
-  if (n.includes("computer")) return Monitor;
-  if (n.includes("hostel")) return Home;
-  if (n.includes("canteen")) return Coffee;
-  if (n.includes("sports") || n.includes("field")) return Trophy;
-  if (n.includes("washroom") || n.includes("toilet") || n.includes("water")) return Droplets;
-  if (n.includes("electricity") || n.includes("power")) return Zap;
-  if (n.includes("internet") || n.includes("wifi")) return Wifi;
-  if (n.includes("security") || n.includes("fence")) return Shield;
-  return Building2;
-};
-
-export const FacilityBreakdownSection = React.memo(({
-  facilityStats,
-  setSelectedFacilityGroup,
-  setIsFacilityModalOpen,
-  setIsSurveyModalOpen,
-  isAuthorized,
-}: FacilityBreakdownProps) => {
-  if (!facilityStats.byFacility || facilityStats.byFacility.length === 0) {
+export const FacilityBreakdownSection = React.memo(
+  ({ buildings }: FacilityBreakdownProps) => {
     return (
-      <Card className="border border-border/20 bg-card/60 backdrop-blur-sm rounded-3xl overflow-hidden mt-6">
-        <CardContent className="p-0">
-          <div className="text-center py-10 text-muted-foreground">
-            <ClipboardCheck className="w-16 h-16 mx-auto mb-4 opacity-30" />
-            <p className="text-lg font-semibold">No Facility Survey Data</p>
-            <p className="text-sm mt-2 mb-4">Complete a facility survey to see compliance details</p>
-            {isAuthorized(Permission.SCHOOL_SURVERY_EDIT) && (
-              <Button onClick={() => setIsSurveyModalOpen(true)} className="rounded-full">
-                Start Facility Survey
-              </Button>
-            )}
+      <Card className="group relative border-0 bg-gray-950/40 overflow-hidden shadow-2xl rounded-4xl transition-all duration-500">
+        <CardHeader className="relative z-10">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg font-medium flex items-center gap-3 text-white/90">
+              <div className="p-2 rounded-xl bg-white/5 border border-blue-500/30 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
+                <Building2 className="w-5 h-5 text-primary opacity-80" />
+              </div>
+              Facility inventory matrix
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className="rounded-full bg-white/5 text-white/40 border-blue-500/30 text-[11px] font-normal px-3 py-0.5"
+              >
+                {buildings.length} Assets
+              </Badge>
+            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-6 relative z-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-5">
+            {buildings.map((building, index) => {
+              const integrity = building.structuralIntegrity ?? 85;
+
+              return (
+                <motion.div
+                  key={building.id}
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  className="group/item relative p-px rounded-3xl overflow-hidden transition-all duration-500 cursor-pointer bg-gray-900/20 border border-blue-700/20"
+                >
+                  <div className="relative p-5 z-10">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-white/5 border border-blue-500/30 flex items-center justify-center text-white/30 group-hover/item:text-primary transition-colors shadow-inner">
+                          <Building2 className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-medium text-white/90 leading-tight mb-0.5">
+                            {building.name || `Block ${index + 1}`}
+                          </h4>
+                          <p className="text-[11px] font-normal text-white/50">
+                            {building.type || "Institutional facility"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span
+                          className={cn(
+                            "text-[11px] font-medium",
+                            integrity >= 80
+                              ? "text-emerald-400/80"
+                              : integrity >= 60
+                                ? "text-blue-400/80"
+                                : "text-red-400/80",
+                          )}
+                        >
+                          {integrity}%
+                        </span>
+                        <span className="text-[9px] font-normal text-white/50">
+                          Integrity
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${integrity}%` }}
+                          transition={{
+                            duration: 1,
+                            delay: 0.2 + index * 0.05,
+                          }}
+                          className={cn(
+                            "h-full rounded-full transition-all duration-1000",
+                            integrity >= 80
+                              ? "bg-emerald-500/50"
+                              : integrity >= 60
+                                ? "bg-blue-500/50"
+                                : "bg-red-500/50",
+                          )}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1">
+                            <div
+                              className={cn(
+                                "w-1.5 h-1.5 rounded-full",
+                                integrity >= 70
+                                  ? "bg-emerald-500/40"
+                                  : "bg-amber-500/40",
+                              )}
+                            />
+                            <span className="text-[9px] font-normal text-white/50 whitespace-nowrap">
+                              Audit complete
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Users className="w-3 h-3 text-white/30" />
+                            <span className="text-[9px] font-normal text-white/50">
+                              {building.capacity || 0} cap
+                            </span>
+                          </div>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className="h-5 px-2 text-[8px] font-normal border-blue-500/20 bg-white/5 text-white/40 rounded-md"
+                        >
+                          Verified
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
           </div>
         </CardContent>
       </Card>
     );
-  }
-
-  return (
-    <div className="mt-8 pt-6 border-t border-border/10">
-      <div className="flex items-center justify-between mb-6">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">
-          Structural Facility Breakdown
-        </p>
-        <div className="text-[10px] font-bold text-muted-foreground bg-muted/30 px-2 py-0.5 rounded-md">
-          Sorted by Compliance
-        </div>
-      </div>
-
-      <motion.div
-        initial="hidden"
-        animate="show"
-        variants={{
-          hidden: { opacity: 0 },
-          show: { opacity: 1, transition: { staggerChildren: 0.05 } },
-        }}
-        className="grid grid-cols-1 md:grid-cols-2 gap-4"
-      >
-        {[...facilityStats.byFacility]
-          .map((group: any) => {
-            const compliant = group.items.filter((i: any) => i.compliance === "compliant").length;
-            const total = group.items.length;
-            const rate = total > 0 ? Math.round((compliant / total) * 100) : 0;
-            return { ...group, rate, compliant, total };
-          })
-          .sort((a, b) => b.rate - a.rate)
-          .map((facilityGroup, index) => {
-            const FacilityIcon = getFacilityIcon(facilityGroup.facility);
-            return (
-              <motion.div
-                key={facilityGroup.facility}
-                variants={{
-                  hidden: { opacity: 0, y: 10 },
-                  show: { opacity: 1, y: 0 },
-                }}
-                whileHover={{ scale: 1.01, translateY: -2 }}
-                onClick={() => {
-                  setSelectedFacilityGroup(facilityGroup);
-                  setIsFacilityModalOpen(true);
-                }}
-                className="p-4 rounded-2xl bg-muted/20 border border-border/5 hover:bg-muted/40 transition-all group cursor-pointer"
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 rounded-xl bg-background shadow-sm group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300">
-                    <FacilityIcon className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-black truncate">{facilityGroup.facility}</span>
-                      <span
-                        className={cn(
-                          "text-[10px] font-black tabular-nums",
-                          facilityGroup.rate >= 70
-                            ? "text-emerald-500"
-                            : facilityGroup.rate >= 40 ? "text-amber-500" : "text-red-500"
-                        )}
-                      >
-                        {facilityGroup.rate}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="h-1.5 w-full bg-muted/50 rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${facilityGroup.rate}%` }}
-                      transition={{ duration: 1, delay: 0.2 + index * 0.05 }}
-                      className={cn(
-                        "h-full rounded-full transition-all duration-500",
-                        facilityGroup.rate >= 70
-                          ? "bg-emerald-500"
-                          : facilityGroup.rate >= 40 ? "bg-amber-500" : "bg-red-500"
-                      )}
-                    />
-                  </div>
-                  <div className="flex justify-between text-[9px] font-bold text-muted-foreground uppercase tracking-tighter">
-                    <span>
-                      {facilityGroup.rate >= 70
-                        ? "Mainly Compliant"
-                        : facilityGroup.rate >= 40 ? "Partially Compliant" : "Needs Attention"}
-                    </span>
-                    <span>{facilityGroup.total} Total</span>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
-      </motion.div>
-    </div>
-  );
-});
+  },
+);

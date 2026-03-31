@@ -4,9 +4,25 @@ import Overlay from "ol/Overlay";
 import VectorSource from "ol/source/Vector";
 import { fromLonLat, toLonLat } from "ol/proj";
 import { AnimatePresence, motion } from "framer-motion";
-import { CheckCircle2, AlertCircle, MapPin, X } from "lucide-react";
+import {
+  CheckCircle2,
+  AlertCircle,
+  MapPin,
+  X,
+  ArrowLeft,
+  LayoutDashboard,
+  Map as MapIcon,
+  FileText,
+} from "lucide-react";
+import { Link } from "react-router-dom";
+import { Modal } from "./ui/modal";
+import { Button } from "./ui/button";
 
 import { BlockInspector } from "./BlockInspector";
+import { SchoolDetailsPanel } from "./2dviewercomponents/SchoolDetailsPanel";
+import SchoolDecisionDashboard from "../pages/SchoolDecisionDashboard";
+import { SchoolForm } from "./SchoolForm";
+import { FacilitySurveyForm } from "./FacilitySurveyForm";
 import { BuildingFormDrawer } from "./school-form-steps/BuildingFormDrawer";
 import type { BuildingData } from "./school-form-steps/BuildingsStep";
 import { api, FILE_SERVER_URL } from "../lib/api";
@@ -164,6 +180,13 @@ export default function School2DViewer({
 
   // Picker mode: selected building before confirming
   const [pickerSelected, setPickerSelected] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<"dashboard" | "map" | "details">(
+    "dashboard",
+  );
+
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isSurveyModalOpen, setIsSurveyModalOpen] = useState(false);
+  const [isMissingMapModalOpen, setIsMissingMapModalOpen] = useState(false);
 
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const showToast = useCallback(
@@ -177,6 +200,19 @@ export default function School2DViewer({
     },
     [],
   );
+
+  useEffect(() => {
+    // Check if map is missing
+    const hasMapData =
+      school.kmz2dFilePath ||
+      school.kmzFilePath ||
+      school.geojsonContent ||
+      tifFilePath ||
+      school.tifFilePath;
+    if (!hasMapData && !isLoading) {
+      setIsMissingMapModalOpen(true);
+    }
+  }, [school, tifFilePath, isLoading]);
 
   useEffect(() => {
     return () => {
@@ -404,6 +440,14 @@ export default function School2DViewer({
     },
     [getBasemapUrl, basemapLayerRef, ghostLayerRef, basemapLabelLayerRef],
   );
+
+  const handle3DView = useCallback(() => {
+    const params = new URLSearchParams();
+    if (school?.id) params.set("schoolId", school.id);
+    if (school?.name) params.set("schoolName", school.name);
+    if (activeBlock?.id) params.set("buildingId", activeBlock.id);
+    window.open(`http://localhost:5175?${params.toString()}`, "_blank");
+  }, [school, activeBlock]);
 
   const handleSaveBuilding = async (data: BuildingData) => {
     try {
@@ -648,6 +692,81 @@ export default function School2DViewer({
     <div className="fixed inset-0 z-50 overflow-hidden bg-[#0f1117] w-full h-full">
       {renderToast()}
 
+      {/* ── Back button + school name (top-left, hidden in picker mode) ──── */}
+      {!pickerMode && (
+        <div className="absolute top-3 left-3 z-50 flex items-center gap-2 pointer-events-auto">
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="flex items-center justify-center w-10 h-10 rounded-full bg-card/10 backdrop-blur-2xl border border-white/5 text-white hover:text-white hover:bg-white/10 transition-all group shadow-2xl"
+            >
+              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+            </button>
+          )}
+          <div className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-card/20 backdrop-blur-2xl border border-white/10 shadow-2xl max-w-45">
+            <span className="text-[13px] font-bold text-white/60 truncate">
+              {school.name}
+            </span>
+            {school.code && (
+              <span className="text-[10px] font-mono text-white/25 shrink-0 hidden sm:block">
+                {school.code}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Floating pill tabs (top-center, hidden in picker mode) ────────── */}
+      {!pickerMode && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+          <div className="flex items-center gap-0.5 bg-card/50 backdrop-blur-2xl border border-white/5 rounded-full px-1 py-1 shadow-[0_8px_32px_rgba(0,0,0,0.6)]">
+            {(
+              [
+                { id: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
+                { id: "map", icon: MapIcon, label: "2D Map" },
+                { id: "details", icon: FileText, label: "Details" },
+              ] as const
+            ).map(({ id, icon: Icon, label }) => (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3.5 h-7 rounded-full text-[10px] font-bold tracking-wide transition-all",
+                  activeTab === id
+                    ? "bg-primary text-white shadow-lg shadow-primary/20"
+                    : "text-white/80 hover:text-white hover:bg-white/5",
+                )}
+              >
+                <Icon className="w-3 h-3 shrink-0" />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Dashboard Overlay ─────────────────────────────────────────────── */}
+      {activeTab === "dashboard" && (
+        <div className="absolute inset-0 z-40 bg-gray-950/90 backdrop-blur-sm pointer-events-auto overflow-y-auto custom-scrollbar">
+          <SchoolDecisionDashboard
+            id={school.id}
+            standalone={false}
+            onUpdateSchool={onUpdateSchool}
+          />
+        </div>
+      )}
+
+      {/* ── Details Panel ─────────────────────────────────────────────────── */}
+      {activeTab === "details" && (
+        <div className="absolute inset-0 z-40 bg-gray-950/80 backdrop-blur-sm pointer-events-auto overflow-y-auto custom-scrollbar">
+          <SchoolDetailsPanel
+            school={school}
+            onEditProfile={() => setIsEditModalOpen(true)}
+            onUpdateSurvey={() => setIsSurveyModalOpen(true)}
+          />
+        </div>
+      )}
+
       {/* Annotation Picker Modal */}
       <AnnotationPickerModal
         open={!!pendingAnnotation}
@@ -819,7 +938,7 @@ export default function School2DViewer({
       )}
 
       <MapToolbar
-        onClose={!pickerMode ? onClose : undefined}
+        onClose={undefined}
         showNavigator={showNavigator}
         setShowNavigator={setShowNavigator}
         showBuildingsList={showBuildingsList}
@@ -856,6 +975,7 @@ export default function School2DViewer({
             .fit(overlayExtentRef.current, { padding: [60, 60, 60, 60] })
         }
         onExportPng={exportPng}
+        on3DView={handle3DView}
         showBasicInfo={showBasicInfo}
         setShowBasicInfo={setShowBasicInfo}
         kmzOpacity={kmzOpacity}
@@ -1038,7 +1158,7 @@ export default function School2DViewer({
           onClose={() => setDrawerOpen(false)}
           building={drawerBuilding}
           buildingIndex={schoolBuildings.findIndex(
-            (b) => b.id === drawerBuilding?.id,
+            (b) => String(b.id) === String(drawerBuilding?.id),
           )}
           onSave={handleSaveBuilding}
           availableFacilities={availableFacilities}
@@ -1049,6 +1169,79 @@ export default function School2DViewer({
           schoolLng={fallbackLocation.lng}
         />
       )}
+
+      {/* ── Global School Management Modals ───────────────────────────────── */}
+      <SchoolForm
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        onSuccess={() => {
+          setIsEditModalOpen(false);
+          if (onUpdateSchool) onUpdateSchool(school);
+        }}
+        mode="edit"
+        schoolId={school.id}
+        initialData={school}
+      />
+
+      {isSurveyModalOpen && (
+        <FacilitySurveyForm
+          schoolId={school.id}
+          schoolName={school.name || ""}
+          isOpen={isSurveyModalOpen}
+          onClose={() => setIsSurveyModalOpen(false)}
+        />
+      )}
+
+      {/* ── Missing Map Data Prompt ─────────────────────────────────────── */}
+      <Modal
+        isOpen={isMissingMapModalOpen}
+        onClose={() => setIsMissingMapModalOpen(false)}
+        title={
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-black italic">
+                Spatial Intelligence Missing
+              </h3>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
+                Digital Twin Synchronisation Required
+              </p>
+            </div>
+          </div>
+        }
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-6 py-4">
+          <div className="p-6 rounded-[32px] bg-white/5 border border-white/5 space-y-4 text-center">
+            <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-2 border border-white/10 shadow-inner">
+              <MapIcon className="w-8 h-8 text-amber-500/40" />
+            </div>
+            <p className="text-xs font-bold text-white/60 leading-relaxed italic">
+              This institution does not yet have high-resolution drone imagery
+              or spatial boundary data synchronized.
+            </p>
+            <div className="flex flex-col gap-2 pt-2">
+              <Button
+                asChild
+                className="rounded-full bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-widest text-[10px] h-11"
+              >
+                <Link to={`/schools/${school.id}/kmz`}>
+                  Upload KMZ Spatial Data
+                </Link>
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setIsMissingMapModalOpen(false)}
+                className="rounded-full font-black uppercase tracking-widest text-[10px] h-11 opacity-40 hover:opacity-100"
+              >
+                Continue with Base Imagery
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

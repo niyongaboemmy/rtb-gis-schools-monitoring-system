@@ -56,6 +56,7 @@ interface MapToolbarProps {
   onHome: () => void;
   onFitExtent: () => void;
   onExportPng: () => void;
+  on3DView?: () => void;
   showBasicInfo: boolean;
   setShowBasicInfo: React.Dispatch<React.SetStateAction<boolean>>;
   kmzOpacity: number;
@@ -102,6 +103,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
   setShowPlacesOverlay,
   showBuildingsList,
   setShowBuildingsList,
+  on3DView,
 }) => {
   const [showVisuals, setShowVisuals] = React.useState(false);
   const [showBasemaps, setShowBasemaps] = React.useState(false);
@@ -146,8 +148,8 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
       <div className="fixed inset-x-4 bottom-4 md:inset-auto md:right-4 md:top-4 md:bottom-4 z-30 flex flex-col items-end gap-3 pointer-events-none">
         <Card
           className={cn(
-            "bg-background/80 backdrop-blur-2xl rounded-[26px] md:rounded-[32px] border border-white/10 p-1.5 md:p-2",
-            "flex flex-row md:flex-col gap-1.5 md:gap-2 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.5)]",
+            "bg-card/95 backdrop-blur-2xl rounded-[26px] md:rounded-[32px] border border-white/10 p-1.5 md:p-2",
+            "flex flex-row md:flex-col gap-1.5 md:gap-2 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.6)]",
             "pointer-events-auto max-w-[calc(100vw-32px)] md:w-[56px] md:max-h-full items-center transition-all duration-500",
             "selection:bg-transparent overflow-visible",
           )}
@@ -164,6 +166,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                       className="h-9 w-9 md:h-10 md:w-10 rounded-2xl hover:bg-destructive/10 hover:text-destructive transition-all"
                       onClick={onClose}
                     >
+                      <div className="absolute inset-0 bg-linear-to-br from-primary/5 to-transparent opacity-0 group-hover/btn:opacity-100 transition-opacity" />
                       <X className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
@@ -179,7 +182,9 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     size="icon"
                     className={cn(
                       "h-9 w-9 md:h-10 md:w-10 rounded-2xl",
-                      showBasicInfo && "bg-primary text-white",
+                      showBasicInfo
+                        ? "bg-primary text-white shadow-lg shadow-primary/20"
+                        : "hover:bg-white/5 text-white/50 hover:text-white",
                     )}
                     onClick={() => setShowBasicInfo(!showBasicInfo)}
                   >
@@ -187,7 +192,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="left" className="hidden md:block">
-                  Overiew
+                  Overview
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -547,6 +552,24 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                   Reset Home View
                 </TooltipContent>
               </Tooltip>
+
+              {on3DView && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 md:h-10 md:w-10 rounded-2xl bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-white transition-all shadow-lg shadow-primary/20 group"
+                      onClick={on3DView}
+                    >
+                      <Globe className="h-4 w-4 group-hover:rotate-12 transition-transform" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="hidden md:block bg-primary text-white border-none font-black uppercase tracking-widest text-[10px]">
+                    3D Digital Twin
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
           </div>
         </Card>
@@ -555,7 +578,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
         <div className="relative pointer-events-auto">
           {/* Annotation Type Popover */}
           {showAnnotationTools && (
-            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-460px] md:right-16 mb-3 md:mb-0 bg-background/90 backdrop-blur-2xl rounded-3xl border border-white/10 p-3 shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-44 flex flex-col gap-2">
+            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-460px] md:right-16 mb-3 md:mb-0 bg-card/95 backdrop-blur-2xl rounded-3xl border border-white/10 p-3 shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-44 flex flex-col gap-2">
               <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1 px-1">
                 Toolbox
               </div>
@@ -620,7 +643,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
 
           {/* Basemap Switcher Popover */}
           {showBasemaps && (
-            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-440px] md:right-4 mb-3 md:mb-0 bg-background/90 backdrop-blur-2xl rounded-3xl border border-white/10 p-4 shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-64">
+            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-440px] md:right-4 mb-3 md:mb-0 bg-card/95 backdrop-blur-2xl rounded-3xl border border-white/10 p-4 shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-64">
               <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 mb-4">
                 Basemap Library
               </div>
@@ -679,7 +702,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
 
           {/* Opacity Slider Popover */}
           {showOpacitySlider && (
-            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-100px] md:right-4 mb-3 md:mb-0 bg-background/90 backdrop-blur-2xl rounded-2xl border border-white/10 p-5 shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-56">
+            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-100px] md:right-4 mb-3 md:mb-0 bg-card/95 backdrop-blur-2xl rounded-2xl border border-white/10 p-5 shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-56">
               <div className="flex items-center justify-between mb-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
                 <span>Layer Opacity</span>
                 <span className="tabular-nums font-mono text-primary bg-primary/10 px-2 py-0.5 rounded-lg">
@@ -700,7 +723,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
 
           {/* Visual Adjustments Popover */}
           {showVisuals && (
-            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-40px] md:right-4 mb-3 md:mb-0 bg-background/90 backdrop-blur-3xl rounded-3xl border border-white/10 p-5 shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-64 flex flex-col gap-5">
+            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-40px] md:right-4 mb-3 md:mb-0 bg-card/95 backdrop-blur-3xl rounded-3xl border border-white/10 p-5 shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-64 flex flex-col gap-5">
               <div className="flex items-center justify-between border-b border-white/5 pb-3">
                 <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 flex items-center gap-2">
                   <Satellite className="h-3 w-3" animate-pulse />

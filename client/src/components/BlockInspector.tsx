@@ -81,7 +81,7 @@ export function BlockInspector({
   return (
     <div
       className={cn(
-        "w-full md:w-[360px] bg-background/95 backdrop-blur-3xl border-t md:border-t-0 md:border-r border-white/5 flex flex-col h-full overflow-y-auto transition-all duration-500",
+        "w-full md:w-[360px] bg-[#0f1117]/95 backdrop-blur-3xl border-t md:border-t-0 md:border-r border-white/10 flex flex-col h-full overflow-y-auto transition-all duration-500",
         "rounded-t-[32px] md:rounded-none shadow-2xl z-100",
       )}
     >
@@ -120,8 +120,8 @@ export function BlockInspector({
       </div>
 
       {/* Tab Switcher - Premium Interaction (Fixed) */}
-      <div className="px-5 py-2.5 shrink-0 bg-background/50">
-        <div className="flex gap-1 p-1 rounded-2xl bg-black/50 border border-white/5 shadow-inner">
+      <div className="px-5 py-2.5 shrink-0 bg-[#0f1117]/50">
+        <div className="flex gap-1 p-1 rounded-2xl bg-card/95 border border-white/10 shadow-inner">
           {["details", "media", "reporting"].map((tab) => (
             <button
               key={tab}
@@ -152,7 +152,7 @@ export function BlockInspector({
             {/* Status Section */}
             <div className="space-y-3.5">
               {/* Average Performance Card */}
-              <div className="p-3 rounded-2xl bg-linear-to-br from-white/8 to-transparent border border-white/10 shadow-xl relative overflow-hidden group hover:border-white/20 transition-all">
+              <div className="p-3 rounded-2xl bg-card/30 border border-white/10 shadow-xl relative overflow-hidden group hover:border-white/20 transition-all">
                 <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
                   <Shield className="w-20 h-20 -mr-6 -mt-4 rotate-12" />
                 </div>
@@ -202,7 +202,7 @@ export function BlockInspector({
                 ].map((item, i) => (
                   <div
                     key={i}
-                    className="p-2 px-3 rounded-2xl bg-white/3 border border-white/5 hover:bg-white/6 transition-all group"
+                    className="p-2 px-3 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all group"
                   >
                     <div className="flex items-center gap-2">
                       <item.icon className="w-3 h-3 text-white/20 group-hover:text-primary" />
@@ -229,7 +229,7 @@ export function BlockInspector({
               <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.2em] pl-1 font-mono">
                 Technical Specs
               </p>
-              <div className="rounded-2xl border border-white/10 bg-white/1 overflow-hidden shadow-2xl backdrop-blur-3xl">
+              <div className="rounded-2xl border border-white/10 bg-white/5 overflow-hidden shadow-2xl backdrop-blur-3xl">
                 {[
                   {
                     label: "Function",
@@ -313,7 +313,7 @@ export function BlockInspector({
                   {building.facilities.map((f: any, idx: number) => (
                     <div
                       key={idx}
-                      className="flex justify-between items-center p-3.5 rounded-2xl bg-white/2 border border-white/5 hover:bg-white/6 transition-all group overflow-hidden relative"
+                      className="flex justify-between items-center p-3.5 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group overflow-hidden relative"
                     >
                       <div className="absolute inset-y-0 left-0 w-0.5 bg-primary transform scale-y-0 group-hover:scale-y-100 transition-transform duration-300" />
                       <div className="flex items-center gap-3.5 min-w-0">
@@ -357,7 +357,7 @@ export function BlockInspector({
 
       {/* Footer - Integrated Action (Fixed) */}
       {activeTab === "details" && (
-        <div className="p-5 pt-2 shrink-0 border-t border-white/2 bg-background/80 backdrop-blur-md">
+        <div className="p-5 pt-2 shrink-0 border-t border-white/10 bg-[#0f1117]/80 backdrop-blur-md">
           <Button
             variant="outline"
             className="w-full h-12 text-[10px] font-black uppercase tracking-[0.25em] rounded-2xl border-white/10 bg-white/2 hover:bg-primary hover:border-primary hover:text-white shadow-xl transition-all duration-300 active:scale-[0.97] group"

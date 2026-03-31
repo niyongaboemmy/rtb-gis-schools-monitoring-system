@@ -45,7 +45,9 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
 
   React.useEffect(() => {
     if (activeTab === "buildings" && selectedBuildingId && listRef.current) {
-      const element = listRef.current.querySelector(`[data-id="${selectedBuildingId}"]`);
+      const element = listRef.current.querySelector(
+        `[data-id="${selectedBuildingId}"]`,
+      );
       if (element) {
         element.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }
@@ -71,7 +73,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
   return (
     <Card
       className={cn(
-        "fixed z-40 bg-background/80 backdrop-blur-3xl border-white/10 shadow-[0_-8px_32px_rgba(0,0,0,0.4)] md:shadow-[0_32px_64px_-12px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col transition-all duration-500 ease-out",
+        "fixed z-40 bg-card/95 backdrop-blur-3xl border border-white/10 shadow-[0_-8px_32px_rgba(0,0,0,0.6)] md:shadow-[0_32px_64px_-12px_rgba(0,0,0,0.7)] overflow-hidden flex flex-col transition-all duration-500 ease-out",
         "inset-x-0 bottom-0 h-[60vh] rounded-t-[32px] md:rounded-[24px]", // Mobile: bottom sheet
         "md:inset-auto md:right-20 md:top-4 md:w-85 md:h-auto md:max-h-[calc(100vh-60px)]", // Desktop: floating panel
         "animate-in slide-in-from-bottom md:slide-in-from-right-4",
@@ -99,7 +101,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
         </Button>
       </div>
 
-      <div className="flex p-1 gap-1 border-b border-white/5 bg-white/5">
+      <div className="flex p-1 gap-1 border-b border-white/5 bg-primary/5">
         {[
           { id: "features", label: "Features", icon: MapPin },
           { id: "buildings", label: "Buildings", icon: Building2 },
@@ -111,7 +113,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
               "flex-1 flex flex-row items-center justify-center gap-1.5 py-2.5 px-3 rounded-full transition-all duration-300 relative",
               activeTab === t.id
                 ? "bg-primary text-white shadow-lg shadow-primary/20"
-                : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+                : "text-white/40 hover:bg-white/5 hover:text-white",
             )}
           >
             <t.icon className="h-3.5 w-3.5" />
@@ -159,7 +161,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
                   <div
                     key={ann.id}
                     onClick={() => onFlyToAnnotation(ann)}
-                    className="group flex items-center justify-between p-2.5 rounded-2xl transition-all border border-transparent hover:bg-white/10 hover:border-white/10 cursor-pointer"
+                    className="group flex items-center justify-between p-2.5 rounded-2xl transition-all border border-transparent hover:bg-white/5 hover:border-white/10 cursor-pointer"
                   >
                     <div className="flex items-center gap-3">
                       <div
@@ -224,27 +226,31 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
               </div>
             ) : (
               filteredBuildings.map((b) => (
-                <div
-                  key={b.id}
-                  data-id={b.id}
-                  onClick={() => onSelectBuilding(b)}
-                  className={cn(
-                    "group flex items-center justify-between p-2.5 rounded-2xl transition-all border cursor-pointer",
-                    selectedBuildingId === b.id 
-                      ? "bg-primary/10 border-primary/40 shadow-sm" 
-                      : "border-transparent hover:bg-white/10 hover:border-white/10"
-                  )}
-                >
+                  <div
+                    key={b.id}
+                    data-id={b.id}
+                    onClick={() => onSelectBuilding(b)}
+                    className={cn(
+                      "group flex items-center justify-between p-2.5 rounded-2xl transition-all border cursor-pointer",
+                      selectedBuildingId === b.id
+                        ? "bg-primary/20 border-primary/40 shadow-sm shadow-primary/10"
+                        : "border-transparent hover:bg-white/5 hover:border-white/10",
+                    )}
+                  >
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20 shadow-inner">
                       <Building2 className="h-5 w-5 text-blue-500" />
                     </div>
                     <div className="flex flex-col gap-0.5">
                       <div className="flex items-center gap-1.5">
-                        <span className={cn(
-                          "text-[11px] font-bold leading-tight",
-                          selectedBuildingId === b.id ? "text-primary" : "text-foreground/90"
-                        )}>
+                        <span
+                          className={cn(
+                            "text-[11px] font-bold leading-tight",
+                            selectedBuildingId === b.id
+                              ? "text-primary"
+                              : "text-foreground/90",
+                          )}
+                        >
                           {b.buildingName || "Unnamed Block"}
                         </span>
                         {b.buildingCondition === "good" && (
@@ -266,7 +272,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
         )}
       </div>
 
-      <div className="p-3 border-t border-white/5 bg-white/5 mt-auto">
+      <div className="p-3 border-t border-white/5 bg-primary/5 mt-auto">
         {activeTab === "features" && (
           <p className="text-[9px] text-center text-muted-foreground uppercase font-black tracking-widest py-1">
             Use GIS Tools to add more features

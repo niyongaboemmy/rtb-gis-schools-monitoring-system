@@ -38,7 +38,9 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
 
   React.useEffect(() => {
     if (selectedId && listRef.current) {
-      const element = listRef.current.querySelector(`[data-id="${selectedId}"]`);
+      const element = listRef.current.querySelector(
+        `[data-id="${selectedId}"]`,
+      );
       if (element) {
         element.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }
@@ -69,7 +71,7 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
   return (
     <Card
       className={cn(
-        "fixed z-30 flex flex-col bg-background/80 backdrop-blur-2xl border-white/10 shadow-2xl overflow-hidden transition-all duration-500",
+        "fixed z-30 flex flex-col bg-card/95 backdrop-blur-2xl border border-white/10 shadow-2xl overflow-hidden transition-all duration-500",
         "inset-x-0 bottom-0 h-[60vh] rounded-t-[32px] md:rounded-3xl", // Mobile
         "md:inset-auto md:right-22 md:top-4 md:w-80 md:h-auto md:max-h-[calc(100vh-2rem)]", // Desktop
         "animate-in fade-in slide-in-from-bottom md:slide-in-from-right-8",
@@ -139,7 +141,7 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
       </div>
 
       {/* List */}
-      <div 
+      <div
         ref={listRef}
         className="flex-1 overflow-y-auto w-full p-2 space-y-1 custom-scrollbar"
       >
@@ -163,17 +165,19 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
               onClick={() => onSelect(b)}
               className={cn(
                 "group relative flex flex-col gap-1.5 px-4 py-3 transition-all rounded-2xl cursor-pointer border",
-                selectedId === b.id 
-                  ? "bg-primary/10 border-primary/40 shadow-sm" 
-                  : "bg-muted/30 hover:bg-muted/60 border-transparent hover:border-border/40"
+                selectedId === b.id
+                  ? "bg-primary/20 border-primary/40 shadow-sm shadow-primary/10"
+                  : "bg-white/5 hover:bg-white/10 border-transparent hover:border-white/10",
               )}
             >
               <div className="flex justify-between items-start w-full">
                 <div className="flex items-center gap-2">
-                  <span className={cn(
-                    "font-bold text-[12px] truncate max-w-[140px]",
-                    selectedId === b.id ? "text-primary" : "text-foreground"
-                  )}>
+                  <span
+                    className={cn(
+                      "font-bold text-[12px] truncate max-w-[140px]",
+                      selectedId === b.id ? "text-primary" : "text-white/90",
+                    )}
+                  >
                     {b.buildingName || "Unnamed Block"}
                   </span>
                   {b.buildingFunction && (
@@ -186,7 +190,7 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
                 {/* Delete Button / Confirm Dialog */}
                 {showConfirm === b.id ? (
                   <div
-                    className="flex flex-col items-end gap-1 absolute right-3 top-2 bg-background border border-border/40 p-2 rounded-xl shadow-xl z-10"
+                    className="flex flex-col items-end gap-1 absolute right-3 top-2 bg-[#0f1117] border border-white/10 p-2 rounded-xl shadow-2xl z-10"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="flex items-center gap-1.5 text-destructive text-[10px] font-bold uppercase mb-1">

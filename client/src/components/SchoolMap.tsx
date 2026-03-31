@@ -31,8 +31,8 @@ export default function SchoolMap({
   initialBuildingId,
   onUpdateSchool,
 }: SchoolMapProps) {
-  const [showModal, setShowModal] = useState(true);
-  const [viewerMode, setViewerMode] = useState<"2D" | "3D" | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [viewerMode, setViewerMode] = useState<"2D" | "3D" | null>("2D");
 
   // ── Shared props for both viewers ───────────────────────────────────────
   const sharedProps = {
