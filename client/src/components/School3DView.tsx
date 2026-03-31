@@ -15,10 +15,11 @@ import ViewerControlToolbar from "./3dviewercomponents/ViewerControlToolbar";
 import ViewerRenderModePanel from "./3dviewercomponents/ViewerRenderModePanel";
 import ViewerMeasureToolbar from "./3dviewercomponents/ViewerMeasureToolbar";
 import ViewerMeasurePanel from "./3dviewercomponents/ViewerMeasurePanel";
-import ViewerAnnotationDialog from "./3dviewercomponents/ViewerAnnotationDialog";
 import ViewerStatsFooter from "./3dviewercomponents/ViewerStatsFooter";
+import { AnnotationPickerModal } from "./2dviewercomponents/AnnotationPickerModal";
 import ViewerHelpModal from "./3dviewercomponents/ViewerHelpModal";
 import ViewerMainCanvas from "./3dviewercomponents/ViewerMainCanvas";
+import ViewerBuildingPanel from "./3dviewercomponents/ViewerBuildingPanel";
 
 // Styles
 import "./School3DView.css";
@@ -172,6 +173,14 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   // Loading state for annotations/markers
   const [isProcessingMarkers, setIsProcessingMarkers] = useState(false);
 
+  // DB overlay visibility & building selection
+  const [showDbAnnotations, setShowDbAnnotations] = useState(false);
+  const [selectedBuilding, setSelectedBuilding] = useState<any>(null);
+
+  // DB-backed site annotations (same data as 2D viewer)
+  const [siteAnnotations, setSiteAnnotations] = useState<any[]>([]);
+  const [annotPickerOpen, setAnnotPickerOpen] = useState(false);
+
   const [dbSchool, setDbSchool] = useState<any>(null);
   const [dbBuildings, setDbBuildings] = useState<any[]>([]);
   const [dbMarkers, setDbMarkers] = useState<any[]>([]);
@@ -192,6 +201,14 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const measuresRef = useRef<MeasureLine[]>([]);
   useEffect(() => { annotationsRef.current = annotations; }, [annotations]);
   useEffect(() => { measuresRef.current = measures; }, [measures]);
+
+  // Refs for building-selection handler (avoids stale closures)
+  const dbMarkersRef = useRef<any[]>([]);
+  const dbBuildingsRef = useRef<any[]>([]);
+  const measureModeRef = useRef<MeasureMode>(null);
+  useEffect(() => { dbMarkersRef.current = dbMarkers; }, [dbMarkers]);
+  useEffect(() => { dbBuildingsRef.current = dbBuildings; }, [dbBuildings]);
+  useEffect(() => { measureModeRef.current = measureMode; }, [measureMode]);
 
   const viewerStatePrefetchRef = useRef<Promise<any> | null>(null);
   // Promise that resolves the moment initThree() finishes setting sceneRef/cameraRef/controlsRef
@@ -219,10 +236,8 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const colorIdxRef = useRef(0);
 
   // Annotate modal state
-  const [editAnnotId, setEditAnnotId] = useState<string | null>(null);
-  const [annotInput, setAnnotInput] = useState("");
   const [annotPendingPt, setAnnotPendingPt] = useState<MeasurePoint | null>(null);
-  const [annotColor, setAnnotColor] = useState<string>(ANNOT_COLORS[0]);
+  const [annotColor] = useState<string>(ANNOT_COLORS[0]);
 
   // Persist (localStorage + server)
   useEffect(() => { saveJson(LS_MEASURES_KEY, measures); scheduleSave(); }, [measures, scheduleSave]);
@@ -253,9 +268,9 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     setProgress(90); setProgressLabel("Building scene…"); setPhase("viewing");
 
     // Wait for initThree() to populate sceneRef / cameraRef / controlsRef.
-    // initThree() runs in a useEffect triggered by the phase="viewing" state change above;
-    // threeInitPromiseRef was resolved by initThree() once all refs are set.
-    await threeInitPromiseRef.current;
+    // initThree() starts eagerly on phase="loading", so by the time the GLB finishes
+    // downloading it is usually already done — this await is a no-op in the fast path.
+    if (!sceneRef.current) await threeInitPromiseRef.current;
 
     const scene = sceneRef.current!, camera = cameraRef.current!, controls = controlsRef.current!;
     const maxAniso = rendererRef.current?.capabilities.getMaxAnisotropy() ?? 16;
@@ -265,6 +280,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     const upgradeTex = (tex: THREE.Texture | null) => {
       if (!tex) return; tex.anisotropy = maxAniso; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.magFilter = THREE.LinearFilter; tex.needsUpdate = true;
     };
+    const bvhMeshes: THREE.Mesh[] = [];
     model.traverse(child => {
       const mesh = child as THREE.Mesh; if (!mesh.isMesh) return;
       origMatsRef.current.set(mesh, mesh.material);
@@ -274,12 +290,19 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       const diffuseTex = (srcMat as any).map ?? null; if (diffuseTex) upgradeTex(diffuseTex);
       const unlitMat = new THREE.MeshBasicMaterial({ map: diffuseTex, vertexColors: (srcMat as any).vertexColors ?? false, side: (srcMat as any).side ?? THREE.FrontSide, transparent: (srcMat as any).transparent ?? false, opacity: (srcMat as any).opacity ?? 1, alphaTest: (srcMat as any).alphaTest ?? 0 });
       unlitMatsRef.current.set(mesh, unlitMat);
-
-      // Pre-calculate BVH for fast raycasting
-      mesh.geometry.computeBoundsTree();
+      bvhMeshes.push(mesh);
     });
 
+    // Add model immediately so it is visible — BVH is computed in background after render
     scene.add(model); modelRef.current = model;
+
+    // Defer BVH computation: yield every 5 meshes so the renderer stays responsive
+    ;(async () => {
+      for (let i = 0; i < bvhMeshes.length; i++) {
+        bvhMeshes[i].geometry.computeBoundsTree();
+        if (i % 5 === 4) await new Promise(r => setTimeout(r, 0));
+      }
+    })();
 
     // ── Auto-correct Orientation: detect if map is Z-up (appearing vertical) ─────
     model.updateMatrixWorld(true);
@@ -309,6 +332,11 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     box.setFromObject(model);
 
     applyRenderMode(renderMode);
+
+    if (rendererRef.current) {
+      // Pre-compile to avoid stutter on first frame
+      rendererRef.current.compile(scene, camera);
+    }
 
     size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
@@ -383,6 +411,11 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     setProgress(100); setProgressLabel("Done!");
   }, [renderMode, applyRenderMode, schoolId]);
 
+  // Sync siteAnnotations from dbSchool (same source as 2D viewer)
+  useEffect(() => {
+    if (dbSchool?.siteAnnotations) setSiteAnnotations(dbSchool.siteAnnotations);
+  }, [dbSchool]);
+
   // ── Pre-fetch School Data (Parallel to GLB loading) ─────────────────────────
   useEffect(() => {
     if (!schoolId) return;
@@ -397,11 +430,12 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   // ── Sync DB Markers and Ground Snapping (Non-Blocking Batch Processing) ──────
   useEffect(() => {
     const model = modelRef.current;
-    if (!dbSchool || !model || !isModelReady || phase !== "viewing") { 
-      setDbMarkers([]); setDbSiteShapes([]); return; 
+    if (!dbSchool || !model || !isModelReady || phase !== "viewing") {
+      setDbMarkers([]); setDbSiteShapes([]); return;
     }
     const latCenter = Number(dbSchool.latitude), lonCenter = Number(dbSchool.longitude);
     if (!latCenter || !lonCenter) { setDbMarkers([]); setDbSiteShapes([]); return; }
+
 
     const latFactor = 111320, lonFactor = 111320 * Math.cos(latCenter * Math.PI / 180);
     const raycaster = new THREE.Raycaster();
@@ -432,7 +466,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
     const processBatch = async () => {
       try {
-        const siteAnns = dbSchool.siteAnnotations || [];
+        const siteAnns = siteAnnotations;
         const buildingData = dbBuildings || [];
         console.log(`[3DViewer] Syncing markers: ${siteAnns.length} site, ${buildingData.length} buildings`);
 
@@ -524,7 +558,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
     processBatch();
     return () => { isCancelled = true; };
-  }, [dbSchool, dbBuildings, phase, isModelReady]);
+  }, [dbSchool, dbBuildings, phase, isModelReady, siteAnnotations]);
 
   const toggleMode = useCallback((mode: MeasureMode) => {
     setMeasureMode(prev => {
@@ -679,6 +713,9 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     // ─── DB Markers ───────────
     const dbPulse = Math.sin(Date.now() / 250) * 0.4 + 1.2;
     dbMarkers.forEach(m => {
+      // Building "block" markers are always shown; site/internal only when showDbAnnotations
+      if (m.type !== "block" && !showDbAnnotations) return;
+
       const p = project3Dto2D(new THREE.Vector3(m.x, m.y, m.z), camera, W, H);
       if (!p) return;
       const [ex, ey] = p;
@@ -704,8 +741,15 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
       // Main Outer Ring
       ctx.beginPath(); ctx.arc(ex, ey, 7 * scale, 0, Math.PI * 2);
-      ctx.fillStyle = baseCol; ctx.fill(); 
+      ctx.fillStyle = baseCol; ctx.fill();
       ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * scale; ctx.stroke();
+
+      // Selected building highlight ring
+      if (m.type === "block" && selectedBuilding && (selectedBuilding.id === m.id || selectedBuilding.label === m.label)) {
+        ctx.beginPath(); ctx.arc(ex, ey, 13 * scale, 0, Math.PI * 2);
+        ctx.strokeStyle = "#fff"; ctx.lineWidth = 2.5 * scale; ctx.setLineDash([4, 3]); ctx.stroke();
+        ctx.setLineDash([]);
+      }
 
       // Premium Glassmorphic Label
       ctx.font = `bold ${Math.round(10 * scale)}px 'Inter', system-ui, sans-serif`;
@@ -745,46 +789,48 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       });
     }
 
-    // ─── Site annotation shapes (lines & polygons) ───────────────────
-    dbSiteShapes.forEach(shape => {
-      if (shape.pts.length < 2) return;
-      const projPts = shape.pts.map(p => project3Dto2D(p, camera, W, H));
-      if (projPts.every(p => !p)) return;
+    // ─── Site annotation shapes (lines & polygons) — only when annotations layer is on ───
+    if (showDbAnnotations) {
+      dbSiteShapes.forEach(shape => {
+        if (shape.pts.length < 2) return;
+        const projPts = shape.pts.map(p => project3Dto2D(p, camera, W, H));
+        if (projPts.every(p => !p)) return;
 
-      const baseCol = shape.color || "#10b981";
-      ctx.beginPath(); ctx.setLineDash([]);
-      ctx.strokeStyle = baseCol; ctx.lineWidth = 3;
-      
-      // Convert hex to rgba for fill
-      let fillCol = "rgba(16, 185, 129, 0.15)";
-      if (baseCol.startsWith("#")) {
-        const r = parseInt(baseCol.slice(1, 3), 16), g = parseInt(baseCol.slice(3, 5), 16), b = parseInt(baseCol.slice(5, 7), 16);
-        fillCol = `rgba(${r}, ${g}, ${b}, 0.2)`;
-      }
+        const baseCol = shape.color || "#10b981";
+        ctx.beginPath(); ctx.setLineDash([]);
+        ctx.strokeStyle = baseCol; ctx.lineWidth = 3;
 
-      ctx.fillStyle = fillCol;
+        // Convert hex to rgba for fill
+        let fillCol = "rgba(16, 185, 129, 0.15)";
+        if (baseCol.startsWith("#")) {
+          const r = parseInt(baseCol.slice(1, 3), 16), g = parseInt(baseCol.slice(3, 5), 16), b = parseInt(baseCol.slice(5, 7), 16);
+          fillCol = `rgba(${r}, ${g}, ${b}, 0.2)`;
+        }
 
-      let started = false;
-      projPts.forEach(p => {
-        if (!p) { started = false; return; }
-        if (!started) { ctx.moveTo(p[0], p[1]); started = true; }
-        else ctx.lineTo(p[0], p[1]);
+        ctx.fillStyle = fillCol;
+
+        let started = false;
+        projPts.forEach(p => {
+          if (!p) { started = false; return; }
+          if (!started) { ctx.moveTo(p[0], p[1]); started = true; }
+          else ctx.lineTo(p[0], p[1]);
+        });
+
+        if (shape.type === "polygon") {
+          const first = projPts.find(p => !!p);
+          if (first && started) ctx.lineTo(first[0], first[1]);
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          ctx.stroke();
+        }
       });
-
-      if (shape.type === "polygon") {
-        const first = projPts.find(p => !!p);
-        if (first && started) ctx.lineTo(first[0], first[1]);
-        ctx.fill();
-        ctx.stroke();
-      } else {
-        ctx.stroke();
-      }
-    });
+    }
 
     // Draw the active annotation being placed
     if (annotPendingPt) drawDot(annotPendingPt, annotColor, 7);
 
-  }, [measures, measureMode, unit, annotations, annotPendingPt, visibility, annotColor, dbSiteShapes]);
+  }, [measures, measureMode, unit, annotations, annotPendingPt, visibility, annotColor, dbSiteShapes, dbMarkers, showDbAnnotations, selectedBuilding]);
 
   const drawOverlayRef = useRef<() => void>(() => { });
   useEffect(() => { drawOverlayRef.current = drawOverlay; }, [drawOverlay]);
@@ -863,18 +909,30 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  useEffect(() => {
-    if (phase !== "viewing") return;
-    const cleanup = initThree();
-    return () => {
-      cleanup?.(); cancelAnimationFrame(animFrameRef.current); rendererRef.current?.dispose();
-      if (mountRef.current && rendererRef.current?.domElement.parentNode === mountRef.current)
-        mountRef.current.removeChild(rendererRef.current.domElement);
-    };
-  }, [phase, initThree]);
+  // ── Eagerly start Three.js as soon as the canvas div is in the DOM (loading phase).
+  // A ref guard prevents re-init on the loading→viewing transition.
+  const threeStartedRef = useRef(false);
+  const threeResizeCleanupRef = useRef<(() => void) | undefined>(undefined);
 
   useEffect(() => {
-    if (phase !== "viewing") return;
+    if (phase === "idle") return;              // canvas not in DOM yet
+    if (threeStartedRef.current) return;       // already running
+    threeStartedRef.current = true;
+    threeResizeCleanupRef.current = initThree() ?? undefined;
+  }, [phase, initThree]);
+
+  // Full Three.js teardown on component unmount only
+  useEffect(() => () => {
+    threeResizeCleanupRef.current?.();
+    cancelAnimationFrame(animFrameRef.current);
+    rendererRef.current?.dispose();
+    if (mountRef.current && rendererRef.current?.domElement.parentNode === mountRef.current)
+      mountRef.current.removeChild(rendererRef.current.domElement);
+  }, []);
+
+  // Overlay canvas sizing — runs whenever the canvas becomes visible
+  useEffect(() => {
+    if (phase === "idle") return;
     const resize = () => {
       const el = overlayRef.current; if (!el || !mountRef.current) return;
       el.width = mountRef.current.clientWidth; el.height = mountRef.current.clientHeight;
@@ -921,6 +979,61 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     controlsRef.current.enabled = !measureMode;
     if (measureMode) velocityRef.current.set(0, 0, 0);
   }, [measureMode]);
+
+  // ── Building selection: click on Three.js canvas when no measure mode active ─
+  useEffect(() => {
+    if (phase !== "viewing") return;
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+
+    let pointerStart = { x: 0, y: 0 };
+
+    const onPointerDown = (e: PointerEvent) => {
+      pointerStart = { x: e.clientX, y: e.clientY };
+    };
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (measureModeRef.current) return;
+      const dx = e.clientX - pointerStart.x;
+      const dy = e.clientY - pointerStart.y;
+      if (Math.sqrt(dx * dx + dy * dy) > 5) return; // was a drag
+
+      const camera = cameraRef.current;
+      const canvas = overlayRef.current;
+      if (!camera || !canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const W = rect.width;
+      const H = rect.height;
+
+      let nearest: any = null;
+      let nearestDist = 30; // px click radius
+
+      dbMarkersRef.current.forEach((m: any) => {
+        if (m.type !== "block") return;
+        const proj = project3Dto2D({ x: m.x, y: m.y, z: m.z }, camera, W, H);
+        if (!proj) return;
+        const d = Math.sqrt((proj[0] - mx) ** 2 + (proj[1] - my) ** 2);
+        if (d < nearestDist) { nearestDist = d; nearest = m; }
+      });
+
+      if (nearest) {
+        const building = dbBuildingsRef.current.find((b: any) => b.id === nearest.id);
+        setSelectedBuilding(building || nearest);
+      } else {
+        setSelectedBuilding(null);
+      }
+    };
+
+    renderer.domElement.addEventListener("pointerdown", onPointerDown);
+    renderer.domElement.addEventListener("pointerup", onPointerUp);
+    return () => {
+      renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+      renderer.domElement.removeEventListener("pointerup", onPointerUp);
+    };
+  }, [phase]);
 
   // ── Raycasting ──────────────────────────────────────────────────────────────
 
@@ -984,9 +1097,9 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     if (!measureMode) return;
 
     if (measureMode === "annotate") {
-      // Annotations still use the accurate mesh raycast for surface-precise placement
       const pt = getAccurateRaycastPt(e); if (!pt) return;
-      setAnnotPendingPt(pt); setAnnotInput(""); setEditAnnotId(null); setAnnotColor(ANNOT_COLORS[0]);
+      setAnnotPendingPt(pt);
+      setAnnotPickerOpen(true);
       return;
     }
 
@@ -1150,20 +1263,59 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     const startTime = Date.now();
     let fileSize = 0;
     try {
+      let arrayBuffer: ArrayBuffer;
+      const cache = await caches.open("glb-cache-v1");
+      let response = await cache.match(url);
+      
+      if (response) {
+        arrayBuffer = await response.arrayBuffer();
+        fileSize = arrayBuffer.byteLength;
+        setProgress(85);
+        setProgressLabel("Loaded from cache...");
+      } else {
+        response = await fetch(url);
+        if (!response.ok) throw new Error("Failed to fetch model");
+        
+        const contentLength = response.headers.get("content-length");
+        const total = contentLength ? parseInt(contentLength, 10) : 0;
+        fileSize = total;
+
+        if (response.body && total > 0) {
+          const reader = response.body.getReader();
+          const chunks = [];
+          let received = 0;
+          
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) {
+              chunks.push(value);
+              received += value.length;
+              setProgress(Math.round((received / total) * 85));
+              setProgressLabel(`${formatBytes(received)} / ${formatBytes(total)}`);
+            }
+          }
+          
+          const allChunks = new Uint8Array(received);
+          let position = 0;
+          for (const chunk of chunks) {
+            allChunks.set(chunk, position);
+            position += chunk.length;
+          }
+          arrayBuffer = allChunks.buffer;
+        } else {
+          arrayBuffer = await response.arrayBuffer();
+          fileSize = arrayBuffer.byteLength;
+          setProgress(85);
+          setProgressLabel(`${formatBytes(fileSize)} / ${formatBytes(fileSize)}`);
+        }
+        cache.put(url, new Response(arrayBuffer));
+      }
+
+      setProgressLabel("Parsing GLB…");
       const loader = new GLTFLoader(); loader.setDRACOLoader(sharedDracoLoader);
       const gltf = await new Promise<GLTF>((resolve, reject) => {
-        loader.load(
-          url,
-          resolve,
-          (event) => {
-            if (event.lengthComputable) {
-              fileSize = event.total;
-              setProgress(Math.round(event.loaded / event.total * 85));
-              setProgressLabel(`${formatBytes(event.loaded)} / ${formatBytes(event.total)}`);
-            }
-          },
-          (err) => reject(err instanceof Error ? err : new Error(String(err)))
-        );
+        loader.parse(arrayBuffer, "", resolve, reject);
       });
       await finalizeGLTF(gltf, fileName, fileSize, startTime);
     } catch (err: any) { setError(err?.message || "Failed to load model"); setPhase("idle"); }
@@ -1187,19 +1339,50 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) handleFile(f); };
   const handleDrop = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); };
 
-  // ── Annotation dialog ────────────────────────────────────────────────────────
-  const submitAnnotation = () => {
-    if (!annotInput.trim()) { setAnnotPendingPt(null); return; }
-    if (editAnnotId) {
-      setAnnotations(prev => prev.map(a => a.id === editAnnotId ? { ...a, text: annotInput, color: annotColor } : a));
-      setEditAnnotId(null);
-    } else if (annotPendingPt) {
-      setAnnotations(prev => [...prev, { id: uid(), point: annotPendingPt, text: annotInput, color: annotColor }]);
-    }
-    setAnnotPendingPt(null); setAnnotInput("");
-  };
+  // ── Annotation: save to DB (same API as 2D viewer) ───────────────────────────
+  const submit3DAnnotation = useCallback(async (iconType: string, title: string, description: string, mapColor: string) => {
+    const pt = annotPendingPt;
+    setAnnotPickerOpen(false);
+    setAnnotPendingPt(null);
+    setMeasureMode(null);
 
-  const cancelAnnotation = () => { setAnnotPendingPt(null); setEditAnnotId(null); };
+    if (!pt || !schoolId || !dbSchool) return;
+    const latCenter = Number(dbSchool.latitude);
+    const lonCenter = Number(dbSchool.longitude);
+    if (!latCenter || !lonCenter) return;
+
+    // Convert 3D world position → GPS coordinates (inverse of toXZ in processing effect)
+    const latFactor = 111320;
+    const lonFactor = 111320 * Math.cos(latCenter * Math.PI / 180);
+    const { x: rcX, z: rcZ } = modelRawCenterRef.current;
+    const lon = (pt.x + rcX) / lonFactor + lonCenter;
+    const lat = -(pt.z + rcZ) / latFactor + latCenter;
+
+    const payload = {
+      id: `site-${Date.now()}`,
+      type: "point",
+      coordinates: [lon, lat],
+      title: title || iconType,
+      label: title || iconType,
+      description,
+      style: { color: mapColor, iconType },
+    };
+
+    try {
+      const res = await api.post(`/schools/${schoolId}/kmz/2d/site-annotations`, payload);
+      if (res.data) {
+        setSiteAnnotations(prev => [...prev, res.data]);
+        setShowDbAnnotations(true); // make newly placed annotation visible immediately
+      }
+    } catch (err) {
+      console.error("[3DViewer] Failed to save annotation:", err);
+    }
+  }, [annotPendingPt, schoolId, dbSchool]);
+
+  const cancelAnnotation = useCallback(() => {
+    setAnnotPickerOpen(false);
+    setAnnotPendingPt(null);
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -1217,8 +1400,8 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
       {error && <div className="error-bar"><span>⚠</span> {error}</div>}
 
-      {phase !== "viewing" ? (
-        <ViewerLoadingScreens 
+      {phase === "idle" && (
+        <ViewerLoadingScreens
           phase={phase}
           progress={progress}
           progressLabel={progressLabel}
@@ -1228,7 +1411,13 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
           handleDrop={handleDrop}
           handleInputChange={handleInputChange}
         />
-      ) : (
+      )}
+
+      {/* viewer-wrapper stays mounted from "loading" onwards so the Three.js canvas
+          is in the DOM and initThree can run in parallel with the GLB download.
+          ViewerMainCanvas has its own loading overlay (progress < 100) that covers
+          the scene during download. */}
+      {phase !== "idle" && (
         <div className="viewer-wrapper">
           <ViewerMainCanvas
             ref={mountRef}
@@ -1241,87 +1430,93 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
             handleOverlayDoubleClick={handleOverlayDoubleClick}
             handleOverlayContextMenu={handleOverlayContextMenu}
           />
-          
-          <ViewerControlToolbar
-            handleResetCamera={handleResetCamera}
-            saveFlash={saveFlash}
-            homeSaved={homeSaved}
-            speedSteps={SPEED_STEPS}
-            handleSaveHome={handleSaveHome}
-            toggleOrientation={toggleOrientation}
-            setView={setView}
-            speedIdx={speedIdx}
-            speedUp={speedUp}
-            speedDown={speedDown}
-            showMeasurePanel={showMeasurePanel}
-            setShowMeasurePanel={setShowMeasurePanel}
-            screenshotFlash={screenshotFlash}
-            handleScreenshot={handleScreenshot}
-            showHelp={showHelp}
-            setShowHelp={setShowHelp}
-          />
 
-          <ViewerRenderModePanel
-            modeLabels={MODE_LABELS}
-            renderMode={renderMode}
-            setRenderMode={setRenderMode}
-          />
+          {phase === "viewing" && (
+            <>
+              <ViewerControlToolbar
+                handleResetCamera={handleResetCamera}
+                saveFlash={saveFlash}
+                homeSaved={homeSaved}
+                speedSteps={SPEED_STEPS}
+                handleSaveHome={handleSaveHome}
+                toggleOrientation={toggleOrientation}
+                setView={setView}
+                speedIdx={speedIdx}
+                speedUp={speedUp}
+                speedDown={speedDown}
+                showMeasurePanel={showMeasurePanel}
+                setShowMeasurePanel={setShowMeasurePanel}
+                screenshotFlash={screenshotFlash}
+                handleScreenshot={handleScreenshot}
+                showHelp={showHelp}
+                setShowHelp={setShowHelp}
+              />
 
-          <ViewerMeasureToolbar
-            measureMode={measureMode}
-            showUnitDropdown={showUnitDropdown}
-            setShowUnitDropdown={setShowUnitDropdown}
-            unit={unit}
-            setUnit={setUnit}
-            toggleMode={toggleMode}
-            measuresCount={measures.length}
-            annotationsCount={annotations.length}
-            visibility={visibility}
-            cycleVisibility={cycleVisibility}
-            pendingPtsCount={pendingPts.length}
-            finalizeMeasure={finalizeMeasure}
-            setMeasureMode={setMeasureMode}
-            setPendingPts={setPendingPts}
-            unitLabels={UNIT_LABELS}
-            unitSuffix={UNIT_SUFFIX}
-          />
+              <ViewerRenderModePanel
+                modeLabels={MODE_LABELS}
+                renderMode={renderMode}
+                setRenderMode={setRenderMode}
+              />
 
-          {showMeasurePanel && (
-            <ViewerMeasurePanel
-              measures={measures}
-              annotations={annotations}
-              clearAllMeasurements={clearAllMeasurements}
-              setMeasures={setMeasures}
-              setAnnotations={setAnnotations}
-              setEditAnnotId={setEditAnnotId}
-              setAnnotInput={setAnnotInput}
-              setAnnotPendingPt={setAnnotPendingPt}
-              setAnnotColor={setAnnotColor}
-            />
-          )}
+              <ViewerMeasureToolbar
+                measureMode={measureMode}
+                showUnitDropdown={showUnitDropdown}
+                setShowUnitDropdown={setShowUnitDropdown}
+                unit={unit}
+                setUnit={setUnit}
+                toggleMode={toggleMode}
+                measuresCount={measures.length}
+                annotationsCount={annotations.length}
+                visibility={visibility}
+                cycleVisibility={cycleVisibility}
+                pendingPtsCount={pendingPts.length}
+                finalizeMeasure={finalizeMeasure}
+                setMeasureMode={setMeasureMode}
+                setPendingPts={setPendingPts}
+                unitLabels={UNIT_LABELS}
+                unitSuffix={UNIT_SUFFIX}
+                showDbAnnotations={showDbAnnotations}
+                setShowDbAnnotations={setShowDbAnnotations}
+                buildingMarkersCount={dbMarkers.filter(m => m.type === "block").length}
+              />
 
-          <ViewerAnnotationDialog
-            editAnnotId={editAnnotId}
-            annotColor={annotColor}
-            setAnnotColor={setAnnotColor}
-            annotInput={annotInput}
-            setAnnotInput={setAnnotInput}
-            submitAnnotation={submitAnnotation}
-            cancelAnnotation={cancelAnnotation}
-            annotColors={ANNOT_COLORS}
-          />
+              {showMeasurePanel && (
+                <ViewerMeasurePanel
+                  measures={measures}
+                  annotations={annotations}
+                  clearAllMeasurements={clearAllMeasurements}
+                  setMeasures={setMeasures}
+                  setAnnotations={setAnnotations}
+                />
+              )}
 
-          <ViewerStatsFooter
-            stats={stats}
-            showMeasurePanel={showMeasurePanel}
-            formatBytes={formatBytes}
-            formatTime={formatTime}
-          />
+              {selectedBuilding && (
+                <ViewerBuildingPanel
+                  building={selectedBuilding}
+                  onClose={() => setSelectedBuilding(null)}
+                />
+              )}
 
-          {showHelp && (
-            <ViewerHelpModal
-              setShowHelp={setShowHelp}
-            />
+              <AnnotationPickerModal
+                open={annotPickerOpen}
+                annotationType="point"
+                onConfirm={submit3DAnnotation}
+                onCancel={cancelAnnotation}
+              />
+
+              <ViewerStatsFooter
+                stats={stats}
+                showMeasurePanel={showMeasurePanel}
+                formatBytes={formatBytes}
+                formatTime={formatTime}
+              />
+
+              {showHelp && (
+                <ViewerHelpModal
+                  setShowHelp={setShowHelp}
+                />
+              )}
+            </>
           )}
         </div>
       )}

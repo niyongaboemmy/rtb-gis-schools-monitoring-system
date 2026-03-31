@@ -62,7 +62,7 @@ export function BlockInspector({
       <div className="flex-1 overflow-y-auto px-4 py-1 custom-scrollbar space-y-3 pb-5">
         {/* Vital Info Grid - Smaller items */}
         <div className="grid grid-cols-2 gap-2">
-          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05] shadow-inner flex flex-col justify-between">
+          <div className="p-2.5 rounded-xl bg-white/3 border border-white/5 shadow-inner flex flex-col justify-between">
             <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest mb-0.5 font-mono">
               Condition
             </p>
@@ -78,7 +78,7 @@ export function BlockInspector({
               {building.buildingCondition || building.condition || "N/A"}
             </Badge>
           </div>
-          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05] shadow-inner flex flex-col justify-between">
+          <div className="p-2.5 rounded-xl bg-white/3 border border-white/5 shadow-inner flex flex-col justify-between">
             <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest mb-0.5 font-mono">
               Roof
             </p>
@@ -93,7 +93,7 @@ export function BlockInspector({
                 "N/A"}
             </Badge>
           </div>
-          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05] flex flex-col justify-between">
+          <div className="p-2.5 rounded-xl bg-white/3 border border-white/5 flex flex-col justify-between">
             <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest font-mono">
               Function
             </p>
@@ -101,7 +101,7 @@ export function BlockInspector({
               {building.buildingFunction || building.function || "N/A"}
             </p>
           </div>
-          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05] flex flex-col justify-between">
+          <div className="p-2.5 rounded-xl bg-white/3 border border-white/5 flex flex-col justify-between">
             <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest font-mono">
               Year Built
             </p>
@@ -109,7 +109,7 @@ export function BlockInspector({
               {building.buildingYearBuilt || building.yearBuilt || "N/A"}
             </p>
           </div>
-          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05] flex flex-col justify-between">
+          <div className="p-2.5 rounded-xl bg-white/3 border border-white/5 flex flex-col justify-between">
             <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest font-mono">
               Area
             </p>
@@ -126,7 +126,7 @@ export function BlockInspector({
                 : "N/A"}
             </p>
           </div>
-          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05] flex flex-col justify-between">
+          <div className="p-2.5 rounded-xl bg-white/3 border border-white/5 flex flex-col justify-between">
             <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest font-mono">
               Floors
             </p>
@@ -159,7 +159,7 @@ export function BlockInspector({
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2.5"
-                  className="text-white/[0.02]"
+                  className="text-white/2"
                 />
                 <circle
                   cx="16"
@@ -191,7 +191,7 @@ export function BlockInspector({
 
         {/* Compact Notes */}
         {(building.buildingNotes || building.notes) && (
-          <div className="bg-white/[0.02] p-3 rounded-2xl border border-white/[0.05] italic">
+          <div className="bg-white/2 p-3 rounded-2xl border border-white/5 italic">
             <p className="text-[9px] text-white/40 leading-relaxed font-medium">
               "{building.buildingNotes || building.notes}"
             </p>
@@ -208,7 +208,7 @@ export function BlockInspector({
               {building.facilities.map((f: any, idx: number) => (
                 <div
                   key={idx}
-                  className="flex justify-between items-center p-2 rounded-xl bg-white/[0.02] border border-transparent hover:border-white/5 transition-colors"
+                  className="flex justify-between items-center p-2 rounded-xl bg-white/2 border border-transparent hover:border-white/5 transition-colors"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <div className="p-1 rounded-lg bg-white/5 text-white/10 shrink-0">
@@ -229,7 +229,7 @@ export function BlockInspector({
       </div>
 
       {/* Compact Action Footer */}
-      <div className="p-4 pt-4 grid grid-cols-2 gap-2 shrink-0 border-t border-white/[0.05] bg-black/20">
+      <div className="p-4 pt-4 grid grid-cols-2 gap-2 shrink-0 border-t border-white/5 bg-black/20">
         <Button
           variant="outline"
           className="h-8 text-[7px] font-black uppercase tracking-widest rounded-full border-white/5 hover:bg-white/10 hover:text-white text-white/40 transition-all group shrink-0"

@@ -1,6 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+.glb-root *,.glb-root *::before,.glb-root *::after{box-sizing:border-box;margin:0;padding:0}
 
 .glb-root{width:100vw;height:100vh;background:#060b1a;display:flex;flex-direction:column;font-family:'Inter',sans-serif;color:#e8e8f0;overflow:hidden}
 .header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid rgba(255,255,255,0.06);background:rgba(6,11,26,0.95);backdrop-filter:blur(12px);z-index:10;flex-shrink:0}
@@ -156,3 +156,22 @@
 .help-divider{height:1px;background:rgba(255,255,255,0.05)}
 .help-tip{padding:12px 14px;border-radius:10px;background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(157,122,255,0.8);line-height:1.8}
 .callout{padding:12px 14px;border-radius:10px;background:rgba(50,200,100,0.06);border:1px solid rgba(50,200,100,0.2);font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(96,232,160,0.9);line-height:1.9}
+
+/* ─── Building Inspector Panel ────────────────────────────────────────────── */
+.bld-panel{position:absolute;right:16px;top:80px;width:252px;background:rgba(6,11,26,0.94);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);border-radius:16px;z-index:22;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,0.6);animation:panelIn .2s ease}
+.bld-panel-header{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.07);background:linear-gradient(to bottom,rgba(255,255,255,0.04),transparent)}
+.bld-panel-icon{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#2563eb);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;box-shadow:0 4px 12px rgba(59,130,246,0.3)}
+.bld-panel-title{flex:1;min-width:0}
+.bld-panel-name{font-size:12px;font-weight:700;color:#fff;letter-spacing:-0.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bld-panel-code{font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:1.2px;margin-top:2px;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.06);display:inline-block}
+.bld-panel-close{width:24px;height:24px;border-radius:6px;border:none;background:rgba(255,255,255,0.06);color:rgba(232,232,240,0.45);font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
+.bld-panel-close:hover{background:rgba(255,71,71,0.18);color:#ff7070}
+.bld-panel-body{padding:10px 14px 14px;display:flex;flex-direction:column;gap:6px}
+.bld-info-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+.bld-info-row:last-child{border-bottom:none}
+.bld-info-label{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:rgba(232,232,240,0.3);text-transform:uppercase;letter-spacing:0.8px}
+.bld-info-val{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:#e8e8f0}
+.bld-info-badge{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;text-transform:capitalize;padding:2px 8px;border-radius:20px;border:1px solid;letter-spacing:0.3px}
+.bld-info-notes{padding-top:4px}
+.bld-notes-text{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(232,232,240,0.5);line-height:1.6;background:rgba(255,255,255,0.03);border-radius:6px;padding:7px 9px;border:1px solid rgba(255,255,255,0.05);white-space:pre-wrap;word-break:break-word;max-height:80px;overflow-y:auto}
+.bld-no-data{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(232,232,240,0.2);text-align:center;padding:12px 0;font-style:italic}

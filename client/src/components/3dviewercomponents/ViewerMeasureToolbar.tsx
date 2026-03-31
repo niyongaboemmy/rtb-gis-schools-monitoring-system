@@ -21,6 +21,9 @@ interface ViewerMeasureToolbarProps {
   finalizeMeasure: () => void;
   setMeasureMode: (m: MeasureMode) => void;
   setPendingPts: (pts: any[]) => void;
+  showDbAnnotations: boolean;
+  setShowDbAnnotations: (val: boolean | ((p: boolean) => boolean)) => void;
+  buildingMarkersCount: number;
 }
 
 export const ViewerMeasureToolbar: React.FC<ViewerMeasureToolbarProps> = ({
@@ -40,6 +43,9 @@ export const ViewerMeasureToolbar: React.FC<ViewerMeasureToolbarProps> = ({
   finalizeMeasure,
   setMeasureMode,
   setPendingPts,
+  showDbAnnotations,
+  setShowDbAnnotations,
+  buildingMarkersCount,
 }) => {
   return (
     <div className={`meas-toolbar${measureMode ? " active-mode" : ""}`}>
@@ -77,6 +83,27 @@ export const ViewerMeasureToolbar: React.FC<ViewerMeasureToolbarProps> = ({
         onClick={() => toggleMode("annotate")}>
         🏷 Annotate
       </button>
+
+      {buildingMarkersCount > 0 && (
+        <>
+          <div className="meas-divider" />
+          <button
+            className="meas-btn"
+            style={showDbAnnotations
+              ? { background: "rgba(0,212,170,0.15)", borderColor: "rgba(0,212,170,0.4)", color: "#00d4aa" }
+              : {}}
+            onClick={() => setShowDbAnnotations(v => !v)}
+            title="Show / hide database annotations overlaid on the 3D model"
+          >
+            📌 {showDbAnnotations ? "Layers On" : "Layers"}
+            {buildingMarkersCount > 0 && (
+              <span style={{ fontSize: 8, marginLeft: 4, opacity: 0.6, fontFamily: "JetBrains Mono, monospace" }}>
+                {buildingMarkersCount}
+              </span>
+            )}
+          </button>
+        </>
+      )}
 
       {(measuresCount > 0 || annotationsCount > 0) && (
         <>

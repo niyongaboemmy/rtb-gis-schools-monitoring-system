@@ -5,10 +5,6 @@ interface ViewerMeasurePanelProps {
   annotations: any[];
   setMeasures: (val: any | ((p: any[]) => any[])) => void;
   setAnnotations: (val: any | ((p: any[]) => any[])) => void;
-  setEditAnnotId: (id: string | null) => void;
-  setAnnotInput: (text: string) => void;
-  setAnnotPendingPt: (pt: any) => void;
-  setAnnotColor: (col: string) => void;
   clearAllMeasurements: () => void;
 }
 
@@ -17,10 +13,6 @@ export const ViewerMeasurePanel: React.FC<ViewerMeasurePanelProps> = ({
   annotations,
   setMeasures,
   setAnnotations,
-  setEditAnnotId,
-  setAnnotInput,
-  setAnnotPendingPt,
-  setAnnotColor,
   clearAllMeasurements,
 }) => {
   return (
@@ -59,8 +51,7 @@ export const ViewerMeasurePanel: React.FC<ViewerMeasurePanelProps> = ({
               </span>
               <button className="mp-item-del" onClick={() => setAnnotations((prev: any[]) => prev.filter((x: any) => x.id !== a.id))}>✕</button>
             </div>
-            <div className="mp-item-val" style={{ fontSize: 11, color: a.color, cursor: "pointer" }}
-              onClick={() => { setEditAnnotId(a.id); setAnnotInput(a.text); setAnnotPendingPt(a.point); setAnnotColor(a.color); }}>
+            <div className="mp-item-val" style={{ fontSize: 11, color: a.color }}>
               {a.text.slice(0, 40)}{a.text.length > 40 ? "…" : ""}
             </div>
           </div>
