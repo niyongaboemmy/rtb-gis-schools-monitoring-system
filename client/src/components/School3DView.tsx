@@ -119,14 +119,20 @@ function calcPolyArea(pts: MeasurePoint[]): number {
 
 function calcPerimeter(pts: MeasurePoint[]): number {
   let total = 0;
-  for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; total += new THREE.Vector3(a.x, a.y, a.z).distanceTo(new THREE.Vector3(b.x, b.y, b.z)); }
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    total += Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+  }
   return total;
 }
 
 function calcDistance(pts: MeasurePoint[]): number {
   if (pts.length < 2) return 0;
   let total = 0;
-  for (let i = 0; i < pts.length - 1; i++) { total += new THREE.Vector3(pts[i].x, pts[i].y, pts[i].z).distanceTo(new THREE.Vector3(pts[i + 1].x, pts[i + 1].y, pts[i + 1].z)); }
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    total += Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+  }
   return total;
 }
 
@@ -1169,16 +1175,33 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     raycasterRef.current.setFromCamera(mouse, camera);
     const hits = raycasterRef.current.intersectObject(model, true);
 
-    if (!hits.length) {
-      const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
-      const p = camera.position.clone().add(dir.multiplyScalar(10));
-      return { x: p.x, y: p.y, z: p.z };
+    if (hits.length > 0) {
+      return { x: hits[0].point.x, y: hits[0].point.y, z: hits[0].point.z };
     }
-    return { x: hits[0].point.x, y: hits[0].point.y, z: hits[0].point.z };
+
+    // Fallback: Plane intersection at reference depth
+    const plane = new THREE.Plane(); const camDir = new THREE.Vector3(); camera.getWorldDirection(camDir);
+    let referencePt = new THREE.Vector3();
+    const pts = pendingPtsRef.current;
+    if (pts.length > 0) {
+      const last = pts[pts.length - 1]; referencePt.set(last.x, last.y, last.z);
+    } else if (controlsRef.current) {
+      referencePt.copy(controlsRef.current.target);
+    } else {
+      referencePt.copy(camera.position).add(camDir.clone().multiplyScalar(10));
+    }
+
+    plane.setFromNormalAndCoplanarPoint(camDir.multiplyScalar(-1), referencePt);
+    const target = new THREE.Vector3(); const hit = raycasterRef.current.ray.intersectPlane(plane, target);
+    if (hit) return { x: target.x, y: target.y, z: target.z };
+
+    // Ultimate fallback if plane intersect fails
+    const p = camera.position.clone().add(camDir.multiplyScalar(10));
+    return { x: p.x, y: p.y, z: p.z };
   }, []);
 
   const getFastHoverRaycastPt = useCallback((e: React.MouseEvent<HTMLCanvasElement>): MeasurePoint | null => {
-    const canvas = overlayRef.current; const camera = cameraRef.current;
+    const canvas = overlayRef.current; const camera = cameraRef.current; const model = modelRef.current;
     if (!canvas || !camera) return null;
 
     const rect = canvas.getBoundingClientRect();
@@ -1186,6 +1209,14 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
     raycasterRef.current.setFromCamera(mouse, camera);
 
+    if (model) {
+      const hits = raycasterRef.current.intersectObject(model, true);
+      if (hits.length > 0) {
+        return { x: hits[0].point.x, y: hits[0].point.y, z: hits[0].point.z };
+      }
+    }
+
+    // Fallback: Plane intersection at reference depth
     const plane = new THREE.Plane(); const camDir = new THREE.Vector3(); camera.getWorldDirection(camDir);
     let referencePt = new THREE.Vector3();
 
