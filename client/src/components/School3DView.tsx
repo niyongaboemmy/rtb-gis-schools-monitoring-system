@@ -176,23 +176,15 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const [saveFlash, setSaveFlash] = useState(false);
   const [renderMode, setRenderMode] = useState<RenderMode>(() => loadJson(LS_MODE_KEY, "unlit") as RenderMode);
 
-  // Loading state for annotations/markers
-  const [isProcessingMarkers, setIsProcessingMarkers] = useState(false);
-
   // DB overlay visibility & building selection
-  const [showDbAnnotations, setShowDbAnnotations] = useState(false);
   const [selectedBuilding, setSelectedBuilding] = useState<any>(null);
 
-  // DB-backed site annotations (same data as 2D viewer)
-  const [siteAnnotations, setSiteAnnotations] = useState<any[]>([]);
   const [annotPickerOpen, setAnnotPickerOpen] = useState(false);
 
   const [dbSchool, setDbSchool] = useState<any>(null);
   const [dbBuildings, setDbBuildings] = useState<any[]>([]);
   const [dbMarkers, setDbMarkers] = useState<any[]>([]);
   const [isModelReady, setIsModelReady] = useState(false);
-  // Projected 3D paths for site annotation lines/polygons
-  const [dbSiteShapes, setDbSiteShapes] = useState<Array<{ id: string; type: 'line' | 'polygon'; pts: MeasurePoint[]; label: string; color: string }>>([]);
   // Measurement state
   const [measureMode, setMeasureMode] = useState<MeasureMode>(null);
   const [visibility, setVisibility] = useState<VisibilityMode>("all");
@@ -205,10 +197,8 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
   const annotationsRef = useRef<Annotation[]>([]);
   const measuresRef = useRef<MeasureLine[]>([]);
-  const siteAnnotationsRef = useRef<any[]>([]);
   useEffect(() => { annotationsRef.current = annotations; }, [annotations]);
   useEffect(() => { measuresRef.current = measures; }, [measures]);
-  useEffect(() => { siteAnnotationsRef.current = siteAnnotations; }, [siteAnnotations]);
 
   // Refs for building-selection handler (avoids stale closures)
   const dbMarkersRef = useRef<any[]>([]);
@@ -218,7 +208,6 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   useEffect(() => { dbBuildingsRef.current = dbBuildings; }, [dbBuildings]);
   useEffect(() => { measureModeRef.current = measureMode; }, [measureMode]);
 
-  const siteAnnsFromFileServerRef = useRef(false); // true once loaded from viewer-state.json
   const viewerStatePrefetchRef = useRef<Promise<any> | null>(null);
   // Promise that resolves the moment initThree() finishes setting sceneRef/cameraRef/controlsRef
   const threeInitResolveRef = useRef<(() => void) | null>(null);
@@ -235,7 +224,6 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
           home: cameraHomeRef.current,
           annotations: annotationsRef.current,
           measures: measuresRef.current,
-          siteAnnotations: siteAnnotationsRef.current,
         }),
       }).catch(() => { });
     }, 800);
@@ -253,7 +241,6 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   useEffect(() => { saveJson(LS_MEASURES_KEY, measures); scheduleSave(); }, [measures, scheduleSave]);
   useEffect(() => { saveJson(LS_ANNOTATIONS_KEY, annotations); scheduleSave(); }, [annotations, scheduleSave]);
   useEffect(() => { saveJson(LS_UNIT_KEY, unit); }, [unit]);
-  useEffect(() => { if (siteAnnotations.length) scheduleSave(); }, [siteAnnotations, scheduleSave]);
 
   const applyRenderMode = useCallback((mode: RenderMode) => {
     const model = modelRef.current; if (!model) return;
@@ -371,10 +358,6 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         if (serverState?.home) savedHome = serverState.home;
         if (serverState?.annotations?.length) setAnnotations(serverState.annotations);
         if (serverState?.measures?.length) setMeasures(serverState.measures);
-        if (serverState?.siteAnnotations?.length) {
-          setSiteAnnotations(serverState.siteAnnotations);
-          siteAnnsFromFileServerRef.current = true;
-        }
       } catch { }
     }
 
@@ -426,13 +409,6 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     setProgress(100); setProgressLabel("Done!");
   }, [renderMode, applyRenderMode, schoolId]);
 
-  // Sync siteAnnotations from dbSchool only as a fallback (file-server takes priority)
-  useEffect(() => {
-    if (!siteAnnsFromFileServerRef.current && dbSchool?.siteAnnotations?.length) {
-      setSiteAnnotations(dbSchool.siteAnnotations);
-    }
-  }, [dbSchool]);
-
   // ── Pre-fetch School Data (Parallel to GLB loading) ─────────────────────────
   useEffect(() => {
     if (!schoolId) return;
@@ -448,135 +424,27 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   useEffect(() => {
     const model = modelRef.current;
     if (!dbSchool || !model || !isModelReady || phase !== "viewing") {
-      setDbMarkers([]); setDbSiteShapes([]); return;
+      setDbMarkers([]); return;
     }
     const latCenter = Number(dbSchool.latitude), lonCenter = Number(dbSchool.longitude);
-    if (!latCenter || !lonCenter) { setDbMarkers([]); setDbSiteShapes([]); return; }
+    if (!latCenter || !lonCenter) { setDbMarkers([]); return; }
 
 
     const latFactor = 111320, lonFactor = 111320 * Math.cos(latCenter * Math.PI / 180);
-    const raycaster = new THREE.Raycaster();
-    raycaster.firstHitOnly = true; // Optimization from three-mesh-bvh
-
-    const markers: any[] = [];
-    const shapes: typeof dbSiteShapes = [];
     const { x: rcX, z: rcZ } = modelRawCenterRef.current;
 
-    const toXZ = (lon: number, lat: number) => ({
-      x: (lon - lonCenter) * lonFactor - rcX,
-      z: -(lat - latCenter) * latFactor - rcZ,
-    });
+    const markers: any[] = [];
+    for (const b of (dbBuildings || [])) {
+      const lat = Number(b.latitude || b.centroidLat), lon = Number(b.longitude || b.centroidLng);
+      if (!lat || !lon) continue;
+      const x = (lon - lonCenter) * lonFactor - rcX;
+      const z = -(lat - latCenter) * latFactor - rcZ;
+      markers.push({ id: b.id, x, y: 0.5, z, label: b.name || b.code || "Block", type: "block" });
+    }
+    setDbMarkers(markers);
 
-    const groundY = (x: number, z: number, offset = 0.15): number => {
-      raycaster.set(new THREE.Vector3(x, 2000, z), new THREE.Vector3(0, -1, 0));
-      const hits = raycaster.intersectObject(model, true);
-      return hits.length > 0 ? hits[0].point.y + offset : 0.5;
-    };
-
-    const addMarker = (lat: number, lon: number, label: string, type: "site" | "block" | "internal", id: string, color?: string, iconType?: string) => {
-      const { x, z } = toXZ(lon, lat);
-      markers.push({ id, x, y: groundY(x, z), z, label, type, color, iconType });
-    };
-
-    setIsProcessingMarkers(true);
-    let isCancelled = false;
-
-    const processBatch = async () => {
-      try {
-        const siteAnns = siteAnnotations;
-        const buildingData = dbBuildings || [];
-        console.log(`[3DViewer] Syncing markers: ${siteAnns.length} site, ${buildingData.length} buildings`);
-
-        // 1. Process site annotations
-        for (const a of siteAnns) {
-          if (isCancelled) return;
-          if (!a.coordinates?.length) continue;
-          const label = a.label || a.title || a.description || "Site";
-          const color = a.style?.color || (a.type === 'polygon' ? '#fbbf24' : '#10b981');
-
-          if (a.type === "point" || a.type === "text") {
-            const coords = Array.isArray(a.coordinates[0]) ? a.coordinates[0] : a.coordinates;
-            const iconType = a.icon || a.iconType || a.style?.iconType || "";
-            addMarker(coords[1], coords[0], label, "site", a.id, color, iconType);
-          } else if (a.type === "line" || a.type === "polygon") {
-            const pts: MeasurePoint[] = [];
-            const raw = a.coordinates;
-            const isNested = Array.isArray(raw[0]);
-
-            for (let i = 0; i < (isNested ? raw.length : raw.length - 1); i += (isNested ? 1 : 2)) {
-              const lon = isNested ? raw[i][0] : raw[i];
-              const lat = isNested ? raw[i][1] : raw[i+1];
-              const { x, z } = toXZ(lon, lat);
-              pts.push({ x, y: groundY(x, z, a.type === 'line' ? 0.08 : 0.05), z });
-              
-              if (i % 50 === 0) { await new Promise(r => setTimeout(r, 0)); if (isCancelled) return; }
-            }
-
-            if (pts.length >= (a.type === 'line' ? 2 : 3)) {
-              shapes.push({ id: a.id, type: a.type as 'line' | 'polygon', pts, label, color });
-              const midIndex = Math.floor(pts.length / 2);
-              const cx = a.type === 'polygon' ? pts.reduce((s, p) => s + p.x, 0) / pts.length : pts[midIndex].x;
-              const cz = a.type === 'polygon' ? pts.reduce((s, p) => s + p.z, 0) / pts.length : pts[midIndex].z;
-              const cy = a.type === 'polygon' ? groundY(cx, cz, 1.2) : pts[midIndex].y + 0.5;
-              markers.push({ id: `${a.id}-lbl`, x: cx, y: cy, z: cz, label, type: "site", color });
-            }
-          }
-        }
-
-        // 2. Process buildings
-        for (const b of buildingData) {
-          if (isCancelled) return;
-          const lat = Number(b.latitude || b.centroidLat), lon = Number(b.longitude || b.centroidLng);
-          if (lat && lon) {
-            addMarker(lat, lon, b.name || b.code || "Block", "block", b.id);
-            for (const ba of (b.annotations || [])) {
-              if (isCancelled) return;
-              if (!ba.coordinates?.length) continue;
-              const label = ba.label || ba.title || ba.content || "Space";
-              const color = ba.style?.color || "#a855f7";
-
-              if (ba.type === "point" || !ba.type || ba.type === "text") {
-                const coords = Array.isArray(ba.coordinates[0]) ? ba.coordinates[0] : ba.coordinates;
-                addMarker(coords[1], coords[0], label, "internal", ba.id, color);
-              } else if (ba.type === "line" || ba.type === "polygon") {
-                const pts: MeasurePoint[] = [];
-                const raw = ba.coordinates;
-                const isNested = Array.isArray(raw[0]);
-                for (let i = 0; i < (isNested ? raw.length : raw.length - 1); i += (isNested ? 1 : 2)) {
-                  const ln = isNested ? raw[i][0] : raw[i];
-                  const lt = isNested ? raw[i][1] : raw[i+1];
-                  const { x, z } = toXZ(ln, lt);
-                  pts.push({ x, y: groundY(x, z, ba.type === 'line' ? 0.1 : 0.05), z });
-                  if (i % 50 === 0) { await new Promise(r => setTimeout(r, 0)); if (isCancelled) return; }
-                }
-                if (pts.length >= (ba.type === 'line' ? 2 : 3)) {
-                  shapes.push({ id: ba.id, type: ba.type as 'line' | 'polygon', pts, label, color });
-                  const midIdx = Math.floor(pts.length / 2);
-                  const bcx = ba.type === 'polygon' ? pts.reduce((s, p) => s + p.x, 0) / pts.length : pts[midIdx].x;
-                  const bcz = ba.type === 'polygon' ? pts.reduce((s, p) => s + p.z, 0) / pts.length : pts[midIdx].z;
-                  const bcy = ba.type === 'polygon' ? groundY(bcx, bcz, 1.2) : pts[midIdx].y + 0.5;
-                  markers.push({ id: `${ba.id}-lbl`, x: bcx, y: bcy, z: bcz, label, type: "internal", color });
-                }
-              }
-            }
-          }
-        }
-
-        if (!isCancelled) {
-          console.log(`[3DViewer] Mapping finished. Markers: ${markers.length}, Shapes: ${shapes.length}`);
-          setDbMarkers(markers);
-          setDbSiteShapes(shapes);
-        }
-      } catch (err) {
-        console.error("[3DViewer] Error in annotation processing:", err);
-      } finally {
-        if (!isCancelled) setIsProcessingMarkers(false);
-      }
-    };
-
-    processBatch();
-    return () => { isCancelled = true; };
-  }, [dbSchool, dbBuildings, phase, isModelReady, siteAnnotations]);
+    return () => {};
+  }, [dbSchool, dbBuildings, phase, isModelReady]);
 
   const toggleMode = useCallback((mode: MeasureMode) => {
     setMeasureMode(prev => {
@@ -731,8 +599,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     // ─── DB Markers ───────────
     const dbPulse = Math.sin(Date.now() / 250) * 0.4 + 1.2;
     dbMarkers.forEach(m => {
-      // Building "block" markers are always shown; site/internal only when showDbAnnotations
-      if (m.type !== "block" && !showDbAnnotations) return;
+      if (m.type !== "block") return;
 
       const p = project3Dto2D(new THREE.Vector3(m.x, m.y, m.z), camera, W, H);
       if (!p) return;
@@ -829,48 +696,10 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       });
     }
 
-    // ─── Site annotation shapes (lines & polygons) — only when annotations layer is on ───
-    if (showDbAnnotations) {
-      dbSiteShapes.forEach(shape => {
-        if (shape.pts.length < 2) return;
-        const projPts = shape.pts.map(p => project3Dto2D(p, camera, W, H));
-        if (projPts.every(p => !p)) return;
-
-        const baseCol = shape.color || "#10b981";
-        ctx.beginPath(); ctx.setLineDash([]);
-        ctx.strokeStyle = baseCol; ctx.lineWidth = 3;
-
-        // Convert hex to rgba for fill
-        let fillCol = "rgba(16, 185, 129, 0.15)";
-        if (baseCol.startsWith("#")) {
-          const r = parseInt(baseCol.slice(1, 3), 16), g = parseInt(baseCol.slice(3, 5), 16), b = parseInt(baseCol.slice(5, 7), 16);
-          fillCol = `rgba(${r}, ${g}, ${b}, 0.2)`;
-        }
-
-        ctx.fillStyle = fillCol;
-
-        let started = false;
-        projPts.forEach(p => {
-          if (!p) { started = false; return; }
-          if (!started) { ctx.moveTo(p[0], p[1]); started = true; }
-          else ctx.lineTo(p[0], p[1]);
-        });
-
-        if (shape.type === "polygon") {
-          const first = projPts.find(p => !!p);
-          if (first && started) ctx.lineTo(first[0], first[1]);
-          ctx.fill();
-          ctx.stroke();
-        } else {
-          ctx.stroke();
-        }
-      });
-    }
-
     // Draw the active annotation being placed
     if (annotPendingPt) drawDot(annotPendingPt, annotColor, 7);
 
-  }, [measures, measureMode, unit, annotations, annotPendingPt, visibility, annotColor, dbSiteShapes, dbMarkers, showDbAnnotations, selectedBuilding]);
+  }, [measures, measureMode, unit, annotations, annotPendingPt, visibility, annotColor, dbMarkers, selectedBuilding]);
 
   const drawOverlayRef = useRef<() => void>(() => { });
   useEffect(() => { drawOverlayRef.current = drawOverlay; }, [drawOverlay]);
@@ -1379,39 +1208,20 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) handleFile(f); };
   const handleDrop = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); };
 
-  // ── Annotation: save directly to viewer-state.json (file-server) ─────────────
-  const submit3DAnnotation = useCallback((iconType: string, title: string, description: string, mapColor: string) => {
+  // ── Annotation: place directly in 3D viewer ────────────────────────────────
+  const submit3DAnnotation = useCallback((iconType: string, title: string, _description: string, mapColor: string) => {
     const pt = annotPendingPt;
     setAnnotPickerOpen(false);
     setAnnotPendingPt(null);
     setMeasureMode(null);
 
-    if (!pt || !dbSchool) return;
-    const latCenter = Number(dbSchool.latitude);
-    const lonCenter = Number(dbSchool.longitude);
-    if (!latCenter || !lonCenter) return;
-
-    // Convert 3D world position → GPS coordinates (inverse of toXZ in processing effect)
-    const latFactor = 111320;
-    const lonFactor = 111320 * Math.cos(latCenter * Math.PI / 180);
-    const { x: rcX, z: rcZ } = modelRawCenterRef.current;
-    const lon = (pt.x + rcX) / lonFactor + lonCenter;
-    const lat = -(pt.z + rcZ) / latFactor + latCenter;
-
-    const newAnnotation = {
-      id: `site-${Date.now()}`,
-      type: "point",
-      coordinates: [lon, lat],
-      title: title || iconType,
-      label: title || iconType,
-      description,
-      icon: iconType,
-      style: { color: mapColor, iconType },
-    };
-
-    setSiteAnnotations(prev => [...prev, newAnnotation]);
-    setShowDbAnnotations(true);
-  }, [annotPendingPt, dbSchool]);
+    if (!pt) return;
+    const emoji = ICON_EMOJI_MAP[iconType] || "";
+    const label = [emoji, title].filter(Boolean).join(" ") || "Note";
+    const a: Annotation = { id: uid(), point: pt, text: label, color: mapColor || ANNOT_COLORS[colorIdxRef.current % ANNOT_COLORS.length] };
+    colorIdxRef.current++;
+    setAnnotations(prev => [...prev, a]);
+  }, [annotPendingPt]);
 
   const cancelAnnotation = useCallback(() => {
     setAnnotPickerOpen(false);
@@ -1424,11 +1234,10 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
   return (
     <div className="glb-root">
-      <ViewerUIHeader 
+      <ViewerUIHeader
         schoolName={schoolName}
         stats={stats}
         progress={progress}
-        isProcessingMarkers={isProcessingMarkers}
         onClose={onClose}
       />
 
@@ -1509,8 +1318,6 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
                 setPendingPts={setPendingPts}
                 unitLabels={UNIT_LABELS}
                 unitSuffix={UNIT_SUFFIX}
-                showDbAnnotations={showDbAnnotations}
-                setShowDbAnnotations={setShowDbAnnotations}
                 buildingMarkersCount={dbMarkers.filter(m => m.type === "block").length}
               />
 

@@ -5,7 +5,6 @@ interface ViewerUIHeaderProps {
   schoolName: string;
   stats: any;
   progress: number;
-  isProcessingMarkers: boolean;
   onClose?: () => void;
 }
 
@@ -13,7 +12,6 @@ export const ViewerUIHeader: React.FC<ViewerUIHeaderProps> = ({
   schoolName,
   stats,
   progress,
-  isProcessingMarkers,
   onClose,
 }) => {
   return (
@@ -37,11 +35,6 @@ export const ViewerUIHeader: React.FC<ViewerUIHeaderProps> = ({
             <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: "rgba(232,232,240,0.3)", letterSpacing: "0.3px" }}>
               {stats.triangles.toLocaleString()}▲ · {stats.meshes}⬡ · {stats.textures}◈
             </span>
-            {isProcessingMarkers && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 9, fontWeight: 700, color: '#3b82f6', background: 'rgba(59,130,246,0.1)', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                <span className="spinner-ring" style={{ width: 8, height: 8, borderWidth: 1 }} /> Mapping Annotations...
-              </span>
-            )}
           </span>
         )}
         <span className="badge">Measure · Annotate · Screenshot</span>
