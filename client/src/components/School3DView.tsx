@@ -5,7 +5,28 @@ import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { api, FILE_SERVER_URL } from "../lib/api";
-import { X } from "lucide-react";
+
+import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-mesh-bvh";
+
+// Sub-components
+import ViewerUIHeader from "./3dviewercomponents/ViewerUIHeader";
+import ViewerLoadingScreens from "./3dviewercomponents/ViewerLoadingScreens";
+import ViewerControlToolbar from "./3dviewercomponents/ViewerControlToolbar";
+import ViewerRenderModePanel from "./3dviewercomponents/ViewerRenderModePanel";
+import ViewerMeasureToolbar from "./3dviewercomponents/ViewerMeasureToolbar";
+import ViewerMeasurePanel from "./3dviewercomponents/ViewerMeasurePanel";
+import ViewerAnnotationDialog from "./3dviewercomponents/ViewerAnnotationDialog";
+import ViewerStatsFooter from "./3dviewercomponents/ViewerStatsFooter";
+import ViewerHelpModal from "./3dviewercomponents/ViewerHelpModal";
+import ViewerMainCanvas from "./3dviewercomponents/ViewerMainCanvas";
+
+// Styles
+import "./School3DView.css";
+
+// ─── Setup BVH ──────────────────────────────────────────────────────────────
+THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
+THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,7 +66,6 @@ const SPEED_STEPS = [0.001, 0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 25, 
 function formatBytes(b: number) { if (!b) return "0 B"; const k = 1024, s = ["B", "KB", "MB", "GB"], i = Math.floor(Math.log(b) / Math.log(k)); return `${parseFloat((b / Math.pow(k, i)).toFixed(2))} ${s[i]}`; }
 function formatTime(ms: number) { return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`; }
 function nearestSpeedIdx(v: number) { return SPEED_STEPS.reduce((b, s, i) => Math.abs(s - v) < Math.abs(SPEED_STEPS[b] - v) ? i : b, Math.floor(SPEED_STEPS.length / 2)); }
-function fmtSpeed(v: number) { if (v < 0.01) return v.toFixed(3); if (v < 0.1) return v.toFixed(2); if (v < 10) return v.toFixed(1); return v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v.toFixed(0); }
 function uid() { return Math.random().toString(36).slice(2, 9); }
 
 function convertDist(meters: number, unit: Unit) { return meters * UNIT_FACTOR[unit]; }
@@ -149,9 +169,13 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const [saveFlash, setSaveFlash] = useState(false);
   const [renderMode, setRenderMode] = useState<RenderMode>(() => loadJson(LS_MODE_KEY, "unlit") as RenderMode);
 
+  // Loading state for annotations/markers
+  const [isProcessingMarkers, setIsProcessingMarkers] = useState(false);
+
   const [dbSchool, setDbSchool] = useState<any>(null);
   const [dbBuildings, setDbBuildings] = useState<any[]>([]);
   const [dbMarkers, setDbMarkers] = useState<any[]>([]);
+  const [isModelReady, setIsModelReady] = useState(false);
   // Projected 3D paths for site annotation lines/polygons
   const [dbSiteShapes, setDbSiteShapes] = useState<Array<{ id: string; type: 'line' | 'polygon'; pts: MeasurePoint[]; label: string; color: string }>>([]);
   // Measurement state
@@ -235,7 +259,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
     const scene = sceneRef.current!, camera = cameraRef.current!, controls = controlsRef.current!;
     const maxAniso = rendererRef.current?.capabilities.getMaxAnisotropy() ?? 16;
-    if (modelRef.current) { scene.remove(modelRef.current); modelRef.current = null; }
+    if (modelRef.current) { scene.remove(modelRef.current); modelRef.current = null; setIsModelReady(false); }
     const model = gltf.scene;
 
     const upgradeTex = (tex: THREE.Texture | null) => {
@@ -250,6 +274,9 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       const diffuseTex = (srcMat as any).map ?? null; if (diffuseTex) upgradeTex(diffuseTex);
       const unlitMat = new THREE.MeshBasicMaterial({ map: diffuseTex, vertexColors: (srcMat as any).vertexColors ?? false, side: (srcMat as any).side ?? THREE.FrontSide, transparent: (srcMat as any).transparent ?? false, opacity: (srcMat as any).opacity ?? 1, alphaTest: (srcMat as any).alphaTest ?? 0 });
       unlitMatsRef.current.set(mesh, unlitMat);
+
+      // Pre-calculate BVH for fast raycasting
+      mesh.geometry.computeBoundsTree();
     });
 
     scene.add(model); modelRef.current = model;
@@ -352,36 +379,36 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     model.traverse(child => { const mesh = child as THREE.Mesh; if (!mesh.isMesh) return; meshCount++; const geo = mesh.geometry; triangles += geo.index ? geo.index.count / 3 : geo.attributes.position.count / 3; const mats = Array.isArray(mesh.material) ? mesh.material as THREE.Material[] : [mesh.material as THREE.Material]; mats.forEach((m: any) => { ["map", "normalMap", "roughnessMap", "metalnessMap", "emissiveMap"].forEach(k => { if (m[k] && !seen.has(m[k])) { seen.add(m[k]); textureCount++; } }); }); });
     setStats({ fileName, fileSize, loadTime: Date.now() - startTime, triangles: Math.round(triangles), meshes: meshCount, textures: textureCount });
 
-    // Fetch school (includes siteAnnotations) + buildings in parallel
-    if (schoolId) {
-      Promise.all([
-        api.get(`/schools/${schoolId}`),
-        api.get(`/schools/${schoolId}/buildings`),
-      ]).then(([schoolRes, buildingsRes]) => {
-        setDbSchool(schoolRes.data);
-        setDbBuildings(buildingsRes.data);
-      }).catch(e => console.error("Failed to fetch school data", e));
-    }
-
+    setIsModelReady(true);
     setProgress(100); setProgressLabel("Done!");
   }, [renderMode, applyRenderMode, schoolId]);
 
-  // Sync DB Markers and Ground Snapping (Hierarchical: Site-wide + Blocks + Internal)
+  // ── Pre-fetch School Data (Parallel to GLB loading) ─────────────────────────
+  useEffect(() => {
+    if (!schoolId) return;
+    api.get(`/schools/${schoolId}`)
+      .then(res => setDbSchool(res.data))
+      .catch(e => console.error("Failed to pre-fetch school", e));
+    api.get(`/schools/${schoolId}/buildings`)
+      .then(res => setDbBuildings(res.data))
+      .catch(e => console.error("Failed to pre-fetch buildings", e));
+  }, [schoolId]);
+
+  // ── Sync DB Markers and Ground Snapping (Non-Blocking Batch Processing) ──────
   useEffect(() => {
     const model = modelRef.current;
-    if (!dbSchool || !model) { setDbMarkers([]); setDbSiteShapes([]); return; }
+    if (!dbSchool || !model || !isModelReady || phase !== "viewing") { 
+      setDbMarkers([]); setDbSiteShapes([]); return; 
+    }
     const latCenter = Number(dbSchool.latitude), lonCenter = Number(dbSchool.longitude);
     if (!latCenter || !lonCenter) { setDbMarkers([]); setDbSiteShapes([]); return; }
 
     const latFactor = 111320, lonFactor = 111320 * Math.cos(latCenter * Math.PI / 180);
+    const raycaster = new THREE.Raycaster();
+    raycaster.firstHitOnly = true; // Optimization from three-mesh-bvh
+
     const markers: any[] = [];
     const shapes: typeof dbSiteShapes = [];
-    const raycaster = new THREE.Raycaster();
-
-    // scene(0,0) is the model's bbox center, not the school's GPS.
-    // rawCenter (stored when finalizeGLTF placed the model) is the offset
-    // between the school GPS and what ended up at scene origin.
-    // Subtracting it corrects every geo→scene projection.
     const { x: rcX, z: rcZ } = modelRawCenterRef.current;
 
     const toXZ = (lon: number, lat: number) => ({
@@ -389,79 +416,115 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       z: -(lat - latCenter) * latFactor - rcZ,
     });
 
-    const groundY = (x: number, z: number): number => {
-      raycaster.set(new THREE.Vector3(x, 1000, z), new THREE.Vector3(0, -1, 0));
+    const groundY = (x: number, z: number, offset = 0.15): number => {
+      raycaster.set(new THREE.Vector3(x, 2000, z), new THREE.Vector3(0, -1, 0));
       const hits = raycaster.intersectObject(model, true);
-      return hits.length > 0 ? hits[0].point.y : 0.3;
+      return hits.length > 0 ? hits[0].point.y + offset : 0.5;
     };
 
-    const addMarker = (lat: number, lon: number, label: string, type: "site" | "block" | "internal", id: string) => {
+    const addMarker = (lat: number, lon: number, label: string, type: "site" | "block" | "internal", id: string, color?: string) => {
       const { x, z } = toXZ(lon, lat);
-      markers.push({ id, x, y: groundY(x, z), z, label, type });
+      markers.push({ id, x, y: groundY(x, z), z, label, type, color });
     };
 
-    // ── 1. Site-wide annotations ─────────────────────────────────────────
-    (dbSchool.siteAnnotations || []).forEach((a: any) => {
-      if (!a.coordinates?.length) return;
-      const label = a.label || a.description || "Site";
+    setIsProcessingMarkers(true);
+    let isCancelled = false;
 
-      if (a.type === "point") {
-        // coordinates: [lon, lat]
-        addMarker(a.coordinates[1], a.coordinates[0], label, "site", a.id);
+    const processBatch = async () => {
+      try {
+        const siteAnns = dbSchool.siteAnnotations || [];
+        const buildingData = dbBuildings || [];
+        console.log(`[3DViewer] Syncing markers: ${siteAnns.length} site, ${buildingData.length} buildings`);
 
-      } else if (a.type === "line") {
-        // coordinates: flat [lon1, lat1, lon2, lat2, ...]
-        // Use y=0.3 for all vertices (no per-vertex raycasting — would freeze the thread)
-        const pts: MeasurePoint[] = [];
-        for (let i = 0; i + 1 < a.coordinates.length; i += 2) {
-          const { x, z } = toXZ(a.coordinates[i], a.coordinates[i + 1]);
-          pts.push({ x, y: 0.3, z });
-        }
-        if (pts.length >= 2) {
-          shapes.push({ id: a.id, type: "line", pts, label, color: "#10b981" });
-          // Single raycast only for the label marker at midpoint
-          const mid = pts[Math.floor(pts.length / 2)];
-          markers.push({ id: `${a.id}-lbl`, x: mid.x, y: groundY(mid.x, mid.z), z: mid.z, label, type: "site" });
-        }
+        // 1. Process site annotations
+        for (const a of siteAnns) {
+          if (isCancelled) return;
+          if (!a.coordinates?.length) continue;
+          const label = a.label || a.title || a.description || "Site";
+          const color = a.style?.color || (a.type === 'polygon' ? '#fbbf24' : '#10b981');
 
-      } else if (a.type === "polygon") {
-        // coordinates: flat [lon1, lat1, lon2, lat2, ..., lon1, lat1]
-        const pts: MeasurePoint[] = [];
-        for (let i = 0; i + 1 < a.coordinates.length; i += 2) {
-          const { x, z } = toXZ(a.coordinates[i], a.coordinates[i + 1]);
-          pts.push({ x, y: 0.3, z });
-        }
-        if (pts.length >= 3) {
-          shapes.push({ id: a.id, type: "polygon", pts, label, color: "#10b981" });
-          // Single raycast only for the centroid label marker
-          const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
-          const cz = pts.reduce((s, p) => s + p.z, 0) / pts.length;
-          markers.push({ id: `${a.id}-lbl`, x: cx, y: groundY(cx, cz), z: cz, label, type: "site" });
-        }
-      }
-    });
+          if (a.type === "point" || a.type === "text") {
+            const coords = Array.isArray(a.coordinates[0]) ? a.coordinates[0] : a.coordinates;
+            addMarker(coords[1], coords[0], label, "site", a.id, color);
+          } else if (a.type === "line" || a.type === "polygon") {
+            const pts: MeasurePoint[] = [];
+            const raw = a.coordinates;
+            const isNested = Array.isArray(raw[0]);
 
-    // ── 2. Buildings (Blue) ──────────────────────────────────────────────
-    (dbBuildings || []).forEach((b: any) => {
-      const lat = Number(b.latitude || b.centroidLat), lon = Number(b.longitude || b.centroidLng);
-      if (lat && lon) {
-        addMarker(lat, lon, b.name || b.code || "Block", "block", b.id);
+            for (let i = 0; i < (isNested ? raw.length : raw.length - 1); i += (isNested ? 1 : 2)) {
+              const lon = isNested ? raw[i][0] : raw[i];
+              const lat = isNested ? raw[i][1] : raw[i+1];
+              const { x, z } = toXZ(lon, lat);
+              pts.push({ x, y: groundY(x, z, a.type === 'line' ? 0.08 : 0.05), z });
+              
+              if (i % 50 === 0) { await new Promise(r => setTimeout(r, 0)); if (isCancelled) return; }
+            }
 
-        // ── 3. Building annotations (Violet) ──────────────────────────
-        (b.annotations || []).forEach((ba: any) => {
-          if (!ba.coordinates?.length) return;
-          if (ba.type === "point" || !ba.type) {
-            const blat = Number(ba.coordinates[1] ?? ba.lat ?? ba.latitude);
-            const blon = Number(ba.coordinates[0] ?? ba.lng ?? ba.longitude);
-            if (blat && blon) addMarker(blat, blon, ba.label || ba.content || "Space", "internal", ba.id);
+            if (pts.length >= (a.type === 'line' ? 2 : 3)) {
+              shapes.push({ id: a.id, type: a.type as 'line' | 'polygon', pts, label, color });
+              const midIndex = Math.floor(pts.length / 2);
+              const cx = a.type === 'polygon' ? pts.reduce((s, p) => s + p.x, 0) / pts.length : pts[midIndex].x;
+              const cz = a.type === 'polygon' ? pts.reduce((s, p) => s + p.z, 0) / pts.length : pts[midIndex].z;
+              const cy = a.type === 'polygon' ? groundY(cx, cz, 1.2) : pts[midIndex].y + 0.5;
+              markers.push({ id: `${a.id}-lbl`, x: cx, y: cy, z: cz, label, type: "site", color });
+            }
           }
-        });
-      }
-    });
+        }
 
-    setDbMarkers(markers);
-    setDbSiteShapes(shapes);
-  }, [dbSchool, dbBuildings]);
+        // 2. Process buildings
+        for (const b of buildingData) {
+          if (isCancelled) return;
+          const lat = Number(b.latitude || b.centroidLat), lon = Number(b.longitude || b.centroidLng);
+          if (lat && lon) {
+            addMarker(lat, lon, b.name || b.code || "Block", "block", b.id);
+            for (const ba of (b.annotations || [])) {
+              if (isCancelled) return;
+              if (!ba.coordinates?.length) continue;
+              const label = ba.label || ba.title || ba.content || "Space";
+              const color = ba.style?.color || "#a855f7";
+
+              if (ba.type === "point" || !ba.type || ba.type === "text") {
+                const coords = Array.isArray(ba.coordinates[0]) ? ba.coordinates[0] : ba.coordinates;
+                addMarker(coords[1], coords[0], label, "internal", ba.id, color);
+              } else if (ba.type === "line" || ba.type === "polygon") {
+                const pts: MeasurePoint[] = [];
+                const raw = ba.coordinates;
+                const isNested = Array.isArray(raw[0]);
+                for (let i = 0; i < (isNested ? raw.length : raw.length - 1); i += (isNested ? 1 : 2)) {
+                  const ln = isNested ? raw[i][0] : raw[i];
+                  const lt = isNested ? raw[i][1] : raw[i+1];
+                  const { x, z } = toXZ(ln, lt);
+                  pts.push({ x, y: groundY(x, z, ba.type === 'line' ? 0.1 : 0.05), z });
+                  if (i % 50 === 0) { await new Promise(r => setTimeout(r, 0)); if (isCancelled) return; }
+                }
+                if (pts.length >= (ba.type === 'line' ? 2 : 3)) {
+                  shapes.push({ id: ba.id, type: ba.type as 'line' | 'polygon', pts, label, color });
+                  const midIdx = Math.floor(pts.length / 2);
+                  const bcx = ba.type === 'polygon' ? pts.reduce((s, p) => s + p.x, 0) / pts.length : pts[midIdx].x;
+                  const bcz = ba.type === 'polygon' ? pts.reduce((s, p) => s + p.z, 0) / pts.length : pts[midIdx].z;
+                  const bcy = ba.type === 'polygon' ? groundY(bcx, bcz, 1.2) : pts[midIdx].y + 0.5;
+                  markers.push({ id: `${ba.id}-lbl`, x: bcx, y: bcy, z: bcz, label, type: "internal", color });
+                }
+              }
+            }
+          }
+        }
+
+        if (!isCancelled) {
+          console.log(`[3DViewer] Mapping finished. Markers: ${markers.length}, Shapes: ${shapes.length}`);
+          setDbMarkers(markers);
+          setDbSiteShapes(shapes);
+        }
+      } catch (err) {
+        console.error("[3DViewer] Error in annotation processing:", err);
+      } finally {
+        if (!isCancelled) setIsProcessingMarkers(false);
+      }
+    };
+
+    processBatch();
+    return () => { isCancelled = true; };
+  }, [dbSchool, dbBuildings, phase, isModelReady]);
 
   const toggleMode = useCallback((mode: MeasureMode) => {
     setMeasureMode(prev => {
@@ -614,30 +677,53 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     }
 
     // ─── DB Markers ───────────
-    const dbPulse = Math.sin(Date.now() / 250) * 0.4 + 1.2; // Pulsing 0.8 to 1.6
+    const dbPulse = Math.sin(Date.now() / 250) * 0.4 + 1.2;
     dbMarkers.forEach(m => {
       const p = project3Dto2D(new THREE.Vector3(m.x, m.y, m.z), camera, W, H);
       if (!p) return;
       const [ex, ey] = p;
 
+      // Distance scaling: smaller markers in the distance
+      const dist = camera.position.distanceTo(new THREE.Vector3(m.x, m.y, m.z));
+      const scale = Math.max(0.4, Math.min(1.2, 50 / dist));
+
       // Color Coding
-      let baseCol = "#3b82f6"; let glowCol = "rgba(59,130,246,0.2)";
-      if (m.type === "site") { baseCol = "#10b981"; glowCol = "rgba(16,185,129,0.2)"; }
-      else if (m.type === "internal") { baseCol = "#a855f7"; glowCol = "rgba(168,85,247,0.3)"; }
+      let baseCol = m.color || "#3b82f6"; 
+      let glowCol = baseCol.replace(")", ",0.2)").replace("rgb", "rgba");
+      if (baseCol.startsWith("#")) {
+        const r = parseInt(baseCol.slice(1, 3), 16), g = parseInt(baseCol.slice(3, 5), 16), b = parseInt(baseCol.slice(5, 7), 16);
+        glowCol = `rgba(${r},${g},${b},0.3)`;
+      }
+
+      if (m.type === "site") { if (!m.color) baseCol = "#10b981"; }
+      else if (m.type === "internal") { baseCol = "#a855f7"; }
 
       // Pulse Glow
-      ctx.beginPath(); ctx.arc(ex, ey, 8 * dbPulse, 0, Math.PI * 2);
+      ctx.beginPath(); ctx.arc(ex, ey, 10 * dbPulse * scale, 0, Math.PI * 2);
       ctx.fillStyle = glowCol; ctx.fill();
 
       // Main Outer Ring
-      ctx.beginPath(); ctx.arc(ex, ey, 6, 0, Math.PI * 2);
-      ctx.fillStyle = baseCol; ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.setLineDash([]); ctx.stroke();
+      ctx.beginPath(); ctx.arc(ex, ey, 7 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = baseCol; ctx.fill(); 
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * scale; ctx.stroke();
 
-      // High-contrast Label
-      ctx.font = "bold 9px 'JetBrains Mono', monospace";
+      // Premium Glassmorphic Label
+      ctx.font = `bold ${Math.round(10 * scale)}px 'Inter', system-ui, sans-serif`;
+      const mText = m.label;
+      const textWidth = ctx.measureText(mText).width;
+      const padX = 8 * scale;
+      const bw = textWidth + padX * 2, bh = 18 * scale;
+      const bx = ex - bw / 2, by = ey - 22 * scale - bh;
+
+      // Background with blur effect (mocked via low opacity + semi-opaque border)
+      ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+      ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6 * scale); ctx.fill();
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.15)"; ctx.lineWidth = 1; ctx.stroke();
+
+      // Shadow
+      ctx.shadowBlur = 10; ctx.shadowColor = "rgba(0,0,0,0.5)";
       ctx.fillStyle = "#fff"; ctx.textAlign = "center";
-      ctx.shadowBlur = 6; ctx.shadowColor = "rgba(0,0,0,1)";
-      ctx.fillText(m.label, ex, ey - 10);
+      ctx.fillText(mText, ex, by + bh/2 + 4 * scale);
       ctx.shadowBlur = 0;
     });
 
@@ -665,9 +751,18 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       const projPts = shape.pts.map(p => project3Dto2D(p, camera, W, H));
       if (projPts.every(p => !p)) return;
 
+      const baseCol = shape.color || "#10b981";
       ctx.beginPath(); ctx.setLineDash([]);
-      ctx.strokeStyle = "#10b981"; ctx.lineWidth = 2;
-      ctx.fillStyle = "rgba(16,185,129,0.1)";
+      ctx.strokeStyle = baseCol; ctx.lineWidth = 3;
+      
+      // Convert hex to rgba for fill
+      let fillCol = "rgba(16, 185, 129, 0.15)";
+      if (baseCol.startsWith("#")) {
+        const r = parseInt(baseCol.slice(1, 3), 16), g = parseInt(baseCol.slice(3, 5), 16), b = parseInt(baseCol.slice(5, 7), 16);
+        fillCol = `rgba(${r}, ${g}, ${b}, 0.2)`;
+      }
+
+      ctx.fillStyle = fillCol;
 
       let started = false;
       projPts.forEach(p => {
@@ -680,8 +775,10 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         const first = projPts.find(p => !!p);
         if (first && started) ctx.lineTo(first[0], first[1]);
         ctx.fill();
+        ctx.stroke();
+      } else {
+        ctx.stroke();
       }
-      ctx.stroke();
     });
 
     // Draw the active annotation being placed
@@ -1102,540 +1199,132 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     setAnnotPendingPt(null); setAnnotInput("");
   };
 
+  const cancelAnnotation = () => { setAnnotPendingPt(null); setEditAnnotId(null); };
+
   // ─────────────────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────────
 
   return (
-    <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
-        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-        html,body,#root{width:100%;height:100%;overflow:hidden}
-        body{background:#060b1a}
-        .glb-root{width:100vw;height:100vh;background:#060b1a;display:flex;flex-direction:column;font-family:'Inter',sans-serif;color:#e8e8f0;overflow:hidden}
-        .header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid rgba(255,255,255,0.06);background:rgba(6,11,26,0.95);backdrop-filter:blur(12px);z-index:10;flex-shrink:0}
-        .logo{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:800;letter-spacing:-0.5px}
-        .logo-icon{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#2563eb);display:flex;align-items:center;justify-content:center;font-size:14px}
-        .badge{font-family:'JetBrains Mono',monospace;font-size:10px;padding:3px 8px;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.35);border-radius:20px;color:#60a5fa;letter-spacing:0.5px}
-        .drop-zone{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;padding:40px;position:relative;overflow:hidden}
-        .drop-zone::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 40% at 50% 50%,rgba(59,130,246,0.08) 0%,transparent 70%),radial-gradient(ellipse 40% 30% at 20% 80%,rgba(37,99,235,0.05) 0%,transparent 60%);pointer-events:none}
-        .drop-target{width:100%;max-width:520px;aspect-ratio:4/3;border:2px dashed rgba(59,130,246,0.35);border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;cursor:pointer;transition:all .25s ease;background:rgba(59,130,246,0.03);position:relative;overflow:hidden}
-        .drop-target.dragging{border-color:rgba(59,130,246,0.8);background:rgba(59,130,246,0.08);transform:scale(1.01)}
-        .drop-icon{width:72px;height:72px;border-radius:18px;background:linear-gradient(135deg,rgba(59,130,246,0.2),rgba(37,99,235,0.1));border:1px solid rgba(59,130,246,0.3);display:flex;align-items:center;justify-content:center;font-size:30px;transition:transform .25s ease}
-        .drop-target:hover .drop-icon,.drop-target.dragging .drop-icon{transform:scale(1.1) translateY(-4px)}
-        .drop-title{font-size:20px;font-weight:700;letter-spacing:-0.5px;text-align:center}
-        .drop-sub{font-size:12px;color:rgba(232,232,240,0.45);text-align:center;font-family:'JetBrains Mono',monospace;line-height:1.7}
-        .upload-btn{padding:11px 26px;border-radius:10px;border:none;background:linear-gradient(135deg,#3b82f6,#60a5fa);color:#fff;font-family:'Inter',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s ease}
-        .upload-btn:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(59,130,246,0.4)}
-        .info-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
-        .info-card{padding:12px 18px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);text-align:center}
-        .info-card-value{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:500;color:#60a5fa}
-        .info-card-label{font-size:10px;color:rgba(232,232,240,0.4);margin-top:3px;letter-spacing:0.5px;text-transform:uppercase}
-        .error-bar{margin:0 24px;padding:10px 16px;border-radius:10px;background:rgba(255,71,71,0.08);border:1px solid rgba(255,71,71,0.25);color:#ff7070;font-size:12px;font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:8px}
-        .loading-overlay{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;padding:40px;position:relative}
-        .loading-overlay::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 50% 40% at 50% 50%,rgba(59,130,246,0.1) 0%,transparent 70%);pointer-events:none}
-        .spinner-ring{width:72px;height:72px;border-radius:50%;border:3px solid rgba(59,130,246,0.15);border-top:3px solid #3b82f6;border-right:3px solid #2563eb;animation:spin 1s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        .loading-pct{font-size:44px;font-weight:800;letter-spacing:-2px;background:linear-gradient(135deg,#3b82f6,#2563eb);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-        .progress-track{width:300px;height:3px;background:rgba(255,255,255,0.07);border-radius:4px;overflow:hidden}
-        .progress-fill{height:100%;background:linear-gradient(90deg,#3b82f6,#2563eb);border-radius:4px;transition:width .3s ease}
-        .progress-label{font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(232,232,240,0.45);letter-spacing:0.3px}
-        .viewer-wrapper{flex:1;position:relative;overflow:hidden}
-        .viewer-canvas{width:100%;height:100%;position:absolute;inset:0}
-        .viewer-canvas canvas{display:block}
-        .overlay-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5}
-        .overlay-canvas.interactive{pointer-events:all;cursor:crosshair}
-        .toolbar{position:absolute;top:20px;left:20px;display:flex;flex-direction:column;gap:12px;z-index:20}
-        .tb-group{display:flex;flex-direction:column;gap:4px;background:rgba(6,11,26,0.65);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:6px;box-shadow:0 8px 32px rgba(0,0,0,0.4)}
-        .tb-btn{width:38px;height:38px;border-radius:10px;border:none;background:transparent;color:rgba(232,232,240,0.6);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s cubic-bezier(0.4,0,0.2,1);font-size:16px;position:relative;flex-shrink:0;user-select:none}
-        .tb-btn:hover{background:rgba(255,255,255,0.06);color:#fff;transform:scale(1.05)}
-        .tb-btn.active{background:linear-gradient(135deg,rgba(59,130,246,0.3),rgba(37,99,235,0.4));color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.1)}
-        .tb-btn.flash{background:rgba(50,220,120,0.25);color:#60e8a0}
-        .tb-btn.danger:hover{background:rgba(255,71,71,0.18);color:#ff9090}
-        .tb-btn:active{transform:scale(0.95)}
-        .tb-divider{height:1px;background:rgba(255,255,255,0.08);margin:4px 6px}
-        .tb-btn[data-tip]:hover::after{content:attr(data-tip);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);white-space:nowrap;background:rgba(6,11,26,0.97);border:1px solid rgba(255,255,255,0.1);border-radius:7px;padding:5px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#e8e8f0;letter-spacing:0.3px;pointer-events:none;z-index:100}
-        .speed-group{display:flex;flex-direction:column;gap:0;background:rgba(6,11,26,0.88);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.09);border-radius:12px;padding:5px;align-items:center}
-        .speed-label{font-family:'JetBrains Mono',monospace;font-size:9px;color:rgba(232,232,240,0.35);text-transform:uppercase;letter-spacing:0.8px;padding:2px 0 3px;text-align:center;width:100%}
-        .speed-val{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:#60a5fa;padding:3px 0;text-align:center;min-width:36px;letter-spacing:-0.3px}
-        .speed-track{width:26px;height:3px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden;margin:1px 0 3px}
-        .speed-fill{height:100%;background:linear-gradient(90deg,#3b82f6,#2563eb);border-radius:3px;transition:width .15s ease}
-        .mode-panel{position:absolute;top:20px;right:20px;display:flex;flex-direction:column;gap:6px;z-index:20}
-        .mode-label-hdr{font-family:'Inter',sans-serif;font-size:10px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:1.5px;padding:0 8px 4px;text-align:right}
-        .mode-btn{padding:9px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(6,11,26,0.65);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);color:rgba(232,232,240,0.45);font-family:'JetBrains Mono',monospace;font-size:11px;cursor:pointer;transition:all .2s ease;text-align:left;display:flex;align-items:center;gap:10px;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,0.2)}
-        .mode-btn:hover{background:rgba(255,255,255,0.06);color:#fff;border-color:rgba(255,255,255,0.15)}
-        .mode-btn.active{background:rgba(59,130,246,0.15);color:#fff;border-color:rgba(59,130,246,0.4);font-weight:600}
-        .mode-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.1);flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.1)}
-        .mode-btn.active .mode-dot{background:#3b82f6;box-shadow:0 0 10px rgba(59,130,246,0.8)}
-        .mode-tag{font-size:9px;padding:2px 7px;border-radius:6px;background:rgba(50,220,120,0.1);border:1px solid rgba(50,220,120,0.25);color:#60e8a0;margin-left:auto;font-weight:600;letter-spacing:0.3px}
-        .stats-panel{position:absolute;bottom:20px;left:20px;background:rgba(6,11,26,0.65);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:14px 20px;display:flex;gap:20px;align-items:center;z-index:20;box-shadow:0 8px 32px rgba(0,0,0,0.4)}
-        .stat-item{display:flex;flex-direction:column;gap:3px}
-        .stat-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#60a5fa;letter-spacing:-0.4px}
-        .stat-lbl{font-size:9px;font-weight:600;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:1px}
-        .stat-div{width:1px;height:24px;background:rgba(255,255,255,0.08);flex-shrink:0}
-        .home-toast{position:absolute;bottom:80px;left:16px;background:rgba(50,200,100,0.12);border:1px solid rgba(50,200,100,0.3);border-radius:8px;padding:7px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#60e8a0;z-index:30;pointer-events:none;animation:toastIn .2s ease,toastOut .3s ease .9s forwards}
-        .screenshot-toast{position:absolute;bottom:80px;right:16px;background:rgba(50,150,255,0.12);border:1px solid rgba(50,150,255,0.3);border-radius:8px;padding:7px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#70b8ff;z-index:30;pointer-events:none;animation:toastIn .2s ease,toastOut .3s ease 1.1s forwards}
-        @keyframes toastIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-        @keyframes toastOut{to{opacity:0;transform:translateY(-4px)}}
+    <div className="glb-root">
+      <ViewerUIHeader 
+        schoolName={schoolName}
+        stats={stats}
+        progress={progress}
+        isProcessingMarkers={isProcessingMarkers}
+        onClose={onClose}
+      />
 
-        /* Measure toolbar */
-        .meas-toolbar{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:6px;background:rgba(6,11,26,0.92);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:8px 12px;z-index:25;transition:all .25s ease}
-        .meas-toolbar.active-mode{border-color:rgba(59,130,246,0.5);box-shadow:0 0 0 1px rgba(59,130,246,0.2),0 8px 32px rgba(0,0,0,0.5)}
-        .meas-btn{height:34px;padding:0 14px;border-radius:9px;border:1px solid transparent;background:transparent;color:rgba(232,232,240,0.5);font-family:'JetBrains Mono',monospace;font-size:10px;cursor:pointer;transition:all .18s ease;display:flex;align-items:center;gap:6px;white-space:nowrap;font-weight:500}
-        .meas-btn:hover{background:rgba(59,130,246,0.12);color:#93c5fd;border-color:rgba(59,130,246,0.25)}
-        .meas-btn.active{background:rgba(59,130,246,0.22);color:#93c5fd;border-color:rgba(59,130,246,0.5)}
-        .meas-btn.annotate-btn.active{background:rgba(0,212,170,0.15);color:#00d4aa;border-color:rgba(0,212,170,0.4)}
-        .meas-divider{width:1px;height:22px;background:rgba(255,255,255,0.08);margin:0 2px}
-        .meas-hint{font-family:'JetBrains Mono',monospace;font-size:9px;color:rgba(59,130,246,0.7);padding:0 4px;white-space:nowrap}
+      {error && <div className="error-bar"><span>⚠</span> {error}</div>}
 
-        /* Unit dropdown */
-        .unit-wrap{position:relative}
-        .unit-btn{height:34px;padding:0 10px;border-radius:9px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(232,232,240,0.65);font-family:'JetBrains Mono',monospace;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:5px;white-space:nowrap;transition:all .18s ease}
-        .unit-btn:hover{background:rgba(59,130,246,0.1);border-color:rgba(59,130,246,0.3);color:#93c5fd}
-        .unit-dropdown{position:absolute;bottom:calc(100% + 6px);left:0;min-width:170px;background:#0d1429;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:5px;box-shadow:0 16px 48px rgba(0,0,0,0.7);z-index:100;animation:dropUp .15s ease}
-        @keyframes dropUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-        .unit-opt{width:100%;padding:8px 12px;border-radius:7px;border:none;background:transparent;color:rgba(232,232,240,0.55);font-family:'JetBrains Mono',monospace;font-size:10px;cursor:pointer;text-align:left;transition:all .15s ease;display:flex;justify-content:space-between;align-items:center}
-        .unit-opt:hover{background:rgba(59,130,246,0.12);color:#93c5fd}
-        .unit-opt.selected{color:#60a5fa;background:rgba(59,130,246,0.1)}
-        .unit-opt .check{color:#60a5fa;font-size:12px}
+      {phase !== "viewing" ? (
+        <ViewerLoadingScreens 
+          phase={phase}
+          progress={progress}
+          progressLabel={progressLabel}
+          isDragging={isDragging}
+          schoolName={schoolName}
+          setIsDragging={setIsDragging}
+          handleDrop={handleDrop}
+          handleInputChange={handleInputChange}
+        />
+      ) : (
+        <div className="viewer-wrapper">
+          <ViewerMainCanvas
+            ref={mountRef}
+            overlayRef={overlayRef}
+            progress={progress}
+            progressLabel={progressLabel}
+            measureMode={measureMode}
+            handleOverlayMouseMove={handleOverlayMouseMove}
+            handleOverlayClick={handleOverlayClick}
+            handleOverlayDoubleClick={handleOverlayDoubleClick}
+            handleOverlayContextMenu={handleOverlayContextMenu}
+          />
+          
+          <ViewerControlToolbar
+            handleResetCamera={handleResetCamera}
+            saveFlash={saveFlash}
+            homeSaved={homeSaved}
+            speedSteps={SPEED_STEPS}
+            handleSaveHome={handleSaveHome}
+            toggleOrientation={toggleOrientation}
+            setView={setView}
+            speedIdx={speedIdx}
+            speedUp={speedUp}
+            speedDown={speedDown}
+            showMeasurePanel={showMeasurePanel}
+            setShowMeasurePanel={setShowMeasurePanel}
+            screenshotFlash={screenshotFlash}
+            handleScreenshot={handleScreenshot}
+            showHelp={showHelp}
+            setShowHelp={setShowHelp}
+          />
 
-        /* Measure panel (right drawer) */
-        .meas-panel{position:absolute;right:16px;top:80px;bottom:80px;width:280px;background:rgba(6,11,26,0.94);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.09);border-radius:16px;z-index:20;display:flex;flex-direction:column;overflow:hidden;animation:panelIn .2s ease}
-        @keyframes panelIn{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:none}}
-        .mp-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 12px;border-bottom:1px solid rgba(255,255,255,0.07);flex-shrink:0}
-        .mp-title{font-size:12px;font-weight:700;letter-spacing:-0.2px;display:flex;align-items:center;gap:8px}
-        .mp-count{font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 7px;background:rgba(59,130,246,0.15);border-radius:20px;color:#60a5fa}
-        .mp-clear{padding:4px 9px;border-radius:7px;border:none;background:rgba(255,71,71,0.08);color:rgba(255,112,112,0.7);font-family:'JetBrains Mono',monospace;font-size:9px;cursor:pointer;transition:all .15s}
-        .mp-clear:hover{background:rgba(255,71,71,0.18);color:#ff7070}
-        .mp-list{flex:1;overflow-y:auto;padding:8px}
-        .mp-list::-webkit-scrollbar{width:4px}
-        .mp-list::-webkit-scrollbar-track{background:transparent}
-        .mp-list::-webkit-scrollbar-thumb{background:rgba(59,130,246,0.3);border-radius:2px}
-        .mp-item{padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);margin-bottom:6px;background:rgba(255,255,255,0.02);transition:background .15s}
-        .mp-item:hover{background:rgba(255,255,255,0.04)}
-        .mp-item-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
-        .mp-item-type{font-family:'JetBrains Mono',monospace;font-size:8px;text-transform:uppercase;letter-spacing:1px;padding:2px 7px;border-radius:20px}
-        .mp-item-del{width:20px;height:20px;border-radius:5px;border:none;background:transparent;color:rgba(255,112,112,0.4);font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
-        .mp-item-del:hover{background:rgba(255,71,71,0.15);color:#ff7070}
-        .mp-item-val{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;color:#e8e8f0;letter-spacing:-0.5px}
-        .mp-item-pts{font-family:'JetBrains Mono',monospace;font-size:9px;color:rgba(232,232,240,0.3);margin-top:2px}
-        .mp-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;color:rgba(232,232,240,0.2);font-family:'JetBrains Mono',monospace;font-size:11px;text-align:center;padding:20px}
-        .mp-empty-icon{font-size:28px;opacity:0.3}
+          <ViewerRenderModePanel
+            modeLabels={MODE_LABELS}
+            renderMode={renderMode}
+            setRenderMode={setRenderMode}
+          />
 
-        /* 🚀 Fast Annot dialog + Color Picker */
-        .annot-dialog{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(13,20,41,0.85);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.12);border-radius:20px;padding:24px;width:320px;z-index:60;box-shadow:0 32px 80px rgba(0,0,0,0.8);animation:popIn .05s ease-out forwards}
-        @keyframes popIn{from{transform:translate(-50%,-45%) scale(0.95);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
-        .ad-title{font-size:14px;font-weight:800;margin-bottom:18px;display:flex;align-items:center;gap:10px;letter-spacing:-0.2px}
-        .ad-colors{display:flex;gap:10px;margin-bottom:16px;}
-        .ad-color-btn{width:24px;height:24px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:all 0.2s cubic-bezier(0.4,0,0.2,1);box-shadow:0 4px 12px rgba(0,0,0,0.3)}
-        .ad-color-btn:hover{transform:scale(1.25);z-index:1}
-        .ad-color-btn.active{border-color:#ffffff;transform:scale(1.1);box-shadow:0 0 0 4px rgba(255,255,255,0.1)}
-        .ad-textarea{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px;font-family:'JetBrains Mono',monospace;font-size:12px;resize:vertical;min-height:90px;outline:none;transition:all .2s;line-height:1.6;color:#fff}
-        .ad-textarea:focus{border-color:rgba(59,130,246,0.5);background:rgba(255,255,255,0.08)}
-        .ad-row{display:flex;gap:10px;margin-top:20px;justify-content:flex-end}
-        .ad-cancel{padding:9px 18px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:rgba(232,232,240,0.5);font-family:'Inter',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s}
-        .ad-cancel:hover{background:rgba(255,255,255,0.06);color:#fff}
-        .ad-save{padding:9px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#3b82f6,#2563eb);color:#fff;font-family:'Inter',sans-serif;font-size:11px;font-weight:700;cursor:pointer;transition:all .2s;box-shadow:0 4px 12px rgba(37,99,235,0.3)}
-        .ad-save:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(37,99,235,0.5)}
+          <ViewerMeasureToolbar
+            measureMode={measureMode}
+            showUnitDropdown={showUnitDropdown}
+            setShowUnitDropdown={setShowUnitDropdown}
+            unit={unit}
+            setUnit={setUnit}
+            toggleMode={toggleMode}
+            measuresCount={measures.length}
+            annotationsCount={annotations.length}
+            visibility={visibility}
+            cycleVisibility={cycleVisibility}
+            pendingPtsCount={pendingPts.length}
+            finalizeMeasure={finalizeMeasure}
+            setMeasureMode={setMeasureMode}
+            setPendingPts={setPendingPts}
+            unitLabels={UNIT_LABELS}
+            unitSuffix={UNIT_SUFFIX}
+          />
 
-        /* Help */
-        .help-backdrop{position:absolute;inset:0;z-index:50;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:bfadeIn .18s ease}
-        @keyframes bfadeIn{from{opacity:0}to{opacity:1}}
-        .help-panel{width:580px;max-width:94vw;max-height:90vh;overflow-y:auto;background:#0d1429;border:1px solid rgba(255,255,255,0.1);border-radius:20px;box-shadow:0 40px 100px rgba(0,0,0,0.8);animation:bslideUp .22s ease}
-        .help-header{display:flex;align-items:center;justify-content:space-between;padding:18px 22px 16px;border-bottom:1px solid rgba(255,255,255,0.07);position:sticky;top:0;background:#0d1429;z-index:1;border-radius:20px 20px 0 0}
-        .help-title{font-size:15px;font-weight:800;letter-spacing:-0.3px;display:flex;align-items:center;gap:10px}
-        .help-title-icon{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#2563eb);display:flex;align-items:center;justify-content:center;font-size:13px}
-        .help-close{width:28px;height:28px;border-radius:7px;border:none;background:rgba(255,255,255,0.06);color:rgba(232,232,240,0.6);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;transition:all .15s}
-        .help-close:hover{background:rgba(255,71,120,0.2);color:#ff7090}
-        .help-body{padding:18px 22px 24px;display:flex;flex-direction:column;gap:20px}
-        .help-section{display:flex;flex-direction:column;gap:8px}
-        .help-section-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:rgba(232,232,240,0.3);padding:0 2px}
-        .help-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
-        .help-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.025);transition:background .15s}
-        .help-row:hover{background:rgba(59,130,246,0.07)}
-        .help-keys{display:flex;gap:3px;flex-shrink:0;flex-wrap:wrap;max-width:130px}
-        .kbd{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:20px;padding:0 5px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);border-bottom:2px solid rgba(255,255,255,0.2);border-radius:5px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:#93c5fd;white-space:nowrap;line-height:1}
-        .help-desc{font-size:11px;color:rgba(232,232,240,0.5);line-height:1.4;flex:1}
-        .help-divider{height:1px;background:rgba(255,255,255,0.05)}
-        .help-tip{padding:12px 14px;border-radius:10px;background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(157,122,255,0.8);line-height:1.8}
-        .callout{padding:12px 14px;border-radius:10px;background:rgba(50,200,100,0.06);border:1px solid rgba(50,200,100,0.2);font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(96,232,160,0.9);line-height:1.9}
-      `}</style>
+          {showMeasurePanel && (
+            <ViewerMeasurePanel
+              measures={measures}
+              annotations={annotations}
+              clearAllMeasurements={clearAllMeasurements}
+              setMeasures={setMeasures}
+              setAnnotations={setAnnotations}
+              setEditAnnotId={setEditAnnotId}
+              setAnnotInput={setAnnotInput}
+              setAnnotPendingPt={setAnnotPendingPt}
+              setAnnotColor={setAnnotColor}
+            />
+          )}
 
-      <title>{schoolName ? `${schoolName} · 3D Viewer — RTB GIS` : "RTB GIS · 3D Viewer"}</title>
+          <ViewerAnnotationDialog
+            editAnnotId={editAnnotId}
+            annotColor={annotColor}
+            setAnnotColor={setAnnotColor}
+            annotInput={annotInput}
+            setAnnotInput={setAnnotInput}
+            submitAnnotation={submitAnnotation}
+            cancelAnnotation={cancelAnnotation}
+            annotColors={ANNOT_COLORS}
+          />
 
-      <div className="glb-root">
-        <header className="header">
-          <div className="logo">
-            <div className="logo-icon">⬡</div>
-            <span style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-0.4px" }}>
-                {schoolName || "RTB GIS · 3D Viewer"}
-              </span>
-              {schoolName && (
-                <span style={{ fontSize: 9, fontWeight: 500, opacity: 0.4, letterSpacing: "1.2px", fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase" }}>
-                  Rwanda TVET Board · 3D Photogrammetry Viewer
-                </span>
-              )}
-            </span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {stats && progress === 100 && (
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: "rgba(232,232,240,0.3)", letterSpacing: "0.3px" }}>
-                {stats.triangles.toLocaleString()}▲ · {stats.meshes}⬡ · {stats.textures}◈
-              </span>
-            )}
-            <span className="badge">Measure · Annotate · Screenshot</span>
-            <button 
-              onClick={() => {
-                if (onClose) onClose();
-                else window.close();
-              }}
-              style={{ padding: "6px 12px", borderRadius: "8px", border: "1px solid rgba(255,100,100,0.3)", background: "rgba(255,70,70,0.1)", color: "#ff6060", fontSize: "10px", fontWeight: "700", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
-            >
-              <X size={12} /> EXIT EXPLORER
-            </button>
-          </div>
-        </header>
+          <ViewerStatsFooter
+            stats={stats}
+            showMeasurePanel={showMeasurePanel}
+            formatBytes={formatBytes}
+            formatTime={formatTime}
+          />
 
-        {error && <div className="error-bar"><span>⚠</span> {error}</div>}
-
-        {phase === "idle" && (
-          <div className="drop-zone">
-            <label className={`drop-target${isDragging ? " dragging" : ""}`}
-              onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
-              onDragLeave={() => setIsDragging(false)} onDrop={handleDrop} htmlFor="glb-input">
-              <input id="glb-input" type="file" accept=".glb" style={{ display: "none" }} onChange={handleInputChange} />
-              <div className="drop-icon">⬡</div>
-              <div className="drop-title">{schoolName ? `No 3D model found for ${schoolName}` : "Drop your .glb model here"}</div>
-              <div className="drop-sub">{schoolName ? "Upload a GLB file to view the 3D model for this school" : "Measure distances · Areas · Perimeters"}<br />{schoolName ? "" : "Annotations · Screenshot · Unlit photogrammetry"}</div>
-              <button className="upload-btn" type="button" onClick={e => { e.preventDefault(); document.getElementById("glb-input")?.click() }}>Choose File</button>
-            </label>
-            <div className="info-row">
-              {[{ value: "2 GB+", label: "Max File Size" }, { value: "GLB", label: "Format" }, { value: "WebGL 2", label: "Renderer" }, { value: "Measure", label: "Tools" }].map(c => (
-                <div className="info-card" key={c.label}><div className="info-card-value">{c.value}</div><div className="info-card-label">{c.label}</div></div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {phase === "loading" && (
-          <div className="loading-overlay">
-            <div className="spinner-ring" />
-            <div className="loading-pct">{progress}%</div>
-            <div className="progress-track"><div className="progress-fill" style={{ width: `${progress}%` }} /></div>
-            <div className="progress-label">{progressLabel}</div>
-          </div>
-        )}
-
-        {phase === "viewing" && (
-          <div className="viewer-wrapper">
-            {progress < 100 && (
-              <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24, background: "rgba(6,11,26,0.78)", backdropFilter: "blur(6px)" }}>
-                <div className="spinner-ring" />
-                <div className="loading-pct">{progress}%</div>
-                <div className="progress-track"><div className="progress-fill" style={{ width: `${progress}%` }} /></div>
-                <div className="progress-label">{progressLabel}</div>
-              </div>
-            )}
-
-            <div ref={mountRef} className="viewer-canvas" />
-
-            <canvas ref={overlayRef} className={`overlay-canvas${measureMode ? "  interactive" : ""}`}
-              onMouseMove={handleOverlayMouseMove}
-              onClick={handleOverlayClick}
-              onDoubleClick={handleOverlayDoubleClick}
-              onContextMenu={handleOverlayContextMenu} />
-
-            {/* Left toolbar */}
-            <div className="toolbar">
-              <div className="tb-group">
-                <button className="tb-btn" data-tip="Reset to current home" onClick={handleResetCamera}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></svg>
-                </button>
-                <button className={`tb-btn${saveFlash ? " flash" : ""}`}
-                  data-tip={homeSaved ? "Update auto-home position" : "Save view as auto-home"} onClick={handleSaveHome}>
-                  {saveFlash ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-                  ) : homeSaved ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>
-                  ) : (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
-                  )}
-                </button>
-                <button className="tb-btn" data-tip="Rotate axis (Flip)" onClick={toggleOrientation}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 21l-4-4 4-4" /><path d="M3 17h18a2 2 0 0 0 2-2v-2" /><path d="M17 3l4 4-4 4" /><path d="M21 7H3a2 2 0 0 0-2 2v2" /></svg>
-                </button>
-                <div className="tb-divider" />
-                <button className="tb-btn" data-tip="Top View" onClick={() => setView("top")} style={{ fontSize: 9, fontWeight: 800 }}>TOP</button>
-                <div style={{ display: "flex", gap: 2 }}>
-                  <button className="tb-btn" data-tip="Front" onClick={() => setView("front")} style={{ fontSize: 8, fontWeight: 800, width: 28 }}>FRT</button>
-                  <button className="tb-btn" data-tip="Back" onClick={() => setView("back")} style={{ fontSize: 8, fontWeight: 800, width: 28 }}>BCK</button>
-                </div>
-                <div style={{ display: "flex", gap: 2 }}>
-                  <button className="tb-btn" data-tip="Left" onClick={() => setView("left")} style={{ fontSize: 8, fontWeight: 800, width: 28 }}>LFT</button>
-                  <button className="tb-btn" data-tip="Right" onClick={() => setView("right")} style={{ fontSize: 8, fontWeight: 800, width: 28 }}>RGT</button>
-                </div>
-              </div>
-
-              <div className="speed-group">
-                <div className="speed-label">speed</div>
-                <button className="tb-btn" data-tip="Speed up" onClick={speedUp} disabled={speedIdx >= SPEED_STEPS.length - 1} style={{ fontSize: 18, fontWeight: 700 }}>＋</button>
-                <div className="speed-val">{fmtSpeed(SPEED_STEPS[speedIdx])}</div>
-                <div className="speed-track"><div className="speed-fill" style={{ width: `${(speedIdx / (SPEED_STEPS.length - 1)) * 100}%` }} /></div>
-                <button className="tb-btn" data-tip="Speed down" onClick={speedDown} disabled={speedIdx <= 0} style={{ fontSize: 18, fontWeight: 700 }}>−</button>
-              </div>
-
-              <div className="tb-group">
-                <button className={`tb-btn${showMeasurePanel ? " active" : ""}`} data-tip="Measurements panel"
-                  onClick={() => setShowMeasurePanel(v => !v)}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m19.07 4.93-1.41 1.41" /><path d="m15.53 8.47-1.41 1.41" /><path d="M12 12 5 19" /><path d="m11.3 7.8 1.4-1.4" /><path d="m14.8 11.3 1.4-1.4" /><path d="m7.8 11.3 1.4-1.4" /><path d="m11.3 14.8 1.4-1.4" /><path d="m8.5 7.1 7.1 7.1" /><rect width="20" height="20" x="2" y="2" rx="2" /></svg>
-                </button>
-                <button className={`tb-btn${screenshotFlash ? " flash" : ""}`} data-tip="Screenshot & download"
-                  onClick={handleScreenshot}>
-                  {screenshotFlash ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-                  ) : (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3" /></svg>
-                  )}
-                </button>
-                <div className="tb-divider" />
-                <button className={`tb-btn${showHelp ? " active" : ""}`} data-tip="Keyboard shortcuts"
-                  onClick={() => setShowHelp(v => !v)}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg>
-                </button>
-              </div>
-            </div>
-
-            {/* Right — render mode */}
-            {progress === 100 && (
-              <div className="mode-panel">
-                <div className="mode-label-hdr">Render mode</div>
-                {(["unlit", "lit", "wireframe"] as RenderMode[]).map(m => (
-                  <button key={m} className={`mode-btn${renderMode === m ? " active" : ""}`} onClick={() => setRenderMode(m)}>
-                    <span className="mode-dot" />{MODE_LABELS[m]}{m === "unlit" && <span className="mode-tag">recommended</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Bottom measure toolbar */}
-            {progress === 100 && (
-              <div className={`meas-toolbar${measureMode ? " active-mode" : ""}`}>
-                {/* Unit selector */}
-                <div className="unit-wrap">
-                  <button className="unit-btn" onClick={() => setShowUnitDropdown(v => !v)}>
-                    📏 {UNIT_SUFFIX[unit]} ▾
-                  </button>
-                  {showUnitDropdown && (
-                    <div className="unit-dropdown">
-                      {(Object.keys(UNIT_LABELS) as Unit[]).map(u => (
-                        <button key={u} className={`unit-opt${unit === u ? " selected" : ""}`}
-                          onClick={() => { setUnit(u); setShowUnitDropdown(false); }}>
-                          <span>{UNIT_LABELS[u]}</span>
-                          {unit === u && <span className="check">✓</span>}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="meas-divider" />
-
-                <button className={`meas-btn${measureMode === "distance" ? " active" : ""}`}
-                  onClick={() => toggleMode("distance")}>
-                  📏 Distance
-                </button>
-                <button className={`meas-btn${measureMode === "area" ? " active" : ""}`}
-                  onClick={() => toggleMode("area")}>
-                  ⬛ Area
-                </button>
-                <button className={`meas-btn${measureMode === "perimeter" ? " active" : ""}`}
-                  onClick={() => toggleMode("perimeter")}>
-                  🔲 Perimeter
-                </button>
-                <button className={`meas-btn annotate-btn${measureMode === "annotate" ? " active" : ""}`}
-                  onClick={() => toggleMode("annotate")}>
-                  🏷 Annotate
-                </button>
-
-                {/* 👁️ Smart Visibility Toggles */}
-                {(measures.length > 0 || annotations.length > 0) && (
-                  <>
-                    <div className="meas-divider" />
-                    <button className="meas-btn" style={{ fontWeight: 600, color: visibility === "clear" ? "#ff7070" : "rgba(232,232,240,0.65)" }}
-                      onClick={cycleVisibility}>
-                      {visibility === "all" && "👁️ View All"}
-                      {visibility === "annotations" && "🏷️ Annots Only"}
-                      {visibility === "measures" && "📏 Meas Only"}
-                      {visibility === "clear" && "🚫 Clear View"}
-                    </button>
-                  </>
-                )}
-
-                {measureMode && pendingPts.length >= 2 && measureMode !== "annotate" && (
-                  <>
-                    <div className="meas-divider" />
-                    <button className="meas-btn active" style={{ background: "rgba(50,200,100,0.15)", borderColor: "rgba(50,200,100,0.4)", color: "#60e8a0" }}
-                      onClick={finalizeMeasure}>✓ Done ({pendingPts.length} pts)</button>
-                  </>
-                )}
-                {measureMode && (
-                  <>
-                    <div className="meas-divider" />
-                    <span className="meas-hint">
-                      {measureMode === "distance" && `Click points → Right-click to finish`}
-                      {measureMode === "area" && `Click points → Right-click to finish`}
-                      {measureMode === "perimeter" && `Click points → Right-click to finish`}
-                      {measureMode === "annotate" && "Click on model to place note"}
-                    </span>
-                    <div className="meas-divider" />
-                    <button className="meas-btn" style={{ color: "rgba(255,112,112,0.7)" }}
-                      onClick={() => { setMeasureMode(null); setPendingPts([]); hoverPtRef.current = null; }}>✕ Cancel</button>
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* Measurements panel */}
-            {showMeasurePanel && (
-              <div className="meas-panel">
-                <div className="mp-header">
-                  <div className="mp-title">
-                    📐 Measurements
-                    <span className="mp-count">{measures.length + annotations.length}</span>
-                  </div>
-                  <button className="mp-clear" onClick={clearAllMeasurements}>Delete all</button>
-                </div>
-                <div className="mp-list">
-                  {measures.length === 0 && annotations.length === 0 && (
-                    <div className="mp-empty">
-                      <div className="mp-empty-icon">📐</div>
-                      <div>No measurements yet.<br />Use the toolbar below to start.</div>
-                    </div>
-                  )}
-                  {measures.map(m => (
-                    <div className="mp-item" key={m.id}>
-                      <div className="mp-item-head">
-                        <span className="mp-item-type" style={{ background: `${m.color}22`, color: m.color, border: `1px solid ${m.color}44` }}>
-                          {m.mode}
-                        </span>
-                        <button className="mp-item-del" onClick={() => setMeasures(prev => prev.filter(x => x.id !== m.id))}>✕</button>
-                      </div>
-                      <div className="mp-item-val">{m.label}</div>
-                      <div className="mp-item-pts">{m.points.length} point{m.points.length !== 1 ? "s" : ""}</div>
-                    </div>
-                  ))}
-                  {annotations.map(a => (
-                    <div className="mp-item" key={a.id}>
-                      <div className="mp-item-head">
-                        <span className="mp-item-type" style={{ background: "rgba(0,212,170,0.1)", color: "#00d4aa", border: "1px solid rgba(0,212,170,0.3)" }}>
-                          note
-                        </span>
-                        <button className="mp-item-del" onClick={() => setAnnotations(prev => prev.filter(x => x.id !== a.id))}>✕</button>
-                      </div>
-                      <div className="mp-item-val" style={{ fontSize: 11, color: a.color, cursor: "pointer" }}
-                        onClick={() => { setEditAnnotId(a.id); setAnnotInput(a.text); setAnnotPendingPt(a.point); setAnnotColor(a.color); }}>
-                        {a.text.slice(0, 40)}{a.text.length > 40 ? "…" : ""}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Annotation input dialog with Color Picker */}
-            {(annotPendingPt || editAnnotId) && (
-              <div className="annot-dialog">
-                <div className="ad-title">🏷 {editAnnotId ? "Edit annotation" : "Add annotation"}</div>
-
-                <div className="ad-colors">
-                  {ANNOT_COLORS.map(c => (
-                    <button key={c} className={`ad-color-btn ${annotColor === c ? 'active' : ''}`} style={{ background: c }} onClick={() => setAnnotColor(c)} />
-                  ))}
-                </div>
-
-                <textarea className="ad-textarea" placeholder="Type your note…" value={annotInput} autoFocus
-                  style={{ color: annotColor }}
-                  onChange={e => setAnnotInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitAnnotation(); } if (e.key === "Escape") { setAnnotPendingPt(null); setEditAnnotId(null); } }} />
-                <div className="ad-row">
-                  <button className="ad-cancel" onClick={() => { setAnnotPendingPt(null); setEditAnnotId(null); }}>Cancel</button>
-                  <button className="ad-save" onClick={submitAnnotation}>Save</button>
-                </div>
-              </div>
-            )}
-
-            {saveFlash && <div className="home-toast">📍 Auto-Home position saved for this map</div>}
-            {screenshotFlash && <div className="screenshot-toast">📷 High-Res Screenshot saved!</div>}
-
-            {stats && progress === 100 && !showMeasurePanel && (
-              <div className="stats-panel">
-                {[
-                  { val: stats.fileName.length > 16 ? stats.fileName.slice(0, 14) + "…" : stats.fileName, lbl: "File" },
-                  { val: formatBytes(stats.fileSize), lbl: "Size" },
-                  { val: formatTime(stats.loadTime), lbl: "Load time" },
-                  { val: stats.triangles.toLocaleString(), lbl: "Triangles" },
-                  { val: stats.meshes.toString(), lbl: "Meshes" },
-                  { val: stats.textures.toString(), lbl: "Textures" },
-                ].map((s, i, arr) => (
-                  <span key={s.lbl} style={{ display: "contents" }}>
-                    <div className="stat-item"><div className="stat-val">{s.val}</div><div className="stat-lbl">{s.lbl}</div></div>
-                    {i < arr.length - 1 && <div className="stat-div" />}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {showHelp && (
-              <div className="help-backdrop" onClick={() => setShowHelp(false)}>
-                <div className="help-panel" onClick={e => e.stopPropagation()}>
-                  <div className="help-header">
-                    <div className="help-title"><div className="help-title-icon">?</div>Controls &amp; Shortcuts</div>
-                    <button className="help-close" onClick={() => setShowHelp(false)}>✕</button>
-                  </div>
-                  <div className="help-body">
-                    <div className="callout">
-                      ✅  <strong>Unlit mode = Metashape-accurate colours</strong><br />
-                      Photogrammetry textures have real-world lighting baked in. Unlit mode skips PBR shading → raw captured colour.
-                    </div>
-                    <div className="help-section">
-                      <div className="help-section-label">🖱 Mouse</div>
-                      <div className="help-grid">
-                        {[{ keys: ["Left drag"], desc: "Orbit" }, { keys: ["Right drag"], desc: "Pan" }, { keys: ["Scroll"], desc: "Zoom" }, { keys: ["Middle drag"], desc: "Pan (alt)" }].map(r => (
-                          <div className="help-row" key={r.desc}><div className="help-keys">{r.keys.map(k => <span className="kbd" key={k}>{k}</span>)}</div><div className="help-desc">{r.desc}</div></div>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="help-divider" />
-                    <div className="help-section">
-                      <div className="help-section-label">⌨️ Fly navigation</div>
-                      <div className="help-grid">
-                        {[{ keys: ["W", "↑"], desc: "Walk Forward" }, { keys: ["S", "↓"], desc: "Walk Backward" }, { keys: ["A", "←"], desc: "Strafe left" }, { keys: ["D", "→"], desc: "Strafe right" }, { keys: ["E", "Space"], desc: "Fly up" }, { keys: ["Q", "F"], desc: "Fly down" }].map(r => (
-                          <div className="help-row" key={r.desc}><div className="help-keys">{r.keys.map(k => <span className="kbd" key={k}>{k}</span>)}</div><div className="help-desc">{r.desc}</div></div>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="help-divider" />
-                    <div className="help-section">
-                      <div className="help-section-label">📐 Measuring</div>
-                      <div className="help-grid">
-                        {[{ keys: ["Click"], desc: "Place measurement point" }, { keys: ["Right-click"], desc: "Finish/Complete measurement" }, { keys: ["Esc"], desc: "Cancel current measurement" }, { keys: ["👁️ btn"], desc: "Cycle UI view visibility" }, { keys: ["📷 btn"], desc: "Screenshot + download PNG" }, { keys: ["📐 btn"], desc: "Open measurements panel" }].map(r => (
-                          <div className="help-row" key={r.desc}><div className="help-keys">{r.keys.map(k => <span className="kbd" key={k}>{k}</span>)}</div><div className="help-desc">{r.desc}</div></div>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="help-tip">
-                      🔍 All measurements persist in your browser across sessions.<br />
-                      📍 <strong>Smart Auto-Home:</strong> When you save your home view, it's bound to that specific file name. Dropping the same map later instantly snaps to your saved angle.<br />
-                      📷 Screenshot composites the 3D view + all overlays into one High-Res PNG.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </>
+          {showHelp && (
+            <ViewerHelpModal
+              setShowHelp={setShowHelp}
+            />
+          )}
+        </div>
+      )}
+    </div>
   );
 }
