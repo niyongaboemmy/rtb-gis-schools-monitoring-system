@@ -15,13 +15,13 @@ const TooltipContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 overflow-hidden rounded-md border bg-popover px-3 py-1.5 text-xs font-bold text-popover-foreground animate-in fade-in zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        "z-50 overflow-hidden rounded-xl border border-white/10 bg-[#0f1117]/80 backdrop-blur-2xl px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-white shadow-[0_12px_40px_-8px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
         className
       )}
       {...props}
     >
       {props.children}
-      <TooltipPrimitive.Arrow className="fill-popover border-none" />
+      <TooltipPrimitive.Arrow className="fill-[#0f1117]/80" />
     </TooltipPrimitive.Content>
   </TooltipPrimitive.Portal>
 ))

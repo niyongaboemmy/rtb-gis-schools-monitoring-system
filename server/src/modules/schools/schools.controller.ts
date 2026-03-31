@@ -200,6 +200,24 @@ export class SchoolsController {
     return this.schoolsService.updateBuilding(id, buildingDto);
   }
 
+  @Post(':id/kmz/2d/site-annotations')
+  @ApiOperation({ summary: 'Add a site annotation' })
+  addSiteAnnotation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() annotation: any,
+  ) {
+    return this.schoolsService.addSiteAnnotation(id, annotation);
+  }
+
+  @Delete(':id/kmz/2d/site-annotations/:annId')
+  @ApiOperation({ summary: 'Delete a site annotation' })
+  removeSiteAnnotation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('annId') annId: string,
+  ) {
+    return this.schoolsService.removeSiteAnnotation(id, annId);
+  }
+
   @Delete('buildings/:id')
   @ApiOperation({ summary: 'Remove a specific building' })
   removeBuilding(@Param('id', ParseUUIDPipe) id: string) {

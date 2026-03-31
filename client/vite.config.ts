@@ -52,11 +52,15 @@ export default defineConfig(({ mode }) => {
         "/files": {
           target: "http://localhost:3002",
           changeOrigin: true,
+          timeout: 3600000,
+          proxyTimeout: 3600000,
         },
         // File server upload endpoint
         "/upload": {
           target: "http://localhost:3002",
           changeOrigin: true,
+          timeout: 3600000,
+          proxyTimeout: 3600000,
         },
         // Backward compat: old DB records still reference /uploads/reports/...
         "/uploads": {

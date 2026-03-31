@@ -222,11 +222,8 @@ export function AnnotationPickerModal({
               </Button>
               <Button
                 onClick={handleConfirm}
-                className={cn(
-                  "flex-1 h-10 rounded-xl text-[10px] font-black uppercase tracking-widest text-white border-none shadow-lg transition-all gap-2",
-                  `bg-[${selectedIcon.mapColor}]/80 hover:bg-[${selectedIcon.mapColor}]`
-                )}
-                style={{ backgroundColor: `${selectedIcon.mapColor}bb` }}
+                className="flex-1 h-10 rounded-xl text-[10px] font-black uppercase tracking-widest text-white border-none shadow-lg transition-all gap-2"
+                style={{ backgroundColor: `${selectedIcon.mapColor}dd` }}
               >
                 <Check className="w-3.5 h-3.5" />
                 Place on Map

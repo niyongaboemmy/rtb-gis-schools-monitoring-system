@@ -20,7 +20,10 @@ import { BasicInfoModal } from "./2dviewercomponents/BasicInfoModal";
 import { MapNavigator } from "./2dviewercomponents/MapNavigator";
 import { LayerManager } from "./2dviewercomponents/LayerManager";
 import { BuildingsListPanel } from "./2dviewercomponents/BuildingsListPanel";
-import { AnnotationPickerModal, ANNOTATION_ICONS } from "./2dviewercomponents/AnnotationPickerModal";
+import {
+  AnnotationPickerModal,
+  ANNOTATION_ICONS,
+} from "./2dviewercomponents/AnnotationPickerModal";
 
 // Hooks
 import { useMapSetup } from "./2dviewercomponents/hooks/useMapSetup";
@@ -42,25 +45,48 @@ export default function School2DViewer({
   tifFilePath,
   pickerMode = false,
   onPickerSelect,
+  onUpdateSchool,
 }: School2DViewerProps) {
   // ── Derived State & URLs ──────────────────────────────────────────────────
-  const buildUrl = useCallback((path: string | undefined, subfolder: string) => {
-    if (!path) return undefined;
-    if (path.startsWith("http") || path.startsWith("blob:")) return path;
-    const clean = path.replace(/^\/?(?:files\/|public\/uploads\/)+/i, "").replace(/^\/+/, "");
-    if (clean.includes("/")) return `${FILE_SERVER_URL}/${clean}`;
-    return `${FILE_SERVER_URL}/schools/${school.id}/${subfolder}/${clean}`;
-  }, [school.id]);
+  const buildUrl = useCallback(
+    (path: string | undefined, subfolder: string) => {
+      if (!path) return undefined;
+      if (path.startsWith("http") || path.startsWith("blob:")) return path;
+      const clean = path
+        .replace(/^\/?(?:files\/|public\/uploads\/)+/i, "")
+        .replace(/^\/+/, "");
+      if (clean.includes("/")) return `${FILE_SERVER_URL}/${clean}`;
+      return `${FILE_SERVER_URL}/schools/${school.id}/${subfolder}/${clean}`;
+    },
+    [school.id],
+  );
 
-  const { kmzUrl, tifUrl, placesOverlayUrl, fallbackLocation, effectiveBuildings, effectivePlacesOverlay, geojson } = useMemo(() => ({
-    kmzUrl: buildUrl(school.kmz2dFilePath || school.kmzFilePath, "kmz_2d"),
-    tifUrl: buildUrl(tifFilePath || school.tifFilePath, "tif"),
-    placesOverlayUrl: buildUrl(school.placesOverlayFilePath, "places-overlay"),
-    fallbackLocation: { lat: Number(school.latitude) || 0, lng: Number(school.longitude) || 0 },
-    effectiveBuildings: buildings ?? school.buildings ?? [],
-    effectivePlacesOverlay: placesOverlay ?? school.placesOverlayData,
-    geojson: school.geojsonContent,
-  }), [school, buildings, placesOverlay, buildUrl, tifFilePath]);
+  const {
+    kmzUrl,
+    tifUrl,
+    placesOverlayUrl,
+    fallbackLocation,
+    effectiveBuildings,
+    effectivePlacesOverlay,
+    geojson,
+  } = useMemo(
+    () => ({
+      kmzUrl: buildUrl(school.kmz2dFilePath || school.kmzFilePath, "kmz_2d"),
+      tifUrl: buildUrl(tifFilePath || school.tifFilePath, "tif"),
+      placesOverlayUrl: buildUrl(
+        school.placesOverlayFilePath,
+        "places-overlay",
+      ),
+      fallbackLocation: {
+        lat: Number(school.latitude) || 0,
+        lng: Number(school.longitude) || 0,
+      },
+      effectiveBuildings: buildings ?? school.buildings ?? [],
+      effectivePlacesOverlay: placesOverlay ?? school.placesOverlayData,
+      geojson: school.geojsonContent,
+    }),
+    [school, buildings, placesOverlay, buildUrl, tifFilePath],
+  );
 
   // ── Refs & Basic State ─────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -72,7 +98,9 @@ export default function School2DViewer({
   const measureSourceRef = useRef(new VectorSource());
   const tooltipOverlayRef = useRef<Overlay | null>(null);
   const groundOverlayLayersRef = useRef<any[]>([]);
-  const overlayExtentRef = useRef<[number, number, number, number] | null>(null);
+  const overlayExtentRef = useRef<[number, number, number, number] | null>(
+    null,
+  );
   const mapSelectedFeatureRef = useRef<any>(null);
   const loadingStartTimeRef = useRef<number>(Date.now());
   /** Shared drawing-state flag between useMapSetup click guard & useMapInteractions */
@@ -83,7 +111,9 @@ export default function School2DViewer({
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [isTileLoading, setIsTileLoading] = useState(false);
   const [decodingCount, setDecodingCount] = useState(0);
-  const [measurementMode, setMeasurementMode] = useState<"none" | "distance" | "area">("none");
+  const [measurementMode, setMeasurementMode] = useState<
+    "none" | "distance" | "area"
+  >("none");
   const [measureResult, setMeasureResult] = useState<string | null>(null);
   const [showPlacesOverlay, setShowPlacesOverlay] = useState(false);
   const [showBuildingsList, setShowBuildingsList] = useState(false);
@@ -91,58 +121,84 @@ export default function School2DViewer({
   const [showBasicInfo, setShowBasicInfo] = useState(false);
   const [showOpacitySlider, setShowOpacitySlider] = useState(false);
   const [kmzOpacity, setKmzOpacity] = useState(1);
-  const [visuals, setVisuals] = useState({ brightness: 1, contrast: 1, saturation: 1 });
+  const [visuals, setVisuals] = useState({
+    brightness: 1,
+    contrast: 1,
+    saturation: 1,
+  });
   const [activeTool, setActiveTool] = useState<any>("none");
   const [currentLat, setCurrentLat] = useState(fallbackLocation.lat);
   const [currentLng, setCurrentLng] = useState(fallbackLocation.lng);
   const [features, setFeatures] = useState<any[]>([]);
-  const [selectedFeatureName, setSelectedFeatureName] = useState<string | null>(null);
+  const [selectedFeatureName, setSelectedFeatureName] = useState<string | null>(
+    null,
+  );
   const [infoFeature, setInfoFeature] = useState<any>(null);
   const [basemapStyle, setBasemapStyle] = useState<any>("google");
-  const [visibleLayers, setVisibleLayers] = useState<Set<number>>(new Set());
-  const [manifest, setManifest] = useState<any>(school.kmz2dManifest || null);
 
   const [activeBlock, setActiveBlock] = useState<BuildingData | null>(null);
   const [isBlockInspectorOpen, setIsBlockInspectorOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerBuilding, setDrawerBuilding] = useState<BuildingData | null>(null);
-  const [schoolBuildings, setSchoolBuildings] = useState<BuildingData[]>(effectiveBuildings);
+  const [drawerBuilding, setDrawerBuilding] = useState<BuildingData | null>(
+    null,
+  );
+  const [schoolBuildings, setSchoolBuildings] =
+    useState<BuildingData[]>(effectiveBuildings);
   const [availableFacilities, setAvailableFacilities] = useState<any[]>([]);
   const [facilitiesLoading, setFacilitiesLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [siteAnnotations, setSiteAnnotations] = useState<any[]>(school.siteAnnotations || []);
+  const [siteAnnotations, setSiteAnnotations] = useState<any[]>(
+    school.siteAnnotations || [],
+  );
   const [pendingAnnotation, setPendingAnnotation] = useState<any>(null);
-  const [annotationTooltip, setAnnotationTooltip] = useState<{ ann: any; x: number; y: number } | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: "success" | "warning" | null }>({ message: "", type: null });
+  const [annotationTooltip, setAnnotationTooltip] = useState<{
+    ann: any;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "warning" | null;
+  }>({ message: "", type: null });
 
   // Picker mode: selected building before confirming
   const [pickerSelected, setPickerSelected] = useState<any>(null);
 
-  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = useCallback((message: string, type: "success" | "warning") => {
-    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-    setToast({ message, type });
-    toastTimeoutRef.current = setTimeout(() => setToast({ message: "", type: null }), 5000);
-  }, []);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const showToast = useCallback(
+    (message: string, type: "success" | "warning") => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      setToast({ message, type });
+      toastTimeoutRef.current = setTimeout(
+        () => setToast({ message: "", type: null }),
+        5000,
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
-    return () => { if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current); };
+    return () => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    };
   }, []);
 
   // Fetch facilities for the building form
   useEffect(() => {
     setFacilitiesLoading(true);
-    api.get("/schools/facilities")
-      .then(res => setAvailableFacilities(res.data))
-      .catch(err => console.error("Failed to fetch facilities", err))
+    api
+      .get("/schools/facilities")
+      .then((res) => setAvailableFacilities(res.data))
+      .catch((err) => console.error("Failed to fetch facilities", err))
       .finally(() => setFacilitiesLoading(false));
   }, []);
 
   // ── Basemap URL Helper ────────────────────────────────────────────────────
   const getBasemapUrl = useCallback((style: string) => {
     const urls: any = {
-      satellite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      satellite:
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       dark: "https://{a-c}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
       street: "https://{a-c}.tile.openstreetmap.org/{z}/{x}/{y}.png",
       nsdi: "https://geodata.rw/geoserver/gwc/service/wmts?layer=rwanda:orto_2008&style=&tilematrixset=EPSG:900913&Service=WMTS&Request=GetTile&Version=1.0.0&Format=image/png&TileMatrix=EPSG:900913:{z}&TileCol={x}&TileRow={y}",
@@ -152,11 +208,34 @@ export default function School2DViewer({
   }, []);
 
   // ── Hooks ──────────────────────────────────────────────────────────────────
-  const { mapRef, mapReady, basemapLayerRef, basemapLabelLayerRef, blocksLayerRef, annotationLayerRef, ghostLayerRef, hoverLayerRef, selectedLayerRef } = useMapSetup({
-    containerRef, fallbackLocation, onSelectBuilding, effectiveBuildings, setCurrentLat, setCurrentLng,
-    setActiveBlock, setIsBlockInspectorOpen, setSelectedFeatureName, setInfoFeature, getBasemapUrl,
+  const {
+    mapRef,
+    mapReady,
+    basemapLayerRef,
+    basemapLabelLayerRef,
+    blocksLayerRef,
+    annotationLayerRef,
+    ghostLayerRef,
+    hoverLayerRef,
+    selectedLayerRef,
+  } = useMapSetup({
+    containerRef,
+    fallbackLocation,
+    onSelectBuilding,
+    effectiveBuildings,
+    setCurrentLat,
+    setCurrentLng,
+    setActiveBlock,
+    setIsBlockInspectorOpen,
+    setSelectedFeatureName,
+    setInfoFeature,
+    getBasemapUrl,
     isDrawingRef,
-    blockOverlayRef, measureSourceRef, kmlLayerRef, geojsonLayerRef, placesLayerRef,
+    blockOverlayRef,
+    measureSourceRef,
+    kmlLayerRef,
+    geojsonLayerRef,
+    placesLayerRef,
     pickerMode,
     onPickerSelect: (building: any) => {
       setPickerSelected(building);
@@ -167,27 +246,23 @@ export default function School2DViewer({
   });
 
   useKmzLoader({
-    mapRef, mapReady, kmzUrl, tifUrl, schoolId: school.id, kmzOpacity, visuals,
-    setIsLoading, setLoadingMessage, setLoadingProgress, setIsTileLoading, setDecodingCount, setFeatures,
-    kmlLayerRef, groundOverlayLayersRef, overlayExtentRef
+    mapRef,
+    mapReady,
+    kmzUrl,
+    tifUrl,
+    schoolId: school.id,
+    kmzOpacity,
+    visuals,
+    setIsLoading,
+    setLoadingMessage,
+    setLoadingProgress,
+    setIsTileLoading,
+    setDecodingCount,
+    setFeatures,
+    kmlLayerRef,
+    groundOverlayLayersRef,
+    overlayExtentRef,
   });
-
-  // Keep manifest and initial visibility in sync when kmz finishes loading
-  useEffect(() => {
-    if (features.length > 0 || (groundOverlayLayersRef.current.length > 0)) {
-       setManifest(school.kmz2dManifest);
-       const initial = new Set<number>();
-       (school.kmz2dManifest?.groundOverlays || []).forEach((_: any, i: number) => initial.add(i));
-       setVisibleLayers(initial);
-    }
-  }, [features, school.kmz2dManifest]);
-
-  // Sync Layer Visibility to OpenLayers
-  useEffect(() => {
-    groundOverlayLayersRef.current.forEach((layer, idx) => {
-       layer.setVisible(visibleLayers.has(idx));
-    });
-  }, [visibleLayers]);
 
   // Sync places overlay visibility
   useEffect(() => {
@@ -196,27 +271,84 @@ export default function School2DViewer({
     }
   }, [showPlacesOverlay]);
 
-  const handleSaveSiteAnnotation = async (payload: any) => {
-    try {
-      const res = await api.post(`/schools/${school.id}/kmz/2d/site-annotations`, payload);
-      if (res.data) {
-        setSiteAnnotations((prev: any[]) => [...prev, res.data]);
-        showToast("Annotation added successfully.", "success");
+  const handleSaveSiteAnnotation = useCallback(
+    async (payload: any) => {
+      setIsSaving(true);
+      try {
+        // Ensure we hit the backend with the correct prefix and authorized instance
+        const res = await api.post(
+          `/schools/${school.id}/kmz/2d/site-annotations`,
+          payload,
+        );
+        if (res.data) {
+          setSiteAnnotations((prev) => {
+            const next = [...prev, res.data];
+            if (onUpdateSchool) onUpdateSchool({ siteAnnotations: next });
+            return next;
+          });
+          showToast("Annotation added successfully.", "success");
+        }
+      } catch (err: any) {
+        console.error("Failed to add site annotation", err);
+        if (err.response?.status === 401) {
+          showToast(
+            "Your session has expired. Please refresh the page.",
+            "warning",
+          );
+        } else {
+          showToast("Failed to add site annotation.", "warning");
+        }
+      } finally {
+        setIsSaving(false);
       }
-    } catch (err: any) {
-      console.error("Failed to add site annotation", err);
-      showToast("Failed to add site annotation.", "warning");
-    }
-  };
+    },
+    [school.id, onUpdateSchool, showToast],
+  );
+
+  const handleDeleteAnnotation = useCallback(
+    async (annId: string) => {
+      if (!confirm("Are you sure you want to delete this annotation?")) return;
+      try {
+        await api.delete(
+          `/schools/${school.id}/kmz/2d/site-annotations/${annId}`,
+        );
+        setSiteAnnotations((prev) => {
+          const next = prev.filter((a) => a.id !== annId);
+          if (onUpdateSchool) onUpdateSchool({ siteAnnotations: next });
+          return next;
+        });
+        showToast("Annotation removed.", "success");
+      } catch (err) {
+        console.error("Failed to delete annotation", err);
+        showToast("Failed to delete annotation.", "warning");
+      }
+    },
+    [school.id, onUpdateSchool, showToast],
+  );
 
   useMapInteractions({
-    mapRef, mapReady, activeTool, setActiveTool, measurementMode, setMeasureResult,
-    tooltipOverlayRef, measureSourceRef, activeBlock,
+    mapRef,
+    mapReady,
+    activeTool,
+    setActiveTool,
+    measurementMode,
+    setMeasurementMode,
+    setMeasureResult,
+    tooltipOverlayRef,
+    measureSourceRef,
+    activeBlock,
     handleSaveBuilding: async (d) => handleSaveBuilding(d),
     handleSaveSiteAnnotation,
     onAnnotationReady: (pending) => setPendingAnnotation(pending),
-    setDrawerBuilding, setDrawerOpen,
-    hoverLayerRef, selectedLayerRef, blocksLayerRef, kmlLayerRef, geojsonLayerRef, placesLayerRef, annotationLayerRef,
+    setDrawerBuilding,
+    setDrawerOpen,
+    hoverLayerRef,
+    selectedLayerRef,
+    blocksLayerRef,
+    kmlLayerRef,
+    geojsonLayerRef,
+    placesLayerRef,
+    annotationLayerRef,
     isDrawingRef,
   });
 
@@ -232,44 +364,58 @@ export default function School2DViewer({
     placesLayerRef,
     geojson,
     geojsonLayerRef,
-    onBuildingsLoaded: (b) => setSchoolBuildings(b),
+    onBuildingsLoaded: useCallback(
+      (b: BuildingData[]) => setSchoolBuildings(b),
+      [setSchoolBuildings],
+    ),
     siteAnnotations,
   });
 
   const { flyToFeature, exportPng } = useMapMethods({
-    mapRef, selectedFeatureRef: mapSelectedFeatureRef, setSelectedFeatureName
+    mapRef,
+    selectedFeatureRef: mapSelectedFeatureRef,
+    setSelectedFeatureName,
   });
 
   // ── Callbacks ─────────────────────────────────────────────────────────────
-  const switchBasemap = useCallback((style: any) => {
-    setBasemapStyle(style);
-    const layer = basemapLayerRef.current;
-    if (layer) {
-      if (style !== "ghost" && style !== "offline") {
-        layer.setVisible(true);
-        const url = getBasemapUrl(style);
-        const source = layer.getSource();
-        if (source) {
-          source.setUrl(url);
-          source.refresh();
+  const switchBasemap = useCallback(
+    (style: any) => {
+      setBasemapStyle(style);
+      const layer = basemapLayerRef.current;
+      if (layer) {
+        if (style !== "ghost" && style !== "offline") {
+          layer.setVisible(true);
+          const url = getBasemapUrl(style);
+          const source = layer.getSource();
+          if (source) {
+            source.setUrl(url);
+            source.refresh();
+          }
+        } else {
+          layer.setVisible(false);
         }
-      } else {
-        layer.setVisible(false);
       }
-    }
-    ghostLayerRef.current?.setVisible(style === "ghost" || style === "offline");
-    basemapLabelLayerRef.current?.setVisible(style === "satellite" || style === "nsdi");
-  }, [getBasemapUrl, basemapLayerRef, ghostLayerRef, basemapLabelLayerRef]);
+      ghostLayerRef.current?.setVisible(
+        style === "ghost" || style === "offline",
+      );
+      basemapLabelLayerRef.current?.setVisible(
+        style === "satellite" || style === "nsdi",
+      );
+    },
+    [getBasemapUrl, basemapLayerRef, ghostLayerRef, basemapLabelLayerRef],
+  );
 
   const handleSaveBuilding = async (data: BuildingData) => {
     try {
       setIsSaving(true);
       setSaveError(null);
-      
+
       const isNew = typeof data.id === "string" && data.id.startsWith("new-");
       const method = isNew ? "post" : "patch";
-      const url = isNew ? `/schools/${school.id}/buildings` : `/schools/buildings/${data.id}`;
-      
+      const url = isNew
+        ? `/schools/${school.id}/buildings`
+        : `/schools/buildings/${data.id}`;
+
       const payload = {
         name: data.buildingName,
         code: data.buildingCode,
@@ -284,14 +430,14 @@ export default function School2DViewer({
         latitude: data.geolocation.latitude,
         longitude: data.geolocation.longitude,
         annotations: (data.annotations || []).filter(
-          (a): a is NonNullable<typeof a> => 
-            a !== null && typeof a === 'object' && !Array.isArray(a)
+          (a): a is NonNullable<typeof a> =>
+            a !== null && typeof a === "object" && !Array.isArray(a),
         ),
         media: data.media || [],
-        facilities: (data.facilities || []).map(f => ({
+        facilities: (data.facilities || []).map((f) => ({
           facility_id: f.facility_id,
           facility_name: f.facility_name,
-          number_of_rooms: parseInt(String(f.number_of_rooms)) || 0
+          number_of_rooms: parseInt(String(f.number_of_rooms)) || 0,
         })),
       };
 
@@ -299,34 +445,61 @@ export default function School2DViewer({
       if (response.data) {
         const saved = response.data;
         const mappedSaved: BuildingData = {
-           ...saved,
-           buildingName: saved.name || saved.buildingName || saved.buildingCode || "",
-           buildingCode: saved.buildingCode || saved.code || "",
-           buildingFunction: saved.function || saved.buildingFunction || "",
-           buildingFloors: String(saved.floors || saved.buildingFloors || ""),
-           buildingArea: String(saved.areaSquareMeters || saved.area || saved.buildingArea || ""),
-           buildingYearBuilt: String(saved.yearBuilt || saved.buildingYearBuilt || ""),
-           buildingCondition: saved.condition || saved.buildingCondition,
-           buildingRoofCondition: saved.roofCondition || saved.buildingRoofCondition,
-           buildingStructuralScore: String(saved.structuralScore || ""),
-           buildingNotes: saved.notes || "",
-           geolocation: { 
-             latitude: saved.centroidLat !== undefined ? parseFloat(String(saved.centroidLat)) : saved.geolocation?.latitude,
-             longitude: saved.centroidLng !== undefined ? parseFloat(String(saved.centroidLng)) : saved.geolocation?.longitude
-           },
-           facilities: saved.facilities || [],
-           annotations: saved.annotations || data.annotations || []
+          ...saved,
+          buildingName:
+            saved.name || saved.buildingName || saved.buildingCode || "",
+          buildingCode: saved.buildingCode || saved.code || "",
+          buildingFunction: saved.function || saved.buildingFunction || "",
+          buildingFloors: String(saved.floors || saved.buildingFloors || ""),
+          buildingArea: String(
+            saved.areaSquareMeters || saved.area || saved.buildingArea || "",
+          ),
+          buildingYearBuilt: String(
+            saved.yearBuilt || saved.buildingYearBuilt || "",
+          ),
+          buildingCondition: saved.condition || saved.buildingCondition,
+          buildingRoofCondition:
+            saved.roofCondition || saved.buildingRoofCondition,
+          buildingStructuralScore: String(saved.structuralScore || ""),
+          buildingNotes: saved.notes || "",
+          geolocation: {
+            latitude:
+              saved.centroidLat !== undefined
+                ? parseFloat(String(saved.centroidLat))
+                : saved.geolocation?.latitude,
+            longitude:
+              saved.centroidLng !== undefined
+                ? parseFloat(String(saved.centroidLng))
+                : saved.geolocation?.longitude,
+          },
+          facilities: saved.facilities || [],
+          annotations: saved.annotations || data.annotations || [],
+          media: saved.media || data.media || [],
         };
 
-        setSchoolBuildings(prev => isNew ? [...prev, mappedSaved] : prev.map(bg => bg.id === mappedSaved.id ? mappedSaved : bg));
+        const nextBuildings = isNew
+          ? [...schoolBuildings, mappedSaved]
+          : schoolBuildings.map((bg) =>
+              bg.id === mappedSaved.id ? mappedSaved : bg,
+            );
+
+        setSchoolBuildings(nextBuildings);
+        setHookBuildings(nextBuildings);
+
         if (activeBlock?.id === data.id || isNew) setActiveBlock(mappedSaved);
         setDrawerOpen(false);
-        showToast(`Building "${mappedSaved.buildingName}" saved successfully.`, "success");
+        showToast(
+          `Building "${mappedSaved.buildingName}" saved successfully.`,
+          "success",
+        );
+        if (onUpdateSchool) onUpdateSchool({ buildings: nextBuildings });
       }
-    } catch (err: any) { 
+    } catch (err: any) {
       console.error("Failed to save building", err);
       const msg = err.response?.data?.message;
-      const errorMsg = Array.isArray(msg) ? msg.join(", ") : (msg || "An unexpected error occurred while saving the building.");
+      const errorMsg = Array.isArray(msg)
+        ? msg.join(", ")
+        : msg || "An unexpected error occurred while saving the building.";
       setSaveError(errorMsg);
       showToast("Failed to save building.", "warning");
     } finally {
@@ -354,33 +527,43 @@ export default function School2DViewer({
     try {
       const features = measureSourceRef.current.getFeatures();
       if (features.length === 0) return;
-      
+
       const feat = features[0];
       const geom = feat.getGeometry();
       if (!geom) return;
 
-      const typeMap: any = { 'LineString': 'line', 'Polygon': 'polygon', 'Point': 'point' };
-      const type = typeMap[geom.getType()] || 'point';
-      
+      const typeMap: any = {
+        LineString: "line",
+        Polygon: "polygon",
+        Point: "point",
+      };
+      const type = typeMap[geom.getType()] || "point";
+
       let coords = (geom as any).getCoordinates();
-      if (type === 'point') coords = toLonLat(coords);
-      else if (type === 'line') coords = coords.map((c: any) => toLonLat(c));
-      else if (type === 'polygon') coords = coords[0].map((c: any) => toLonLat(c));
+      if (type === "point") coords = toLonLat(coords);
+      else if (type === "line") coords = coords.map((c: any) => toLonLat(c));
+      else if (type === "polygon")
+        coords = coords[0].map((c: any) => toLonLat(c));
 
       const payload = {
-        id: `site-${Date.now()}`,
+        id: `meas-${Date.now()}`,
         type,
         label: measureResult,
         coordinates: coords,
-        style: { color: measurementMode === 'area' ? '#fbbf24' : '#10b981' }
+        areaSquareMeters: pendingAnnotation?.areaSquareMeters,
+        lengthMeters: pendingAnnotation?.lengthMeters,
+        style: { color: measurementMode === "area" ? "#fbbf24" : "#10b981" },
       };
 
-      const res = await api.post(`/schools/${school.id}/kmz/2d/site-annotations`, payload);
+      const res = await api.post(
+        `/schools/${school.id}/kmz/2d/site-annotations`,
+        payload,
+      );
       if (res.data) {
         setSiteAnnotations((prev: any[]) => [...prev, res.data]);
         showToast("Measurement saved to map!", "success");
       }
-      
+
       measureSourceRef.current.clear();
       setMeasureResult(null);
       setMeasurementMode("none");
@@ -390,32 +573,20 @@ export default function School2DViewer({
     }
   };
 
-  const handleDeleteAnnotation = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this annotation?")) return;
-    try {
-      await api.delete(`/schools/${school.id}/kmz/2d/site-annotations/${id}`);
-      setSiteAnnotations((prev: any[]) => prev.filter((a: any) => a.id !== id));
-      showToast("Annotation removed.", "success");
-    } catch (err) {
-      console.error("Failed to delete annotation", err);
-      showToast("Failed to delete annotation.", "warning");
-    }
-  };
-
   // ── Overlay (runs once map is ready) ─────────────────────────────────────
   useEffect(() => {
     if (!mapReady) return;
     const map = mapRef.current;
     if (!map) return;
-    
+
     if (blockOverlayElementRef.current && !blockOverlayRef.current) {
-      const over = new Overlay({ 
-        element: blockOverlayElementRef.current, 
-        autoPan: { animation: { duration: 250 } }, 
-        positioning: "bottom-center", 
-        offset: [0, -10] 
+      const over = new Overlay({
+        element: blockOverlayElementRef.current,
+        autoPan: { animation: { duration: 250 } },
+        positioning: "bottom-center",
+        offset: [0, -10],
       });
-      map.addOverlay(over); 
+      map.addOverlay(over);
       blockOverlayRef.current = over;
     }
 
@@ -429,13 +600,19 @@ export default function School2DViewer({
 
   useEffect(() => {
     if (!initialBuildingId || schoolBuildings.length === 0 || !mapReady) return;
-    const b = schoolBuildings.find(sb => sb.id === initialBuildingId);
+    const b = schoolBuildings.find((sb) => sb.id === initialBuildingId);
     if (b && b.geolocation?.latitude && b.geolocation?.longitude) {
       setTimeout(() => {
-        setActiveBlock(b); setIsBlockInspectorOpen(true);
-        const coord = fromLonLat([Number(b.geolocation.longitude), Number(b.geolocation.latitude)]);
+        setActiveBlock(b);
+        setIsBlockInspectorOpen(true);
+        const coord = fromLonLat([
+          Number(b.geolocation.longitude),
+          Number(b.geolocation.latitude),
+        ]);
         blockOverlayRef.current?.setPosition(coord);
-        mapRef.current?.getView().animate({ center: coord, zoom: 21, duration: 800 });
+        mapRef.current
+          ?.getView()
+          .animate({ center: coord, zoom: 21, duration: 800 });
       }, 1000);
     }
   }, [initialBuildingId, schoolBuildings, mapReady]);
@@ -451,7 +628,7 @@ export default function School2DViewer({
             "fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-2xl shadow-2xl backdrop-blur-xl border flex items-center gap-3",
             toast.type === "success"
               ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
-              : "bg-amber-500/10 border-amber-500/20 text-amber-500"
+              : "bg-amber-500/10 border-amber-500/20 text-amber-500",
           )}
         >
           {toast.type === "success" ? (
@@ -484,17 +661,21 @@ export default function School2DViewer({
             icon: iconType,
             title,
             description,
-            label: title,     // kept for backward-compat display
+            label: title,
             content: title,
             iconType,
             style: { color: mapColor, iconType },
             createdAt: new Date().toISOString(),
           };
           delete finalAnn.initialDescription;
+
           if (pendingAnnotation.activeBlock) {
             const updated = {
               ...pendingAnnotation.activeBlock,
-              annotations: [...(pendingAnnotation.activeBlock.annotations || []), finalAnn],
+              annotations: [
+                ...(pendingAnnotation.activeBlock.annotations || []),
+                finalAnn,
+              ],
             };
             handleSaveBuilding(updated);
           } else {
@@ -506,158 +687,202 @@ export default function School2DViewer({
 
       {/* Annotation Hover Tooltip */}
       <AnimatePresence>
-        {annotationTooltip && (() => {
-          const ann = annotationTooltip.ann;
-          const iconType = ann.icon || ann.iconType || ann.style?.iconType || "pin";
-          const iconDef = ANNOTATION_ICONS.find(ic => ic.id === iconType) || ANNOTATION_ICONS[0];
-          const IconComp = iconDef.icon;
-          return (
-            <motion.div
-              key="ann-tooltip"
-              initial={{ opacity: 0, scale: 0.92, y: 6 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.88 }}
-              transition={{ duration: 0.15 }}
-              className="absolute z-100 pointer-events-none"
-              style={{ left: annotationTooltip.x + 14, top: annotationTooltip.y - 10 }}
-            >
-              <div className="max-w-[220px] bg-[#0f1117]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] px-3 py-2.5 space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <div className={cn("p-1 rounded-lg border shrink-0", iconDef.bg, iconDef.border)}>
-                    <IconComp className={cn("w-3 h-3", iconDef.color)} />
+        {annotationTooltip &&
+          (() => {
+            const ann = annotationTooltip.ann;
+            const iconType =
+              ann.icon || ann.iconType || ann.style?.iconType || "pin";
+            const iconDef =
+              ANNOTATION_ICONS.find((ic) => ic.id === iconType) ||
+              ANNOTATION_ICONS[0];
+            const IconComp = iconDef.icon;
+            return (
+              <motion.div
+                key="ann-tooltip"
+                initial={{ opacity: 0, scale: 0.92, y: 6 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.88 }}
+                transition={{ duration: 0.15 }}
+                className="absolute z-100 pointer-events-none"
+                style={{
+                  left: annotationTooltip.x + 14,
+                  top: annotationTooltip.y - 10,
+                }}
+              >
+                <div className="max-w-[220px] bg-[#0f1117]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] px-3 py-2.5 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={cn(
+                        "p-1 rounded-lg border shrink-0",
+                        iconDef.bg,
+                        iconDef.border,
+                      )}
+                    >
+                      <IconComp className={cn("w-3 h-3", iconDef.color)} />
+                    </div>
+                    <p className="text-[10px] font-black text-white uppercase tracking-wider leading-none truncate">
+                      {ann.title || ann.label}
+                    </p>
                   </div>
-                  <p className="text-[10px] font-black text-white uppercase tracking-wider leading-none truncate">
-                    {ann.title || ann.label}
-                  </p>
+                  {ann.description && (
+                    <p className="text-[9px] text-white/50 font-medium leading-snug">
+                      {ann.description}
+                    </p>
+                  )}
                 </div>
-                {ann.description && (
-                  <p className="text-[9px] text-white/50 font-medium leading-snug">
-                    {ann.description}
-                  </p>
-                )}
-              </div>
-            </motion.div>
-          );
-        })()}
+              </motion.div>
+            );
+          })()}
       </AnimatePresence>
 
       <div ref={containerRef} className="absolute inset-0" />
-      
-      <LoadingOverlay 
-        isLoading={isLoading} 
-        loadingProgress={loadingProgress} 
-        loadingMessage={loadingMessage} 
-        loadingStartTime={loadingStartTimeRef.current} 
+
+      <LoadingOverlay
+        isLoading={isLoading || isSaving}
+        loadingProgress={isSaving ? 100 : loadingProgress}
+        loadingMessage={isSaving ? "Saving changes to map..." : loadingMessage}
+        loadingStartTime={loadingStartTimeRef.current}
       />
 
       {/* ── Picker Mode Banner ───────────────────────────────────────────── */}
       {pickerMode && (
-        <div className="absolute top-0 left-0 right-0 z-40 flex items-center justify-between px-6 py-3 bg-primary/90 backdrop-blur-md border-b border-white/10 shadow-lg">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center animate-pulse">
+        <div className="absolute top-0 left-0 right-0 z-40 flex items-center justify-between px-3 md:px-6 py-2 md:py-3 bg-primary/90 backdrop-blur-md border-b border-white/10 shadow-lg transition-all">
+          <div className="flex items-center gap-2 md:gap-3">
+            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center animate-pulse shrink-0">
               <MapPin className="w-4 h-4 text-white" />
             </div>
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-white/60">Picker Mode</p>
-              <p className="text-sm font-bold text-white">
-                {pickerSelected ? `Selected: ${pickerSelected.buildingName || "Building"}` : "Click a building on the map to select it"}
+            <div className="min-w-0">
+              <p className="text-[8px] md:text-[10px] font-black uppercase tracking-widest text-white/60">
+                Picker Mode
+              </p>
+              <p className="text-[11px] md:text-sm font-bold text-white truncate">
+                {pickerSelected
+                  ? pickerSelected.buildingName || "Building selected"
+                  : "Click map feature…"}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 md:gap-2">
             {pickerSelected && (
               <button
                 onClick={() => {
                   if (onPickerSelect) onPickerSelect(pickerSelected);
                   if (onClose) onClose();
                 }}
-                className="px-4 py-2 rounded-xl bg-white text-primary font-black text-xs uppercase tracking-widest hover:bg-white/90 transition-all shadow-lg"
+                className="px-3 md:px-4 py-1.5 md:py-2 rounded-xl bg-white text-primary font-black text-[9px] md:text-xs uppercase tracking-widest hover:bg-white/90 transition-all shadow-lg shrink-0"
               >
-                ✓ Confirm Selection
+                ✓ Confirm
               </button>
             )}
             {onClose && (
               <button
                 onClick={onClose}
-                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-all text-white"
+                className="p-1.5 md:p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-all text-white shrink-0"
                 title="Cancel"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5 md:w-4 md:h-4" />
               </button>
             )}
           </div>
         </div>
       )}
-      
+
       {showBuildingsList && (
         <BuildingsListPanel
           buildings={schoolBuildings}
           onClose={() => setShowBuildingsList(false)}
           onDelete={async (id) => await handleDeleteBuilding(id)}
+          selectedId={activeBlock?.id}
+          onAdd={() => {
+            setActiveTool("create_block");
+            // On mobile, close the list to show the drawing surface
+            if (window.innerWidth < 768) setShowBuildingsList(false);
+          }}
           onSelect={(b) => {
             setActiveBlock(b);
             setIsBlockInspectorOpen(true);
+            // On mobile, close the list to show the inspector cleanly
+            if (window.innerWidth < 768) setShowBuildingsList(false);
+
             if (b.geolocation?.latitude && b.geolocation?.longitude) {
-              const coord = fromLonLat([Number(b.geolocation.longitude), Number(b.geolocation.latitude)]);
+              const coord = fromLonLat([
+                Number(b.geolocation.longitude),
+                Number(b.geolocation.latitude),
+              ]);
               blockOverlayRef.current?.setPosition(coord);
-              mapRef.current?.getView().animate({ center: coord, zoom: 21, duration: 800 });
+              mapRef.current
+                ?.getView()
+                .animate({ center: coord, zoom: 21, duration: 800 });
             }
           }}
         />
       )}
 
-      <MapToolbar 
-        onClose={!pickerMode ? onClose : undefined} 
-        showNavigator={showNavigator} 
-        setShowNavigator={setShowNavigator} 
+      <MapToolbar
+        onClose={!pickerMode ? onClose : undefined}
+        showNavigator={showNavigator}
+        setShowNavigator={setShowNavigator}
         showBuildingsList={showBuildingsList}
-        setShowBuildingsList={setShowBuildingsList} 
-        showOpacitySlider={showOpacitySlider} 
-        setShowOpacitySlider={setShowOpacitySlider} 
-        basemapStyle={basemapStyle} 
-        switchBasemap={switchBasemap} 
-        measurementMode={measurementMode} 
-        setMeasurementMode={setMeasurementMode} 
-        clearMeasurements={() => measureSourceRef.current.clear()} 
-        activeTool={activeTool} 
-        setActiveTool={setActiveTool} 
-        onZoomIn={() => mapRef.current?.getView().animate({ zoom: (mapRef.current.getView().getZoom() ?? 19) + 1 })} 
-        onZoomOut={() => mapRef.current?.getView().animate({ zoom: (mapRef.current.getView().getZoom() ?? 19) - 1 })} 
-        onHome={() => mapRef.current?.getView().animate({ center: fromLonLat([fallbackLocation.lng, fallbackLocation.lat]), zoom: 19 })} 
-        onFitExtent={() => overlayExtentRef.current && mapRef.current?.getView().fit(overlayExtentRef.current, { padding: [60,60,60,60] })} 
-        onExportPng={exportPng} 
-        showBasicInfo={showBasicInfo} 
-        setShowBasicInfo={setShowBasicInfo} 
-        kmzOpacity={kmzOpacity} 
-        setKmzOpacity={setKmzOpacity} 
+        setShowBuildingsList={setShowBuildingsList}
+        showOpacitySlider={showOpacitySlider}
+        setShowOpacitySlider={setShowOpacitySlider}
+        basemapStyle={basemapStyle}
+        switchBasemap={switchBasemap}
+        measurementMode={measurementMode}
+        setMeasurementMode={setMeasurementMode}
+        clearMeasurements={() => measureSourceRef.current.clear()}
+        activeTool={activeTool}
+        setActiveTool={setActiveTool}
+        onZoomIn={() =>
+          mapRef.current
+            ?.getView()
+            .animate({ zoom: (mapRef.current.getView().getZoom() ?? 19) + 1 })
+        }
+        onZoomOut={() =>
+          mapRef.current
+            ?.getView()
+            .animate({ zoom: (mapRef.current.getView().getZoom() ?? 19) - 1 })
+        }
+        onHome={() =>
+          mapRef.current?.getView().animate({
+            center: fromLonLat([fallbackLocation.lng, fallbackLocation.lat]),
+            zoom: 19,
+          })
+        }
+        onFitExtent={() =>
+          overlayExtentRef.current &&
+          mapRef.current
+            ?.getView()
+            .fit(overlayExtentRef.current, { padding: [60, 60, 60, 60] })
+        }
+        onExportPng={exportPng}
+        showBasicInfo={showBasicInfo}
+        setShowBasicInfo={setShowBasicInfo}
+        kmzOpacity={kmzOpacity}
+        setKmzOpacity={setKmzOpacity}
         visuals={visuals}
         setVisuals={setVisuals}
         showPlacesOverlay={showPlacesOverlay}
         setShowPlacesOverlay={setShowPlacesOverlay}
       />
-      
-      <MapHud 
-        school={school} 
-        setShowBasicInfo={setShowBasicInfo} 
-        isTileLoading={isTileLoading} 
+
+      <MapHud
+        school={school}
+        setShowBasicInfo={setShowBasicInfo}
+        isTileLoading={isTileLoading}
         decodingCount={decodingCount}
-        isLoading={isLoading} 
-        currentLat={currentLat} 
-        currentLng={currentLng} 
-        measurementMode={measurementMode} 
-        measureResult={measureResult} 
-        infoFeature={infoFeature} 
-        onCloseInfo={() => setInfoFeature(null)} 
+        isLoading={isLoading}
+        currentLat={currentLat}
+        currentLng={currentLng}
+        measurementMode={measurementMode}
+        measureResult={measureResult}
+        infoFeature={infoFeature}
+        onCloseInfo={() => setInfoFeature(null)}
         onSaveMeasurement={handleSaveMeasurement}
       />
-      
+
       {showNavigator && (
-        <LayerManager 
-          schoolId={school.id}
-          manifest={manifest}
-          onUpdateManifest={setManifest}
-          visibleLayers={visibleLayers}
-          setVisibleLayers={setVisibleLayers}
+        <LayerManager
           onClose={() => setShowNavigator(false)}
           schoolBuildings={schoolBuildings}
           siteAnnotations={siteAnnotations}
@@ -665,55 +890,141 @@ export default function School2DViewer({
           onSelectBuilding={(b) => {
             setActiveBlock(b);
             setIsBlockInspectorOpen(true);
-            const coord = fromLonLat([Number(b.geolocation.longitude), Number(b.geolocation.latitude)]);
-            blockOverlayRef.current?.setPosition(coord);
-            mapRef.current?.getView().animate({ center: coord, zoom: 21, duration: 800 });
+            // On mobile, close the GIS panel to show the block inspector
+            if (window.innerWidth < 768) setShowNavigator(false);
+
+            if (b.geolocation?.longitude && b.geolocation?.latitude) {
+              const coord = fromLonLat([
+                Number(b.geolocation.longitude),
+                Number(b.geolocation.latitude),
+              ]);
+              blockOverlayRef.current?.setPosition(coord);
+              mapRef.current
+                ?.getView()
+                .animate({ center: coord, zoom: 21, duration: 800 });
+            }
           }}
           onFlyToAnnotation={(ann) => {
-            const coords = ann.type === 'point' ? ann.coordinates : 
-                          ann.type === 'line' ? ann.coordinates[0] : ann.coordinates[0];
-            const coord = fromLonLat([Number(coords[0]), Number(coords[1])]);
-            mapRef.current?.getView().animate({ center: coord, zoom: 20, duration: 800 });
+            const coords = ann.coordinates;
+            if (coords && coords.length >= 2) {
+              const lon =
+                typeof coords[0] === "number" ? coords[0] : coords[0][0];
+              const lat =
+                typeof coords[1] === "number" ? coords[1] : coords[0][1];
+              const coord = fromLonLat([Number(lon), Number(lat)]);
+              mapRef.current
+                ?.getView()
+                .animate({ center: coord, zoom: 20, duration: 800 });
+            }
           }}
         />
       )}
 
       {/* Legacy Navigator — fallback if features are present */}
       {showNavigator && features.length > 0 && false && (
-         <MapNavigator features={features} selectedFeatureName={selectedFeatureName} onFlyTo={flyToFeature} onClose={() => setShowNavigator(false)} />
+        <MapNavigator
+          features={features}
+          selectedFeatureName={selectedFeatureName}
+          onFlyTo={flyToFeature}
+          onClose={() => setShowNavigator(false)}
+        />
       )}
-      
-      {showBasicInfo && <BasicInfoModal school={school} onClose={() => setShowBasicInfo(false)} />}
 
-      {/* Left-side Fixed Inspector Panel — hidden in picker mode */}
+      {showBasicInfo && (
+        <BasicInfoModal
+          school={school}
+          onClose={() => setShowBasicInfo(false)}
+        />
+      )}
+
+      {/* Block Inspector Overlay — Responsive Bottom Sheet on Mobile / Sidebar on Desktop */}
       {!pickerMode && (
-        <div 
+        <div
           className={cn(
-            "absolute top-0 left-0 bottom-0 z-40 transition-all duration-500 pointer-events-none",
-            isBlockInspectorOpen ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-full"
+            "fixed inset-x-0 bottom-0 z-50 transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] pointer-events-none", // Mobile bottom sheet
+            "md:absolute md:inset-y-0 md:right-0 md:bottom-auto md:w-[500px] md:z-40", // Desktop sidebar (Right side)
+            isBlockInspectorOpen
+              ? "translate-y-0 md:translate-x-0 opacity-100"
+              : "translate-y-full md:translate-x-full opacity-0",
           )}
         >
           {activeBlock && (
-            <div className="pointer-events-auto shadow-2xl">
-              <BlockInspector 
-                building={activeBlock} 
+            <div className="pointer-events-auto">
+              <BlockInspector
+                building={activeBlock}
+                schoolId={school?.id || ""}
                 onClose={() => {
                   setIsBlockInspectorOpen(false);
                   setTimeout(() => setActiveBlock(null), 300);
-                }} 
-                onEdit={() => { 
-                  setDrawerBuilding(activeBlock); 
-                  setDrawerOpen(true); 
-                  setIsBlockInspectorOpen(false); 
-                }} 
-                onUpdateBuilding={async (b) => { 
-                  setActiveBlock(b); 
-                  setSchoolBuildings(prev => prev.map(old => old.id === b.id ? b : old)); 
-                }} 
-                onAddAnnotation={() => setActiveTool("annotate_point")} 
-                onUploadMedia={() => {}} 
+                }}
+                onEdit={() => {
+                  setDrawerBuilding(activeBlock);
+                  setDrawerOpen(true);
+                  setIsBlockInspectorOpen(false);
+                }}
+                onUpdateBuilding={async (b) => {
+                  try {
+                    const building = b as any;
+                    // Update local state first for instant feedback
+                    setActiveBlock(b);
+                    setSchoolBuildings((prev) =>
+                      prev.map((old) => (old.id === b.id ? b : old)),
+                    );
+
+                    // Map frontend BuildingData -> backend BuildingDto
+                    // Note: Use keys from BuildingDto.ts
+                    const dto = {
+                      name: building.buildingName || building.name,
+                      code: building.buildingCode || building.code,
+                      function: building.buildingFunction || building.function,
+                      floors:
+                        Number(building.buildingFloors || building.floors) || 0,
+                      area:
+                        Number(
+                          building.buildingArea ||
+                            building.area ||
+                            building.areaSquareMeters,
+                        ) || 0,
+                      yearBuilt:
+                        Number(
+                          building.buildingYearBuilt || building.yearBuilt,
+                        ) || 0,
+                      condition:
+                        building.buildingCondition || building.condition,
+                      roofCondition:
+                        building.buildingRoofCondition ||
+                        building.roofCondition,
+                      structuralScore:
+                        Number(
+                          building.buildingStructuralScore ||
+                            building.structuralScore,
+                        ) || 0,
+                      notes: building.buildingNotes || building.notes,
+                      latitude:
+                        building.geolocation?.latitude ?? building.centroidLat,
+                      longitude:
+                        building.geolocation?.longitude ?? building.centroidLng,
+                      annotations: building.annotations || [],
+                      media: building.media || [],
+                    };
+
+                    // Persist to backend with mapped DTO
+                    await api.patch(`/schools/buildings/${b.id}`, dto);
+                  } catch (error) {
+                    console.error("Failed to persist building update:", error);
+                  }
+                }}
+                onAddAnnotation={() => setActiveTool("annotate_point")}
+                onUploadMedia={() => {}}
                 on3DView={() => {
-                  window.open(`/schools/${school.id}/3d-explorer`, "_blank");
+                  const params = new URLSearchParams();
+                  if (school?.id) params.set("schoolId", school.id);
+                  if (school?.name) params.set("schoolName", school.name);
+                  if (activeBlock?.id) params.set("buildingId", activeBlock.id);
+                  window.open(
+                    `http://localhost:5175?${params.toString()}`,
+                    "_blank",
+                  );
                 }}
               />
             </div>
@@ -726,7 +1037,9 @@ export default function School2DViewer({
           isOpen={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           building={drawerBuilding}
-          buildingIndex={schoolBuildings.findIndex(b => b.id === drawerBuilding?.id)}
+          buildingIndex={schoolBuildings.findIndex(
+            (b) => b.id === drawerBuilding?.id,
+          )}
           onSave={handleSaveBuilding}
           availableFacilities={availableFacilities}
           facilitiesLoading={facilitiesLoading}

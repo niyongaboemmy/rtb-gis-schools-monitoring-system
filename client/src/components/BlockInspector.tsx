@@ -1,11 +1,25 @@
-import { Building2, Maximize2, Pencil, X } from "lucide-react";
+import { useState } from "react";
+import {
+  Building2,
+  Maximize2,
+  Pencil,
+  X,
+  Shield,
+  Layers,
+  Square,
+  Calendar,
+  Home,
+} from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { cn } from "../lib/utils";
 import type { BuildingData } from "./school-form-steps/BuildingsStep";
+import { BuildingMediaTab } from "./2dviewercomponents/BuildingMediaTab";
+import { BuildingReportingTab } from "./2dviewercomponents/BuildingReportingTab";
 
 interface BlockInspectorProps {
   building: BuildingData & Record<string, any>;
+  schoolId: string;
   onEdit: (building: BuildingData) => void;
   onClose: () => void;
   onUpdateBuilding: (building: BuildingData) => Promise<void>;
@@ -16,10 +30,16 @@ interface BlockInspectorProps {
 
 export function BlockInspector({
   building,
+  schoolId,
   onEdit,
   onClose,
   on3DView,
+  onUpdateBuilding,
 }: BlockInspectorProps) {
+  const [activeTab, setActiveTab] = useState<"details" | "media" | "reporting">(
+    "details",
+  );
+
   const conditionColors: Record<string, string> = {
     good: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
     fair: "bg-blue-500/10 text-blue-400 border-blue-500/20",
@@ -27,24 +47,65 @@ export function BlockInspector({
     critical: "bg-red-500/10 text-red-400 border-red-500/20",
   };
 
+  const statusValues: Record<string, number> = {
+    good: 4,
+    fair: 3,
+    poor: 2,
+    critical: 1,
+  };
+
+  const buildingStatus = (
+    building.buildingCondition ||
+    building.condition ||
+    "fair"
+  ).toLowerCase();
+  const roofStatus = (
+    building.buildingRoofCondition ||
+    building.roofCondition ||
+    "fair"
+  ).toLowerCase();
+
+  const avgVal = (statusValues[buildingStatus] + statusValues[roofStatus]) / 2;
+
+  const getAvgLabel = (val: number) => {
+    if (val >= 3.5) return "Good";
+    if (val >= 2.5) return "Fair";
+    if (val >= 1.5) return "Poor";
+    return "Critical";
+  };
+
+  const avgLabel = getAvgLabel(avgVal);
+  const avgColorClass =
+    conditionColors[avgLabel.toLowerCase()] || "bg-white/10 text-white";
+
   return (
-    <div className="w-[260px] bg-background/90 backdrop-blur-3xl border-r border-white/10 shadow-[20px_0_50px_rgba(0,0,0,0.3)] flex flex-col animate-in fade-in slide-in-from-left-6 duration-700 overflow-hidden pointer-events-auto h-full border-l-0">
-      {/* Compact Header */}
-      <div className="p-4 pb-3 bg-linear-to-b from-white/10 to-transparent flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-xl bg-primary shadow-lg shadow-primary/20 text-white shrink-0">
-            <Building2 className="w-3.5 h-3.5" />
+    <div
+      className={cn(
+        "w-full md:w-[360px] bg-background/95 backdrop-blur-3xl border-t md:border-t-0 md:border-r border-white/5 flex flex-col h-full overflow-y-auto transition-all duration-500",
+        "rounded-t-[32px] md:rounded-none shadow-2xl z-100",
+      )}
+    >
+      {/* Mobile Handle - Tactile Feel */}
+      <div className="flex md:hidden justify-center py-2 shrink-0">
+        <div className="w-10 h-1.5 rounded-full bg-white/10 active:bg-white/20 transition-colors cursor-grab active:cursor-grabbing" />
+      </div>
+
+      {/* Header - Advanced Depth (Fixed) */}
+      <div className="px-5 pt-3 pb-4 flex items-center justify-between shrink-0 bg-linear-to-b from-white/3 to-transparent border-b border-white/2">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="p-2.5 rounded-2xl bg-primary/90 shadow-xl shadow-primary/20 text-white shrink-0 group hover:scale-105 transition-transform">
+            <Building2 className="w-4.5 h-4.5 group-hover:rotate-6 transition-transform" />
           </div>
           <div className="min-w-0">
-            <h3 className="font-bold text-[13px] text-white leading-tight mb-0.5 truncate pr-1">
+            <h3 className="font-black text-base text-white leading-tight truncate tracking-tight">
               {building.buildingName ||
                 building.name ||
                 building.buildingCode ||
                 building.code ||
-                "Unnamed Block"}
+                "Building Asset"}
             </h3>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[7.5px] px-1.5 py-0.5 rounded-md bg-white/10 text-white/40 font-black uppercase tracking-widest border border-white/5 shrink-0">
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-[9px] font-mono text-white/30 uppercase tracking-[0.2em] leading-none">
                 {building.buildingCode || building.code || "ID-NONE"}
               </span>
             </div>
@@ -52,200 +113,261 @@ export function BlockInspector({
         </div>
         <button
           onClick={onClose}
-          className="p-1.5 rounded-xl text-white/20 hover:text-white hover:bg-white/10 transition-all active:scale-90 group shrink-0"
+          className="p-2 rounded-xl text-white/20 hover:text-white hover:bg-white/10 transition-all active:scale-95 group"
         >
-          <X className="w-3.5 h-3.5 group-hover:rotate-90 transition-transform duration-300" />
+          <X className="w-4.5 h-4.5 group-hover:rotate-90 transition-transform duration-300" />
         </button>
       </div>
 
-      {/* Main Body - Compact Scrollable */}
-      <div className="flex-1 overflow-y-auto px-4 py-1 custom-scrollbar space-y-3 pb-5">
-        {/* Vital Info Grid - Smaller items */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="p-2.5 rounded-xl bg-white/3 border border-white/5 shadow-inner flex flex-col justify-between">
-            <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest mb-0.5 font-mono">
-              Condition
-            </p>
-            <Badge
-              variant="outline"
+      {/* Tab Switcher - Premium Interaction (Fixed) */}
+      <div className="px-5 py-2.5 shrink-0 bg-background/50">
+        <div className="flex gap-1 p-1 rounded-2xl bg-black/50 border border-white/5 shadow-inner">
+          {["details", "media", "reporting"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab as any)}
               className={cn(
-                "text-[6.5px] uppercase font-bold px-1.5 h-3.5 border-0 shadow-xs",
-                conditionColors[
-                  building.buildingCondition || building.condition
-                ] || "bg-white/10 text-white",
+                "flex-1 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.2em] transition-all relative overflow-hidden group",
+                activeTab === tab
+                  ? "bg-white/10 text-white shadow-[0_0_20px_rgba(255,255,255,0.05)] border border-white/5"
+                  : "text-white/20 hover:text-white/40 hover:bg-white/2",
               )}
             >
-              {building.buildingCondition || building.condition || "N/A"}
-            </Badge>
-          </div>
-          <div className="p-2.5 rounded-xl bg-white/3 border border-white/5 shadow-inner flex flex-col justify-between">
-            <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest mb-0.5 font-mono">
-              Roof
-            </p>
-            <Badge
-              variant="outline"
-              className={cn(
-                "text-[6.5px] uppercase font-bold px-1.5 h-3.5 border-0 shadow-xs bg-white/10 text-white",
+              {tab === "reporting" ? "Analytics" : tab}
+              {activeTab === tab && (
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-0.5 bg-primary rounded-full animate-pulse" />
               )}
-            >
-              {building.buildingRoofCondition ||
-                building.roofCondition ||
-                "N/A"}
-            </Badge>
-          </div>
-          <div className="p-2.5 rounded-xl bg-white/3 border border-white/5 flex flex-col justify-between">
-            <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest font-mono">
-              Function
-            </p>
-            <p className="text-[9px] font-bold text-white/80 truncate leading-tight">
-              {building.buildingFunction || building.function || "N/A"}
-            </p>
-          </div>
-          <div className="p-2.5 rounded-xl bg-white/3 border border-white/5 flex flex-col justify-between">
-            <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest font-mono">
-              Year Built
-            </p>
-            <p className="text-[9px] font-bold text-white/80 tabular-nums leading-tight">
-              {building.buildingYearBuilt || building.yearBuilt || "N/A"}
-            </p>
-          </div>
-          <div className="p-2.5 rounded-xl bg-white/3 border border-white/5 flex flex-col justify-between">
-            <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest font-mono">
-              Area
-            </p>
-            <p className="text-[9px] font-bold text-white/80 tabular-nums leading-tight">
-              {(building.buildingArea ||
-                building.area ||
-                building.areaSquareMeters) &&
-              Number(
-                building.buildingArea ||
-                  building.area ||
-                  building.areaSquareMeters,
-              ) > 0
-                ? `${Number(building.buildingArea || building.area || building.areaSquareMeters).toFixed(0)} m²`
-                : "N/A"}
-            </p>
-          </div>
-          <div className="p-2.5 rounded-xl bg-white/3 border border-white/5 flex flex-col justify-between">
-            <p className="text-[6.5px] text-white/20 uppercase font-black tracking-widest font-mono">
-              Floors
-            </p>
-            <p className="text-[9px] font-bold text-white/80 leading-tight">
-              {building.buildingFloors || building.floors || "1"}
-            </p>
-          </div>
+            </button>
+          ))}
         </div>
+      </div>
 
-        {/* Compact Structural Score */}
-        {(building.buildingStructuralScore || building.structuralScore) && (
-          <div className="p-3 rounded-2xl bg-linear-to-br from-primary/10 to-transparent border border-primary/5 shadow-inner flex justify-between items-center group">
-            <div>
-              <p className="text-[6.5px] text-primary/80 font-black uppercase tracking-widest mb-0.5">
-                Health Score
-              </p>
-              <p className="text-base font-black text-white tabular-nums leading-none">
-                {building.buildingStructuralScore || building.structuralScore}
-                <span className="text-[8px] text-white/20 font-medium ml-1">
-                  / 100
-                </span>
-              </p>
-            </div>
-            <div className="w-8 h-8 rounded-full border border-white/5 flex items-center justify-center relative bg-black/20">
-              <svg className="w-full h-full -rotate-90 p-0.5">
-                <circle
-                  cx="16"
-                  cy="16"
-                  r="13"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  className="text-white/2"
-                />
-                <circle
-                  cx="16"
-                  cy="16"
-                  r="13"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeDasharray="81.6"
-                  strokeDashoffset={
-                    81.6 *
-                    (1 -
-                      Number(
-                        building.buildingStructuralScore ||
-                          building.structuralScore,
-                      ) /
-                        100)
-                  }
-                  strokeLinecap="round"
-                  className="text-primary transition-all duration-1000"
-                />
-              </svg>
-              <span className="absolute text-[6px] font-black text-primary/60">
-                {building.buildingStructuralScore || building.structuralScore}%
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Compact Notes */}
-        {(building.buildingNotes || building.notes) && (
-          <div className="bg-white/2 p-3 rounded-2xl border border-white/5 italic">
-            <p className="text-[9px] text-white/40 leading-relaxed font-medium">
-              "{building.buildingNotes || building.notes}"
-            </p>
-          </div>
-        )}
-
-        {/* Compact Facilities */}
-        {building.facilities && building.facilities.length > 0 && (
-          <div className="space-y-1.5">
-            <p className="text-[6.5px] text-white/10 uppercase font-black tracking-widest ml-1">
-              Facilities ({building.facilities.length})
-            </p>
-            <div className="space-y-0.5">
-              {building.facilities.map((f: any, idx: number) => (
-                <div
-                  key={idx}
-                  className="flex justify-between items-center p-2 rounded-xl bg-white/2 border border-transparent hover:border-white/5 transition-colors"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="p-1 rounded-lg bg-white/5 text-white/10 shrink-0">
-                      <Maximize2 className="w-2 h-2" />
+      {/* Main Content Area - Scrollable Body */}
+      <div
+        className="overflow-y-auto px-5 py-2 custom-scrollbar min-h-0 space-y-6"
+        style={{ height: "calc(100vh - 200px)" }}
+      >
+        {activeTab === "details" && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+            {/* Status Section */}
+            <div className="space-y-3.5">
+              {/* Average Performance Card */}
+              <div className="p-3 rounded-2xl bg-linear-to-br from-white/8 to-transparent border border-white/10 shadow-xl relative overflow-hidden group hover:border-white/20 transition-all">
+                <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
+                  <Shield className="w-20 h-20 -mr-6 -mt-4 rotate-12" />
+                </div>
+                <div className="relative z-10 flex items-center justify-between">
+                  <div className="space-y-1">
+                    <p className="text-[9px] font-black text-white/30 uppercase tracking-[0.2em] font-mono flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                      Scorecard
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl font-black text-white tracking-tighter drop-shadow-2xl">
+                        {avgLabel}
+                      </span>
+                      <Badge
+                        className={cn(
+                          "px-2 py-0.5 rounded-lg border-white/10 font-bold text-[9px] uppercase shadow-lg",
+                          avgColorClass,
+                        )}
+                      >
+                        {((avgVal / 4) * 100).toFixed(0)}% Condition
+                      </Badge>
                     </div>
-                    <span className="text-[9px] font-bold text-white/60 truncate">
-                      {f.facility_name || f.name || "Facility"}
+                  </div>
+                  <div className="w-12 h-12 flex items-center justify-center relative">
+                    <div className="absolute inset-0 rounded-full border-2 border-white/5" />
+                    <div className="absolute inset-0 rounded-full border-2 border-primary border-t-transparent animate-[spin_4s_linear_infinite]" />
+                    <Shield className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Status Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  {
+                    label: "Structure",
+                    status: buildingStatus,
+                    color: conditionColors[buildingStatus],
+                    icon: Building2,
+                  },
+                  {
+                    label: "Roofing",
+                    status: roofStatus,
+                    color: conditionColors[roofStatus],
+                    icon: Home,
+                  },
+                ].map((item, i) => (
+                  <div
+                    key={i}
+                    className="p-2 px-3 rounded-2xl bg-white/3 border border-white/5 hover:bg-white/6 transition-all group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <item.icon className="w-3 h-3 text-white/20 group-hover:text-primary" />
+                      <span className="text-[8px] font-black text-white/50 uppercase tracking-widest font-mono">
+                        {item.label}
+                      </span>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[9px] font-black uppercase px-2.5 py-0 border-none shadow-sm",
+                        item.color || "bg-white/10 text-white",
+                      )}
+                    >
+                      {item.status}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Specifications - Tightly packed */}
+            <div className="space-y-2.5">
+              <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.2em] pl-1 font-mono">
+                Technical Specs
+              </p>
+              <div className="rounded-2xl border border-white/10 bg-white/1 overflow-hidden shadow-2xl backdrop-blur-3xl">
+                {[
+                  {
+                    label: "Function",
+                    value:
+                      building.buildingFunction || building.function || "N/A",
+                    icon: Layers,
+                    color: "text-blue-400",
+                  },
+                  {
+                    label: "Floors",
+                    value:
+                      (building.buildingFloors || building.floors || "1") +
+                      " Floor(s)",
+                    icon: Maximize2,
+                    color: "text-purple-400",
+                  },
+                  {
+                    label: "Area",
+                    value:
+                      (building.buildingArea ||
+                        building.area ||
+                        building.areaSquareMeters) &&
+                      Number(
+                        building.buildingArea ||
+                          building.area ||
+                          building.areaSquareMeters,
+                      ) > 0
+                        ? `${Number(building.buildingArea || building.area || building.areaSquareMeters).toFixed(0)}m²`
+                        : "N/A",
+                    icon: Square,
+                    color: "text-emerald-400",
+                  },
+                  {
+                    label: "Year Built",
+                    value:
+                      building.buildingYearBuilt ||
+                      building.yearBuilt ||
+                      "Historic",
+                    icon: Calendar,
+                    color: "text-amber-400",
+                  },
+                ].map((item, i) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      "flex items-center justify-between p-3.5 hover:bg-white/3 transition-all group cursor-default",
+                      i !== 3 && "border-b border-white/3",
+                    )}
+                  >
+                    <div className="flex items-center gap-3 group-hover:translate-x-1 transition-transform">
+                      <item.icon
+                        className={cn("w-3.5 h-3.5 transition-all", item.color)}
+                      />
+                      <span className="text-[10px] font-normal text-white/60 uppercase tracking-wider">
+                        {item.label}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-black text-white/70 group-hover:text-white transition-colors tabular-nums">
+                      {item.value}
                     </span>
                   </div>
-                  <span className="text-[8px] font-black text-white/20 tabular-nums uppercase shrink-0 bg-white/5 px-1.5 py-0.5 rounded-md ml-2">
-                    {f.number_of_rooms || f.count || 1}
-                  </span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
+
+            {/* Inventory - Clean List */}
+            {building.facilities && building.facilities.length > 0 && (
+              <div className="space-y-3.5">
+                <div className="flex justify-between items-center px-1">
+                  <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.2em] font-mono">
+                    Facilities
+                  </p>
+                  <Badge
+                    variant="secondary"
+                    className="bg-primary/10 text-primary text-[8px] font-black border-none rounded-full px-2.5 h-5"
+                  >
+                    {building.facilities.length} Rooms
+                  </Badge>
+                </div>
+                <div className="space-y-2">
+                  {building.facilities.map((f: any, idx: number) => (
+                    <div
+                      key={idx}
+                      className="flex justify-between items-center p-3.5 rounded-2xl bg-white/2 border border-white/5 hover:bg-white/6 transition-all group overflow-hidden relative"
+                    >
+                      <div className="absolute inset-y-0 left-0 w-0.5 bg-primary transform scale-y-0 group-hover:scale-y-100 transition-transform duration-300" />
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <Home className="w-4 h-4 text-white/10 group-hover:text-primary transition-all shadow-inner" />
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-bold text-white/60 group-hover:text-white truncate transition-colors tracking-tight">
+                            {f.facility_name || f.name || "Facility"}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] font-black border-white/5 bg-blue-800/20 text-primary px-2 py-0.5 rounded-full group-hover:border-primary/20"
+                      >
+                        {f.number_of_rooms || f.count || 1} Rooms
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "media" && (
+          <div className="flex-1 flex flex-col min-h-0 animate-in fade-in slide-in-from-right-4 duration-500 overflow-hidden">
+            <BuildingMediaTab
+              building={building}
+              schoolId={schoolId}
+              onUpdateBuilding={onUpdateBuilding}
+            />
+          </div>
+        )}
+
+        {activeTab === "reporting" && (
+          <div className="flex-1 flex flex-col min-h-0 animate-in fade-in slide-in-from-right-4 duration-500 overflow-hidden">
+            <BuildingReportingTab buildingId={building.id} />
           </div>
         )}
       </div>
 
-      {/* Compact Action Footer */}
-      <div className="p-4 pt-4 grid grid-cols-2 gap-2 shrink-0 border-t border-white/5 bg-black/20">
-        <Button
-          variant="outline"
-          className="h-8 text-[7px] font-black uppercase tracking-widest rounded-full border-white/5 hover:bg-white/10 hover:text-white text-white/40 transition-all group shrink-0"
-          onClick={() => onEdit(building)}
-        >
-          <Pencil className="w-2 h-2 mr-1 transition-transform group-hover:scale-110" />
-          Edit Block
-        </Button>
-        <Button
-          className="h-8 bg-blue-600/80 hover:bg-blue-600 text-white font-black text-[7px] uppercase tracking-widest rounded-full border-none shadow-lg shadow-blue-600/10 transition-all group shrink-0"
-          onClick={() => on3DView?.()}
-        >
-          <Maximize2 className="w-2 h-2 mr-1 transition-transform group-hover:scale-110" />
-          3D Explorer
-        </Button>
-      </div>
+      {/* Footer - Integrated Action (Fixed) */}
+      {activeTab === "details" && (
+        <div className="p-5 pt-2 shrink-0 border-t border-white/2 bg-background/80 backdrop-blur-md">
+          <Button
+            variant="outline"
+            className="w-full h-12 text-[10px] font-black uppercase tracking-[0.25em] rounded-2xl border-white/10 bg-white/2 hover:bg-primary hover:border-primary hover:text-white shadow-xl transition-all duration-300 active:scale-[0.97] group"
+            onClick={() => onEdit(building)}
+          >
+            <Pencil className="w-3.5 h-3.5 mr-2 group-hover:scale-110 transition-transform" />
+            Edit Parameters
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

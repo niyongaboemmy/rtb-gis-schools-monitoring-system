@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const express = require('express');
 const cors = require('cors');
@@ -25,8 +25,9 @@ const CORS_ORIGINS = (process.env.FILE_SERVER_CORS_ORIGINS || '')
 
 // ── Storage directories ───────────────────────────────────────────────────
 const reportsDir = path.join(STORAGE_DIR, 'reports');
+const buildingsDir = path.join(STORAGE_DIR, 'buildings');
 const schoolsDir = path.join(STORAGE_DIR, 'schools');
-[reportsDir, schoolsDir].forEach((dir) => {
+[reportsDir, buildingsDir, schoolsDir].forEach((dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
     console.log(`[file-server] Created directory: ${dir}`);
@@ -43,10 +44,26 @@ app.use(express.json({ limit: '5mb' }));
 
 // ── Multer ────────────────────────────────────────────────────────────────
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, reportsDir),
+  destination: (req, _file, cb) => {
+    const { folder, schoolId } = req.query;
+    
+    // If we're uploading for a specific school building
+    if (folder === 'buildings' && schoolId) {
+      const targetDir = path.join(STORAGE_DIR, 'schools', schoolId, 'buildings');
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+        console.log(`[file-server] Created dynamic directory: ${targetDir}`);
+      }
+      return cb(null, targetDir);
+    }
+    
+    // Default to general buildings folder or reports
+    const dest = folder === 'buildings' ? buildingsDir : reportsDir;
+    cb(null, dest);
+  },
   filename: (_req, file, cb) => {
     const uniqueSuffix = `${Date.now()}-${uuid()}`;
-    cb(null, `attachment-${uniqueSuffix}${path.extname(file.originalname)}`);
+    cb(null, `asset-${uniqueSuffix}${path.extname(file.originalname)}`);
   },
 });
 
@@ -58,7 +75,16 @@ const upload = multer({
 // ── Routes ────────────────────────────────────────────────────────────────
 app.post('/upload', upload.array('files', MAX_FILES), (req, res) => {
   try {
-    const fileUrls = req.files.map((file) => `/files/reports/${file.filename}`);
+    const { folder, schoolId } = req.query;
+    const folderName = folder === 'buildings' ? 'buildings' : 'reports';
+    
+    const fileUrls = req.files.map((file) => {
+      if (folder === 'buildings' && schoolId) {
+        return `/files/schools/${schoolId}/buildings/${file.filename}`;
+      }
+      return `/files/${folderName}/${file.filename}`;
+    });
+    
     res.json({ success: true, urls: fileUrls });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -113,9 +139,14 @@ app.get('/health', (_req, res) =>
 );
 
 // ── Start ─────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[file-server] Port:    ${PORT}`);
   console.log(`[file-server] Storage: ${STORAGE_DIR}`);
   console.log(`[file-server] CORS:    ${CORS_ORIGINS.join(', ')}`);
-  console.log(`[file-server] Limits:  ${MAX_FILE_SIZE_MB}MB per file, ${MAX_FILES} files max`);
+  console.log(`[file-server] Limits:  ${MAX_FILE_SIZE_MB}MB (${MAX_FILE_SIZE_MB * 1024 * 1024} bytes) per file, ${MAX_FILES} files max`);
 });
+
+// For 5GB+ massive uploads, increase server timeouts (1 hour = 3600000ms)
+server.timeout = 3600000;
+server.keepAliveTimeout = 3600000;
+server.headersTimeout = 3660000;
