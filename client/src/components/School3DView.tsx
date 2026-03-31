@@ -60,6 +60,12 @@ const AREA_SUFFIX: Record<Unit, string> = { m: "m²", cm: "cm²", mm: "mm²", km
 const MEASURE_COLORS = ["#3b82f6", "#2563eb", "#00d4aa", "#ffb347", "#7ec8e3", "#ff7f50"];
 const ANNOT_COLORS = ["#00d4aa", "#2563eb", "#ffb347", "#7ec8e3", "#93c5fd", "#ffffff"];
 const NAV_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "w", "a", "s", "d", "W", "A", "S", "D", "q", "e", "Q", "E", "r", "f", "R", "F", " "]);
+const ICON_EMOJI_MAP: Record<string, string> = {
+  pin: "📍", warning: "⚠️", info: "ℹ️", danger: "🚨",
+  construction: "🚧", flag: "🚩", maintenance: "🔧", poi: "⭐",
+  inspection: "🔍", water: "💧", power: "⚡", green: "🌳",
+  facility: "🏫", path: "👣", parking: "🅿️",
+};
 const SPEED_STEPS = [0.001, 0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 25, 50, 100, 250, 500, 1000];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -199,8 +205,10 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
   const annotationsRef = useRef<Annotation[]>([]);
   const measuresRef = useRef<MeasureLine[]>([]);
+  const siteAnnotationsRef = useRef<any[]>([]);
   useEffect(() => { annotationsRef.current = annotations; }, [annotations]);
   useEffect(() => { measuresRef.current = measures; }, [measures]);
+  useEffect(() => { siteAnnotationsRef.current = siteAnnotations; }, [siteAnnotations]);
 
   // Refs for building-selection handler (avoids stale closures)
   const dbMarkersRef = useRef<any[]>([]);
@@ -210,6 +218,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   useEffect(() => { dbBuildingsRef.current = dbBuildings; }, [dbBuildings]);
   useEffect(() => { measureModeRef.current = measureMode; }, [measureMode]);
 
+  const siteAnnsFromFileServerRef = useRef(false); // true once loaded from viewer-state.json
   const viewerStatePrefetchRef = useRef<Promise<any> | null>(null);
   // Promise that resolves the moment initThree() finishes setting sceneRef/cameraRef/controlsRef
   const threeInitResolveRef = useRef<(() => void) | null>(null);
@@ -226,6 +235,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
           home: cameraHomeRef.current,
           annotations: annotationsRef.current,
           measures: measuresRef.current,
+          siteAnnotations: siteAnnotationsRef.current,
         }),
       }).catch(() => { });
     }, 800);
@@ -243,6 +253,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   useEffect(() => { saveJson(LS_MEASURES_KEY, measures); scheduleSave(); }, [measures, scheduleSave]);
   useEffect(() => { saveJson(LS_ANNOTATIONS_KEY, annotations); scheduleSave(); }, [annotations, scheduleSave]);
   useEffect(() => { saveJson(LS_UNIT_KEY, unit); }, [unit]);
+  useEffect(() => { if (siteAnnotations.length) scheduleSave(); }, [siteAnnotations, scheduleSave]);
 
   const applyRenderMode = useCallback((mode: RenderMode) => {
     const model = modelRef.current; if (!model) return;
@@ -360,6 +371,10 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         if (serverState?.home) savedHome = serverState.home;
         if (serverState?.annotations?.length) setAnnotations(serverState.annotations);
         if (serverState?.measures?.length) setMeasures(serverState.measures);
+        if (serverState?.siteAnnotations?.length) {
+          setSiteAnnotations(serverState.siteAnnotations);
+          siteAnnsFromFileServerRef.current = true;
+        }
       } catch { }
     }
 
@@ -411,9 +426,11 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     setProgress(100); setProgressLabel("Done!");
   }, [renderMode, applyRenderMode, schoolId]);
 
-  // Sync siteAnnotations from dbSchool (same source as 2D viewer)
+  // Sync siteAnnotations from dbSchool only as a fallback (file-server takes priority)
   useEffect(() => {
-    if (dbSchool?.siteAnnotations) setSiteAnnotations(dbSchool.siteAnnotations);
+    if (!siteAnnsFromFileServerRef.current && dbSchool?.siteAnnotations?.length) {
+      setSiteAnnotations(dbSchool.siteAnnotations);
+    }
   }, [dbSchool]);
 
   // ── Pre-fetch School Data (Parallel to GLB loading) ─────────────────────────
@@ -456,9 +473,9 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       return hits.length > 0 ? hits[0].point.y + offset : 0.5;
     };
 
-    const addMarker = (lat: number, lon: number, label: string, type: "site" | "block" | "internal", id: string, color?: string) => {
+    const addMarker = (lat: number, lon: number, label: string, type: "site" | "block" | "internal", id: string, color?: string, iconType?: string) => {
       const { x, z } = toXZ(lon, lat);
-      markers.push({ id, x, y: groundY(x, z), z, label, type, color });
+      markers.push({ id, x, y: groundY(x, z), z, label, type, color, iconType });
     };
 
     setIsProcessingMarkers(true);
@@ -479,7 +496,8 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
           if (a.type === "point" || a.type === "text") {
             const coords = Array.isArray(a.coordinates[0]) ? a.coordinates[0] : a.coordinates;
-            addMarker(coords[1], coords[0], label, "site", a.id, color);
+            const iconType = a.icon || a.iconType || a.style?.iconType || "";
+            addMarker(coords[1], coords[0], label, "site", a.id, color, iconType);
           } else if (a.type === "line" || a.type === "polygon") {
             const pts: MeasurePoint[] = [];
             const raw = a.coordinates;
@@ -751,23 +769,31 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         ctx.setLineDash([]);
       }
 
-      // Premium Glassmorphic Label
-      ctx.font = `bold ${Math.round(10 * scale)}px 'Inter', system-ui, sans-serif`;
-      const mText = m.label;
+      // Label
+      ctx.font = `bold ${Math.round(12 * scale)}px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif`;
+      const emoji = ICON_EMOJI_MAP[m.iconType || ""] || "";
+      const mText = emoji ? `${emoji} ${m.label}` : m.label;
       const textWidth = ctx.measureText(mText).width;
-      const padX = 8 * scale;
-      const bw = textWidth + padX * 2, bh = 18 * scale;
-      const bx = ex - bw / 2, by = ey - 22 * scale - bh;
+      const padX = 7 * scale, bh = 20 * scale;
+      const bw = textWidth + padX * 2;
+      const bx = ex - bw / 2, by = ey - 20 * scale - bh;
 
-      // Background with blur effect (mocked via low opacity + semi-opaque border)
-      ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
-      ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6 * scale); ctx.fill();
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.15)"; ctx.lineWidth = 1; ctx.stroke();
+      if (m.type === "block") {
+        // Dark glassmorphic style for building blocks
+        ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+        ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6 * scale); ctx.fill();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.15)"; ctx.lineWidth = 1; ctx.stroke();
+      } else {
+        // 2D-style: colored background (matching pin color)
+        const rc = parseInt(baseCol.slice(1, 3), 16), gc = parseInt(baseCol.slice(3, 5), 16), bc = parseInt(baseCol.slice(5, 7), 16);
+        ctx.fillStyle = `rgba(${rc},${gc},${bc},0.85)`;
+        ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 10 * scale); ctx.fill();
+        ctx.strokeStyle = `rgba(${rc},${gc},${bc},0.4)`; ctx.lineWidth = 1 * scale; ctx.stroke();
+      }
 
-      // Shadow
-      ctx.shadowBlur = 10; ctx.shadowColor = "rgba(0,0,0,0.5)";
+      ctx.shadowBlur = 8; ctx.shadowColor = "rgba(0,0,0,0.5)";
       ctx.fillStyle = "#fff"; ctx.textAlign = "center";
-      ctx.fillText(mText, ex, by + bh/2 + 4 * scale);
+      ctx.fillText(mText, ex, by + bh / 2 + 4 * scale);
       ctx.shadowBlur = 0;
     });
 
@@ -777,15 +803,29 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         drawDot(a.point, a.color, 7);
         const proj = project3Dto2D(a.point, camera, W, H); if (!proj) return;
         const [x, y] = proj;
-        ctx.font = "bold 11px 'JetBrains Mono', monospace";
-        const lines = a.text.split("\n");
-        const maxW = Math.max(...lines.map(l => ctx.measureText(l).width));
-        const bh = lines.length * 15 + 10;
-        ctx.fillStyle = "rgba(6,11,26,0.88)";
-        ctx.beginPath(); ctx.roundRect(x + 12, y - 16, maxW + 14, bh, 7); ctx.fill();
-        ctx.strokeStyle = a.color; ctx.lineWidth = 1; ctx.setLineDash([]); ctx.stroke();
-        ctx.fillStyle = a.color;
-        lines.forEach((l, i) => ctx.fillText(l, x + 18, y - 4 + i * 15));
+
+        // 2D-style label: colored background pill above the dot, white text
+        ctx.font = "bold 13px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif";
+        const labelText = a.text.split("\n")[0]; // first line as the label
+        const textW = ctx.measureText(labelText).width;
+        const padX = 7, padY = 3, bh = 22, bw = textW + padX * 2;
+        const bx = x - bw / 2, by = y - 30 - bh;
+
+        // Parse hex color for background
+        const hr = parseInt(a.color.slice(1, 3), 16), hg = parseInt(a.color.slice(3, 5), 16), hb = parseInt(a.color.slice(5, 7), 16);
+        ctx.fillStyle = `rgba(${hr},${hg},${hb},0.85)`;
+        ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 10); ctx.fill();
+        ctx.strokeStyle = `rgba(${hr},${hg},${hb},0.4)`; ctx.lineWidth = 1; ctx.setLineDash([]); ctx.stroke();
+
+        // Connector line from dot to label
+        ctx.beginPath(); ctx.moveTo(x, y - 9); ctx.lineTo(x, by + bh);
+        ctx.strokeStyle = `rgba(${hr},${hg},${hb},0.5)`; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]); ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.shadowBlur = 6; ctx.shadowColor = "rgba(0,0,0,0.5)";
+        ctx.fillStyle = "#fff"; ctx.textAlign = "center";
+        ctx.fillText(labelText, x, by + padY + 13);
+        ctx.shadowBlur = 0; ctx.textAlign = "left";
       });
     }
 
@@ -1339,14 +1379,14 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) handleFile(f); };
   const handleDrop = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); };
 
-  // ── Annotation: save to DB (same API as 2D viewer) ───────────────────────────
-  const submit3DAnnotation = useCallback(async (iconType: string, title: string, description: string, mapColor: string) => {
+  // ── Annotation: save directly to viewer-state.json (file-server) ─────────────
+  const submit3DAnnotation = useCallback((iconType: string, title: string, description: string, mapColor: string) => {
     const pt = annotPendingPt;
     setAnnotPickerOpen(false);
     setAnnotPendingPt(null);
     setMeasureMode(null);
 
-    if (!pt || !schoolId || !dbSchool) return;
+    if (!pt || !dbSchool) return;
     const latCenter = Number(dbSchool.latitude);
     const lonCenter = Number(dbSchool.longitude);
     if (!latCenter || !lonCenter) return;
@@ -1358,26 +1398,20 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     const lon = (pt.x + rcX) / lonFactor + lonCenter;
     const lat = -(pt.z + rcZ) / latFactor + latCenter;
 
-    const payload = {
+    const newAnnotation = {
       id: `site-${Date.now()}`,
       type: "point",
       coordinates: [lon, lat],
       title: title || iconType,
       label: title || iconType,
       description,
+      icon: iconType,
       style: { color: mapColor, iconType },
     };
 
-    try {
-      const res = await api.post(`/schools/${schoolId}/kmz/2d/site-annotations`, payload);
-      if (res.data) {
-        setSiteAnnotations(prev => [...prev, res.data]);
-        setShowDbAnnotations(true); // make newly placed annotation visible immediately
-      }
-    } catch (err) {
-      console.error("[3DViewer] Failed to save annotation:", err);
-    }
-  }, [annotPendingPt, schoolId, dbSchool]);
+    setSiteAnnotations(prev => [...prev, newAnnotation]);
+    setShowDbAnnotations(true);
+  }, [annotPendingPt, dbSchool]);
 
   const cancelAnnotation = useCallback(() => {
     setAnnotPickerOpen(false);
