@@ -11,6 +11,7 @@ import {
   GeoJsonDataSource,
   PolylineGraphics,
   PolygonGraphics,
+  PointGraphics,
   LabelGraphics,
   ImageryLayer,
 } from "resium";
@@ -31,6 +32,8 @@ import {
   VerticalOrigin,
   Cartesian2,
   DistanceDisplayCondition,
+  HeightReference,
+  ClassificationType,
 } from "cesium";
 import {
   X,
@@ -48,13 +51,11 @@ import {
   Eye,
   EyeOff,
   PlusCircle,
-  MessageSquare,
   MousePointer2,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
 import { Card } from "./ui/card";
-import { BlockInspector } from "./BlockInspector";
 import { BuildingFormDrawer } from "./school-form-steps/BuildingFormDrawer";
 import type { BuildingData } from "./school-form-steps/BuildingsStep";
 import { FILE_SERVER_URL, api } from "../lib/api";
@@ -465,7 +466,6 @@ const School3DView: React.FC<School3DViewProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEntity, setSelectedEntity] = useState<any>(null);
   const [activeBlock, setActiveBlock] = useState<BuildingData | null>(null);
-  const [isBlockInspectorOpen, setIsBlockInspectorOpen] = useState(false);
   const [activeTool, setActiveTool] = useState<string>("none");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerBuilding, setDrawerBuilding] = useState<BuildingData | null>(null);
@@ -474,7 +474,7 @@ const School3DView: React.FC<School3DViewProps> = ({
   const [facilitiesLoading, setFacilitiesLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [inspectorPosition, setInspectorPosition] = useState<{ x: number; y: number } | null>(null);
+  const siteAnnotations = school.siteAnnotations || [];
   
   // Hydrate facilities for the building form
   useEffect(() => {
@@ -773,12 +773,8 @@ const School3DView: React.FC<School3DViewProps> = ({
         
         if (building) {
           setActiveBlock(building);
-          setIsBlockInspectorOpen(true);
-          setInspectorPosition({ x: click.position.x, y: click.position.y });
           return;
         }
-      } else {
-        setIsBlockInspectorOpen(false);
       }
     }, ScreenSpaceEventType.LEFT_CLICK);
 
@@ -1380,11 +1376,11 @@ const School3DView: React.FC<School3DViewProps> = ({
                   >
                     <PolygonGraphics
                       hierarchy={Cartesian3.fromDegreesArray(polyPts) as any}
-                      material={Color.fromCssColorString("rgba(99, 102, 241, 0.05)") as any}
+                      material={Color.fromCssColorString("rgba(99, 102, 241, 0.25)") as any}
                       outline={true as any}
                       outlineColor={Color.fromCssColorString("#6366f1") as any}
                       outlineWidth={4 as any}
-                      height={0}
+                      classificationType={ClassificationType.TERRAIN as any}
                     />
                     <Entity
                       position={Cartesian3.fromDegrees(
@@ -1406,6 +1402,77 @@ const School3DView: React.FC<School3DViewProps> = ({
                         distanceDisplayCondition={new DistanceDisplayCondition(0, 500)}
                       />
                     </Entity>
+                  </Entity>
+                );
+              })}
+
+            {/* Site-Level Annotations */}
+            {viewMode === "3D" &&
+              siteAnnotations.map((ann: any) => {
+                if (!ann.coordinates || ann.coordinates.length === 0) return null;
+                const pinColor = ann.style?.color || "#8b5cf6";
+                const cesColor = Color.fromCssColorString(pinColor);
+                
+                const rawPts = ann.coordinates;
+                const polyPts: number[] = [];
+                if (Array.isArray(rawPts[0])) {
+                  rawPts.forEach((c: any) => polyPts.push(Number(c[0]), Number(c[1])));
+                } else {
+                  for (let i = 0; i + 1 < rawPts.length; i += 2) {
+                    polyPts.push(Number(rawPts[i]), Number(rawPts[i+1]));
+                  }
+                }
+
+                const labelText = ann.title || ann.label || "";
+                const area = ann.areaSquareMeters;
+                const displayLabel = area ? `${labelText} (${Number(area).toFixed(1)}m²)` : labelText;
+
+                if (ann.type === "polygon") {
+                  return (
+                    <Entity key={`site-poly-${ann.id || Math.random()}`} name={labelText}>
+                      <PolygonGraphics
+                        hierarchy={Cartesian3.fromDegreesArray(polyPts) as any}
+                        material={cesColor.withAlpha(0.35) as any}
+                        outline={true as any}
+                        outlineColor={cesColor as any}
+                        outlineWidth={3 as any}
+                        classificationType={ClassificationType.TERRAIN as any}
+                      />
+                    </Entity>
+                  );
+                }
+
+                if (ann.type === "line") {
+                  return (
+                    <Entity key={`site-line-${ann.id || Math.random()}`} name={labelText}>
+                      <PolylineGraphics
+                        positions={Cartesian3.fromDegreesArray(polyPts) as any}
+                        material={cesColor as any}
+                        width={4 as any}
+                        clampToGround={true as any}
+                      />
+                    </Entity>
+                  );
+                }
+
+                // Default to Point/Pin
+                return (
+                  <Entity
+                    key={`site-pin-${ann.id || Math.random()}`}
+                    position={Cartesian3.fromDegrees(polyPts[0], polyPts[1], 5)}
+                    name={labelText}
+                  >
+                    <PointGraphics pixelSize={10} color={cesColor} outlineColor={Color.WHITE} outlineWidth={2} />
+                    <LabelGraphics
+                      text={displayLabel}
+                      font="bold 14px sans-serif"
+                      fillColor={Color.WHITE}
+                      outlineColor={Color.BLACK}
+                      outlineWidth={2}
+                      pixelOffset={new Cartesian2(0, -20)}
+                      heightReference={HeightReference.RELATIVE_TO_GROUND}
+                      disableDepthTestDistance={1000000}
+                    />
                   </Entity>
                 );
               })}

@@ -36,6 +36,8 @@ export interface School2DViewerProps {
   pickerMode?: boolean;
   /** Called with the picked building when pickerMode is active */
   onPickerSelect?: (building: any) => void;
+  /** Update the parent school state locally */
+  onUpdateSchool?: (update: any) => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -173,7 +175,7 @@ export const blockStyle = (feature?: any) => {
 
   if (isPolygon) {
     return new Style({
-      fill: new Fill({ color: "rgba(0, 0, 0, 0)" }),
+      fill: new Fill({ color: "rgba(0, 0, 0, 0)" }), // Transparent fill
       stroke: new Stroke({ color: "#3b82f6", width: 3.5 }),
       text: labelText ? new Text({
         text: labelText,
@@ -210,6 +212,22 @@ export const annotationStyle = new Style({
     radius: 7,
     fill: new Fill({ color: "#10b981" }),
     stroke: new Stroke({ color: "#fff", width: 2 }),
+  }),
+});
+
+/** High-contrast selection style for active buildings/annotations */
+export const selectionStyle = new Style({
+  fill: new Fill({ color: "rgba(16, 185, 129, 0.15)" }), // Subtle emerald tint
+  stroke: new Stroke({ 
+    color: "#06b6d4", // Cyan-500 for maximum pop
+    width: 6,
+    lineCap: "round",
+    lineJoin: "round"
+  }),
+  image: new CircleStyle({
+    radius: 12,
+    fill: new Fill({ color: "#06b6d4" }),
+    stroke: new Stroke({ color: "white", width: 3 }),
   }),
 });
 
@@ -265,16 +283,21 @@ export function siteAnnotationStyle(feature: Feature): Style {
   }
 
   // Lines and polygons
+  const area = ann?.areaSquareMeters || feature.get("areaSquareMeters");
+  const length = ann?.lengthMeters || feature.get("lengthMeters");
+  const suffix = area ? ` (${Number(area).toFixed(1)}m²)` : length ? ` (${Number(length).toFixed(1)}m)` : "";
+  const finalLabel = label + suffix;
+
   return new Style({
-    fill: new Fill({ color: `${pinColor}26` }),
-    stroke: new Stroke({ color: pinColor, width: 2.5, lineDash: [6, 4] }),
+    fill: new Fill({ color: "rgba(0, 0, 0, 0)" }), // Transparent fill
+    stroke: new Stroke({ color: pinColor, width: 3 }), // Solid stroke
     image: new CircleStyle({
       radius: 6,
       fill: new Fill({ color: pinColor }),
       stroke: new Stroke({ color: "#fff", width: 1.5 }),
     }),
-    text: label ? new Text({
-      text: label,
+    text: finalLabel ? new Text({
+      text: finalLabel,
       font: "bold 11px 'Inter', system-ui, sans-serif",
       fill: new Fill({ color: "#ffffff" }),
       stroke: new Stroke({ color: "rgba(10, 10, 20, 0.85)", width: 3 }),

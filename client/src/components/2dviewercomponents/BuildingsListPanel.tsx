@@ -3,12 +3,23 @@ import { X, Building2, MapPin, Trash2, ShieldAlert } from "lucide-react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import type { BuildingData } from "../school-form-steps/BuildingsStep";
+import { cn } from "../../lib/utils";
+import { SearchInput } from "../ui/search-input";
+import { Plus } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from "../ui/tooltip";
 
 interface BuildingsListPanelProps {
   buildings: BuildingData[];
   onClose: () => void;
   onSelect: (building: BuildingData) => void;
   onDelete: (id: string) => Promise<void>;
+  onAdd?: () => void;
+  selectedId?: string;
 }
 
 export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
@@ -16,9 +27,23 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
   onClose,
   onSelect,
   onDelete,
+  onAdd,
+  selectedId,
 }) => {
   const [isDeleting, setIsDeleting] = React.useState<string | null>(null);
   const [showConfirm, setShowConfirm] = React.useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = React.useState("");
+
+  const listRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (selectedId && listRef.current) {
+      const element = listRef.current.querySelector(`[data-id="${selectedId}"]`);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    }
+  }, [selectedId]);
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -33,54 +58,122 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
     }
   };
 
+  const filteredBuildings = buildings.filter(
+    (b) =>
+      (b.buildingName || "Unnamed Block")
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase()) ||
+      (b.buildingCode || "").toLowerCase().includes(searchTerm.toLowerCase()),
+  );
+
   return (
-    <Card className="absolute left-[360px] top-4 z-30 w-80 max-h-[calc(100vh-2rem)] flex flex-col bg-background/80 backdrop-blur-2xl border-white/10 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-left-8 duration-300">
+    <Card
+      className={cn(
+        "fixed z-30 flex flex-col bg-background/80 backdrop-blur-2xl border-white/10 shadow-2xl overflow-hidden transition-all duration-500",
+        "inset-x-0 bottom-0 h-[60vh] rounded-t-[32px] md:rounded-3xl", // Mobile
+        "md:inset-auto md:right-22 md:top-4 md:w-80 md:h-auto md:max-h-[calc(100vh-2rem)]", // Desktop
+        "animate-in fade-in slide-in-from-bottom md:slide-in-from-right-8",
+      )}
+    >
+      {/* Mobile Drag Handle */}
+      <div className="flex md:hidden justify-center pt-3 pb-1 shrink-0">
+        <div className="w-12 h-1.5 rounded-full bg-white/20" />
+      </div>
+
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border/20">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border/20 shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
             <Building2 className="w-4 h-4 text-primary" />
           </div>
           <div>
-            <h2 className="text-[13px] font-black tracking-tight flex items-center gap-2">
-              Building Directory
+            <h2 className="text-[15px] font-black tracking-tight flex items-center gap-2">
+              Buildings
               <span className="bg-primary/20 text-primary px-1.5 py-0.5 rounded-full text-[10px]">
                 {buildings.length}
               </span>
             </h2>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
-              Loaded Extent
-            </p>
           </div>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          className="h-8 w-8 rounded-xl hover:bg-destructive/10 hover:text-destructive"
-        >
-          <X className="w-4 h-4" />
-        </Button>
+        <div className="flex items-center gap-2">
+          {onAdd && (
+            <TooltipProvider delayDuration={0}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={onAdd}
+                    className="h-8 rounded-xl bg-primary text-white shadow-lg shadow-primary/20 hover:opacity-90 px-2.5 flex items-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="hidden md:block">
+                  Design New Block
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="h-8 w-8 rounded-xl hover:bg-destructive/10 hover:text-destructive"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Search Input */}
+      <div className="px-4 py-3 border-b border-border/10">
+        <SearchInput
+          placeholder="Search by name or code..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          onClear={() => setSearchTerm("")}
+          className="h-9 text-xs"
+          containerClassName="w-full"
+        />
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto w-full p-2 space-y-1 custom-scrollbar">
-        {buildings.length === 0 ? (
+      <div 
+        ref={listRef}
+        className="flex-1 overflow-y-auto w-full p-2 space-y-1 custom-scrollbar"
+      >
+        {filteredBuildings.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
             <Building2 className="w-8 h-8 mb-2 opacity-50" />
-            <p className="text-xs font-medium">No buildings detected</p>
-            <p className="text-[10px]">Pan the map to load areas</p>
+            <p className="text-xs font-medium">
+              {searchTerm ? "No results found" : "No buildings detected"}
+            </p>
+            <p className="text-[10px]">
+              {searchTerm
+                ? "Try adjusting your search"
+                : "Pan the map to load areas"}
+            </p>
           </div>
         ) : (
-          buildings.map((b) => (
+          filteredBuildings.map((b) => (
             <div
               key={b.id}
+              data-id={b.id}
               onClick={() => onSelect(b)}
-              className="group relative flex flex-col gap-1.5 px-4 py-3 bg-muted/30 hover:bg-muted/60 transition-colors rounded-2xl cursor-pointer border border-transparent hover:border-border/40"
+              className={cn(
+                "group relative flex flex-col gap-1.5 px-4 py-3 transition-all rounded-2xl cursor-pointer border",
+                selectedId === b.id 
+                  ? "bg-primary/10 border-primary/40 shadow-sm" 
+                  : "bg-muted/30 hover:bg-muted/60 border-transparent hover:border-border/40"
+              )}
             >
               <div className="flex justify-between items-start w-full">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-[12px] truncate max-w-[140px]">
+                  <span className={cn(
+                    "font-bold text-[12px] truncate max-w-[140px]",
+                    selectedId === b.id ? "text-primary" : "text-foreground"
+                  )}>
                     {b.buildingName || "Unnamed Block"}
                   </span>
                   {b.buildingFunction && (
@@ -140,7 +233,11 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
                     {b.buildingCode}
                   </span>
                 )}
-                {b.buildingArea && <span>{Math.round(parseFloat(String(b.buildingArea)))} m²</span>}
+                {b.buildingArea && (
+                  <span>
+                    {Math.round(parseFloat(String(b.buildingArea)))} m²
+                  </span>
+                )}
                 {b.geolocation?.latitude && (
                   <span className="flex items-center gap-0.5 mt-auto">
                     <MapPin className="w-3 h-3" />

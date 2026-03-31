@@ -52,11 +52,11 @@ export interface BuildingData {
     createdAt: string;
   }[];
   media?: {
-    id: string;
-    url: string;
-    type: "image" | "video";
+    id?: string;
+    path: string;
+    type?: "image" | "video";
     title?: string;
-    createdAt: string;
+    createdAt?: string;
   }[];
 }
 

@@ -363,6 +363,9 @@ export class SchoolsService {
     id: string,
     dto: BuildingDto,
   ): Promise<SchoolBuilding> {
+    console.log('[SchoolsService] updateBuilding ID:', id);
+    console.log('[SchoolsService] updateBuilding DTO:', JSON.stringify(dto, null, 2));
+    
     const building = await this.schoolBuildingRepository.findOne({ where: { id } });
     if (!building) throw new NotFoundException(`Building with ID "${id}" not found`);
 
@@ -507,5 +510,33 @@ export class SchoolsService {
     }
 
     return this.surveyRepository.find({ where: { schoolId } });
+  }
+
+  async addSiteAnnotation(schoolId: string, annotation: any): Promise<any> {
+    const school = await this.schoolRepository.findOne({ where: { id: schoolId } });
+    if (!school) throw new NotFoundException(`School with ID "${schoolId}" not found`);
+
+    if (!school.siteAnnotations) school.siteAnnotations = [];
+    
+    // Check if annotation already exists (for updates)
+    const existingIdx = school.siteAnnotations.findIndex(a => a.id === annotation.id);
+    if (existingIdx !== -1) {
+      school.siteAnnotations[existingIdx] = annotation;
+    } else {
+      school.siteAnnotations.push(annotation);
+    }
+
+    await this.schoolRepository.save(school);
+    return annotation;
+  }
+
+  async removeSiteAnnotation(schoolId: string, annId: string): Promise<void> {
+    const school = await this.schoolRepository.findOne({ where: { id: schoolId } });
+    if (!school) throw new NotFoundException(`School with ID "${schoolId}" not found`);
+
+    if (school.siteAnnotations) {
+      school.siteAnnotations = school.siteAnnotations.filter(a => a.id !== annId);
+      await this.schoolRepository.save(school);
+    }
   }
 }

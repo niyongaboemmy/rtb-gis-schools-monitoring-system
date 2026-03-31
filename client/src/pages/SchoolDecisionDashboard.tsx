@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, Link, Navigate } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
 import {
@@ -6,28 +6,14 @@ import {
   Building2,
   Users,
   Layers,
-  Search,
-  AlertCircle,
-  CheckCircle,
-  XCircle,
   FileText,
-  Camera,
-  Download,
-  Share2,
-  Menu,
   X,
-  PieChart,
-  BarChart,
   Calendar,
   Clock,
-  ChevronRight,
-  Briefcase,
   GraduationCap,
   ClipboardCheck,
-  Building,
   Upload,
   Phone,
-  Maximize,
   Globe,
   Box,
   ArrowLeft,
@@ -38,7 +24,6 @@ import {
   Plus,
   Pencil,
   MapPin,
-  ClipboardList,
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -336,174 +321,183 @@ export default function SchoolDecisionDashboard() {
   };
 
   // 2. Main Effect Logic
-  useEffect(() => {
+  const fetchSchool = useCallback(async (silent = false) => {
     if (!id) return;
-    if (lastFetchedId.current === id) return;
+    if (!silent) setLoading(true);
+    try {
+      const response = await api.get(`/schools/${id}`);
+      const schoolData = response.data;
 
-    const fetchSchool = async () => {
-      setLoading(true);
-      try {
-        const response = await api.get(`/schools/${id}`);
-        const schoolData = response.data;
+      if (
+        schoolData.buildings ||
+        schoolData.educationPrograms ||
+        schoolData.roadStatusPercentage
+      ) {
+        const currentYear = new Date().getFullYear();
 
-        if (
-          schoolData.buildings ||
-          schoolData.educationPrograms ||
-          schoolData.roadStatusPercentage
-        ) {
-          const currentYear = new Date().getFullYear();
+        let avgBuildingAge = 0;
+        let totalDepreciation = 0;
+        let buildingAgeScore = 50;
 
-          let avgBuildingAge = 0;
-          let totalDepreciation = 0;
-          let buildingAgeScore = 50;
-
-          if (schoolData.buildings && schoolData.buildings.length > 0) {
-            const buildingAges = schoolData.buildings
-              .filter((b: any) => b.yearBuilt)
-              .map((b: any) => currentYear - parseFloat(String(b.yearBuilt)));
-            avgBuildingAge =
-              buildingAges.length > 0
-                ? Math.round(
-                    buildingAges.reduce((a: number, b: number) => a + b, 0) /
-                      buildingAges.length,
-                  )
-                : 0;
-
-            const conditionPenalties: Record<string, number> = {
-              good: 0,
-              fair: 10,
-              poor: 20,
-              critical: 30,
-            };
-
-            const avgConditionPenalty =
-              schoolData.buildings.reduce((sum: number, b: any) => {
-                return sum + (conditionPenalties[b.condition] || 10);
-              }, 0) / schoolData.buildings.length;
-
-            const ageDepreciation = Math.min(avgBuildingAge * 2, 60);
-            totalDepreciation = Math.min(
-              ageDepreciation + avgConditionPenalty,
-              100,
-            );
-
-            buildingAgeScore = Math.max(0, 100 - totalDepreciation);
-          }
-
-          const infrastructureItems = [
-            schoolData.hasLibrary ? 100 : 0,
-            schoolData.hasLaboratory ? 100 : 0,
-            schoolData.hasComputerLab ? 100 : 0,
-            schoolData.hasSportsField ? 100 : 0,
-            schoolData.hasHostel ? 100 : 0,
-            schoolData.hasCanteen ? 100 : 0,
-            schoolData.hasElectricity ? 100 : 0,
-            schoolData.hasWater ? 100 : 0,
-            schoolData.hasInternet ? 100 : 0,
-            schoolData.hasSolarPanel ? 100 : 0,
-            parseFloat(String(schoolData.roadStatusPercentage)) || 0,
-          ];
-          const infrastructureScore =
-            schoolData.buildings?.length > 0 ||
-            infrastructureItems.some((v) => v > 0)
+        if (schoolData.buildings && schoolData.buildings.length > 0) {
+          const buildingAges = schoolData.buildings
+            .filter((b: any) => b.yearBuilt)
+            .map((b: any) => currentYear - parseFloat(String(b.yearBuilt)));
+          avgBuildingAge =
+            buildingAges.length > 0
               ? Math.round(
-                  infrastructureItems.reduce((a, b) => a + b, 0) /
-                    infrastructureItems.length,
+                  buildingAges.reduce((a: number, b: number) => a + b, 0) /
+                    buildingAges.length,
                 )
               : 0;
 
-          const totalStudentsInPrograms =
-            schoolData.educationPrograms?.reduce(
-              (sum: number, p: any) =>
-                sum + (parseFloat(String(p.totalStudents)) || 0),
-              0,
-            ) || 0;
-          const totalStaff =
-            (parseFloat(String(schoolData.maleTeachers)) || 0) +
-            (parseFloat(String(schoolData.femaleTeachers)) || 0) +
-            (parseFloat(String(schoolData.maleAdminStaff)) || 0) +
-            (parseFloat(String(schoolData.femaleAdminStaff)) || 0) +
-            (parseFloat(String(schoolData.maleSupportStaff)) || 0) +
-            (parseFloat(String(schoolData.femaleSupportStaff)) || 0);
-          const totalPopulation = totalStudentsInPrograms + totalStaff;
+          const conditionPenalties: Record<string, number> = {
+            good: 0,
+            fair: 10,
+            poor: 20,
+            critical: 30,
+          };
 
-          const totalCapacity =
-            schoolData.educationPrograms?.reduce(
-              (sum: number, p: any) =>
-                sum + (parseFloat(String(p.capacity)) || 0),
-              0,
-            ) || 0;
+          const avgConditionPenalty =
+            schoolData.buildings.reduce((sum: number, b: any) => {
+              return sum + (conditionPenalties[b.condition] || 10);
+            }, 0) / schoolData.buildings.length;
 
-          const populationScore =
-            totalCapacity > 0 && totalStudentsInPrograms > 0
-              ? Math.min(
-                  100,
-                  Math.round((totalStudentsInPrograms / totalCapacity) * 100),
-                )
-              : 50;
-
-          const populationPressure = populationScore;
-
-          const accessibilityScore = schoolData.roadStatusPercentage || 50;
-
-          const facilityComplianceRate = facilityStats?.complianceRate || 0;
-
-          const overallScore = Math.round(
-            infrastructureScore * 0.2 +
-              buildingAgeScore * 0.2 +
-              populationScore * 0.2 +
-              accessibilityScore * 0.2 +
-              facilityComplianceRate * 0.2,
+          const ageDepreciation = Math.min(avgBuildingAge * 2, 60);
+          totalDepreciation = Math.min(
+            ageDepreciation + avgConditionPenalty,
+            100,
           );
 
-          schoolData.calculatedAssessment = {
-            infrastructureScore: infrastructureScore,
-            buildingAgeScore: buildingAgeScore,
-            depreciation: totalDepreciation,
-            populationPressureScore: populationPressure,
-            accessibilityScore: accessibilityScore,
-            facilityComplianceScore: facilityComplianceRate,
-            overallScore: overallScore,
-            averageBuildingAge: avgBuildingAge,
-            totalCapacity: totalCapacity,
-            totalStudents: totalStudentsInPrograms,
-            totalStaff: totalStaff,
-            totalPopulation: totalPopulation,
-            supportStaff:
-              (parseFloat(String(schoolData.maleSupportStaff)) || 0) +
-              (parseFloat(String(schoolData.femaleSupportStaff)) || 0),
-          };
+          buildingAgeScore = Math.max(0, 100 - totalDepreciation);
         }
 
-        setSchool({ ...schoolData });
+        const infrastructureItems = [
+          schoolData.hasLibrary ? 100 : 0,
+          schoolData.hasLaboratory ? 100 : 0,
+          schoolData.hasComputerLab ? 100 : 0,
+          schoolData.hasSportsField ? 100 : 0,
+          schoolData.hasHostel ? 100 : 0,
+          schoolData.hasCanteen ? 100 : 0,
+          schoolData.hasElectricity ? 100 : 0,
+          schoolData.hasWater ? 100 : 0,
+          schoolData.hasInternet ? 100 : 0,
+          schoolData.hasSolarPanel ? 100 : 0,
+          parseFloat(String(schoolData.roadStatusPercentage)) || 0,
+        ];
+        const infrastructureScore =
+          schoolData.buildings?.length > 0 ||
+          infrastructureItems.some((v) => v > 0)
+            ? Math.round(
+                infrastructureItems.reduce((a, b) => a + b, 0) /
+                  infrastructureItems.length,
+              )
+            : 0;
 
-        if (id) {
-          try {
-            const surveyRes = await api.get(`/schools/${id}/survey`);
-            setFacilitySurvey(surveyRes.data || []);
-          } catch (surveyError) {
-            console.log("No facility survey found for this school");
-            setFacilitySurvey([]);
-          }
+        const totalStudentsInPrograms =
+          schoolData.educationPrograms?.reduce(
+            (sum: number, p: any) =>
+              sum + (parseFloat(String(p.totalStudents)) || 0),
+            0,
+          ) || 0;
+        const totalStaff =
+          (parseFloat(String(schoolData.maleTeachers)) || 0) +
+          (parseFloat(String(schoolData.femaleTeachers)) || 0) +
+          (parseFloat(String(schoolData.maleAdminStaff)) || 0) +
+          (parseFloat(String(schoolData.femaleAdminStaff)) || 0) +
+          (parseFloat(String(schoolData.maleSupportStaff)) || 0) +
+          (parseFloat(String(schoolData.femaleSupportStaff)) || 0);
+        const totalPopulation = totalStudentsInPrograms + totalStaff;
 
-          try {
-            const facilitiesRes = await api.get("/schools/facilities");
-            setFacilitiesList(facilitiesRes.data || []);
-          } catch (facilitiesError) {
-            console.log("No facilities found");
-            setFacilitiesList([]);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to fetch school data", error);
-      } finally {
-        setLoading(false);
+        const totalCapacity =
+          schoolData.educationPrograms?.reduce(
+            (sum: number, p: any) =>
+              sum + (parseFloat(String(p.capacity)) || 0),
+            0,
+          ) || 0;
+
+        const populationScore =
+          totalCapacity > 0 && totalStudentsInPrograms > 0
+            ? Math.min(
+                100,
+                Math.round((totalStudentsInPrograms / totalCapacity) * 100),
+              )
+            : 50;
+
+        const populationPressure = populationScore;
+
+        const accessibilityScore = schoolData.roadStatusPercentage || 50;
+
+        const facilityComplianceRate = facilityStats?.complianceRate || 0;
+
+        const overallScore = Math.round(
+          infrastructureScore * 0.2 +
+            buildingAgeScore * 0.2 +
+            populationScore * 0.2 +
+            accessibilityScore * 0.2 +
+            facilityComplianceRate * 0.2,
+        );
+
+        schoolData.calculatedAssessment = {
+          infrastructureScore: infrastructureScore,
+          buildingAgeScore: buildingAgeScore,
+          depreciation: totalDepreciation,
+          populationPressureScore: populationPressure,
+          accessibilityScore: accessibilityScore,
+          facilityComplianceScore: facilityComplianceRate,
+          overallScore: overallScore,
+          averageBuildingAge: avgBuildingAge,
+          totalCapacity: totalCapacity,
+          totalStudents: totalStudentsInPrograms,
+          totalStaff: totalStaff,
+          totalPopulation: totalPopulation,
+          supportStaff:
+            (parseFloat(String(schoolData.maleSupportStaff)) || 0) +
+            (parseFloat(String(schoolData.femaleSupportStaff)) || 0),
+        };
       }
-    };
 
-    lastFetchedId.current = id;
+      setSchool({ ...schoolData });
+
+      if (id) {
+        try {
+          const surveyRes = await api.get(`/schools/${id}/survey`);
+          setFacilitySurvey(surveyRes.data || []);
+        } catch (surveyError) {
+          console.log("No facility survey found for this school");
+          setFacilitySurvey([]);
+        }
+
+        try {
+          const facilitiesRes = await api.get("/schools/facilities");
+          setFacilitiesList(facilitiesRes.data || []);
+        } catch (facilitiesError) {
+          console.log("No facilities found");
+          setFacilitiesList([]);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch school data", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [id, facilityStats?.complianceRate]);
+
+  const handleUpdateSchool = useCallback((update: any) => {
+    setSchool((prev: any) => {
+      if (!prev) return prev;
+      return { ...prev, ...update };
+    });
+    // Refresh background data (calculations, manifests) without disturbing the viewer
+    fetchSchool(true);
+  }, [fetchSchool]);
+
+  useEffect(() => {
+    if (!id) return;
+    if (lastFetchedId.current === id) return;
     fetchSchool();
-  }, [id]);
+    lastFetchedId.current = id;
+  }, [id, fetchSchool]);
 
   if (loading) {
     return (
@@ -2072,11 +2066,12 @@ export default function SchoolDecisionDashboard() {
       >
         <div className="w-full h-full bg-slate-900 border-none">
           {schoolData && (
-            <SchoolMap
-              school={schoolData}
-              buildings={buildings}
-              onClose={() => setIsMapModalOpen(false)}
-            />
+          <SchoolMap
+            school={school}
+            buildings={buildings}
+            onUpdateSchool={handleUpdateSchool}
+            onClose={() => setIsMapModalOpen(false)} 
+          />
           )}
         </div>
       </Modal>

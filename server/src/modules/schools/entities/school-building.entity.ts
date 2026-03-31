@@ -119,10 +119,10 @@ export class SchoolBuilding {
 
   @Column({ type: 'jsonb', nullable: true })
   media: {
-    id: string;
-    url: string;
+    id?: string;
+    path: string;
     type: 'image' | 'video';
-    title?: string;
+    title: string;
     createdAt: string;
   }[];
 

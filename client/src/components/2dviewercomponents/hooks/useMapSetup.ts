@@ -79,6 +79,15 @@ export function useMapSetup({
   const selectedLayerRef = useRef<VectorLayer | null>(null);
   const selectedFeatureRef = useRef<Feature | null>(null);
 
+  // ── Sync Refs for Handlers (prevents map re-init on prop change) ──────────
+  const effectiveBuildingsRef = useRef(effectiveBuildings);
+  const onSelectBuildingRef = useRef(onSelectBuilding);
+  const onAnnotationHoverRef = useRef(onAnnotationHover);
+
+  effectiveBuildingsRef.current = effectiveBuildings;
+  onSelectBuildingRef.current = onSelectBuilding;
+  onAnnotationHoverRef.current = onAnnotationHover;
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
@@ -108,7 +117,7 @@ export function useMapSetup({
     const annotationLayer = new VectorLayer({
       source: annotationSource,
       style: annotationStyle,
-      zIndex: 45,
+      zIndex: 1000,
     });
     annotationLayerRef.current = annotationLayer;
 
@@ -239,20 +248,20 @@ export function useMapSetup({
         clone.setStyle(null);
         hoverSource.addFeature(clone);
         // Show description tooltip for site annotations
-        if (feature.get("isSiteAnnotation") && onAnnotationHover) {
+        if (feature.get("isSiteAnnotation") && onAnnotationHoverRef.current) {
           const ann = feature.get("annotationData");
           if (ann?.description) {
             const pix = map.getEventPixel(evt.originalEvent);
-            onAnnotationHover(ann, pix[0], pix[1]);
+            onAnnotationHoverRef.current(ann, pix[0], pix[1]);
           } else {
-            onAnnotationHover(null, 0, 0);
+            onAnnotationHoverRef.current(null, 0, 0);
           }
-        } else if (onAnnotationHover) {
-          onAnnotationHover(null, 0, 0);
+        } else if (onAnnotationHoverRef.current) {
+          onAnnotationHoverRef.current(null, 0, 0);
         }
       } else {
         map.getTargetElement().style.cursor = "";
-        onAnnotationHover?.(null, 0, 0);
+        onAnnotationHoverRef.current?.(null, 0, 0);
       }
     });
 
@@ -296,13 +305,13 @@ export function useMapSetup({
           selectedFeatureRef.current = feat;
           setSelectedFeatureName(name ?? null);
           setInfoFeature(name ? { name, description } : null);
-          if (name && onSelectBuilding) {
-            const b = effectiveBuildings.find(
+          if (name && onSelectBuildingRef.current) {
+            const b = effectiveBuildingsRef.current.find(
               (bg: any) =>
                 bg.buildingName?.toLowerCase() === name.toLowerCase() ||
                 bg.buildingCode?.toLowerCase() === name.toLowerCase(),
             );
-            if (b) onSelectBuilding(b);
+            if (b) onSelectBuildingRef.current(b);
           }
           found = true;
         },
@@ -329,11 +338,21 @@ export function useMapSetup({
       setMapReady(false);
     };
   }, [
-    onSelectBuilding,
-    effectiveBuildings,
-    fallbackLocation.lat,
-    fallbackLocation.lng,
+    // This effect should only run once on container mount.
+    // We use refs for actual listeners to avoid re-triggering.
+    setCurrentLat,
+    setCurrentLng,
     setActiveBlock,
+    setIsBlockInspectorOpen,
+    setSelectedFeatureName,
+    setInfoFeature,
+    getBasemapUrl,
+    isDrawingRef,
+    blockOverlayRef,
+    measureSourceRef,
+    kmlLayerRef,
+    geojsonLayerRef,
+    placesLayerRef,
   ]);
 
   return {

@@ -14,6 +14,7 @@ interface SchoolMapProps {
   onClose?: () => void;
   onSelectBuilding?: (building: any) => void;
   initialBuildingId?: string;
+  onUpdateSchool?: (update: any) => void;
 }
 
 /**
@@ -28,6 +29,7 @@ export default function SchoolMap({
   onClose,
   onSelectBuilding,
   initialBuildingId,
+  onUpdateSchool,
 }: SchoolMapProps) {
   const [showModal, setShowModal] = useState(true);
   const [viewerMode, setViewerMode] = useState<"2D" | "3D" | null>(null);
@@ -41,6 +43,7 @@ export default function SchoolMap({
     onClose,
     onSelectBuilding,
     initialBuildingId,
+    onUpdateSchool,
   };
 
   return (

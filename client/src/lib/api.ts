@@ -11,6 +11,12 @@ export const api = axios.create({
 
 export const FILE_SERVER_URL = import.meta.env.VITE_FILE_SERVER_URL || "/files";
 
+// Dedicated instance for the file-server to avoid /api/v1 prefix and 404 errors
+export const fileApi = axios.create({
+  withCredentials: true,
+  timeout: 3600000, // 1 hour timeout for massive 5GB+ uploads
+});
+
 api.interceptors.request.use(
   (config) => {
     const token = useAuthStore.getState().token;
