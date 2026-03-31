@@ -206,7 +206,7 @@ export default function Profile() {
                 "w-full flex items-center justify-between p-4 rounded-2xl transition-all duration-300 group",
                 activeTab === tab.id
                   ? "bg-primary text-white"
-                  : "bg-card backdrop-blur-sm text-foreground hover:translate-x-1",
+                  : "bg-card backdrop-blur-sm text-foreground hover:translate-x-1 border border-border/20",
               )}
             >
               <div className="flex items-center gap-3 font-semibold text-sm">

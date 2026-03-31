@@ -20,31 +20,31 @@ interface DecisionIntelligenceProps {
 export const DecisionIntelligenceScore = React.memo(
   ({ assessment }: DecisionIntelligenceProps) => {
     return (
-      <Card className="group relative border-0 bg-gray-950/60 rounded-[32px] overflow-hidden transition-all duration-500 shadow-2xl">
+      <Card className="group relative border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/60 rounded-[32px] overflow-hidden transition-all duration-500">
         {/* Subtle Shadow Glow */}
         <div className="absolute -inset-x-20 -top-20 h-64 bg-primary/5 blur-[100px] rounded-full pointer-events-none opacity-0 transition-opacity duration-700" />
 
-        <CardHeader className="border-b border-blue-500/20 pb-5 relative z-10">
+        <CardHeader className="border-b border-slate-100 dark:border-blue-500/20 pb-5 relative z-10">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-medium flex items-center gap-3 text-white/90">
-              <div className="p-2 rounded-xl bg-white/5 border border-blue-500/30 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]">
+            <CardTitle className="text-lg font-medium flex items-center gap-3 text-slate-800 dark:text-white/90">
+              <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/30">
                 <Activity className="w-5 h-5 text-primary opacity-80" />
               </div>
               Decision intelligence score
             </CardTitle>
             <div className="flex items-center gap-4">
               <div className="flex flex-col items-end">
-                <span className="text-[9px] font-normal text-white/50 tracking-wider">
+                <span className="text-[9px] font-normal text-slate-500 dark:text-white/50 tracking-wider">
                   System status
                 </span>
-                <span className="text-[11px] font-medium text-emerald-400/90 flex items-center gap-1.5 mt-0.5 text-shadow-sm">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/80 animate-pulse" />
+                <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400/90 flex items-center gap-1.5 mt-0.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   Live analysis
                 </span>
               </div>
               <Badge
                 variant="outline"
-                className="rounded-full bg-white/5 text-white/40 border-blue-500/30 text-[10px] font-medium px-4 py-1 tracking-wide"
+                className="rounded-full bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-white/40 border-slate-200 dark:border-blue-500/30 text-[10px] font-medium px-4 py-1 tracking-wide"
               >
                 Strategic cockpit
               </Badge>
@@ -53,9 +53,9 @@ export const DecisionIntelligenceScore = React.memo(
         </CardHeader>
 
         <CardContent className="p-0 relative z-10">
-          <div className="flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-white/5">
+          <div className="flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-slate-100 dark:divide-white/5">
             {/* Main Score Section */}
-            <div className="lg:w-5/12 p-10 flex flex-col items-center justify-center bg-linear-to-b from-white/2 to-transparent">
+            <div className="lg:w-5/12 p-10 flex flex-col items-center justify-center bg-linear-to-b from-slate-50/80 dark:from-white/2 to-transparent">
               <motion.div
                 initial={{ scale: 0.95, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
@@ -70,7 +70,7 @@ export const DecisionIntelligenceScore = React.memo(
                     stroke="currentColor"
                     strokeWidth="2"
                     fill="none"
-                    className="text-white/5"
+                    className="text-slate-100 dark:text-white/5"
                   />
                   <circle
                     cx="96"
@@ -79,7 +79,7 @@ export const DecisionIntelligenceScore = React.memo(
                     stroke="currentColor"
                     strokeWidth="8"
                     fill="none"
-                    className="text-white/5"
+                    className="text-slate-100 dark:text-white/5"
                   />
                   <motion.circle
                     initial={{ pathLength: 0 }}
@@ -106,33 +106,33 @@ export const DecisionIntelligenceScore = React.memo(
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <div className="flex items-baseline">
-                    <span className="text-5xl font-medium text-white tracking-tighter">
+                    <span className="text-5xl font-medium text-slate-900 dark:text-white tracking-tighter">
                       {assessment.overallScore ?? 50}
                     </span>
-                    <span className="text-base font-normal text-white/50 ml-0.5">
+                    <span className="text-base font-normal text-slate-400 dark:text-white/50 ml-0.5">
                       %
                     </span>
                   </div>
-                  <span className="text-[10px] font-normal tracking-wider text-white/50 mt-2">
+                  <span className="text-[10px] font-normal tracking-wider text-slate-500 dark:text-white/50 mt-2">
                     Global strength
                   </span>
                 </div>
               </motion.div>
 
               <div className="mt-8 grid grid-cols-2 gap-4 w-full">
-                <div className="p-4 rounded-3xl bg-white/2 border border-blue-500/20 text-center shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]">
-                  <p className="text-[10px] font-normal text-white/50 mb-2">
+                <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/2 border border-slate-200 dark:border-blue-500/20 text-center">
+                  <p className="text-[10px] font-normal text-slate-500 dark:text-white/50 mb-2">
                     Operational health
                   </p>
                   <Badge
                     variant="outline"
                     className={cn(
-                      "rounded-xl font-medium text-[11px] px-4 py-1 border-blue-500/20 bg-white/2",
+                      "rounded-xl font-medium text-[11px] px-4 py-1 border-slate-200 dark:border-blue-500/20 bg-white dark:bg-white/2",
                       assessment.overallScore >= 70
-                        ? "text-emerald-400/80"
+                        ? "text-emerald-600 dark:text-emerald-400/80"
                         : assessment.overallScore >= 50
-                          ? "text-blue-400/80"
-                          : "text-red-400/80",
+                          ? "text-blue-600 dark:text-blue-400/80"
+                          : "text-red-600 dark:text-red-400/80",
                     )}
                   >
                     {assessment.overallScore >= 70
@@ -142,31 +142,31 @@ export const DecisionIntelligenceScore = React.memo(
                         : "Critical"}
                   </Badge>
                 </div>
-                <div className="p-4 rounded-3xl bg-white/2 border border-blue-500/20 text-center shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]">
-                  <p className="text-[10px] font-normal text-white/50 mb-2">
+                <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/2 border border-slate-200 dark:border-blue-500/20 text-center">
+                  <p className="text-[10px] font-normal text-slate-500 dark:text-white/50 mb-2">
                     Decision urgency
                   </p>
-                  <div className="text-xl font-medium text-white/90">
+                  <div className="text-xl font-medium text-slate-900 dark:text-white/90">
                     {assessment.urgencyMonths ?? "--"}{" "}
-                    <span className="text-[11px] font-normal text-white/20 ml-0.5">
+                    <span className="text-[11px] font-normal text-slate-400 dark:text-white/20 ml-0.5">
                       mo
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-8 w-full px-4 pt-4 border-t border-blue-500/20 flex items-center justify-between">
-                <span className="text-[10px] font-normal text-white/40 tracking-wide">
+              <div className="mt-8 w-full px-4 pt-4 border-t border-slate-100 dark:border-blue-500/20 flex items-center justify-between">
+                <span className="text-[10px] font-normal text-slate-400 dark:text-white/40 tracking-wide">
                   Benchmarking sync
                 </span>
-                <span className="text-[10px] font-medium text-primary/60">
+                <span className="text-[10px] font-medium text-primary">
                   Regional top 15%
                 </span>
               </div>
             </div>
 
             {/* Breakdown Section */}
-            <div className="lg:w-7/12 p-8 space-y-8 bg-gray-900/10">
+            <div className="lg:w-7/12 p-8 space-y-8 bg-slate-50/50 dark:bg-gray-900/10">
               <div className="grid grid-cols-2 gap-4">
                 {[
                   {
@@ -195,23 +195,26 @@ export const DecisionIntelligenceScore = React.memo(
                     icon: ClipboardCheck,
                   },
                 ].map((metric, index) => (
-                  <div
+                  <motion.div
                     key={metric.label}
-                    className="p-5 rounded-3xl bg-white/2 border border-blue-500/20 group/metric hover:bg-white/5 transition-all shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 * index }}
+                    className="p-5 rounded-3xl bg-white dark:bg-white/2 border border-slate-200 dark:border-blue-500/20 group/metric hover:bg-slate-50 dark:hover:bg-white/5 transition-all"
                   >
                     <div className="flex items-center justify-between mb-4">
-                      <div className="w-10 h-10 rounded-2xl bg-white/5 border border-blue-500/30 flex items-center justify-center text-white/30 group-hover/metric:text-primary transition-colors shadow-inner">
+                      <div className="w-10 h-10 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/30 flex items-center justify-center text-slate-400 dark:text-white/30 group-hover/metric:text-primary transition-colors">
                         <metric.icon className="w-5 h-5" />
                       </div>
-                      <span className="text-lg font-medium text-white/80">
+                      <span className="text-lg font-medium text-slate-900 dark:text-white/80">
                         {metric.score}%
                       </span>
                     </div>
                     <div className="space-y-2">
-                      <p className="text-[11px] font-normal text-white/50 group-hover/metric:text-white/70 transition-colors">
+                      <p className="text-[11px] font-normal text-slate-500 dark:text-white/50 group-hover/metric:text-slate-800 dark:group-hover/metric:text-white/70 transition-colors">
                         {metric.label}
                       </p>
-                      <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                      <div className="h-1 w-full bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden">
                         <motion.div
                           initial={{ width: 0 }}
                           animate={{ width: `${metric.score}%` }}
@@ -227,15 +230,15 @@ export const DecisionIntelligenceScore = React.memo(
                         />
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
 
-                <div className="p-5 rounded-3xl bg-primary/5 border border-primary/10 flex flex-col items-center justify-center text-center shadow-[inset_0_1px_2px_rgba(var(--primary),0.1)]">
-                  <Sparkles className="w-6 h-6 text-primary/30 mb-2" />
-                  <p className="text-[10px] font-normal text-primary/40 mb-1">
+                <div className="p-5 rounded-3xl bg-primary/5 border border-primary/10 flex flex-col items-center justify-center text-center">
+                  <Sparkles className="w-6 h-6 text-primary/60 dark:text-primary/30 mb-2" />
+                  <p className="text-[10px] font-normal text-primary/80 dark:text-primary/40 mb-1">
                     Peer ranking
                   </p>
-                  <p className="text-base font-medium text-white/80">
+                  <p className="text-base font-medium text-slate-900 dark:text-white/80">
                     Top quintile
                   </p>
                 </div>
@@ -243,11 +246,11 @@ export const DecisionIntelligenceScore = React.memo(
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between px-2">
-                  <h4 className="text-[11px] font-medium text-white/50 flex items-center gap-2 tracking-wide">
+                  <h4 className="text-[11px] font-medium text-slate-500 dark:text-white/50 flex items-center gap-2 tracking-wide">
                     <div className="w-1.5 h-1.5 rounded-full bg-primary/40" />
                     Decision directives
                   </h4>
-                  <span className="text-[9px] font-normal text-white/20 italic">
+                  <span className="text-[9px] font-normal text-slate-400 dark:text-white/20 italic">
                     Managed by AI precision
                   </span>
                 </div>
@@ -256,18 +259,21 @@ export const DecisionIntelligenceScore = React.memo(
                   {assessment.recommendations
                     ?.slice(0, 2)
                     .map((rec: string, i: number) => (
-                      <div
+                      <motion.div
                         key={i}
-                        className="group/rec p-4 rounded-2xl bg-white/2 border border-blue-500/20 flex gap-4 items-center hover:bg-white/5 transition-all shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.6 + i * 0.1 }}
+                        className="group/rec p-4 rounded-2xl bg-white dark:bg-white/2 border border-slate-200 dark:border-blue-500/20 flex gap-4 items-center hover:bg-slate-50 dark:hover:bg-white/5 transition-all"
                       >
-                        <div className="w-10 h-10 rounded-2xl bg-white/5 border border-blue-500/30 flex items-center justify-center shrink-0 shadow-inner">
-                          <Sparkles className="w-5 h-5 text-white/40 group-hover/rec:text-primary/60 transition-colors" />
+                        <div className="w-10 h-10 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/30 flex items-center justify-center shrink-0">
+                          <Sparkles className="w-5 h-5 text-slate-400 dark:text-white/40 group-hover/rec:text-primary transition-colors" />
                         </div>
                         <div>
-                          <p className="text-[10px] font-medium text-white/40 mb-0.5 tracking-wide">
+                          <p className="text-[10px] font-medium text-slate-500 dark:text-white/40 mb-0.5 tracking-wide">
                             Directive 0{i + 1}
                           </p>
-                          <p className="text-[13px] font-normal text-white/70 leading-relaxed group-hover:text-white/90 transition-colors">
+                          <p className="text-[13px] font-normal text-slate-700 dark:text-white/70 leading-relaxed group-hover:text-slate-900 dark:group-hover:text-white/90 transition-colors">
                             {rec
                               .replace("[URGENT]", "")
                               .replace("[CRITICAL]", "")
@@ -275,7 +281,7 @@ export const DecisionIntelligenceScore = React.memo(
                               .trim()}
                           </p>
                         </div>
-                      </div>
+                      </motion.div>
                     ))}
                 </div>
               </div>

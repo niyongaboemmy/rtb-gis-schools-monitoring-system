@@ -38,7 +38,7 @@ export function DeleteConfirmationModal({
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="relative bg-card rounded-[40px] border border-border/20 shadow-2xl max-w-md w-full z-200 overflow-hidden"
+            className="relative bg-card rounded-[40px] border border-border/20 max-w-md w-full z-200 overflow-hidden"
           >
             <ImigongoPattern className="absolute inset-0 text-rose-500 pointer-events-none opacity-[0.03]" />
             
@@ -61,7 +61,7 @@ export function DeleteConfirmationModal({
                   onClick={onConfirm}
                   disabled={isLoading}
                   className={cn(
-                    "rounded-full h-14 text-[11px] font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 bg-rose-600 hover:bg-rose-700 shadow-rose-500/20 text-white"
+                    "rounded-full h-14 text-[11px] font-black uppercase tracking-widest transition-all active:scale-95 bg-rose-600 hover:bg-rose-700 text-white"
                   )}
                 >
                   {isLoading ? (

@@ -110,7 +110,7 @@ function StatChip({ icon: Icon, label, value, delay = 0 }: {
     <motion.div
       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay }}
-      className="flex flex-col gap-1.5 items-center justify-center p-3 rounded-2xl bg-background border border-border/25 shadow-sm"
+      className="flex flex-col gap-1.5 items-center justify-center p-3 rounded-2xl bg-background border border-border/25"
     >
       <div className="flex items-center gap-1 text-muted-foreground">
         <Icon className="w-3.5 h-3.5" />
@@ -219,7 +219,7 @@ export function BuildingDetailsModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 24 }}
             transition={{ type: "spring", damping: 28, stiffness: 320 }}
-            className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-71 mx-auto w-full max-w-2xl bg-background rounded-3xl border border-border/50 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+            className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-71 mx-auto w-full max-w-2xl bg-background rounded-3xl border border-border/50 overflow-hidden flex flex-col max-h-[92vh]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* ── Hero map (bigger: h-72) ── */}
@@ -258,12 +258,12 @@ export function BuildingDetailsModal({
               <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
                 {onEdit && (
                   <button type="button" onClick={onEdit}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-background/90 backdrop-blur border border-border/50 text-xs font-semibold text-foreground hover:bg-background transition-all shadow-lg">
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-background/90 backdrop-blur border border-border/50 text-xs font-semibold text-foreground hover:bg-background transition-all">
                     <Pencil className="w-3 h-3" />Edit
                   </button>
                 )}
                 <button type="button" onClick={onClose}
-                  className="flex items-center justify-center w-8 h-8 rounded-full bg-background/90 backdrop-blur border border-border/50 text-muted-foreground hover:text-foreground transition-all shadow-lg">
+                  className="flex items-center justify-center w-8 h-8 rounded-full bg-background/90 backdrop-blur border border-border/50 text-muted-foreground hover:text-foreground transition-all">
                   <X className="w-4 h-4" />
                 </button>
               </div>

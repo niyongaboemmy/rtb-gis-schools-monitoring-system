@@ -222,7 +222,7 @@ export function BuildingGeoLocationModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-70 bg-black/60 backdrop-blur-sm"
             onClick={onClose}
           />
 
@@ -233,7 +233,7 @@ export function BuildingGeoLocationModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 16 }}
             transition={{ type: "spring", damping: 28, stiffness: 320 }}
-            className="fixed inset-4 sm:inset-8 z-[71] flex flex-col bg-background rounded-3xl border border-border shadow-2xl overflow-hidden"
+            className="fixed inset-4 sm:inset-8 z-71 flex flex-col bg-background rounded-3xl border border-border overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* ── Header ── */}
@@ -263,7 +263,7 @@ export function BuildingGeoLocationModal({
                         title={label}
                         className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
                           mapView === key
-                            ? "bg-background text-foreground shadow-sm"
+                            ? "bg-background text-foreground"
                             : "text-muted-foreground hover:text-foreground"
                         }`}
                       >
@@ -326,7 +326,7 @@ export function BuildingGeoLocationModal({
                 <button
                   type="button"
                   onClick={() => setPickMode((v) => !v)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold shadow-lg border transition-all ${
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
                     pickMode
                       ? "bg-amber-500 text-white border-amber-400"
                       : "bg-background/95 text-foreground border-border hover:border-primary/40"
@@ -342,7 +342,7 @@ export function BuildingGeoLocationModal({
                   <button
                     type="button"
                     onClick={handleFlyToSchool}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-background/95 text-foreground border border-border shadow-lg hover:border-primary/40 transition-all"
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-background/95 text-foreground border border-border hover:border-primary/40 transition-all"
                     title="Center map on school location"
                   >
                     <Navigation className="w-3.5 h-3.5 text-primary" />
@@ -354,12 +354,12 @@ export function BuildingGeoLocationModal({
               {/* Coordinates pill — top-center */}
               <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10">
                 {pinLat !== null && pinLng !== null ? (
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-background/95 backdrop-blur border border-border shadow-lg text-xs font-mono text-foreground">
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-background/95 backdrop-blur border border-border text-xs font-mono text-foreground">
                     <MapPin className="w-3 h-3 text-primary shrink-0" />
                     {pinLat.toFixed(6)}, {pinLng.toFixed(6)}
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-background/95 backdrop-blur border border-border shadow-lg text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-background/95 backdrop-blur border border-border text-xs text-muted-foreground">
                     <Crosshair className="w-3 h-3 animate-pulse" />
                     Click on the map to place pin
                   </div>
@@ -369,7 +369,7 @@ export function BuildingGeoLocationModal({
               {/* Pick mode overlay hint */}
               {pickMode && pinLat === null && (
                 <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
-                  <div className="flex flex-col items-center gap-2 px-6 py-4 rounded-2xl bg-background/80 backdrop-blur border border-border shadow-xl">
+                  <div className="flex flex-col items-center gap-2 px-6 py-4 rounded-2xl bg-background/80 backdrop-blur border border-border">
                     <Crosshair className="w-8 h-8 text-amber-500 animate-pulse" />
                     <p className="text-sm font-semibold text-foreground">Click anywhere to place the pin</p>
                     {(schoolLat || schoolLng) && (

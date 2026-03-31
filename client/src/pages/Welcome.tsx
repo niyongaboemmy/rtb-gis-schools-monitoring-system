@@ -46,7 +46,6 @@ export default function Welcome() {
       icon: Map,
       path: "/map",
       color: "from-blue-500 to-cyan-400",
-      shadow: "shadow-blue-500/30",
       permission: Permission.VIEW_MAP,
     },
     {
@@ -109,7 +108,7 @@ export default function Welcome() {
   };
 
   return (
-    <div className="relative min-h-[calc(100vh-6rem)] w-full overflow-hidden rounded-[2.5rem] bg-linear-to-br from-background/95 to-background/50 dark:from-black dark:to-black backdrop-blur-3xl shadow-[0_0_60px_-15px_rgba(0,0,0,0.08)] dark:shadow-[0_0_80px_-20px_rgba(59,130,246,0.12)] font-sans">
+    <div className="relative min-h-[calc(100vh-6rem)] w-full overflow-hidden rounded-[2.5rem] bg-linear-to-br from-background/95 to-background/50 dark:from-black dark:to-black backdrop-blur-3xl border border-border/20 font-sans shadow-none">
       {/* Dynamic Background Elements */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
         {/* Full-screen Cultural Motif (Imigongo) with Gradient Fade */}
@@ -138,7 +137,7 @@ export default function Welcome() {
               }}
               src="/logortb.png"
               alt="RTB Holographic Watermark"
-              className="w-[800px] h-[800px] object-contain filter drop-shadow-[0_0_40px_rgba(59,130,246,0.5)]"
+              className="w-[800px] h-[800px] object-contain opacity-50"
             />
           </div>
         </div>
@@ -158,15 +157,15 @@ export default function Welcome() {
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-white/60 dark:bg-slate-900/40 backdrop-blur-xl border border-white/40 dark:border-slate-700/50 shadow-xl flex items-center justify-center p-3 sm:p-4 ring-1 ring-black/5 dark:ring-white/10 shrink-0"
+                className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-white/60 dark:bg-slate-900/40 backdrop-blur-xl border border-white/40 dark:border-slate-700/50 flex items-center justify-center p-3 sm:p-4 ring-1 ring-black/5 dark:ring-white/10 shrink-0"
               >
                 <img
                   src="/logortb.png"
                   alt="RTB Logo"
-                  className="w-full h-full object-contain filter drop-shadow-md"
+                  className="w-full h-full object-contain"
                 />
               </motion.div>
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest border border-primary/20 backdrop-blur-md shadow-sm">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest border border-primary/20 backdrop-blur-md">
                 <Shield className="w-3.5 h-3.5" />
                 Authenticated Session
               </div>
@@ -224,7 +223,7 @@ export default function Welcome() {
               {quickLinks.map((link) => (
                 <motion.div key={link.title} variants={itemVariants}>
                   <Link to={link.path} className="block group h-full">
-                    <div className="h-full p-6 rounded-3xl bg-card/40 backdrop-blur-sm border border-border/40 hover:bg-card/80 transition-all duration-300 hover:shadow-xl hover:shadow-primary/5 hover:-translate-y-1 overflow-hidden relative">
+                    <div className="h-full p-6 rounded-3xl bg-card/40 backdrop-blur-sm border border-border/40 hover:bg-card/80 transition-all duration-300 hover:border-primary/30 hover:-translate-y-1 overflow-hidden relative">
                       {/* Hover Gradient Overlay */}
                       <div
                         className={`absolute top-0 right-0 w-32 h-32 bg-linear-to-bl ${link.color} opacity-0 group-hover:opacity-10 blur-2xl transition-opacity duration-500 rounded-full translate-x-10 -translate-y-10`}
@@ -232,7 +231,7 @@ export default function Welcome() {
 
                       <div className="relative z-10 flex flex-col h-full">
                         <div
-                          className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-linear-to-br ${link.color} flex items-center justify-center text-white mb-4 sm:mb-6 shadow-lg ${link.shadow} shrink-0`}
+                          className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-linear-to-br ${link.color} flex items-center justify-center text-white mb-4 sm:mb-6 border border-white/20 shrink-0`}
                         >
                           <link.icon className="w-5 h-5 sm:w-6 sm:h-6" />
                         </div>

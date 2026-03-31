@@ -26,7 +26,7 @@ const Switch = ({ checked, onCheckedChange, disabled, className }: SwitchProps) 
         animate={{ x: checked ? 20 : 2 }}
         transition={{ type: "spring", stiffness: 500, damping: 30 }}
         className={cn(
-          "pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0"
+          "pointer-events-none block h-5 w-5 rounded-full bg-background border border-border/50 ring-0"
         )}
       />
     </button>

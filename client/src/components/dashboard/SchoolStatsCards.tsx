@@ -122,10 +122,10 @@ export const SchoolStatsCards = React.memo(
             transition={{ delay: index * 0.05 }}
             className="flex w-full"
           >
-            <Card className="group relative w-full border-0 bg-gray-950/30 group-hover:opacity-40 transition-opacity rounded-3xl overflow-hidden duration-500">
+            <Card className="group relative w-full border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/30 hover:bg-slate-50 dark:hover:bg-gray-900/50 transition-all rounded-3xl overflow-hidden duration-500">
               {/* Professional Gradient Border & Background */}
-              <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 rounded-2xl p-px opacity-20 group-hover:opacity-40 transition-opacity">
-                <div className="w-full h-full bg-gray-950 backdrop-blur-3xl rounded-[calc(1rem-1px)]" />
+              <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 rounded-2xl p-px opacity-30 dark:opacity-20 group-hover:opacity-50 transition-opacity">
+                <div className="w-full h-full bg-white dark:bg-gray-950 backdrop-blur-3xl rounded-[calc(1rem-1px)]" />
               </div>
 
               <CardContent className="p-4 relative z-10 flex flex-col gap-4">
@@ -133,9 +133,8 @@ export const SchoolStatsCards = React.memo(
                   <div className="relative shrink-0">
                     <div
                       className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center relative",
+                        "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border border-white/10 dark:border-white/5",
                         item.bg,
-                        "shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]",
                       )}
                     >
                       <item.icon
@@ -148,10 +147,10 @@ export const SchoolStatsCards = React.memo(
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-normal text-white/50 tracking-wide mb-0.5">
+                    <p className="text-[10px] font-normal text-slate-500 dark:text-white/50 tracking-wide mb-0.5">
                       {item.label}
                     </p>
-                    <h4 className="text-xl font-medium text-white/90 tracking-tight leading-none group-hover:translate-x-0.5 transition-transform">
+                    <h4 className="text-xl font-medium text-slate-900 dark:text-white/90 tracking-tight leading-none group-hover:translate-x-0.5 transition-transform duration-300">
                       {item.value}
                     </h4>
                   </div>
@@ -190,25 +189,25 @@ export const SchoolStatsCards = React.memo(
                         strokeLinejoin="round"
                         className={cn(
                           item.color,
-                          "opacity-20 group-hover:opacity-80 transition-opacity duration-700",
+                          "opacity-60 dark:opacity-20 group-hover:opacity-100 dark:group-hover:opacity-80 transition-opacity duration-700",
                         )}
                       />
                     </svg>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between border-t border-blue-500/20 pt-3">
-                  <div className="flex items-center gap-1.5 text-[10px] font-normal text-white/40">
+                <div className="flex items-center justify-between border-t border-slate-100 dark:border-blue-500/20 pt-3">
+                  <div className="flex items-center gap-1.5 text-[10px] font-normal text-slate-500 dark:text-white/40">
                     <TrendingUp
-                      className={cn("w-3 h-3 opacity-40", item.color)}
+                      className={cn("w-3 h-3 opacity-60 dark:opacity-40", item.color)}
                     />
-                    <span className="group-hover:text-white/60 transition-colors truncate max-w-[80px]">
+                    <span className="group-hover:text-slate-900 dark:group-hover:text-white/60 transition-colors truncate max-w-[80px]">
                       {item.subValue}
                     </span>
                   </div>
                   <Badge
                     variant="outline"
-                    className="text-[9px] font-normal border-blue-500/20 bg-white/2 text-white/40 group-hover:text-primary/60 group-hover:border-primary/20 transition-all rounded-full h-5 px-2.5 shrink-0"
+                    className="text-[9px] font-normal border-slate-200 dark:border-blue-500/20 bg-slate-50 dark:bg-white/2 text-slate-500 dark:text-white/40 group-hover:text-primary dark:group-hover:text-primary/60 group-hover:border-primary/20 transition-all rounded-full h-5 px-2.5 shrink-0"
                   >
                     {item.benchmark}
                   </Badge>
@@ -218,7 +217,7 @@ export const SchoolStatsCards = React.memo(
               {item.label === "Land allocation" &&
                 schoolData.usedLandArea !== undefined &&
                 schoolData.unusedLandArea !== undefined && (
-                  <div className="absolute bottom-0 inset-x-0 h-0.5 bg-white/2 overflow-hidden">
+                  <div className="absolute bottom-0 inset-x-0 h-0.5 bg-slate-100 dark:bg-white/2 overflow-hidden">
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{

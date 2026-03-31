@@ -669,7 +669,7 @@ export default function School2DViewer({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
           className={cn(
-            "fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-2xl shadow-2xl backdrop-blur-xl border flex items-center gap-3",
+            "fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-2xl backdrop-blur-xl border flex items-center gap-3",
             toast.type === "success"
               ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
               : "bg-amber-500/10 border-amber-500/20 text-amber-500",
@@ -689,7 +689,7 @@ export default function School2DViewer({
   );
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-[#0f1117] w-full h-full">
+    <div className="fixed inset-0 z-50 overflow-hidden bg-slate-50 dark:bg-[#0f1117] w-full h-full">
       {renderToast()}
 
       {/* ── Back button + school name (top-left, hidden in picker mode) ──── */}
@@ -698,17 +698,17 @@ export default function School2DViewer({
           {onClose && (
             <button
               onClick={onClose}
-              className="flex items-center justify-center w-10 h-10 rounded-full bg-card/10 backdrop-blur-2xl border border-white/5 text-white hover:text-white hover:bg-white/10 transition-all group shadow-2xl"
+              className="flex items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-card border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white hover:bg-slate-50 dark:hover:bg-white/5 transition-all group active:scale-95 shadow-none"
             >
-              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+              <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
             </button>
           )}
-          <div className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-card/20 backdrop-blur-2xl border border-white/10 shadow-2xl max-w-45">
-            <span className="text-[13px] font-bold text-white/60 truncate">
+          <div className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/40 dark:bg-card/20 backdrop-blur-2xl border border-slate-200 dark:border-white/10 max-w-45">
+            <span className="text-[13px] font-bold text-slate-600 dark:text-white/60 truncate">
               {school.name}
             </span>
             {school.code && (
-              <span className="text-[10px] font-mono text-white/25 shrink-0 hidden sm:block">
+              <span className="text-[10px] font-mono text-slate-400 dark:text-white/25 shrink-0 hidden sm:block">
                 {school.code}
               </span>
             )}
@@ -719,7 +719,7 @@ export default function School2DViewer({
       {/* ── Floating pill tabs (top-center, hidden in picker mode) ────────── */}
       {!pickerMode && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
-          <div className="flex items-center gap-0.5 bg-card/50 backdrop-blur-2xl border border-white/5 rounded-full px-1 py-1 shadow-[0_8px_32px_rgba(0,0,0,0.6)]">
+          <div className="flex items-center gap-0.5 bg-white/60 dark:bg-card/50 backdrop-blur-2xl border border-slate-200 dark:border-white/5 rounded-full px-1 py-1">
             {(
               [
                 { id: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -733,8 +733,8 @@ export default function School2DViewer({
                 className={cn(
                   "flex items-center gap-1.5 px-3.5 h-7 rounded-full text-[10px] font-bold tracking-wide transition-all",
                   activeTab === id
-                    ? "bg-primary text-white shadow-lg shadow-primary/20"
-                    : "text-white/80 hover:text-white hover:bg-white/5",
+                    ? "bg-primary text-white"
+                    : "text-slate-600 dark:text-white/80 hover:text-primary dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5",
                 )}
               >
                 <Icon className="w-3 h-3 shrink-0" />
@@ -747,7 +747,7 @@ export default function School2DViewer({
 
       {/* ── Dashboard Overlay ─────────────────────────────────────────────── */}
       {activeTab === "dashboard" && (
-        <div className="absolute inset-0 z-40 bg-gray-950/90 backdrop-blur-sm pointer-events-auto overflow-y-auto custom-scrollbar">
+        <div className="absolute inset-0 z-40 bg-slate-50/95 dark:bg-gray-950/90 backdrop-blur-sm pointer-events-auto overflow-y-auto custom-scrollbar">
           <SchoolDecisionDashboard
             id={school.id}
             standalone={false}
@@ -758,7 +758,7 @@ export default function School2DViewer({
 
       {/* ── Details Panel ─────────────────────────────────────────────────── */}
       {activeTab === "details" && (
-        <div className="absolute inset-0 z-40 bg-gray-950/80 backdrop-blur-sm pointer-events-auto overflow-y-auto custom-scrollbar">
+        <div className="absolute inset-0 z-40 bg-slate-50/95 dark:bg-gray-950/80 backdrop-blur-sm pointer-events-auto overflow-y-auto custom-scrollbar">
           <SchoolDetailsPanel
             school={school}
             onEditProfile={() => setIsEditModalOpen(true)}
@@ -828,7 +828,7 @@ export default function School2DViewer({
                   top: annotationTooltip.y - 10,
                 }}
               >
-                <div className="max-w-[220px] bg-[#0f1117]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] px-3 py-2.5 space-y-1.5">
+                <div className="max-w-[220px] bg-white/90 dark:bg-[#0f1117]/95 backdrop-blur-xl border border-slate-200 dark:border-white/10 rounded-2xl px-3 py-2.5 space-y-1.5">
                   <div className="flex items-center gap-2">
                     <div
                       className={cn(
@@ -839,12 +839,12 @@ export default function School2DViewer({
                     >
                       <IconComp className={cn("w-3 h-3", iconDef.color)} />
                     </div>
-                    <p className="text-[10px] font-black text-white uppercase tracking-wider leading-none truncate">
+                    <p className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-wider leading-none truncate">
                       {ann.title || ann.label}
                     </p>
                   </div>
                   {ann.description && (
-                    <p className="text-[9px] text-white/50 font-medium leading-snug">
+                    <p className="text-[9px] text-slate-500 dark:text-white/50 font-medium leading-snug">
                       {ann.description}
                     </p>
                   )}
@@ -865,7 +865,7 @@ export default function School2DViewer({
 
       {/* ── Picker Mode Banner ───────────────────────────────────────────── */}
       {pickerMode && (
-        <div className="absolute top-0 left-0 right-0 z-40 flex items-center justify-between px-3 md:px-6 py-2 md:py-3 bg-primary/90 backdrop-blur-md border-b border-white/10 shadow-lg transition-all">
+        <div className="absolute top-0 left-0 right-0 z-40 flex items-center justify-between px-3 md:px-6 py-2 md:py-3 bg-primary/90 backdrop-blur-md border-b border-white/10 transition-all">
           <div className="flex items-center gap-2 md:gap-3">
             <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center animate-pulse shrink-0">
               <MapPin className="w-4 h-4 text-white" />
@@ -888,7 +888,7 @@ export default function School2DViewer({
                   if (onPickerSelect) onPickerSelect(pickerSelected);
                   if (onClose) onClose();
                 }}
-                className="px-3 md:px-4 py-1.5 md:py-2 rounded-xl bg-white text-primary font-black text-[9px] md:text-xs uppercase tracking-widest hover:bg-white/90 transition-all shadow-lg shrink-0"
+                className="px-3 md:px-4 py-1.5 md:py-2 rounded-xl bg-white text-primary font-black text-[9px] md:text-xs uppercase tracking-widest hover:bg-white/90 transition-all border border-slate-200 dark:border-transparent shrink-0"
               >
                 ✓ Confirm
               </button>
@@ -1214,11 +1214,11 @@ export default function School2DViewer({
         maxWidth="max-w-md"
       >
         <div className="space-y-6 py-4">
-          <div className="p-6 rounded-[32px] bg-white/5 border border-white/5 space-y-4 text-center">
-            <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-2 border border-white/10 shadow-inner">
+          <div className="p-6 rounded-[32px] bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/5 space-y-4 text-center">
+            <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center mx-auto mb-2 border border-slate-200 dark:border-white/10">
               <MapIcon className="w-8 h-8 text-amber-500/40" />
             </div>
-            <p className="text-xs font-bold text-white/60 leading-relaxed italic">
+            <p className="text-xs font-bold text-slate-600 dark:text-white/60 leading-relaxed italic">
               This institution does not yet have high-resolution drone imagery
               or spatial boundary data synchronized.
             </p>
@@ -1234,7 +1234,7 @@ export default function School2DViewer({
               <Button
                 variant="ghost"
                 onClick={() => setIsMissingMapModalOpen(false)}
-                className="rounded-full font-black uppercase tracking-widest text-[10px] h-11 opacity-40 hover:opacity-100"
+                className="rounded-full font-black uppercase tracking-widest text-[10px] h-11 text-slate-400 dark:text-white opacity-60 hover:opacity-100"
               >
                 Continue with Base Imagery
               </Button>

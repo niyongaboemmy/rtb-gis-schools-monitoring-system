@@ -352,7 +352,7 @@ export function FacilitySurveyForm({
                   onClick={() => setCurrentStep(index + 1)}
                   className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all duration-200 text-left ${
                     currentStep === index + 1
-                      ? "bg-primary text-white shadow-lg shadow-primary/25"
+                      ? "bg-primary text-white"
                       : isComplete
                         ? "bg-green-500/10 text-green-600"
                         : "hover:bg-muted text-muted-foreground"

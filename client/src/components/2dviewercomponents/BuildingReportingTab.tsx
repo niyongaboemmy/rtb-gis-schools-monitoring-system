@@ -61,9 +61,9 @@ export function BuildingReportingTab({ buildingId }: BuildingReportingTabProps) 
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "PENDING": return "bg-amber-500/10 text-amber-500 border-amber-500/20 shadow-amber-500/5";
-      case "SOLVED": return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20 shadow-emerald-500/5";
-      case "NEED_INTERVENTION": return "bg-red-500/10 text-red-500 border-red-500/20 shadow-red-500/5";
+      case "PENDING": return "bg-amber-500/10 text-amber-500 border-amber-500/20";
+      case "SOLVED": return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+      case "NEED_INTERVENTION": return "bg-red-500/10 text-red-500 border-red-500/20";
       case "FAILED": return "bg-slate-500/10 text-slate-400 border-slate-500/20 shadow-slate-500/5";
       default: return "bg-white/5 text-white/40 border-white/10";
     }
@@ -110,13 +110,13 @@ export function BuildingReportingTab({ buildingId }: BuildingReportingTabProps) 
         {reports.map((report) => (
           <div 
             key={report.id} 
-            className="group relative p-4 rounded-3xl bg-white/3 border border-white/5 hover:bg-white/5 hover:border-primary/10 transition-all shadow-inner overflow-hidden"
+            className="group relative p-4 rounded-3xl bg-white/3 border border-white/5 hover:bg-white/5 hover:border-primary/10 transition-all overflow-hidden"
           >
             {/* Status & Date */}
             <div className="flex items-center justify-between mb-3">
               <Badge 
                 className={cn(
-                  "h-6 px-2.5 rounded-xl text-[9px] font-black tracking-widest border shadow-xl flex items-center gap-1.5 transition-transform group-hover:scale-105",
+                  "h-6 px-2.5 rounded-xl text-[9px] font-black tracking-widest border flex items-center gap-1.5 transition-transform group-hover:scale-105",
                   getStatusColor(report.status)
                 )}
               >
@@ -131,7 +131,7 @@ export function BuildingReportingTab({ buildingId }: BuildingReportingTabProps) 
 
             {/* Description Card */}
             <div className="space-y-4">
-              <div className="bg-black/20 p-3.5 rounded-2xl border border-white/5 shadow-inner">
+              <div className="bg-black/20 p-3.5 rounded-2xl border border-white/5">
                 <p className="text-xs text-white/80 leading-relaxed font-medium antialiased italic">
                   "{report.description}"
                 </p>

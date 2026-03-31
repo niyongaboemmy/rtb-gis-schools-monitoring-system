@@ -145,7 +145,7 @@ export function IntelligenceScore({
                     className="p-3 rounded-2xl bg-muted/30 border border-border/5 transition-all group cursor-default"
                   >
                     <div className="flex items-center gap-3 mb-2">
-                      <div className="p-2 rounded-lg bg-background dark:bg-blue-900/20 shadow-sm group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                      <div className="p-2 rounded-lg bg-background dark:bg-blue-900/20 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                         <metric.icon className="w-3.5 h-3.5" />
                       </div>
                       <span className="text-xs font-bold text-muted-foreground dark:text-white group-hover:text-foreground transition-colors uppercase tracking-tight">

@@ -53,7 +53,7 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
         </div>
 
         <div className="space-y-2 mb-8">
-          <h2 className="text-2xl font-bold text-white tracking-tight drop-shadow-sm">
+          <h2 className="text-2xl font-bold text-white tracking-tight">
             Synchronising School Assets
           </h2>
           <div className="flex flex-col items-center gap-1">
@@ -63,7 +63,7 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 p-5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm mb-10 shadow-inner">
+        <div className="grid grid-cols-1 p-5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm mb-10">
           <div className="text-center">
             <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">Session Elapsed</p>
             <p className="text-lg font-mono font-medium text-white/90">
@@ -73,7 +73,7 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
         </div>
 
         {/* Progress Bar Container */}
-        <div className="relative w-full h-1.5 bg-white/10 rounded-full overflow-hidden mb-4 shadow-inner">
+        <div className="relative w-full h-1.5 bg-white/10 rounded-full overflow-hidden mb-4">
           <div 
             className="h-full bg-linear-to-r from-blue-600 via-indigo-500 to-blue-400 transition-all duration-700 ease-out"
             style={{ 

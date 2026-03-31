@@ -60,7 +60,7 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
       maxWidth="max-w-3xl"
       title={
         <div className="flex items-center gap-4">
-          <Badge className={cn("rounded-full font-black text-[10px] px-3 py-1 border tracking-widest uppercase shadow-sm", status.color)}>
+          <Badge className={cn("rounded-full font-black text-[10px] px-3 py-1 border tracking-widest uppercase", status.color)}>
             {status.icon} <span className="ml-2">{status.label}</span>
           </Badge>
           <span className="text-xl font-black uppercase tracking-tighter">Incident Profile</span>
@@ -91,8 +91,8 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
                 className={cn(
                   "h-10 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all active:scale-95 flex items-center justify-center gap-2",
                   report.status === btn.id 
-                    ? "bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/20" 
-                    : cn("bg-background shadow-sm hover:shadow-md", btn.color)
+                    ? "bg-primary text-primary-foreground border-primary" 
+                    : cn("bg-background hover:bg-muted/50 transition-colors", btn.color)
                 )}
               >
                 {isUpdating && <div className="animate-spin rounded-full h-2 w-2 border-b-2 border-current"></div>}
@@ -196,7 +196,7 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {report.attachments && report.attachments.length > 0 ? (
               report.attachments.map((url: string, i: number) => (
-                <FilePreview key={i} url={url} filename={`Evidence #${i + 1}`} className="shadow-sm border-border/5" />
+                <FilePreview key={i} url={url} filename={`Evidence #${i + 1}`} className="border-border/5" />
               ))
             ) : (
               <div className="col-span-full border-2 border-dashed border-border/10 rounded-2xl p-8 flex flex-col items-center justify-center opacity-40 bg-muted/30">

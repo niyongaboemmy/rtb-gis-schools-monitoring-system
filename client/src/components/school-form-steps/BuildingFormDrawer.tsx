@@ -156,9 +156,8 @@ function MiniMapPreview({
         <Marker position={[lat!, lng!]} icon={miniPinIcon} />
       </MapContainer>
 
-      {/* Hover overlay */}
       <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-all">
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-background/95 shadow-lg text-xs font-medium text-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-background/95 border border-border/20 text-xs font-medium text-foreground opacity-0 group-hover:opacity-100 transition-opacity">
           <Pencil className="w-3 h-3" />
           Change location
         </div>
@@ -343,7 +342,7 @@ export function BuildingFormDrawer({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 z-[9998] bg-black/40 backdrop-blur-sm"
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-9998"
               onClick={onClose}
             />
 
@@ -354,12 +353,12 @@ export function BuildingFormDrawer({
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: "-100%", opacity: 0 }}
               transition={{ type: "spring", damping: 30, stiffness: 220 }}
-              className="fixed left-6 top-6 bottom-6 z-[9999] w-full max-w-[380px] bg-background/90 backdrop-blur-3xl border border-white/10 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.5)] flex flex-col rounded-[32px] overflow-hidden pointer-events-auto"
+              className="fixed left-6 top-6 bottom-6 z-9999 w-full max-w-[380px] bg-background/90 backdrop-blur-3xl border border-white/10 flex flex-col rounded-[32px] overflow-hidden pointer-events-auto"
             >
               {/* Header */}
               <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/5 shrink-0">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-2xl bg-primary shadow-lg border border-primary/20 text-white">
+                  <div className="p-2.5 rounded-2xl bg-primary border border-primary/20 text-white">
                     <Building2 className="w-5 h-5" />
                   </div>
                   <div>

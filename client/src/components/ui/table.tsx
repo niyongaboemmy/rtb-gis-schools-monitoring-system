@@ -18,7 +18,8 @@ const Table = React.forwardRef<
       ref={ref}
       className={cn(
         "w-full caption-bottom text-sm border-collapse",
-        striped && "[&_tbody_tr:nth-child(even)]:bg-black/10",
+        striped &&
+          "[&_tbody_tr:nth-child(even)]:bg-slate-100/60 dark:[&_tbody_tr:nth-child(even)]:bg-slate-900/30",
         className,
       )}
       {...props}

@@ -145,7 +145,7 @@ export default function SchoolsList() {
           }
         />
 
-        <Card className="border-none bg-linear-to-br from-card/90 to-card/40 backdrop-blur-xl overflow-hidden rounded-4xl shadow-[0_0_50px_-12px_rgba(0,0,0,0.05)] transition-all duration-500">
+        <Card className="border-none bg-linear-to-br from-card/90 to-card/40 backdrop-blur-xl overflow-hidden rounded-4xl transition-all duration-500">
           <CardContent className="p-0">
             <div className="flex flex-col md:flex-row items-center justify-between p-6 gap-6 bg-card/40">
               <SearchInput

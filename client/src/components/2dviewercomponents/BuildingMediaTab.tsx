@@ -164,7 +164,7 @@ export function BuildingMediaTab({
                 className={cn(
                   "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
                   uploadMode === mode.id
-                    ? "bg-white/10 text-white shadow-xl"
+                    ? "bg-white/10 text-white"
                     : "text-white/40 hover:text-white/40",
                 )}
               >
@@ -270,7 +270,7 @@ export function BuildingMediaTab({
             disabled={
               isSaving || (uploadMode === "local" ? !selectedFile : !newPath)
             }
-            className="w-full py-6 rounded-2xl bg-linear-to-r from-primary to-blue-600 hover:from-blue-600 hover:to-primary text-white font-black text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-primary/10 mt-2 border-none transition-all duration-500 active:scale-[0.98]"
+            className="w-full py-6 rounded-2xl bg-linear-to-r from-primary to-blue-600 hover:from-blue-600 hover:to-primary text-white font-black text-[10px] uppercase tracking-[0.2em] mt-2 border-none transition-all duration-500 active:scale-[0.98]"
           >
             {isSaving ? (
               <div className="flex items-center gap-3">

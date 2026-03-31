@@ -78,7 +78,7 @@ export function KPICard({
           <CardTitle className="text-[10px] font-black uppercase tracking-wider text-muted-foreground/70 group-hover:text-muted-foreground transition-colors">
             {title}
           </CardTitle>
-          <div className={cn("p-2 rounded-xl bg-background/50 border border-border/10 shadow-sm transition-transform group-hover:scale-110", style.icon)}>
+          <div className={cn("p-2 rounded-xl bg-background/50 border border-border/10 transition-transform group-hover:scale-110", style.icon)}>
             <Icon className="h-4 w-4" />
           </div>
         </CardHeader>

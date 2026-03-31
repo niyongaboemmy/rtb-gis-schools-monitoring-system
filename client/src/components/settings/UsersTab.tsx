@@ -405,7 +405,7 @@ export function UsersTab() {
             <div className="absolute top-0 right-0 w-48 h-48 bg-primary/20 rounded-full blur-[80px] -z-10 -translate-y-1/2 translate-x-1/2"></div>
 
             <div className="flex flex-col items-center mb-6">
-              <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-primary to-blue-600 text-white flex items-center justify-center font-black text-2xl uppercase mb-4 rotate-2 shadow-xl shadow-primary/20">
+              <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-primary to-blue-600 text-white flex items-center justify-center font-black text-2xl uppercase mb-4 rotate-2">
                 {previewUser.firstName?.[0]}
                 {previewUser.lastName?.[0]}
               </div>

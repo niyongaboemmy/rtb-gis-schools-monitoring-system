@@ -178,7 +178,7 @@ export default function Dashboard() {
         description="GIS Intelligence & Infrastructure Monitoring Dashboard"
         icon={LayoutGrid}
         actions={
-          <div className="flex items-center gap-2 text-[10px] font-black tracking-widest text-muted-foreground bg-background/50 backdrop-blur-md px-4 py-2 rounded-xl border border-border/20 shadow-sm">
+          <div className="flex items-center gap-2 text-[10px] font-black tracking-widest text-muted-foreground bg-background/50 backdrop-blur-md px-4 py-2 rounded-xl border border-border/20">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             LIVE MONITORING ENABLED
           </div>
@@ -298,7 +298,7 @@ function DirectorySection({
       <div className="flex items-center gap-3">
         <div
           className={cn(
-            "p-2.5 rounded-2xl bg-card border border-border/20 shadow-sm",
+            "p-2.5 rounded-2xl bg-card border border-border/20",
             variant === "success" ? "text-emerald-500" : "text-destructive",
           )}
         >
@@ -314,7 +314,7 @@ function DirectorySection({
         </div>
       </div>
 
-      <div className="flex flex-col border border-border/20 dark:border-blue-700/20 rounded-3xl bg-card/60 backdrop-blur-sm shadow-none overflow-hidden">
+      <div className="flex flex-col border border-border/20 dark:border-blue-700/20 rounded-3xl bg-card/60 backdrop-blur-sm overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent border-b border-border/10 bg-muted/20">

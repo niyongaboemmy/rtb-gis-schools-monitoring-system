@@ -66,7 +66,7 @@ export default function NationalMap() {
     const color = getMarkerColor(priority);
     return L.divIcon({
       className: "custom-pin",
-      html: `<div style="background-color: ${color}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>`,
+      html: `<div style="background-color: ${color}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white;"></div>`,
       iconSize: [20, 20],
       iconAnchor: [10, 10],
     });
@@ -191,22 +191,18 @@ export default function NationalMap() {
                 {
                   label: "Critical Action",
                   color: "bg-red-500",
-                  glow: "shadow-[0_0_12px_rgba(239,68,68,0.4)]",
                 },
                 {
                   label: "High Priority",
                   color: "bg-amber-500",
-                  glow: "shadow-[0_0_12px_rgba(245,158,11,0.4)]",
                 },
                 {
                   label: "Medium Priority",
                   color: "bg-blue-500",
-                  glow: "shadow-[0_0_12px_rgba(59,130,246,0.4)]",
                 },
                 {
                   label: "Optimal / Safe",
                   color: "bg-emerald-500",
-                  glow: "shadow-[0_0_12px_rgba(16,185,129,0.4)]",
                 },
               ].map((item) => (
                 <div
@@ -215,9 +211,8 @@ export default function NationalMap() {
                 >
                   <div
                     className={cn(
-                      "w-2.5 h-2.5 rounded-full transition-shadow duration-500",
-                      item.color,
-                      item.glow,
+                      "w-2.5 h-2.5 rounded-full transition-colors duration-500",
+                      item.color
                     )}
                   />
                   <span className="font-bold text-foreground/80 group-hover:text-foreground transition-colors">

@@ -67,13 +67,13 @@ export default function Login() {
             initial={{ opacity: 0, y: -30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, type: "spring" }}
-            className="w-32 h-32 bg-white/10 backdrop-blur-2xl rounded-[2.5rem] flex items-center justify-center mb-12 shadow-2xl relative group"
+            className="w-32 h-32 bg-white/10 backdrop-blur-2xl rounded-[2.5rem] flex items-center justify-center mb-12 relative group"
           >
             <div className="absolute inset-0 bg-white/5 rounded-[2.5rem] opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
             <img
               src="/logortb.png"
               alt="RTB Logo"
-              className="w-20 h-20 object-contain drop-shadow-2xl brightness-110"
+              className="w-20 h-20 object-contain brightness-110"
             />
           </motion.div>
 
@@ -146,7 +146,7 @@ export default function Login() {
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.3 }}
-                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest mb-2 border border-primary/10 shadow-sm"
+                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest mb-2 border border-primary/10"
               >
                 <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                 SYSTEM ACCESS PORTAL
@@ -232,7 +232,7 @@ export default function Login() {
               whileTap={{ scale: 0.98 }}
               type="submit"
               disabled={isLoading}
-              className="w-full h-14 rounded-2xl bg-primary px-6 text-base font-bold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center justify-center gap-3 shadow-[0_10px_30px_-10px_rgba(var(--primary),0.5)] group"
+              className="w-full h-14 rounded-2xl bg-primary px-6 text-base font-bold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center justify-center gap-3 group"
             >
               {isLoading ? (
                 <>

@@ -107,7 +107,7 @@ export function AnnotationPickerModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 16 }}
             transition={{ type: "spring", damping: 26, stiffness: 340 }}
-            className="relative w-[380px] bg-[#0f1117]/95 backdrop-blur-3xl border border-white/10 rounded-3xl shadow-[0_32px_80px_rgba(0,0,0,0.6)] overflow-hidden"
+            className="relative w-[380px] bg-[#0f1117]/95 backdrop-blur-3xl border border-white/10 rounded-3xl overflow-hidden"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
@@ -222,7 +222,7 @@ export function AnnotationPickerModal({
               </Button>
               <Button
                 onClick={handleConfirm}
-                className="flex-1 h-10 rounded-xl text-[10px] font-black uppercase tracking-widest text-white border-none shadow-lg transition-all gap-2"
+                className="flex-1 h-10 rounded-xl text-[10px] font-black uppercase tracking-widest text-white border-none transition-all gap-2"
                 style={{ backgroundColor: `${selectedIcon.mapColor}dd` }}
               >
                 <Check className="w-3.5 h-3.5" />

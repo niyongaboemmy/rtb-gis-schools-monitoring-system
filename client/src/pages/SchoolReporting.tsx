@@ -634,7 +634,7 @@ export default function SchoolReporting({
           initial={{ scale: 0.9, opacity: 0, y: 20 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.9, opacity: 0, y: 20 }}
-          className="relative bg-card p-10 rounded-2xl border border-border/10 shadow-[0_32px_128px_-16px_rgba(0,0,0,0.3)] max-w-md w-full text-center overflow-hidden"
+          className="relative bg-card p-10 rounded-2xl border border-border/10 max-w-md w-full text-center overflow-hidden"
         >
           <ImigongoPattern className="absolute inset-0 text-primary pointer-events-none opacity-[0.03]" />
 
@@ -672,10 +672,10 @@ export default function SchoolReporting({
                   if (isSuccess) resetForm();
                 }}
                 className={cn(
-                  "rounded-full h-14 text-[11px] font-black uppercase tracking-widest shadow-xl transition-all active:scale-95",
+                  "rounded-full h-14 text-[11px] font-black uppercase tracking-widest transition-all active:scale-95",
                   isSuccess
-                    ? "bg-primary shadow-primary/20"
-                    : "bg-rose-500 hover:bg-rose-600 shadow-rose-500/20",
+                    ? "bg-primary"
+                    : "bg-rose-500 hover:bg-rose-600",
                 )}
               >
                 {isSuccess ? "Submit Another" : "Retry Submission"}
@@ -726,7 +726,7 @@ export default function SchoolReporting({
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
         <div className="lg:col-span-4 order-2 lg:order-1 space-y-4">
-          <Card className="p-8 rounded-2xl border border-border/10 bg-card relative overflow-hidden shadow-2xl">
+          <Card className="p-8 rounded-2xl border border-border/10 bg-card relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1.5 bg-linear-to-r from-primary/50 to-transparent"></div>
             <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-8 flex items-center gap-3">
               <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
@@ -849,10 +849,10 @@ export default function SchoolReporting({
           <div className="pt-4">
             <Button
               className={cn(
-                "w-max rounded-full py-3 text-[12px] font-black uppercase tracking-[0.3em] shadow-2xl transition-all",
+                "w-max rounded-full py-3 text-[12px] font-black uppercase tracking-[0.3em] transition-all",
                 isSubmitting
                   ? "bg-muted"
-                  : "bg-primary hover:scale-[1.01] active:scale-[0.98] shadow-primary/30",
+                  : "bg-primary hover:scale-[1.01] active:scale-[0.98]",
               )}
               onClick={handleSubmit}
               disabled={isSubmitting || issues.length === 0}
@@ -884,7 +884,7 @@ export default function SchoolReporting({
       animate={{ opacity: 1, scale: 1 }}
       className="max-w-xl mx-auto py-20 text-center space-y-8"
     >
-      <div className="w-24 h-24 bg-green-500/10 rounded-2xl flex items-center justify-center mx-auto border border-green-500/20 shadow-2xl shadow-green-500/20 relative">
+      <div className="w-24 h-24 bg-green-500/10 rounded-2xl flex items-center justify-center mx-auto border border-green-500/20 relative">
         <div className="absolute inset-0 bg-green-500/20 rounded-2xl animate-ping opacity-20" />
         <CheckCircle2 className="w-12 h-12 text-green-500" />
       </div>
@@ -899,7 +899,7 @@ export default function SchoolReporting({
           </span>
         </p>
       </div>
-      <Card className="bg-card p-8 rounded-2xl border border-border/10 shadow-2xl overflow-hidden relative group text-left">
+      <Card className="bg-card p-8 rounded-2xl border border-border/10 overflow-hidden relative group text-left">
         <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
           <ImigongoPattern className="w-32 h-32" />
         </div>
@@ -907,7 +907,7 @@ export default function SchoolReporting({
           Current Status
         </p>
         <div className="flex items-center gap-4 mb-6">
-          <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse shadow-blue-500/50" />
+          <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
           <p className="text-sm font-black uppercase tracking-tight">
             Pending Review
           </p>
@@ -919,7 +919,7 @@ export default function SchoolReporting({
       </Card>
       <div className="flex gap-4 pt-4">
         <Button
-          className="flex-1 rounded-full h-14 font-black uppercase text-[10px] tracking-widest bg-primary shadow-xl shadow-primary/20"
+          className="flex-1 rounded-full h-14 font-black uppercase text-[10px] tracking-widest bg-primary"
           onClick={resetForm}
         >
           New Report
@@ -974,9 +974,9 @@ export default function SchoolReporting({
                     scale: isActive ? 1.15 : 1,
                   }}
                   className={cn(
-                    "w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center text-[10px] md:text-xs font-black transition-all relative z-10 shadow-sm",
+                    "w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center text-[10px] md:text-xs font-black transition-all relative z-10",
                     isActive
-                      ? "bg-primary text-primary-foreground shadow-primary/20"
+                      ? "bg-primary text-primary-foreground"
                       : isCompleted
                         ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 border border-emerald-500/50"
                         : "bg-muted dark:bg-muted/50 text-muted-foreground",
@@ -1025,7 +1025,7 @@ export default function SchoolReporting({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
           className={cn(
-            "fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-2xl shadow-2xl backdrop-blur-xl border flex items-center gap-3",
+            "fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-2xl backdrop-blur-xl border flex items-center gap-3",
             toast.type === "success"
               ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
               : "bg-amber-500/10 border-amber-500/20 text-amber-500",
@@ -1431,12 +1431,12 @@ export default function SchoolReporting({
                             className={cn(
                               "group cursor-pointer p-5 rounded-2xl border-2 transition-all active:scale-95 flex items-center justify-between",
                               selectedBuilding?.id === b.id
-                                ? "bg-primary/5 border-primary shadow-primary/10"
+                                ? "bg-primary/5 border-primary"
                                 : "bg-card border-border/20 hover:border-primary/20 hover:bg-primary/5",
                             )}
                           >
                             <div className="flex items-center gap-4">
-                              <div className="w-14 h-14 bg-muted/50 text-gray-400 dark:text-gray-500 rounded-2xl flex items-center justify-center shrink-0 group-hover:bg-primary group-hover:text-white transition-all shadow-inner">
+                              <div className="w-14 h-14 bg-muted/50 text-gray-400 dark:text-gray-500 rounded-2xl flex items-center justify-center shrink-0 group-hover:bg-primary group-hover:text-white transition-all">
                                 <Building2 className="w-7 h-7" />
                               </div>
                               <div className="text-left">
@@ -1667,7 +1667,7 @@ export default function SchoolReporting({
                                         className={cn(
                                           "px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border-2",
                                           currentIssue.category.includes(cat)
-                                            ? "bg-primary border-primary text-white shadow-primary/20 scale-[1.05]"
+                                            ? "bg-primary border-primary text-white scale-[1.05]"
                                             : "bg-background border-border/50 text-muted-foreground hover:border-primary/40 hover:bg-primary/5",
                                         )}
                                       >
@@ -1750,7 +1750,7 @@ export default function SchoolReporting({
                             Add To List
                           </Button>
                           <Button
-                            className="flex-1 rounded-full h-12 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-primary/20 bg-primary group"
+                            className="flex-1 rounded-full h-12 text-[10px] font-black uppercase tracking-widest bg-primary group"
                             onClick={() => {
                               const errors: {
                                 description?: string;
@@ -2263,7 +2263,7 @@ export default function SchoolReporting({
               initial={{ scale: 0.9, opacity: 0, rotate: -2 }}
               animate={{ scale: 1, opacity: 1, rotate: 0 }}
               exit={{ scale: 0.9, opacity: 0, rotate: 2 }}
-              className="relative bg-card p-4 rounded-2xl border border-border/20 shadow-2xl max-w-4xl w-full z-10"
+              className="relative bg-card p-4 rounded-2xl border border-border/20 max-w-4xl w-full z-10"
             >
               <ImigongoPattern
                 className="absolute inset-0 text-primary pointer-events-none"

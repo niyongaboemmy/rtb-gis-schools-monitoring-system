@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
+import { motion } from "framer-motion";
 import { useAuthStore } from "../store/authStore";
 import {
   Building2,
@@ -175,7 +176,7 @@ export default function SchoolDecisionDashboard({
     return (
       <div className="p-8 flex flex-col items-center justify-center min-h-[400px] space-y-4">
         <div className="animate-spin rounded-full h-12 w-12 border-b border-primary/30"></div>
-        <p className="text-[11px] font-medium tracking-wide animate-pulse text-white/20">
+        <p className="text-[11px] font-medium tracking-wide animate-pulse text-slate-400 dark:text-white/20">
           Synchronizing analytics...
         </p>
       </div>
@@ -189,10 +190,10 @@ export default function SchoolDecisionDashboard({
           <AlertTriangle className="w-12 h-12 text-red-500/40" />
         </div>
         <div>
-          <h2 className="text-2xl font-medium tracking-tight text-white/90">
+          <h2 className="text-2xl font-medium tracking-tight text-slate-800 dark:text-white/90">
             Institution not found
           </h2>
-          <p className="text-sm font-normal text-white/30 mt-2">
+          <p className="text-sm font-normal text-slate-500 dark:text-white/30 mt-2">
             The requested school registry could not be located
           </p>
         </div>
@@ -221,45 +222,50 @@ export default function SchoolDecisionDashboard({
   }
 
   return (
-    <div className="container mx-auto space-y-8 pb-12 px-6 pt-16 bg-transparent">
+    <motion.div 
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+      className="container mx-auto space-y-8 pb-12 px-2 md:px-6 pt-8 md:pt-16 bg-transparent"
+    >
       {/* Modern Dashboard Header */}
       <div className="relative group mb-12">
-        <div className="absolute -inset-x-20 -top-20 h-64 bg-primary/2 blur-[120px] rounded-full pointer-events-none" />
+        <div className="absolute -inset-x-20 -top-20 h-64 bg-primary/5 dark:bg-primary/2 blur-[120px] rounded-full pointer-events-none" />
 
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 relative z-10 border-b border-blue-500/20 pb-10">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 relative z-10 border-b border-slate-200 dark:border-blue-500/20 pb-10">
           <div>
-            <h2 className="text-4xl font-medium text-white/90 tracking-tight">
+            <h2 className="text-3xl md:text-4xl font-medium text-slate-800 dark:text-white/90 tracking-tight">
               Strategic <span className="text-primary/80">intelligence</span>{" "}
               Dashboard
             </h2>
             <div className="flex items-center gap-4 mt-4">
-              <p className="text-[11px] font-normal text-white/30 tracking-wide">
+              <p className="text-[11px] font-normal text-slate-500 dark:text-white/30 tracking-wide">
                 Instance: {schoolData.name || "Unidentified asset"}
               </p>
-              <div className="h-1 w-1 rounded-full bg-white/10" />
-              <p className="text-[11px] font-medium text-primary/40 tracking-wide">
+              <div className="h-1 w-1 rounded-full bg-slate-200 dark:bg-white/10" />
+              <p className="text-[11px] font-medium text-primary/60 dark:text-primary/40 tracking-wide">
                 Registry ID: {id?.slice(0, 8).toUpperCase()}
               </p>
             </div>
           </div>
 
           <div className="flex flex-col items-start md:items-end gap-3">
-            <div className="relative rounded-2xl overflow-hidden group shadow-xl">
+            <div className="relative rounded-2xl overflow-hidden group">
               {/* Professional Gradient Border & Background */}
-              <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
-                <div className="w-full h-full bg-gray-900/80 backdrop-blur-3xl rounded-[calc(1rem-1px)]" />
+              <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-30 dark:opacity-20 group-hover:opacity-40 transition-opacity">
+                <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(1rem-1px)]" />
               </div>
 
               <div className="relative z-10 flex items-center gap-8 px-6 py-4">
                 <div className="text-center">
-                  <p className="text-[10px] font-normal text-white/40 mb-1">
+                  <p className="text-[10px] font-normal text-slate-500 dark:text-white/40 mb-1">
                     Benchmark
                   </p>
-                  <p className="text-base font-medium text-white/80">+12.4%</p>
+                  <p className="text-base font-medium text-slate-900 dark:text-white/80">+12.4%</p>
                 </div>
-                <div className="w-px h-8 bg-white/5" />
+                <div className="w-px h-8 bg-slate-200 dark:bg-white/5" />
                 <div className="text-center">
-                  <p className="text-[10px] font-normal text-white/40 mb-1">
+                  <p className="text-[10px] font-normal text-slate-500 dark:text-white/40 mb-1">
                     Reliability
                   </p>
                   <div className="flex items-center gap-2">
@@ -270,16 +276,16 @@ export default function SchoolDecisionDashboard({
                           className="w-1 h-3 bg-primary/40 rounded-full"
                         />
                       ))}
-                      <div className="w-1 h-3 bg-white/5 rounded-full" />
+                      <div className="w-1 h-3 bg-slate-100 dark:bg-white/5 rounded-full" />
                     </div>
-                    <span className="text-base font-medium text-white/80">
+                    <span className="text-base font-medium text-slate-900 dark:text-white/80">
                       88%
                     </span>
                   </div>
                 </div>
               </div>
             </div>
-            <div className="text-[10px] font-normal text-white/10 pr-2">
+            <div className="text-[10px] font-normal text-slate-400 dark:text-white/10 pr-2">
               Sync latency: 42ms · t-ref:{" "}
               {new Date().toISOString().split("T")[1].slice(0, 8)}
             </div>
@@ -307,39 +313,42 @@ export default function SchoolDecisionDashboard({
             formatNumber={formatNumber}
           />
 
-          <div className="relative rounded-[32px] overflow-hidden group shadow-2xl">
+          <div className="relative rounded-[32px] overflow-hidden group">
             {/* Professional Gradient Border & Background */}
             <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
-              <div className="w-full h-full bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
+              <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
             </div>
 
             <div className="relative z-10 p-8">
-              <h3 className="text-sm font-medium text-primary/60 mb-6 flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-white/5 border border-blue-500/20 shadow-inner">
+              <h3 className="text-sm font-medium text-primary/70 dark:text-primary/60 mb-6 flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/20">
                   <ClipboardCheck className="w-4 h-4 opacity-60" />
                 </div>
                 Strategic recommendations
               </h3>
               <div className="space-y-4">
                 {assessment.recommendations?.map((rec: string, i: number) => (
-                  <div
+                  <motion.div
                     key={i}
-                    className="relative group/rec p-px rounded-2xl overflow-hidden shadow-inner transition-all duration-300"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.4 + i * 0.1 }}
+                    className="relative group/rec p-px rounded-2xl overflow-hidden transition-all duration-300"
                   >
                     <div className="absolute inset-0 bg-linear-to-br from-blue-500/40 to-blue-500/0 opacity-10 group-hover/rec:opacity-30 transition-opacity" />
-                    <div className="absolute inset-px bg-white/2 backdrop-blur-2xl rounded-[calc(1rem-1px)] group-hover/rec:bg-white/5 transition-colors" />
+                    <div className="absolute inset-px bg-white/80 dark:bg-white/2 backdrop-blur-2xl rounded-[calc(1rem-1px)] transition-colors" />
 
                     <div className="relative p-5 z-10 flex gap-4">
                       <div className="w-1.5 h-1.5 rounded-full bg-primary/30 mt-1.5 shrink-0 group-hover/rec:bg-primary/50" />
-                      <p className="text-xs font-normal leading-relaxed text-white/50 group-hover/rec:text-white/80 transition-colors italic">
+                      <p className="text-xs font-normal leading-relaxed text-slate-500 dark:text-white/50 group-hover/rec:text-slate-900 dark:group-hover/rec:text-white/80 transition-colors italic">
                         {rec}
                       </p>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
                 {(!assessment.recommendations ||
                   assessment.recommendations.length === 0) && (
-                  <p className="text-xs text-white/20 italic text-center py-6">
+                  <p className="text-xs text-slate-400 dark:text-white/20 italic text-center py-6">
                     No critical interventions recommended at this time.
                   </p>
                 )}
@@ -373,7 +382,7 @@ export default function SchoolDecisionDashboard({
           <div className="w-16 h-16 rounded-full bg-white/2 flex items-center justify-center mx-auto border border-blue-500/20">
             <GraduationCap className="w-8 h-8 text-white/20" />
           </div>
-          <p className="text-xs font-normal text-white/40 italic leading-relaxed">
+          <p className="text-xs font-normal text-slate-500 dark:text-white/40 italic leading-relaxed">
             Detailed asset lifecycle analytics for this block are synchronised
             with the 2D digital twin environment.
           </p>
@@ -385,6 +394,6 @@ export default function SchoolDecisionDashboard({
           </Button>
         </div>
       </Modal>
-    </div>
+    </motion.div>
   );
 }

@@ -71,7 +71,7 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
   return (
     <Card
       className={cn(
-        "fixed z-30 flex flex-col bg-card/95 backdrop-blur-2xl border border-white/10 shadow-2xl overflow-hidden transition-all duration-500",
+        "fixed z-30 flex flex-col bg-white/95 dark:bg-card/95 backdrop-blur-2xl border border-slate-200 dark:border-white/10 overflow-hidden transition-all duration-500",
         "inset-x-0 bottom-0 h-[60vh] rounded-t-[32px] md:rounded-3xl", // Mobile
         "md:inset-auto md:right-22 md:top-4 md:w-80 md:h-auto md:max-h-[calc(100vh-2rem)]", // Desktop
         "animate-in fade-in slide-in-from-bottom md:slide-in-from-right-8",
@@ -79,17 +79,17 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
     >
       {/* Mobile Drag Handle */}
       <div className="flex md:hidden justify-center pt-3 pb-1 shrink-0">
-        <div className="w-12 h-1.5 rounded-full bg-white/20" />
+        <div className="w-12 h-1.5 rounded-full bg-slate-200 dark:bg-white/20" />
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border/20 shrink-0">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-border/20 shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
             <Building2 className="w-4 h-4 text-primary" />
           </div>
           <div>
-            <h2 className="text-[15px] font-black tracking-tight flex items-center gap-2">
+            <h2 className="text-[15px] font-black tracking-tight flex items-center gap-2 text-slate-900 dark:text-white">
               Buildings
               <span className="bg-primary/20 text-primary px-1.5 py-0.5 rounded-full text-[10px]">
                 {buildings.length}
@@ -106,7 +106,7 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
                     variant="default"
                     size="sm"
                     onClick={onAdd}
-                    className="h-8 rounded-xl bg-primary text-white shadow-lg shadow-primary/20 hover:opacity-90 px-2.5 flex items-center gap-1.5"
+                    className="h-8 rounded-xl bg-primary text-white hover:opacity-90 px-2.5 flex items-center gap-1.5"
                   >
                     <Plus className="w-3.5 h-3.5" />
                   </Button>
@@ -129,13 +129,13 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
       </div>
 
       {/* Search Input */}
-      <div className="px-4 py-3 border-b border-border/10">
+      <div className="px-4 py-3 border-b border-slate-100 dark:border-border/10">
         <SearchInput
           placeholder="Search by name or code..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           onClear={() => setSearchTerm("")}
-          className="h-9 text-xs"
+          className="h-9 text-xs bg-slate-50 dark:bg-transparent border-slate-200 dark:border-white/10"
           containerClassName="w-full"
         />
       </div>
@@ -159,23 +159,23 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
           </div>
         ) : (
           filteredBuildings.map((b) => (
-            <div
-              key={b.id}
-              data-id={b.id}
-              onClick={() => onSelect(b)}
-              className={cn(
-                "group relative flex flex-col gap-1.5 px-4 py-3 transition-all rounded-2xl cursor-pointer border",
-                selectedId === b.id
-                  ? "bg-primary/20 border-primary/40 shadow-sm shadow-primary/10"
-                  : "bg-white/5 hover:bg-white/10 border-transparent hover:border-white/10",
-              )}
-            >
+              <div
+                key={b.id}
+                data-id={b.id}
+                onClick={() => onSelect(b)}
+                className={cn(
+                  "group relative flex flex-col gap-1.5 px-4 py-3 transition-all rounded-2xl cursor-pointer border",
+                  selectedId === b.id
+                    ? "bg-primary/20 border-primary/40"
+                    : "bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 border-slate-100 dark:border-transparent hover:border-slate-200 dark:hover:border-white/10",
+                )}
+              >
               <div className="flex justify-between items-start w-full">
                 <div className="flex items-center gap-2">
                   <span
                     className={cn(
                       "font-bold text-[12px] truncate max-w-[140px]",
-                      selectedId === b.id ? "text-primary" : "text-white/90",
+                      selectedId === b.id ? "text-primary" : "text-slate-900 dark:text-white/90",
                     )}
                   >
                     {b.buildingName || "Unnamed Block"}
@@ -190,7 +190,7 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
                 {/* Delete Button / Confirm Dialog */}
                 {showConfirm === b.id ? (
                   <div
-                    className="flex flex-col items-end gap-1 absolute right-3 top-2 bg-[#0f1117] border border-white/10 p-2 rounded-xl shadow-2xl z-10"
+                    className="flex flex-col items-end gap-1 absolute right-3 top-2 bg-white dark:bg-[#0f1117] border border-slate-200 dark:border-white/10 p-2 rounded-xl z-10"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="flex items-center gap-1.5 text-destructive text-[10px] font-bold uppercase mb-1">
@@ -231,9 +231,9 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
                 )}
               </div>
 
-              <div className="flex items-center gap-3 text-[10px] text-muted-foreground/80 font-medium">
+              <div className="flex items-center gap-3 text-[10px] text-slate-500 dark:text-muted-foreground/80 font-medium">
                 {b.buildingCode && (
-                  <span className="bg-foreground/5 px-1 rounded font-mono">
+                  <span className="bg-slate-100 dark:bg-foreground/5 px-1 rounded font-mono">
                     {b.buildingCode}
                   </span>
                 )}

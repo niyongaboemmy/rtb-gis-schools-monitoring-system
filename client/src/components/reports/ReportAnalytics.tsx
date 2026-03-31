@@ -525,7 +525,7 @@ export function ReportAnalytics({
                               </div>
                               <div
                                 className={cn(
-                                  "w-3 h-3 rounded-full shrink-0 shadow-lg",
+                                  "w-3 h-3 rounded-full shrink-0",
                                 )}
                                 style={{
                                   backgroundColor: (COLORS as any)[report.status],

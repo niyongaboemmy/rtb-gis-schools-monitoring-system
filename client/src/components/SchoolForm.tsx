@@ -591,7 +591,7 @@ export function SchoolForm({
                 key={step.id}
                 type="button"
                 onClick={() => setCurrentStep(step.id)}
-                className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all duration-200 text-left ${currentStep === step.id ? "bg-primary text-white shadow-lg shadow-primary/25" : currentStep > step.id ? "bg-green-500/10 text-green-600" : "hover:bg-muted text-muted-foreground"}`}
+                className={`w-full flex items-center gap-4 p-4 rounded-xl transition-all duration-200 text-left ${currentStep === step.id ? "bg-primary text-white" : currentStep > step.id ? "bg-green-500/10 text-green-600" : "hover:bg-muted text-muted-foreground"}`}
               >
                 <div
                   className={`w-10 h-10 rounded-lg flex items-center justify-center ${currentStep === step.id ? "bg-white/20" : currentStep > step.id ? "bg-green-500" : "bg-muted"}`}
@@ -669,7 +669,7 @@ export function SchoolForm({
                   type="button"
                   size="lg"
                   onClick={nextStep}
-                  className="rounded-full font-semibold px-10 h-12 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25"
+                  className="rounded-full font-semibold px-10 h-12 bg-primary hover:bg-primary/90"
                 >
                   Continue
                   <ChevronRight className="w-5 h-5 ml-2" />
@@ -679,7 +679,7 @@ export function SchoolForm({
                   type="submit"
                   disabled={submitLoading}
                   size="lg"
-                  className="rounded-full font-semibold px-10 h-12 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25"
+                  className="rounded-full font-semibold px-10 h-12 bg-primary hover:bg-primary/90"
                 >
                   {submitLoading ? (
                     <span className="flex items-center gap-2">

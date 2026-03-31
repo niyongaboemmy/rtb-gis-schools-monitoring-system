@@ -63,7 +63,7 @@ export default function ViewerModeModal({
               "text-left rounded-3xl border-2 p-6 flex flex-col gap-4 transition-all duration-200 cursor-pointer",
               "hover:border-primary/50 hover:bg-primary/5",
               hovered === mode
-                ? "border-primary/40 bg-primary/5 shadow-lg shadow-primary/5"
+                ? "border-primary/40 bg-primary/5"
                 : "border-border/20 bg-card/30",
             )}
           >

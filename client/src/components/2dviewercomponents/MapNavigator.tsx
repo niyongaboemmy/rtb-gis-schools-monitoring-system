@@ -34,7 +34,7 @@ export const MapNavigator: React.FC<MapNavigatorProps> = ({
       "md:inset-auto md:right-16 md:top-4 md:w-64", // Desktop floating
       "animate-in slide-in-from-bottom md:slide-in-from-right-4"
     )}>
-      <Card className="bg-background/80 backdrop-blur-2xl rounded-t-[32px] md:rounded-2xl border border-border/10 shadow-2xl overflow-hidden h-full">
+      <Card className="bg-background/80 backdrop-blur-2xl rounded-t-[32px] md:rounded-2xl border border-border/10 overflow-hidden h-full">
         <div className="p-3 border-b border-border/10 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Search className="h-4 w-4 text-muted-foreground" />

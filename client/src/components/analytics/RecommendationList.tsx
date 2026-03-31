@@ -49,8 +49,8 @@ export function RecommendationList({
     switch (type) {
       case "urgent":
         return {
-          bg: "bg-red-500/5 border-red-500/20 shadow-red-500/5",
-          iconBg: "bg-red-500 text-white shadow-lg shadow-red-500/30",
+          bg: "bg-red-500/5 border-red-500/20",
+          iconBg: "bg-red-500 text-white",
           icon: AlertTriangle,
           label: "Urgent Refactor",
           labelColor: "text-red-500",
@@ -58,8 +58,8 @@ export function RecommendationList({
         };
       case "critical":
         return {
-          bg: "bg-amber-500/5 border-amber-500/20 shadow-amber-500/5",
-          iconBg: "bg-amber-500 text-white shadow-lg shadow-amber-500/30",
+          bg: "bg-amber-500/5 border-amber-500/20",
+          iconBg: "bg-amber-500 text-white",
           icon: Wrench,
           label: "Critical Need",
           labelColor: "text-amber-600",
@@ -67,8 +67,8 @@ export function RecommendationList({
         };
       case "strategic":
         return {
-          bg: "bg-emerald-500/5 border-emerald-500/20 shadow-emerald-500/5",
-          iconBg: "bg-emerald-500 text-white shadow-lg shadow-emerald-500/30",
+          bg: "bg-emerald-500/5 border-emerald-500/20",
+          iconBg: "bg-emerald-500 text-white",
           icon: Sparkles,
           label: "Strategic Goal",
           labelColor: "text-emerald-600",
@@ -76,8 +76,8 @@ export function RecommendationList({
         };
       default:
         return {
-          bg: "bg-primary/5 border-primary/20 shadow-primary/5",
-          iconBg: "bg-primary text-white shadow-lg shadow-primary/30",
+          bg: "bg-primary/5 border-primary/20",
+          iconBg: "bg-primary text-white",
           icon: CheckCircle2,
           label: "System Note",
           labelColor: "text-primary",

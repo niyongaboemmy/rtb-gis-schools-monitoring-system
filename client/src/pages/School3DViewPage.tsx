@@ -71,7 +71,7 @@ export default function School3DViewPage() {
 
       {/* School Info Badge */}
       <div className="fixed top-6 right-6 z-50">
-        <div className="bg-black/70 backdrop-blur-xl rounded-2xl px-6 py-3 border border-white/20 shadow-lg">
+        <div className="bg-black/70 backdrop-blur-xl rounded-2xl px-6 py-3 border border-white/20">
           <p className="text-white font-bold text-lg">{school?.name}</p>
           <p className="text-blue-300 text-sm font-medium">{school?.code}</p>
         </div>

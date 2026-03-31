@@ -148,8 +148,8 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
       <div className="fixed inset-x-4 bottom-4 md:inset-auto md:right-4 md:top-4 md:bottom-4 z-30 flex flex-col items-end gap-3 pointer-events-none">
         <Card
           className={cn(
-            "bg-card/95 backdrop-blur-2xl rounded-[26px] md:rounded-[32px] border border-white/10 p-1.5 md:p-2",
-            "flex flex-row md:flex-col gap-1.5 md:gap-2 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.6)]",
+            "bg-white/90 dark:bg-card/95 backdrop-blur-2xl rounded-[26px] md:rounded-[32px] border border-slate-200 dark:border-white/10 p-1.5 md:p-2",
+            "flex flex-row md:flex-col gap-1.5 md:gap-2",
             "pointer-events-auto max-w-[calc(100vw-32px)] md:w-[56px] md:max-h-full items-center transition-all duration-500",
             "selection:bg-transparent overflow-visible",
           )}
@@ -177,19 +177,19 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               )}
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button
-                    variant={showBasicInfo ? "default" : "ghost"}
-                    size="icon"
-                    className={cn(
-                      "h-9 w-9 md:h-10 md:w-10 rounded-2xl",
-                      showBasicInfo
-                        ? "bg-primary text-white shadow-lg shadow-primary/20"
-                        : "hover:bg-white/5 text-white/50 hover:text-white",
-                    )}
-                    onClick={() => setShowBasicInfo(!showBasicInfo)}
-                  >
-                    <Info className="h-4 w-4" />
-                  </Button>
+                    <Button
+                      variant={showBasicInfo ? "default" : "ghost"}
+                      size="icon"
+                      className={cn(
+                        "h-9 w-9 md:h-10 md:w-10 rounded-2xl",
+                        showBasicInfo
+                          ? "bg-primary text-white"
+                          : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-primary dark:hover:text-white",
+                      )}
+                      onClick={() => setShowBasicInfo(!showBasicInfo)}
+                    >
+                      <Info className="h-4 w-4" />
+                    </Button>
                 </TooltipTrigger>
                 <TooltipContent side="left" className="hidden md:block">
                   Overview
@@ -209,8 +209,9 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     size="icon"
                     className={cn(
                       "h-9 w-9 md:h-10 md:w-10 rounded-2xl",
-                      showNavigator &&
-                        "bg-primary text-white shadow-lg shadow-primary/20",
+                      showNavigator
+                        ? "bg-primary text-white"
+                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-primary dark:hover:text-white",
                     )}
                     onClick={() => setShowNavigator((v) => !v)}
                   >
@@ -229,7 +230,9 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     size="icon"
                     className={cn(
                       "h-9 w-9 md:h-10 md:w-10 rounded-2xl",
-                      showBuildingsList && "bg-indigo-500/20 text-indigo-400",
+                      showBuildingsList
+                        ? "bg-indigo-500/20 text-indigo-600 dark:text-indigo-400"
+                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-indigo-600 dark:hover:text-indigo-400",
                     )}
                     onClick={() => setShowBuildingsList((v) => !v)}
                   >
@@ -248,7 +251,9 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     size="icon"
                     className={cn(
                       "h-9 w-9 md:h-10 md:w-10 rounded-2xl",
-                      showPlacesOverlay && "bg-orange-500/20 text-orange-400",
+                      showPlacesOverlay
+                        ? "bg-orange-500/20 text-orange-600 dark:text-orange-400"
+                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-orange-600 dark:hover:text-orange-400",
                     )}
                     onClick={() => setShowPlacesOverlay(!showPlacesOverlay)}
                   >
@@ -265,7 +270,12 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                   <Button
                     variant={showBasemaps ? "default" : "ghost"}
                     size="icon"
-                    className="h-9 w-9 md:h-10 md:w-10 rounded-2xl"
+                    className={cn(
+                      "h-9 w-9 md:h-10 md:w-10 rounded-2xl transition-all",
+                      showBasemaps
+                        ? "bg-sky-500/20 text-sky-600 dark:text-sky-400"
+                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-sky-600 dark:hover:text-sky-400",
+                    )}
                     onClick={() => {
                       setShowBasemaps(!showBasemaps);
                       setShowVisuals(false);
@@ -273,7 +283,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                       setShowAnnotationTools(false);
                     }}
                   >
-                    <Globe className="h-4 w-4 text-sky-400" />
+                    <Globe className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="left" className="hidden md:block">
@@ -282,8 +292,8 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               </Tooltip>
             </div>
 
-            <div className="hidden md:block h-px w-6 bg-white/10 shrink-0" />
-            <div className="md:hidden w-px h-6 bg-white/10 shrink-0" />
+            <div className="hidden md:block h-px w-6 bg-slate-200 dark:bg-white/10 shrink-0" />
+            <div className="md:hidden w-px h-6 bg-slate-200 dark:bg-white/10 shrink-0" />
 
             {/* Module 3: Construction & Drawing */}
             <div className="flex flex-row md:flex-col gap-1 shrink-0">
@@ -294,7 +304,9 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     size="icon"
                     className={cn(
                       "h-9 w-9 md:h-10 md:w-10 rounded-2xl",
-                      activeTool === "select" && "bg-blue-500/20 text-blue-400",
+                      activeTool === "select"
+                        ? "bg-blue-500/20 text-blue-600 dark:text-blue-400"
+                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-blue-600 dark:hover:text-blue-400",
                     )}
                     onClick={() => handleToolClick("select")}
                   >
@@ -312,9 +324,10 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     variant={showAnnotationTools ? "default" : "ghost"}
                     size="icon"
                     className={cn(
-                      "h-9 w-9 md:h-10 md:w-10 rounded-2xl",
-                      showAnnotationTools &&
-                        "bg-emerald-500/20 text-emerald-400",
+                      "h-9 w-9 md:h-10 md:w-10 rounded-2xl transition-all",
+                      showAnnotationTools
+                        ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-emerald-600 dark:hover:text-emerald-400",
                     )}
                     onClick={() => {
                       setShowAnnotationTools(!showAnnotationTools);
@@ -339,9 +352,10 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     }
                     size="icon"
                     className={cn(
-                      "h-9 w-9 md:h-10 md:w-10 rounded-2xl",
-                      activeTool === "create_block" &&
-                        "bg-purple-500/20 text-purple-400",
+                      "h-9 w-9 md:h-10 md:w-10 rounded-2xl transition-all",
+                      activeTool === "create_block"
+                        ? "bg-purple-500/20 text-purple-600 dark:text-purple-400"
+                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-purple-600 dark:hover:text-purple-400",
                     )}
                     onClick={() => handleToolClick("create_block")}
                   >
@@ -367,9 +381,10 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     }
                     size="icon"
                     className={cn(
-                      "h-9 w-9 md:h-10 md:w-10 rounded-2xl",
-                      measurementMode === "distance" &&
-                        "bg-amber-500/20 text-amber-400",
+                      "h-9 w-9 md:h-10 md:w-10 rounded-2xl transition-all",
+                      measurementMode === "distance"
+                        ? "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-amber-600 dark:hover:text-amber-400",
                     )}
                     onClick={() => handleMeasureClick("distance")}
                   >
@@ -387,9 +402,10 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     variant={measurementMode === "area" ? "default" : "ghost"}
                     size="icon"
                     className={cn(
-                      "h-9 w-9 md:h-10 md:w-10 rounded-2xl",
-                      measurementMode === "area" &&
-                        "bg-amber-500/20 text-amber-400",
+                      "h-9 w-9 md:h-10 md:w-10 rounded-2xl transition-all",
+                      measurementMode === "area"
+                        ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-emerald-600 dark:hover:text-emerald-400",
                     )}
                     onClick={() => handleMeasureClick("area")}
                   >
@@ -418,7 +434,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                   </TooltipTrigger>
                   <TooltipContent
                     side="left"
-                    className="hidden md:block bg-destructive text-white border-none shadow-[0_8px_20px_rgba(239,68,68,0.4)]"
+                    className="hidden md:block bg-destructive text-white border-none"
                   >
                     Reset Measure
                   </TooltipContent>
@@ -426,8 +442,8 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               )}
             </div>
 
-            <div className="hidden md:block h-px w-6 bg-white/10 shrink-0" />
-            <div className="md:hidden w-px h-6 bg-white/10 shrink-0" />
+            <div className="hidden md:block h-px w-6 bg-slate-200 dark:bg-white/10 shrink-0" />
+            <div className="md:hidden w-px h-6 bg-slate-200 dark:bg-white/10 shrink-0" />
 
             {/* Module 5: View & Navigation */}
             <div className="flex flex-row md:flex-col gap-1 shrink-0">
@@ -436,7 +452,12 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                   <Button
                     variant={showOpacitySlider ? "default" : "ghost"}
                     size="icon"
-                    className="h-9 w-9 md:h-10 md:w-10 rounded-2xl"
+                    className={cn(
+                      "h-9 w-9 md:h-10 md:w-10 rounded-2xl",
+                      showOpacitySlider
+                        ? "bg-primary text-white"
+                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-primary dark:hover:text-white",
+                    )}
                     onClick={() => {
                       setShowOpacitySlider(!showOpacitySlider);
                       setShowBasemaps(false);
@@ -457,7 +478,12 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                   <Button
                     variant={showVisuals ? "default" : "ghost"}
                     size="icon"
-                    className="h-9 w-9 md:h-10 md:w-10 rounded-2xl text-blue-400 hover:text-blue-300"
+                    className={cn(
+                      "h-9 w-9 md:h-10 md:w-10 rounded-2xl transition-all",
+                      showVisuals
+                        ? "bg-blue-500/20 text-blue-600 dark:text-blue-400"
+                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-blue-600 dark:hover:text-blue-400",
+                    )}
                     onClick={() => {
                       setShowVisuals(!showVisuals);
                       setShowBasemaps(false);
@@ -478,7 +504,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 md:h-10 md:w-10 rounded-2xl"
+                    className="h-9 w-9 md:h-10 md:w-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-primary dark:hover:text-white"
                     onClick={onZoomIn}
                   >
                     <ZoomIn className="h-4 w-4" />
@@ -559,7 +585,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-9 w-9 md:h-10 md:w-10 rounded-2xl bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-white transition-all shadow-lg shadow-primary/20 group"
+                      className="h-9 w-9 md:h-10 md:w-10 rounded-2xl bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-white transition-all group"
                       onClick={on3DView}
                     >
                       <Globe className="h-4 w-4 group-hover:rotate-12 transition-transform" />
@@ -578,8 +604,8 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
         <div className="relative pointer-events-auto">
           {/* Annotation Type Popover */}
           {showAnnotationTools && (
-            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-460px] md:right-16 mb-3 md:mb-0 bg-card/95 backdrop-blur-2xl rounded-3xl border border-white/10 p-3 shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-44 flex flex-col gap-2">
-              <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1 px-1">
+            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-460px] md:right-16 mb-3 md:mb-0 bg-white/95 dark:bg-card/95 backdrop-blur-2xl rounded-3xl border border-slate-200 dark:border-white/10 p-3 animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-44 flex flex-col gap-2">
+              <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-muted-foreground/60 mb-1 px-1">
                 Toolbox
               </div>
               <div className="grid grid-cols-1 gap-1">
@@ -610,9 +636,10 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     variant={activeTool === tool.id ? "default" : "outline"}
                     size="sm"
                     className={cn(
-                      "flex items-center justify-start gap-3 h-10 px-3 rounded-xl border-white/5",
-                      activeTool === tool.id &&
-                        "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+                      "flex items-center justify-start gap-3 h-10 px-3 rounded-xl border-slate-100 dark:border-white/5",
+                      activeTool === tool.id
+                        ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                        : "bg-transparent text-slate-600 dark:text-white/70 hover:bg-slate-50 dark:hover:bg-white/5",
                     )}
                     onClick={() => {
                       handleToolClick(tool.id);
@@ -625,11 +652,11 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     </span>
                   </Button>
                 ))}
-                <div className="h-px bg-white/5 my-1" />
+                <div className="h-px bg-slate-100 dark:bg-white/5 my-1" />
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-[9px] font-black uppercase text-destructive hover:bg-destructive/10 h-9 rounded-xl"
+                  className="text-[9px] font-black uppercase text-rose-500 dark:text-rose-400 hover:bg-rose-500/10 h-9 rounded-xl transition-colors"
                   onClick={() => {
                     setActiveTool("none");
                     setShowAnnotationTools(false);
@@ -643,8 +670,8 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
 
           {/* Basemap Switcher Popover */}
           {showBasemaps && (
-            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-440px] md:right-4 mb-3 md:mb-0 bg-card/95 backdrop-blur-2xl rounded-3xl border border-white/10 p-4 shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-64">
-              <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 mb-4">
+            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-440px] md:right-4 mb-3 md:mb-0 bg-white/95 dark:bg-card/95 backdrop-blur-2xl rounded-3xl border border-slate-200 dark:border-white/10 p-4 animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-64">
+              <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-muted-foreground/60 mb-4">
                 Basemap Library
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -652,7 +679,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                   {
                     id: "google",
                     name: "Google",
-                    icon: <Globe className="h-4 w-4 text-sky-400" />,
+                    icon: <Globe className={cn("h-4 w-4", basemapStyle === "google" ? "text-white" : "text-sky-500")} />,
                   },
                   {
                     id: "satellite",
@@ -684,9 +711,10 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     key={bm.id}
                     variant={basemapStyle === bm.id ? "default" : "outline"}
                     className={cn(
-                      "flex flex-col items-center gap-2 h-auto py-3 rounded-2xl border-white/5 transition-all",
-                      basemapStyle === bm.id &&
-                        "ring-2 ring-primary bg-primary/10",
+                      "flex flex-col items-center gap-2 h-auto py-3 rounded-2xl border-slate-100 dark:border-white/5 transition-all text-slate-600 dark:text-white/70",
+                      basemapStyle === bm.id
+                        ? "ring-2 ring-primary bg-primary text-white"
+                        : "hover:bg-slate-50 dark:hover:bg-white/5",
                     )}
                     onClick={() => switchBasemap(bm.id)}
                   >
@@ -702,8 +730,8 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
 
           {/* Opacity Slider Popover */}
           {showOpacitySlider && (
-            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-100px] md:right-4 mb-3 md:mb-0 bg-card/95 backdrop-blur-2xl rounded-2xl border border-white/10 p-5 shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-56">
-              <div className="flex items-center justify-between mb-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-100px] md:right-4 mb-3 md:mb-0 bg-white/95 dark:bg-card/95 backdrop-blur-2xl rounded-2xl border border-slate-200 dark:border-white/10 p-5 animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-56">
+              <div className="flex items-center justify-between mb-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-muted-foreground/60">
                 <span>Layer Opacity</span>
                 <span className="tabular-nums font-mono text-primary bg-primary/10 px-2 py-0.5 rounded-lg">
                   {Math.round(kmzOpacity * 100)}%
@@ -716,24 +744,24 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                 step="0.01"
                 value={kmzOpacity}
                 onChange={(e) => setKmzOpacity(parseFloat(e.target.value))}
-                className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary"
+                className="w-full h-1.5 bg-slate-100 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary"
               />
             </Card>
           )}
 
           {/* Visual Adjustments Popover */}
           {showVisuals && (
-            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-40px] md:right-4 mb-3 md:mb-0 bg-card/95 backdrop-blur-3xl rounded-3xl border border-white/10 p-5 shadow-2xl animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-64 flex flex-col gap-5">
-              <div className="flex items-center justify-between border-b border-white/5 pb-3">
-                <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 flex items-center gap-2">
-                  <Satellite className="h-3 w-3" animate-pulse />
+            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-40px] md:right-4 mb-3 md:mb-0 bg-white/95 dark:bg-card/95 backdrop-blur-3xl rounded-3xl border border-slate-200 dark:border-white/10 p-5 animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-64 flex flex-col gap-5">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-3">
+                <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                  <Satellite className="h-3 w-3" />
                   Visual Post-FX
                 </span>
                 <button
                   onClick={() =>
                     setVisuals({ brightness: 1, contrast: 1, saturation: 1 })
                   }
-                  className="text-[9px] font-black text-muted-foreground hover:text-white uppercase transition-colors"
+                  className="text-[9px] font-black text-slate-400 dark:text-muted-foreground hover:text-primary dark:hover:text-white uppercase transition-colors"
                 >
                   Default
                 </button>
@@ -758,11 +786,11 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                   },
                 ].map((fx) => (
                   <div key={fx.key} className="space-y-2.5">
-                    <div className="flex justify-between items-center text-[9px] font-black text-white/40 uppercase tracking-widest">
+                    <div className="flex justify-between items-center text-[9px] font-black text-slate-500 dark:text-white/40 uppercase tracking-widest">
                       <span className="flex items-center gap-2">
                         {fx.icon} {fx.label}
                       </span>
-                      <span className="text-white/80 tabular-nums">
+                      <span className="text-slate-900 dark:text-white/80 tabular-nums">
                         {visuals[fx.key as keyof typeof visuals].toFixed(2)}x
                       </span>
                     </div>
@@ -778,7 +806,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                           [fx.key]: parseFloat(e.target.value),
                         }))
                       }
-                      className="w-full h-1.5 bg-white/5 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                      className="w-full h-1.5 bg-slate-100 dark:bg-white/5 rounded-lg appearance-none cursor-pointer accent-blue-500"
                     />
                   </div>
                 ))}

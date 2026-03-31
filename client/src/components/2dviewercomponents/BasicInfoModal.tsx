@@ -14,7 +14,7 @@ export const BasicInfoModal: React.FC<BasicInfoModalProps> = ({
 }) => {
   return (
     <div className="absolute inset-0 z-100 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="relative w-full max-w-lg bg-black/60 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl p-8 text-white overflow-hidden">
+      <div className="relative w-full max-w-lg bg-black/60 backdrop-blur-xl border border-white/10 rounded-3xl p-8 text-white overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-blue-500 via-indigo-500 to-purple-500" />
 
         <div className="flex items-start justify-between mb-8">
