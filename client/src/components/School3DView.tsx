@@ -17,9 +17,12 @@ import ViewerMeasureToolbar from "./3dviewercomponents/ViewerMeasureToolbar";
 import ViewerMeasurePanel from "./3dviewercomponents/ViewerMeasurePanel";
 import ViewerStatsFooter from "./3dviewercomponents/ViewerStatsFooter";
 import { AnnotationPickerModal } from "./2dviewercomponents/AnnotationPickerModal";
+import { BuildingsListPanel } from "./2dviewercomponents/BuildingsListPanel";
+import type { BuildingData } from "./school-form-steps/BuildingsStep";
 import ViewerHelpModal from "./3dviewercomponents/ViewerHelpModal";
 import ViewerMainCanvas from "./3dviewercomponents/ViewerMainCanvas";
 import ViewerBuildingPanel from "./3dviewercomponents/ViewerBuildingPanel";
+import { ViewerAddBuildingModal } from "./3dviewercomponents/ViewerAddBuildingModal";
 
 // Styles
 import "./School3DView.css";
@@ -50,6 +53,27 @@ const LS_MODE_KEY = "glb_viewer_mode_v1";
 const LS_MEASURES_KEY = "glb_viewer_measures_v1";
 const LS_ANNOTATIONS_KEY = "glb_viewer_annotations_v1";
 const LS_UNIT_KEY = "glb_viewer_unit_v1";
+
+/** Normalizes a raw API building record to match the BuildingData client interface */
+function normalizeBuilding(b: any): any {
+  return {
+    ...b,
+    buildingName: b.buildingName || b.name || "",
+    buildingCode: b.buildingCode || b.code || "",
+    buildingFunction: b.buildingFunction || b.function || "",
+    buildingFloors: b.buildingFloors || (b.floors != null ? String(b.floors) : ""),
+    buildingArea: b.buildingArea || (b.areaSquareMeters != null ? String(b.areaSquareMeters) : ""),
+    buildingYearBuilt: b.buildingYearBuilt || (b.yearBuilt != null ? String(b.yearBuilt) : ""),
+    buildingCondition: b.buildingCondition || b.condition || "",
+    buildingRoofCondition: b.buildingRoofCondition || b.roofCondition || "",
+    buildingStructuralScore: b.buildingStructuralScore || (b.structuralScore != null ? String(b.structuralScore) : ""),
+    buildingNotes: b.buildingNotes || b.notes || "",
+    geolocation: b.geolocation || {
+      latitude: b.latitude || b.centroidLat || null,
+      longitude: b.longitude || b.centroidLng || null,
+    },
+  };
+}
 
 const MODE_LABELS: Record<RenderMode, string> = { unlit: "Unlit (Metashape-style)", lit: "Lit (PBR)", wireframe: "Wireframe" };
 const UNIT_LABELS: Record<Unit, string> = { m: "Meters (m)", cm: "Centimeters (cm)", mm: "Millimeters (mm)", km: "Kilometers (km)", ft: "Feet (ft)", in: "Inches (in)" };
@@ -115,15 +139,122 @@ const sharedDracoLoader = new DRACOLoader();
 sharedDracoLoader.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.6/");
 sharedDracoLoader.preload();
 
+// ─── 3D label helpers (module-level so drawOverlay + sprite sync can share) ──
+
+/** True midpoint along a polyline by arc-length, so the label sits at the middle of the line. */
+function midpointAlongPolyline(pts: MeasurePoint[]): MeasurePoint {
+  if (pts.length === 1) return pts[0];
+  if (pts.length === 2) return { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2, z: (pts[0].z + pts[1].z) / 2 };
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++)
+    total += new THREE.Vector3(pts[i].x, pts[i].y, pts[i].z).distanceTo(new THREE.Vector3(pts[i + 1].x, pts[i + 1].y, pts[i + 1].z));
+  const half = total / 2;
+  let walked = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const seg = new THREE.Vector3(pts[i].x, pts[i].y, pts[i].z).distanceTo(new THREE.Vector3(pts[i + 1].x, pts[i + 1].y, pts[i + 1].z));
+    if (walked + seg >= half) {
+      const t = seg > 0 ? (half - walked) / seg : 0;
+      return { x: pts[i].x + t * (pts[i + 1].x - pts[i].x), y: pts[i].y + t * (pts[i + 1].y - pts[i].y), z: pts[i].z + t * (pts[i + 1].z - pts[i].z) };
+    }
+    walked += seg;
+  }
+  return pts[pts.length - 1];
+}
+
+/** Centroid of a polygon — keeps the label inside the shape from any angle. */
+function centroidOf(pts: MeasurePoint[]): MeasurePoint {
+  return { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length, z: pts.reduce((s, p) => s + p.z, 0) / pts.length };
+}
+
+/**
+ * Creates a PointsMaterial whose texture is a per-color circle matching the canvas drawDot style.
+ * sizeAttenuation:false keeps dots at a fixed pixel size — no per-frame scale update needed.
+ */
+function createMeasureDotMaterial(color: string): THREE.PointsMaterial {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const sz = 32 * dpr;
+  const canvas = document.createElement("canvas");
+  canvas.width = sz; canvas.height = sz;
+  const ctx = canvas.getContext("2d")!;
+  const c = sz / 2;
+  const r = parseInt(color.slice(1, 3), 16), g = parseInt(color.slice(3, 5), 16), b = parseInt(color.slice(5, 7), 16);
+  ctx.clearRect(0, 0, sz, sz);
+  // Outer shadow ring
+  ctx.beginPath(); ctx.arc(c, c, c - 1, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0,0,0,0.30)"; ctx.fill();
+  // Colored fill
+  ctx.beginPath(); ctx.arc(c, c, c - 4 * dpr, 0, Math.PI * 2);
+  ctx.fillStyle = `rgb(${r},${g},${b})`; ctx.fill();
+  // White ring
+  ctx.beginPath(); ctx.arc(c, c, c - 4 * dpr, 0, Math.PI * 2);
+  ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2.5 * dpr; ctx.stroke();
+  const texture = new THREE.CanvasTexture(canvas);
+  return new THREE.PointsMaterial({
+    map: texture, size: 10, sizeAttenuation: false,
+    transparent: true, alphaTest: 0.05,
+    depthTest: false, depthWrite: false,
+  });
+}
+
+/**
+ * Creates a THREE.Sprite whose texture is a canvas-rendered pill label.
+ * The sprite is placed in world space and auto-billboards toward the camera.
+ * Scale is updated each frame by the animate loop to maintain ~TARGET_PX screen height.
+ */
+function createLabelSprite(text: string, color: string): THREE.Sprite {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const fontSize = 20;
+  const padX = 10, padY = 6;
+
+  // Measure text width on a throw-away canvas
+  const probe = document.createElement("canvas").getContext("2d")!;
+  probe.font = `bold ${fontSize}px 'JetBrains Mono', monospace`;
+  const tw = probe.measureText(text).width;
+
+  const logW = Math.ceil(tw + padX * 2);
+  const logH = Math.ceil(fontSize + padY * 2);
+  const canvas = document.createElement("canvas");
+  canvas.width = logW * dpr;
+  canvas.height = logH * dpr;
+  const ctx = canvas.getContext("2d")!;
+  ctx.scale(dpr, dpr);
+
+  // Parse hex color once
+  const r = parseInt(color.slice(1, 3), 16), g = parseInt(color.slice(3, 5), 16), b = parseInt(color.slice(5, 7), 16);
+
+  // Dark glassmorphic background
+  ctx.fillStyle = "rgba(6,11,26,0.90)";
+  ctx.beginPath(); ctx.roundRect(0, 0, logW, logH, 5); ctx.fill();
+
+  // Colored border
+  ctx.strokeStyle = `rgba(${r},${g},${b},0.9)`; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.roundRect(1, 1, logW - 2, logH - 2, 4); ctx.stroke();
+
+  // Text
+  ctx.font = `bold ${fontSize}px 'JetBrains Mono', monospace`;
+  ctx.fillStyle = `rgb(${r},${g},${b})`;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(text, logW / 2, logH / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,   // always render on top of geometry
+    depthWrite: false,
+  });
+  const sprite = new THREE.Sprite(material);
+  // Store canvas aspect ratio so the animate loop can set width proportionally
+  sprite.userData.aspect = canvas.width / canvas.height;
+  return sprite;
+}
+
 // ─── Overlay canvas helpers ───────────────────────────────────────────────────
 
 function project3Dto2D(pt: MeasurePoint, camera: THREE.PerspectiveCamera, w: number, h: number): [number, number] | null {
-  const v = new THREE.Vector3(pt.x, pt.y, pt.z);
-  // Ensure the camera matrix is up to date before projection
-  camera.updateMatrixWorld();
-  camera.updateProjectionMatrix();
-  v.project(camera);
-  // WebGL standard check: if z > 1, the point is behind the camera
+  // Camera matrices are already updated by the renderer each frame — no need to call
+  // updateMatrixWorld/updateProjectionMatrix here (they were redundant per-point per-frame).
+  const v = new THREE.Vector3(pt.x, pt.y, pt.z).project(camera);
   if (v.z < -1 || v.z > 1) return null;
   return [(v.x * 0.5 + 0.5) * w, (-v.y * 0.5 + 0.5) * h];
 }
@@ -150,6 +281,16 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const controlsRef = useRef<OrbitControls | null>(null);
   const animFrameRef = useRef<number>(0);
   const modelRef = useRef<THREE.Object3D | null>(null);
+  /** Group that holds all measurement label sprites — children are keyed by measure id via userData.measureId */
+  const labelGroupRef = useRef<THREE.Group | null>(null);
+  /** Group that holds THREE.Points for saved measurement endpoint dots — always visible, never hidden during interaction */
+  const measureGroupRef = useRef<THREE.Group | null>(null);
+  /** True while the camera is moving — labels are hidden to prevent visual glitches */
+  const interactingRef = useRef(false);
+  /** Debounce timer: shows labels 150 ms after camera stops */
+  const showLabelsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Previous camera position — used to detect any movement (mouse orbit, keyboard, programmatic) */
+  const _prevCamPosRef = useRef(new THREE.Vector3(Infinity, 0, 0));
   const keysRef = useRef<Set<string>>(new Set());
   const velocityRef = useRef<THREE.Vector3>(new THREE.Vector3());
   const moveSpeedRef = useRef<number>(1);
@@ -178,6 +319,16 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
   // DB overlay visibility & building selection
   const [selectedBuilding, setSelectedBuilding] = useState<any>(null);
+  const [showBuildingsList, setShowBuildingsList] = useState(false);
+  const [showAddBuildingModal, setShowAddBuildingModal] = useState(false);
+  /** User-placed 3D pins for buildings: buildingId → 3D world point */
+  const [buildingPins, setBuildingPins] = useState<Record<string, MeasurePoint>>({});
+  const buildingPinsRef = useRef<Record<string, MeasurePoint>>({});
+  useEffect(() => { buildingPinsRef.current = buildingPins; }, [buildingPins]);
+  /** When set, next model click places a pin for this building id */
+  const [pinBuildingId, setPinBuildingId] = useState<string | null>(null);
+  const pinBuildingIdRef = useRef<string | null>(null);
+  useEffect(() => { pinBuildingIdRef.current = pinBuildingId; }, [pinBuildingId]);
 
   const [annotPickerOpen, setAnnotPickerOpen] = useState(false);
 
@@ -224,6 +375,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
           home: cameraHomeRef.current,
           annotations: annotationsRef.current,
           measures: measuresRef.current,
+          buildingPins: buildingPinsRef.current,
         }),
       }).catch(() => { });
     }, 800);
@@ -241,6 +393,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   useEffect(() => { saveJson(LS_MEASURES_KEY, measures); scheduleSave(); }, [measures, scheduleSave]);
   useEffect(() => { saveJson(LS_ANNOTATIONS_KEY, annotations); scheduleSave(); }, [annotations, scheduleSave]);
   useEffect(() => { saveJson(LS_UNIT_KEY, unit); }, [unit]);
+  useEffect(() => { scheduleSave(); }, [buildingPins, scheduleSave]);
 
   const applyRenderMode = useCallback((mode: RenderMode) => {
     const model = modelRef.current; if (!model) return;
@@ -358,6 +511,8 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         if (serverState?.home) savedHome = serverState.home;
         if (serverState?.annotations?.length) setAnnotations(serverState.annotations);
         if (serverState?.measures?.length) setMeasures(serverState.measures);
+        if (serverState?.buildingPins && Object.keys(serverState.buildingPins).length)
+          setBuildingPins(serverState.buildingPins);
       } catch { }
     }
 
@@ -416,7 +571,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       .then(res => setDbSchool(res.data))
       .catch(e => console.error("Failed to pre-fetch school", e));
     api.get(`/schools/${schoolId}/buildings`)
-      .then(res => setDbBuildings(res.data))
+      .then(res => setDbBuildings((res.data || []).map(normalizeBuilding)))
       .catch(e => console.error("Failed to pre-fetch buildings", e));
   }, [schoolId]);
 
@@ -523,28 +678,40 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       ctx.strokeStyle = "rgba(0,0,0,0.3)"; ctx.lineWidth = 1; ctx.stroke();
     };
 
-    const drawLabel = (pt: MeasurePoint, text: string, color: string, offsetY = 0) => {
+    // ── drawLabel for the live (in-progress) measurement only ─────────────────
+    // Saved-measure labels are THREE.Sprite objects managed by the sprite-sync
+    // useEffect — they live in the scene graph and auto-billboard with the camera.
+    const drawLabel = (pt: MeasurePoint, text: string, color: string) => {
       const proj = project3Dto2D(pt, camera, W, H); if (!proj) return;
       const [x, y] = proj;
-      const px = x + 10, py = y - 10 + offsetY;
-      ctx.font = "bold 11px 'JetBrains Mono', monospace";
-      const m = ctx.measureText(text);
-      ctx.fillStyle = "rgba(6,11,26,0.82)";
-      ctx.beginPath(); ctx.roundRect(px - 4, py - 13, m.width + 10, 18, 5); ctx.fill();
-      ctx.fillStyle = color; ctx.fillText(text, px + 1, py);
+      const camDist = camera.position.distanceTo(new THREE.Vector3(pt.x, pt.y, pt.z));
+      const scale = Math.max(0.65, Math.min(1.5, 30 / Math.max(camDist, 0.001)));
+      const fontSize = Math.round(11 * scale);
+      ctx.font = `bold ${fontSize}px 'JetBrains Mono', monospace`;
+      const tw = ctx.measureText(text).width;
+      const padX = 6 * scale, padY = 3 * scale;
+      const bw = tw + padX * 2, bh = fontSize + padY * 2;
+      const bx = x - bw / 2, by = y - bh - 14 * scale;
+      ctx.fillStyle = "rgba(6,11,26,0.88)";
+      ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 4 * scale); ctx.fill();
+      ctx.strokeStyle = color; ctx.lineWidth = 1 * scale; ctx.setLineDash([]); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, by + bh); ctx.lineTo(x, y - 6 * scale);
+      ctx.strokeStyle = color + "88"; ctx.lineWidth = 1 * scale; ctx.setLineDash([3 * scale, 3 * scale]); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = color; ctx.textAlign = "center";
+      ctx.fillText(text, x, by + bh - padY);
+      ctx.textAlign = "left";
     };
 
-    // 1. Saved Measures (Filtered)
+    // 1. Saved Measures — lines only on canvas; dots are THREE.Points in the scene (measureGroupRef),
+    //    labels are THREE.Sprite in the scene (labelGroupRef). Both stay pixel-perfect through any
+    //    camera transformation without canvas projection math.
     if (visibility === "all" || visibility === "measures") {
       measures.forEach(m => {
         if (m.mode === "distance") {
           drawLine(m.points, m.color);
-          m.points.forEach(p => drawDot(p, m.color, 5));
-          if (m.points.length >= 2) drawLabel(m.points[m.points.length - 1], m.label, m.color, -22);
         } else {
           drawPolygon(m.points, m.color, true);
-          m.points.forEach(p => drawDot(p, m.color, 4));
-          if (m.points.length >= 2) drawLabel(m.points[0], m.label, m.color);
         }
       });
     }
@@ -578,9 +745,13 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
         if (hoverPt) {
           let liveLabel = "";
+          let liveLabelAnchor: MeasurePoint;
           if (measureMode === "area") {
-            const all = [...livePts, hoverPt]; liveLabel = fmtArea(calcPolyArea(all), unit);
+            const all = [...livePts, hoverPt];
+            liveLabel = fmtArea(calcPolyArea(all), unit);
+            liveLabelAnchor = centroidOf(all);
           } else {
+            const allPts = [...livePts, hoverPt];
             let currentDist = calcDistance(livePts);
             const dToHover = new THREE.Vector3(livePts[livePts.length - 1].x, livePts[livePts.length - 1].y, livePts[livePts.length - 1].z)
               .distanceTo(new THREE.Vector3(hoverPt.x, hoverPt.y, hoverPt.z));
@@ -590,101 +761,76 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
               total += dBackToStart;
             }
             liveLabel = fmtDist(total, unit);
+            // Anchor the live label at the midpoint of the in-progress line
+            liveLabelAnchor = midpointAlongPolyline(allPts);
           }
-          drawLabel(hoverPt, liveLabel, col, -22);
+          drawLabel(liveLabelAnchor!, liveLabel, col);
         }
       }
     }
 
-    // ─── DB Markers ───────────
+    // ── User-placed building pins ──────────────────────────────────────────────
     const dbPulse = Math.sin(Date.now() / 250) * 0.4 + 1.2;
-    dbMarkers.forEach(m => {
-      if (m.type !== "block") return;
-
-      const p = project3Dto2D(new THREE.Vector3(m.x, m.y, m.z), camera, W, H);
+    const pins = buildingPinsRef.current;
+    Object.entries(pins).forEach(([bId, pt]) => {
+      const building = dbBuildings.find((b: any) => b.id === bId);
+      if (!building) return;
+      const p = project3Dto2D(pt, camera, W, H);
       if (!p) return;
-      const [ex, ey] = p;
-
-      // Distance scaling: smaller markers in the distance
-      const dist = camera.position.distanceTo(new THREE.Vector3(m.x, m.y, m.z));
+      const [px, py] = p;
+      const dist = camera.position.distanceTo(new THREE.Vector3(pt.x, pt.y, pt.z));
       const scale = Math.max(0.4, Math.min(1.2, 50 / dist));
+      const isSelected = selectedBuilding?.id === bId;
 
-      // Color Coding
-      let baseCol = m.color || "#3b82f6"; 
-      let glowCol = baseCol.replace(")", ",0.2)").replace("rgb", "rgba");
-      if (baseCol.startsWith("#")) {
-        const r = parseInt(baseCol.slice(1, 3), 16), g = parseInt(baseCol.slice(3, 5), 16), b = parseInt(baseCol.slice(5, 7), 16);
-        glowCol = `rgba(${r},${g},${b},0.3)`;
+      // Outer glow
+      ctx.beginPath(); ctx.arc(px, py, 11 * dbPulse * scale, 0, Math.PI * 2);
+      ctx.fillStyle = isSelected ? "rgba(251,191,36,0.35)" : "rgba(251,191,36,0.18)"; ctx.fill();
+
+      // Pin dot
+      ctx.beginPath(); ctx.arc(px, py, 7 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = isSelected ? "#fbbf24" : "#f59e0b"; ctx.fill();
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * scale; ctx.setLineDash([]); ctx.stroke();
+
+      // Building name label
+      if (!interactingRef.current) {
+        const label = building.buildingName || building.name || "Block";
+        ctx.font = `bold ${Math.round(11 * scale)}px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif`;
+        const tw = ctx.measureText(label).width;
+        const padX = 6 * scale, bh = 18 * scale, bw = tw + padX * 2;
+        const bx = px - bw / 2, by = py - 20 * scale - bh;
+
+        ctx.fillStyle = "rgba(15,10,5,0.88)";
+        ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 5 * scale); ctx.fill();
+        ctx.strokeStyle = isSelected ? "rgba(251,191,36,0.6)" : "rgba(251,191,36,0.3)";
+        ctx.lineWidth = 1 * scale; ctx.stroke();
+
+        ctx.shadowBlur = 6; ctx.shadowColor = "rgba(0,0,0,0.5)";
+        ctx.fillStyle = isSelected ? "#fef3c7" : "#fcd34d"; ctx.textAlign = "center";
+        ctx.fillText(label, px, by + bh / 2 + 4 * scale);
+        ctx.shadowBlur = 0;
       }
-
-      if (m.type === "site") { if (!m.color) baseCol = "#10b981"; }
-      else if (m.type === "internal") { baseCol = "#a855f7"; }
-
-      // Pulse Glow
-      ctx.beginPath(); ctx.arc(ex, ey, 10 * dbPulse * scale, 0, Math.PI * 2);
-      ctx.fillStyle = glowCol; ctx.fill();
-
-      // Main Outer Ring
-      ctx.beginPath(); ctx.arc(ex, ey, 7 * scale, 0, Math.PI * 2);
-      ctx.fillStyle = baseCol; ctx.fill();
-      ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * scale; ctx.stroke();
-
-      // Selected building highlight ring
-      if (m.type === "block" && selectedBuilding && (selectedBuilding.id === m.id || selectedBuilding.label === m.label)) {
-        ctx.beginPath(); ctx.arc(ex, ey, 13 * scale, 0, Math.PI * 2);
-        ctx.strokeStyle = "#fff"; ctx.lineWidth = 2.5 * scale; ctx.setLineDash([4, 3]); ctx.stroke();
-        ctx.setLineDash([]);
-      }
-
-      // Label
-      ctx.font = `bold ${Math.round(12 * scale)}px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif`;
-      const emoji = ICON_EMOJI_MAP[m.iconType || ""] || "";
-      const mText = emoji ? `${emoji} ${m.label}` : m.label;
-      const textWidth = ctx.measureText(mText).width;
-      const padX = 7 * scale, bh = 20 * scale;
-      const bw = textWidth + padX * 2;
-      const bx = ex - bw / 2, by = ey - 20 * scale - bh;
-
-      if (m.type === "block") {
-        // Dark glassmorphic style for building blocks
-        ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
-        ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6 * scale); ctx.fill();
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.15)"; ctx.lineWidth = 1; ctx.stroke();
-      } else {
-        // 2D-style: colored background (matching pin color)
-        const rc = parseInt(baseCol.slice(1, 3), 16), gc = parseInt(baseCol.slice(3, 5), 16), bc = parseInt(baseCol.slice(5, 7), 16);
-        ctx.fillStyle = `rgba(${rc},${gc},${bc},0.85)`;
-        ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 10 * scale); ctx.fill();
-        ctx.strokeStyle = `rgba(${rc},${gc},${bc},0.4)`; ctx.lineWidth = 1 * scale; ctx.stroke();
-      }
-
-      ctx.shadowBlur = 8; ctx.shadowColor = "rgba(0,0,0,0.5)";
-      ctx.fillStyle = "#fff"; ctx.textAlign = "center";
-      ctx.fillText(mText, ex, by + bh / 2 + 4 * scale);
-      ctx.shadowBlur = 0;
     });
 
     if (visibility === "clear") return;
     if (visibility === "all" || visibility === "annotations") {
       annotations.forEach(a => {
         drawDot(a.point, a.color, 7);
+        // Skip label text pills during any camera movement — dot stays visible for context
+        if (interactingRef.current) return;
         const proj = project3Dto2D(a.point, camera, W, H); if (!proj) return;
         const [x, y] = proj;
 
-        // 2D-style label: colored background pill above the dot, white text
         ctx.font = "bold 13px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif";
-        const labelText = a.text.split("\n")[0]; // first line as the label
+        const labelText = a.text.split("\n")[0];
         const textW = ctx.measureText(labelText).width;
         const padX = 7, padY = 3, bh = 22, bw = textW + padX * 2;
         const bx = x - bw / 2, by = y - 30 - bh;
 
-        // Parse hex color for background
         const hr = parseInt(a.color.slice(1, 3), 16), hg = parseInt(a.color.slice(3, 5), 16), hb = parseInt(a.color.slice(5, 7), 16);
         ctx.fillStyle = `rgba(${hr},${hg},${hb},0.85)`;
         ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 10); ctx.fill();
         ctx.strokeStyle = `rgba(${hr},${hg},${hb},0.4)`; ctx.lineWidth = 1; ctx.setLineDash([]); ctx.stroke();
 
-        // Connector line from dot to label
         ctx.beginPath(); ctx.moveTo(x, y - 9); ctx.lineTo(x, by + bh);
         ctx.strokeStyle = `rgba(${hr},${hg},${hb},0.5)`; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]); ctx.stroke();
         ctx.setLineDash([]);
@@ -699,7 +845,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     // Draw the active annotation being placed
     if (annotPendingPt) drawDot(annotPendingPt, annotColor, 7);
 
-  }, [measures, measureMode, unit, annotations, annotPendingPt, visibility, annotColor, dbMarkers, selectedBuilding]);
+  }, [measures, measureMode, unit, annotations, annotPendingPt, visibility, annotColor, selectedBuilding, buildingPins, dbBuildings]);
 
   const drawOverlayRef = useRef<() => void>(() => { });
   useEffect(() => { drawOverlayRef.current = drawOverlay; }, [drawOverlay]);
@@ -710,13 +856,15 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     const w = mountRef.current.clientWidth, h = mountRef.current.clientHeight;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, precision: "highp", powerPreference: "high-performance", preserveDrawingBuffer: true });
-    renderer.setSize(w, h); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 3));
+    renderer.setSize(w, h); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.NoToneMapping;
     renderer.shadowMap.enabled = false;
     mountRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
     const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0a0a0f); sceneRef.current = scene;
+    const labelGroup = new THREE.Group(); labelGroup.renderOrder = 999; scene.add(labelGroup); labelGroupRef.current = labelGroup;
+    const measureGroup = new THREE.Group(); measureGroup.renderOrder = 998; scene.add(measureGroup); measureGroupRef.current = measureGroup;
     const camera = new THREE.PerspectiveCamera(45, w / h, 0.001, 1_000_000); camera.position.set(0, 2, 5); cameraRef.current = camera;
     scene.add(new THREE.AmbientLight(0xffffff, 1.0));
     const key = new THREE.DirectionalLight(0xffffff, 1.5); key.position.set(5, 10, 7); scene.add(key);
@@ -759,6 +907,42 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       }
 
       controls.update();
+
+      // ── Detect any camera movement (mouse orbit, keyboard, programmatic) ──────
+      // Using position delta instead of OrbitControls events so keyboard navigation
+      // and programmatic moves (setView, resetCamera) are also covered.
+      if (camera.position.distanceToSquared(_prevCamPosRef.current) > 1e-14) {
+        _prevCamPosRef.current.copy(camera.position);
+        if (!interactingRef.current) {
+          interactingRef.current = true;
+          if (labelGroupRef.current) labelGroupRef.current.visible = false;
+        }
+        // Restart 150 ms debounce — labels reappear only after camera fully settles
+        if (showLabelsTimerRef.current) clearTimeout(showLabelsTimerRef.current);
+        showLabelsTimerRef.current = setTimeout(() => {
+          interactingRef.current = false;
+          if (labelGroupRef.current) labelGroupRef.current.visible = true;
+          showLabelsTimerRef.current = null;
+        }, 150);
+      }
+
+      // ── Scale label sprites BEFORE rendering (only when visible, saves work during interaction) ──
+      if (labelGroupRef.current?.visible && labelGroupRef.current.children.length > 0) {
+        const vFOV = THREE.MathUtils.degToRad(camera.fov);
+        const viewH = mountRef.current?.clientHeight ?? 600;
+        const halfTan = Math.tan(vFOV / 2);
+        const targetPx = 32;
+        const wPos = new THREE.Vector3(); // reuse single allocation
+        for (const obj of labelGroupRef.current.children) {
+          obj.getWorldPosition(wPos);
+          const dist = camera.position.distanceTo(wPos);
+          if (dist < 0.0001) continue;
+          const worldH = 2 * dist * halfTan * (targetPx / viewH);
+          const aspect = (obj as THREE.Sprite).userData.aspect ?? 3;
+          obj.scale.set(worldH * aspect, worldH, 1);
+        }
+      }
+
       renderer.render(scene, camera);
       if (overlayRef.current) drawOverlayRef.current();
     };
@@ -794,10 +978,74 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   useEffect(() => () => {
     threeResizeCleanupRef.current?.();
     cancelAnimationFrame(animFrameRef.current);
+    // Dispose all label sprites
+    labelGroupRef.current?.children.forEach(obj => {
+      const mat = (obj as THREE.Sprite).material as THREE.SpriteMaterial;
+      mat.map?.dispose(); mat.dispose();
+    });
+    // Dispose all measurement dot geometry + materials
+    measureGroupRef.current?.children.forEach(obj => {
+      const pts = obj as THREE.Points;
+      pts.geometry?.dispose();
+      const mat = pts.material as THREE.PointsMaterial;
+      mat.map?.dispose(); mat.dispose();
+    });
     rendererRef.current?.dispose();
     if (mountRef.current && rendererRef.current?.domElement.parentNode === mountRef.current)
       mountRef.current.removeChild(rendererRef.current.domElement);
   }, []);
+
+  // ── Sync measurement scene objects whenever measures/visibility change ────────
+  // • measureGroup  → THREE.Points for endpoint dots (always visible, depthTest off)
+  // • labelGroup    → THREE.Sprite for text labels (hidden during camera interaction)
+  useEffect(() => {
+    const labelGroup = labelGroupRef.current;
+    const measureGroup = measureGroupRef.current;
+    if (!labelGroup || !measureGroup) return;
+
+    // Dispose and remove all existing label sprites
+    while (labelGroup.children.length > 0) {
+      const s = labelGroup.children[0] as THREE.Sprite;
+      const mat = s.material as THREE.SpriteMaterial;
+      mat.map?.dispose(); mat.dispose();
+      labelGroup.remove(s);
+    }
+
+    // Dispose and remove all existing dot Points
+    while (measureGroup.children.length > 0) {
+      const pts = measureGroup.children[0] as THREE.Points;
+      pts.geometry?.dispose();
+      const mat = pts.material as THREE.PointsMaterial;
+      mat.map?.dispose(); mat.dispose();
+      measureGroup.remove(pts);
+    }
+
+    const show = visibility !== "clear" && visibility !== "annotations";
+    if (!show) return;
+
+    measures.forEach(m => {
+      if (m.points.length < 2) return;
+
+      // ── Endpoint dots as THREE.Points ──────────────────────────────────────
+      // sizeAttenuation:false → constant 10px on screen regardless of camera distance.
+      // depthTest:false       → always renders on top of model geometry.
+      // No per-frame scale update needed — they stay pixel-perfect through any transformation.
+      const pts3d = m.points.map(p => new THREE.Vector3(p.x, p.y, p.z));
+      const dotGeo = new THREE.BufferGeometry().setFromPoints(pts3d);
+      measureGroup.add(new THREE.Points(dotGeo, createMeasureDotMaterial(m.color)));
+
+      // ── Label sprite ───────────────────────────────────────────────────────
+      const anchor = (m.mode === "distance" || m.mode === "perimeter")
+        ? midpointAlongPolyline(m.points)
+        : centroidOf(m.points);
+      const sprite = createLabelSprite(m.label, m.color);
+      sprite.position.set(anchor.x, anchor.y, anchor.z);
+      sprite.renderOrder = 999;
+      sprite.userData.measureId = m.id;
+      sprite.scale.set(0.3, 0.1, 1);
+      labelGroup.add(sprite);
+    });
+  }, [measures, visibility]);
 
   // Overlay canvas sizing — runs whenever the canvas becomes visible
   useEffect(() => {
@@ -829,6 +1077,8 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   useEffect(() => {
     if (phase !== "viewing") return;
     const onDown = (e: KeyboardEvent) => {
+      const active = document.activeElement;
+      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT")) return;
       if (!NAV_KEYS.has(e.key)) return;
       if (measureMode) return;
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault();
@@ -836,6 +1086,8 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     };
     const onUp = (e: KeyboardEvent) => { keysRef.current.delete(e.key); };
     const onEsc = (e: KeyboardEvent) => {
+      const active = document.activeElement;
+      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT")) return;
       if (e.key === "Escape") { setPendingPts([]); setMeasureMode(null); hoverPtRef.current = null; setAnnotPendingPt(null); }
       if (e.key === "Enter" && measureMode && pendingPts.length >= 2) finalizeMeasure();
     };
@@ -845,9 +1097,10 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
   useEffect(() => {
     if (!controlsRef.current) return;
-    controlsRef.current.enabled = !measureMode;
-    if (measureMode) velocityRef.current.set(0, 0, 0);
-  }, [measureMode]);
+    const shouldDisable = !!measureMode || !!pinBuildingId;
+    controlsRef.current.enabled = !shouldDisable;
+    if (shouldDisable) velocityRef.current.set(0, 0, 0);
+  }, [measureMode, pinBuildingId]);
 
   // ── Building selection: click on Three.js canvas when no measure mode active ─
   useEffect(() => {
@@ -880,17 +1133,17 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       let nearest: any = null;
       let nearestDist = 30; // px click radius
 
-      dbMarkersRef.current.forEach((m: any) => {
-        if (m.type !== "block") return;
-        const proj = project3Dto2D({ x: m.x, y: m.y, z: m.z }, camera, W, H);
+      // Hit-test against user-placed building pins only
+      Object.entries(buildingPinsRef.current).forEach(([bId, pt]) => {
+        const proj = project3Dto2D(pt, camera, W, H);
         if (!proj) return;
         const d = Math.sqrt((proj[0] - mx) ** 2 + (proj[1] - my) ** 2);
-        if (d < nearestDist) { nearestDist = d; nearest = m; }
+        if (d < nearestDist) { nearestDist = d; nearest = bId; }
       });
 
       if (nearest) {
-        const building = dbBuildingsRef.current.find((b: any) => b.id === nearest.id);
-        setSelectedBuilding(building || nearest);
+        const building = dbBuildingsRef.current.find((b: any) => b.id === nearest);
+        setSelectedBuilding(building || null);
       } else {
         setSelectedBuilding(null);
       }
@@ -963,6 +1216,36 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   }, [measureMode, getFastHoverRaycastPt]);
 
   const handleOverlayClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Pin-placement mode: clicking the model registers immediately and saves the current camera
+    if (pinBuildingIdRef.current && !measureModeRef.current) {
+      const pt = getAccurateRaycastPt(e);
+      if (!pt) return;
+      
+      const buildingId = pinBuildingIdRef.current;
+      setPinBuildingId(null);
+
+      const cam = cameraRef.current;
+      const ctrl = controlsRef.current;
+      let camHome: CameraHome | undefined;
+      if (cam && ctrl) {
+        camHome = {
+          position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
+          target: { x: ctrl.target.x, y: ctrl.target.y, z: ctrl.target.z },
+          near: cam.near,
+          far: cam.far
+        };
+      }
+
+      setBuildingPins(prev => ({ 
+        ...prev, 
+        [buildingId]: {
+          x: pt.x, y: pt.y, z: pt.z,
+          camera: camHome
+        }
+      }));
+      return;
+    }
+
     if (!measureMode) return;
 
     if (measureMode === "annotate") {
@@ -1027,7 +1310,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       fetch(`${FILE_SERVER_URL}/schools/${schoolId}/viewer-state`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ home, annotations: annotationsRef.current, measures: measuresRef.current }),
+        body: JSON.stringify({ home, annotations: annotationsRef.current, measures: measuresRef.current, buildingPins: buildingPinsRef.current }),
       }).catch(() => { });
     }
 
@@ -1211,9 +1494,11 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   // ── Annotation: place directly in 3D viewer ────────────────────────────────
   const submit3DAnnotation = useCallback((iconType: string, title: string, _description: string, mapColor: string) => {
     const pt = annotPendingPt;
+    const buildingId = pinBuildingIdRef.current;
     setAnnotPickerOpen(false);
     setAnnotPendingPt(null);
     setMeasureMode(null);
+    if (buildingId) setPinBuildingId(null);
 
     if (!pt) return;
     const emoji = ICON_EMOJI_MAP[iconType] || "";
@@ -1221,12 +1506,77 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     const a: Annotation = { id: uid(), point: pt, text: label, color: mapColor || ANNOT_COLORS[colorIdxRef.current % ANNOT_COLORS.length] };
     colorIdxRef.current++;
     setAnnotations(prev => [...prev, a]);
+
+    // If this was a building pin placement, store the pin and fly to it
+    if (buildingId) {
+      setBuildingPins(prev => ({ ...prev, [buildingId]: pt }));
+      const cam = cameraRef.current, ctrl = controlsRef.current;
+      if (cam && ctrl) {
+        const target = new THREE.Vector3(pt.x, pt.y, pt.z);
+        const startPos = cam.position.clone(), startTarget = ctrl.target.clone();
+        const dist = cam.position.distanceTo(ctrl.target);
+        const flyDist = Math.max(3, dist * 0.2);
+        const endPos = target.clone().add(new THREE.Vector3(flyDist * 0.3, flyDist * 0.7, flyDist * 0.5));
+        const t0 = Date.now();
+        const step = () => {
+          const t = Math.min(1, (Date.now() - t0) / 900);
+          const e = 1 - Math.pow(1 - t, 3);
+          cam.position.lerpVectors(startPos, endPos, e);
+          ctrl.target.lerpVectors(startTarget, target, e);
+          ctrl.update();
+          if (t < 1) requestAnimationFrame(step);
+        };
+        step();
+      }
+    }
   }, [annotPendingPt]);
 
   const cancelAnnotation = useCallback(() => {
     setAnnotPickerOpen(false);
     setAnnotPendingPt(null);
+    setPinBuildingId(null);
   }, []);
+
+  // ── Fly camera to a 3D world point ───────────────────────────────────────────
+  const flyToPoint = useCallback((pt: MeasurePoint) => {
+    const cam = cameraRef.current, ctrl = controlsRef.current;
+    if (!cam || !ctrl) return;
+    const target = new THREE.Vector3(pt.x, pt.y, pt.z);
+    const startPos = cam.position.clone(), startTarget = ctrl.target.clone();
+    const currentDist = cam.position.distanceTo(ctrl.target);
+    const flyDist = Math.max(5, currentDist * 0.25);
+    const endPos = target.clone().add(new THREE.Vector3(flyDist * 0.4, flyDist * 0.8, flyDist * 0.6));
+    const t0 = Date.now();
+    const step = () => {
+      const t = Math.min(1, (Date.now() - t0) / 1000);
+      const ease = 1 - Math.pow(1 - t, 3);
+      cam.position.lerpVectors(startPos, endPos, ease);
+      ctrl.target.lerpVectors(startTarget, target, ease);
+      ctrl.update();
+      if (t < 1) requestAnimationFrame(step);
+    };
+    step();
+  }, []);
+
+  // ── Add building via API ─────────────────────────────────────────────────────
+  const handleAddBuilding = useCallback(async (data: any) => {
+    const res = await api.post(`/schools/${schoolId}/buildings`, data);
+    const newBuilding = normalizeBuilding(res.data);
+    setDbBuildings(prev => [...prev, newBuilding]);
+    setShowAddBuildingModal(false);
+    // Auto-select the new building and enter pin mode
+    setSelectedBuilding(newBuilding);
+    setPinBuildingId(newBuilding.id);
+    setShowBuildingsList(true);
+  }, [schoolId]);
+
+  // ── Delete building via API ───────────────────────────────────────────────────
+  const handleDeleteBuilding = useCallback(async (id: string) => {
+    await api.delete(`/schools/buildings/${id}`);
+    setDbBuildings(prev => prev.filter((b: any) => b.id !== id));
+    setBuildingPins(prev => { const next = { ...prev }; delete next[id]; return next; });
+    if (selectedBuilding?.id === id) setSelectedBuilding(null);
+  }, [selectedBuilding]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -1268,6 +1618,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
             progress={progress}
             progressLabel={progressLabel}
             measureMode={measureMode}
+            isPinMode={!!pinBuildingId}
             handleOverlayMouseMove={handleOverlayMouseMove}
             handleOverlayClick={handleOverlayClick}
             handleOverlayDoubleClick={handleOverlayDoubleClick}
@@ -1276,30 +1627,37 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
           {phase === "viewing" && (
             <>
-              <ViewerControlToolbar
-                handleResetCamera={handleResetCamera}
-                saveFlash={saveFlash}
-                homeSaved={homeSaved}
-                speedSteps={SPEED_STEPS}
-                handleSaveHome={handleSaveHome}
-                toggleOrientation={toggleOrientation}
-                setView={setView}
-                speedIdx={speedIdx}
-                speedUp={speedUp}
-                speedDown={speedDown}
-                showMeasurePanel={showMeasurePanel}
-                setShowMeasurePanel={setShowMeasurePanel}
-                screenshotFlash={screenshotFlash}
-                handleScreenshot={handleScreenshot}
-                showHelp={showHelp}
-                setShowHelp={setShowHelp}
-              />
+              {!selectedBuilding && (
+                <ViewerControlToolbar
+                  handleResetCamera={handleResetCamera}
+                  saveFlash={saveFlash}
+                  homeSaved={homeSaved}
+                  speedSteps={SPEED_STEPS}
+                  handleSaveHome={handleSaveHome}
+                  toggleOrientation={toggleOrientation}
+                  setView={setView}
+                  speedIdx={speedIdx}
+                  speedUp={speedUp}
+                  speedDown={speedDown}
+                  showMeasurePanel={showMeasurePanel}
+                  setShowMeasurePanel={setShowMeasurePanel}
+                  screenshotFlash={screenshotFlash}
+                  handleScreenshot={handleScreenshot}
+                  showHelp={showHelp}
+                  setShowHelp={setShowHelp}
+                  showBuildingsList={showBuildingsList}
+                  setShowBuildingsList={setShowBuildingsList}
+                  buildingsCount={dbBuildings.length}
+                />
+              )}
 
-              <ViewerRenderModePanel
-                modeLabels={MODE_LABELS}
-                renderMode={renderMode}
-                setRenderMode={setRenderMode}
-              />
+              {!selectedBuilding && (
+                <ViewerRenderModePanel
+                  modeLabels={MODE_LABELS}
+                  renderMode={renderMode}
+                  setRenderMode={setRenderMode}
+                />
+              )}
 
               <ViewerMeasureToolbar
                 measureMode={measureMode}
@@ -1338,9 +1696,76 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
                 />
               )}
 
+              {pinBuildingId && (
+                <div style={{
+                  position: "absolute", bottom: 48, left: "50%", transform: "translateX(-50%)",
+                  background: "rgba(6,11,26,0.92)", border: "1px solid rgba(251,191,36,0.5)",
+                  borderRadius: 10, padding: "10px 18px", color: "#fcd34d", fontSize: 12,
+                  fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.3px",
+                  display: "flex", alignItems: "center", gap: 10, zIndex: 40, pointerEvents: "auto",
+                  boxShadow: "0 4px 24px rgba(0,0,0,0.5)",
+                }}>
+                  <span style={{ fontSize: 16 }}>📍</span>
+                  <span>
+                    Click on the 3D model to pin <em style={{ fontStyle: "normal", color: "#fef3c7" }}>
+                      {dbBuildings.find((b: any) => b.id === pinBuildingId)?.buildingName || "building"}
+                    </em>
+                  </span>
+                  <button onClick={() => setPinBuildingId(null)} style={{
+                    marginLeft: 8, background: "rgba(255,255,255,0.08)", border: "none",
+                    color: "#fcd34d", cursor: "pointer", fontSize: 14, padding: "2px 6px", borderRadius: 5,
+                  }}>✕</button>
+                </div>
+              )}
+
+              {showBuildingsList && (
+                <BuildingsListPanel
+                  buildings={dbBuildings as BuildingData[]}
+                  selectedId={selectedBuilding?.id}
+                  onClose={() => setShowBuildingsList(false)}
+                  onDelete={handleDeleteBuilding}
+                  onAdd={() => setShowAddBuildingModal(true)}
+                  onSelect={(b) => {
+                    setSelectedBuilding(b);
+                    const pin = buildingPinsRef.current[b.id] as any;
+                    if (pin) {
+                      // Fly to existing recorded pin position
+                      if (pin.camera) {
+                        const cam = cameraRef.current, ctrl = controlsRef.current;
+                        if (cam && ctrl) {
+                          const target = new THREE.Vector3(pin.camera.target.x, pin.camera.target.y, pin.camera.target.z);
+                          const endPos = new THREE.Vector3(pin.camera.position.x, pin.camera.position.y, pin.camera.position.z);
+                          const startPos = cam.position.clone(), startTarget = ctrl.target.clone();
+                          const t0 = Date.now();
+                          const step = () => {
+                            const t = Math.min(1, (Date.now() - t0) / 1000);
+                            const ease = 1 - Math.pow(1 - t, 3);
+                            cam.position.lerpVectors(startPos, endPos, ease);
+                            ctrl.target.lerpVectors(startTarget, target, ease);
+                            cam.near = pin.camera.near; cam.far = pin.camera.far; cam.updateProjectionMatrix();
+                            ctrl.update();
+                            if (t < 1) requestAnimationFrame(step);
+                          };
+                          step();
+                        }
+                      } else {
+                        flyToPoint(pin);
+                      }
+                    } else {
+                      // Enter pin-placement mode: next model click records this building's 3D location
+                      setPinBuildingId(b.id);
+                    }
+                    if (window.innerWidth < 768) setShowBuildingsList(false);
+                  }}
+                />
+              )}
+
               <AnnotationPickerModal
                 open={annotPickerOpen}
                 annotationType="point"
+                initialTitle={pinBuildingId
+                  ? (dbBuildings.find((b: any) => b.id === pinBuildingId)?.buildingName || "")
+                  : ""}
                 onConfirm={submit3DAnnotation}
                 onCancel={cancelAnnotation}
               />
@@ -1355,6 +1780,13 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
               {showHelp && (
                 <ViewerHelpModal
                   setShowHelp={setShowHelp}
+                />
+              )}
+
+              {showAddBuildingModal && (
+                <ViewerAddBuildingModal
+                  onAdd={handleAddBuilding}
+                  onCancel={() => setShowAddBuildingModal(false)}
                 />
               )}
             </>

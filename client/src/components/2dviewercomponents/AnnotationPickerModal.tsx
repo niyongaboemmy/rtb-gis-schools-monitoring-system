@@ -54,6 +54,7 @@ export const ANNOTATION_ICONS: AnnotationIcon[] = [
 interface AnnotationPickerModalProps {
   open: boolean;
   annotationType?: "text" | "line" | "polygon" | "point";
+  initialTitle?: string;
   initialDescription?: string;
   onConfirm: (iconType: string, title: string, description: string, mapColor: string) => void;
   onCancel: () => void;
@@ -62,6 +63,7 @@ interface AnnotationPickerModalProps {
 export function AnnotationPickerModal({
   open,
   annotationType = "text",
+  initialTitle = "",
   initialDescription = "",
   onConfirm,
   onCancel,
@@ -72,11 +74,11 @@ export function AnnotationPickerModal({
 
   React.useEffect(() => {
     if (open) {
-      setTitle("");
+      setTitle(initialTitle);
       setDescription(initialDescription);
       setSelectedIcon(ANNOTATION_ICONS[0]);
     }
-  }, [open, initialDescription]);
+  }, [open, initialTitle, initialDescription]);
 
   const handleConfirm = () => {
     const finalTitle = title.trim() || selectedIcon.label;

@@ -4,6 +4,7 @@ interface ViewerMainCanvasProps {
   progress: number;
   progressLabel: string;
   measureMode: any;
+  isPinMode?: boolean;
   handleOverlayMouseMove: (e: React.MouseEvent<HTMLCanvasElement>) => void;
   handleOverlayClick: (e: React.MouseEvent<HTMLCanvasElement>) => void;
   handleOverlayDoubleClick: () => void;
@@ -14,6 +15,7 @@ export const ViewerMainCanvas = forwardRef<HTMLDivElement, ViewerMainCanvasProps
   progress,
   progressLabel,
   measureMode,
+  isPinMode,
   handleOverlayMouseMove,
   handleOverlayClick,
   handleOverlayDoubleClick,
@@ -33,7 +35,8 @@ export const ViewerMainCanvas = forwardRef<HTMLDivElement, ViewerMainCanvasProps
 
       <div ref={ref} className="viewer-canvas" />
 
-      <canvas ref={overlayRef} className={`overlay-canvas${measureMode ? "  interactive" : ""}`}
+      <canvas ref={overlayRef} className={`overlay-canvas${(measureMode || isPinMode) ? "  interactive" : ""}`}
+        style={isPinMode ? { cursor: "crosshair" } : undefined}
         onMouseMove={handleOverlayMouseMove}
         onClick={handleOverlayClick}
         onDoubleClick={handleOverlayDoubleClick}
