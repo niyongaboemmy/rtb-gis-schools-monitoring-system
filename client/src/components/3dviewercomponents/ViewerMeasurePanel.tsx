@@ -6,6 +6,7 @@ interface ViewerMeasurePanelProps {
   setMeasures: (val: any | ((p: any[]) => any[])) => void;
   setAnnotations: (val: any | ((p: any[]) => any[])) => void;
   clearAllMeasurements: () => void;
+  onClose: () => void;
 }
 
 export const ViewerMeasurePanel: React.FC<ViewerMeasurePanelProps> = ({
@@ -14,6 +15,7 @@ export const ViewerMeasurePanel: React.FC<ViewerMeasurePanelProps> = ({
   setMeasures,
   setAnnotations,
   clearAllMeasurements,
+  onClose,
 }) => {
   return (
     <div className="meas-panel">
@@ -22,7 +24,10 @@ export const ViewerMeasurePanel: React.FC<ViewerMeasurePanelProps> = ({
           📐 Measurements
           <span className="mp-count">{measures.length + annotations.length}</span>
         </div>
-        <button className="mp-clear" onClick={clearAllMeasurements}>Delete all</button>
+        <div className="flex items-center gap-2">
+          <button className="mp-clear" onClick={clearAllMeasurements}>Delete all</button>
+          <button className="mp-item-del static! m-0! w-6! h-6!" onClick={onClose}>✕</button>
+        </div>
       </div>
       <div className="mp-list">
         {measures.length === 0 && annotations.length === 0 && (

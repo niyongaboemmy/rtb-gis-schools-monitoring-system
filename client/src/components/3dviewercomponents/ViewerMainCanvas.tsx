@@ -5,10 +5,11 @@ interface ViewerMainCanvasProps {
   progressLabel: string;
   measureMode: any;
   isPinMode?: boolean;
-  handleOverlayMouseMove: (e: React.MouseEvent<HTMLCanvasElement>) => void;
-  handleOverlayClick: (e: React.MouseEvent<HTMLCanvasElement>) => void;
+  handleOverlayMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void;
+  handleOverlayClick: (e: React.MouseEvent<HTMLDivElement>) => void;
   handleOverlayDoubleClick: () => void;
-  handleOverlayContextMenu: (e: React.MouseEvent<HTMLCanvasElement>) => void;
+  handleOverlayContextMenu: (e: React.MouseEvent<HTMLDivElement>) => void;
+  onMouseDown?: (e: React.MouseEvent<HTMLDivElement>) => void;
 }
 
 export const ViewerMainCanvas = forwardRef<HTMLDivElement, ViewerMainCanvasProps & { overlayRef: React.RefObject<HTMLCanvasElement | null> }>(({
@@ -20,6 +21,7 @@ export const ViewerMainCanvas = forwardRef<HTMLDivElement, ViewerMainCanvasProps
   handleOverlayClick,
   handleOverlayDoubleClick,
   handleOverlayContextMenu,
+  onMouseDown,
   overlayRef,
 }, ref) => {
   return (
@@ -33,14 +35,16 @@ export const ViewerMainCanvas = forwardRef<HTMLDivElement, ViewerMainCanvasProps
         </div>
       )}
 
-      <div ref={ref} className="viewer-canvas" />
-
-      <canvas ref={overlayRef} className={`overlay-canvas${(measureMode || isPinMode) ? "  interactive" : ""}`}
-        style={isPinMode ? { cursor: "crosshair" } : undefined}
+      <div ref={ref} className="viewer-canvas" 
+        style={(measureMode || isPinMode) ? { cursor: "crosshair" } : undefined}
+        onMouseDown={onMouseDown}
         onMouseMove={handleOverlayMouseMove}
         onClick={handleOverlayClick}
         onDoubleClick={handleOverlayDoubleClick}
         onContextMenu={handleOverlayContextMenu} />
+
+      <canvas ref={overlayRef} className={`overlay-canvas${(measureMode || isPinMode) ? "  interactive" : ""}`}
+        style={{ pointerEvents: "none" }} />
     </>
   );
 });

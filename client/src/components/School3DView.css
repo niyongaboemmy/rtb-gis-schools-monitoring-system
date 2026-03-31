@@ -295,8 +295,7 @@
 }
 
 .overlay-canvas.interactive {
-    pointer-events: all;
-    cursor: crosshair
+    pointer-events: none;
 }
 
 .toolbar {
@@ -789,19 +788,20 @@
 
 .meas-panel {
     position: absolute;
-    right: 16px;
+    left: 24px;
     top: 80px;
     bottom: 80px;
-    width: 280px;
+    width: 290px;
     background: rgba(6, 11, 26, 0.94);
     backdrop-filter: blur(20px);
     border: 1px solid rgba(255, 255, 255, 0.09);
     border-radius: 16px;
-    z-index: 20;
+    z-index: 45;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    animation: panelIn .2s ease
+    box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+    animation: panelInLeft .2s ease
 }
 
 @keyframes panelIn {
@@ -1112,6 +1112,96 @@
     to {
         opacity: 1
     }
+}
+
+/* Inspector Dock (Left Side) */
+.inspector-dock {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 24px;
+}
+
+.inspector-container {
+  pointer-events: auto;
+  height: 85vh;
+  width: 400px;
+  box-shadow: 0 0 50px rgba(0,0,0,0.5);
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+/* Pin indicators and other overlays */
+.pin-indicator {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(251, 191, 36, 0.95);
+  color: #000;
+  padding: 10px 20px;
+  border-radius: 99px;
+  font-weight: 700;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 8px 32px rgba(251, 191, 36, 0.3);
+  z-index: 100;
+}
+
+.pin-indicator button {
+  background: rgba(0,0,0,0.1);
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+}
+
+/* Camera Nav (Bottom Left) */
+.camera-nav-container {
+  position: absolute;
+  bottom: 80px;
+  left: 24px;
+  z-index: 30;
+}
+
+/* Ensure right sidebar is persistent and styled like 2D view */
+.right-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 72px;
+  background: rgba(6, 11, 26, 0.85);
+  backdrop-filter: blur(20px);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px 0;
+  gap: 20px;
+  z-index: 50;
+}
+
+/* Stats footer adjustment */
+.viewer-stats-footer {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
 }
 
 .help-panel {
