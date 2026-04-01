@@ -93,6 +93,7 @@ interface BuildingReportDetailModalProps {
   report: Report | null;
   onClose: () => void;
   onReportUpdated: (updated: Report) => void;
+  onReportStatusChange?: () => void;
   showToast: (message: string, type: "success" | "warning") => void;
 }
 
@@ -100,6 +101,7 @@ export function BuildingReportDetailModal({
   report,
   onClose,
   onReportUpdated,
+  onReportStatusChange,
   showToast,
 }: BuildingReportDetailModalProps) {
   const [isEditMode, setIsEditMode] = useState(false);
@@ -113,6 +115,7 @@ export function BuildingReportDetailModal({
     try {
       await api.patch(`/reports/${report.id}/status`, { status });
       onReportUpdated({ ...report, status });
+      onReportStatusChange?.();
       showToast(
         `Status set to ${status.replace(/_/g, " ").toLowerCase()}`,
         "success",
@@ -178,7 +181,7 @@ export function BuildingReportDetailModal({
                   <p className="text-sm font-semibold text-slate-900 dark:text-white leading-tight">
                     Report detail
                   </p>
-                  <p className="text-[11px] font-mono text-slate-500 dark:text-white/50 mt-0.5 truncate">
+                  <p className="text-[11px] font-mono text-slate-500 dark:text-white/75 mt-0.5 truncate">
                     {report.id.split("-").pop()}
                   </p>
                 </div>
@@ -191,7 +194,7 @@ export function BuildingReportDetailModal({
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-all",
                     isEditMode
-                      ? "bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-white/70 border-slate-200 dark:border-white/10"
+                      ? "bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-white/88 border-slate-200 dark:border-white/10"
                       : "bg-primary/10 text-primary border-primary/20 hover:bg-primary hover:text-white hover:border-primary",
                   )}
                 >
@@ -200,7 +203,7 @@ export function BuildingReportDetailModal({
                 </button>
                 <button
                   onClick={onClose}
-                  className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 dark:text-white/40 hover:text-slate-900 dark:hover:text-white transition-all group"
+                  className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 dark:text-white/65 hover:text-slate-900 dark:hover:text-white transition-all group"
                 >
                   <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-200" />
                 </button>
@@ -221,7 +224,7 @@ export function BuildingReportDetailModal({
                   {STATUS_CONFIG[report.status].icon}
                   {STATUS_CONFIG[report.status].short}
                 </Badge>
-                <span className="text-[11px] font-mono text-slate-400 dark:text-white/45 flex items-center gap-1.5">
+                <span className="text-[11px] font-mono text-slate-400 dark:text-white/88 flex items-center gap-1.5">
                   <Calendar className="w-3 h-3" />
                   {format(new Date(report.createdAt), "dd MMM yyyy · HH:mm")}
                 </span>
@@ -229,7 +232,7 @@ export function BuildingReportDetailModal({
 
               {/* Status update */}
               <div className="space-y-2">
-                <p className="text-xs text-slate-500 dark:text-white/55 flex items-center gap-1.5">
+                <p className="text-xs text-slate-500 dark:text-white/80 flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5" />
                   Update status
                 </p>
@@ -246,7 +249,7 @@ export function BuildingReportDetailModal({
                           "flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-xl border text-xs font-medium transition-all active:scale-95",
                           isActive
                             ? c.activeBg
-                            : "bg-white dark:bg-white/3 border-slate-200 dark:border-white/8 text-slate-600 dark:text-white/55 hover:bg-slate-50 dark:hover:bg-white/8 hover:border-slate-300 dark:hover:border-white/15",
+                            : "bg-white dark:bg-white/3 border-slate-200 dark:border-white/8 text-slate-600 dark:text-white/80 hover:bg-slate-50 dark:hover:bg-white/8 hover:border-slate-300 dark:hover:border-white/15",
                         )}
                       >
                         {isStatusUpdating && isActive ? (
@@ -265,7 +268,7 @@ export function BuildingReportDetailModal({
 
               {/* Description */}
               <div className="space-y-2">
-                <p className="text-xs text-slate-500 dark:text-white/55 flex items-center gap-1.5">
+                <p className="text-xs text-slate-500 dark:text-white/80 flex items-center gap-1.5">
                   <ClipboardList className="w-3.5 h-3.5" />
                   Description
                 </p>
@@ -275,7 +278,7 @@ export function BuildingReportDetailModal({
                       value={editDescription}
                       onChange={(e) => setEditDescription(e.target.value)}
                       rows={5}
-                      className="text-sm resize-none rounded-xl bg-slate-50 dark:bg-white/3 border-slate-200 dark:border-white/8 text-slate-800 dark:text-white/80 placeholder:text-slate-300 dark:placeholder:text-white/20 focus:border-primary/40 focus:ring-primary/20"
+                      className="text-sm resize-none rounded-xl bg-slate-50 dark:bg-white/3 border-slate-200 dark:border-white/8 text-slate-800 dark:text-white/80 placeholder:text-slate-300 dark:placeholder:text-white/40 focus:border-primary/40 focus:ring-primary/20"
                       placeholder="Describe the issue..."
                     />
                     <button
@@ -296,7 +299,7 @@ export function BuildingReportDetailModal({
                   </div>
                 ) : (
                   <div className="bg-slate-50 dark:bg-white/3 border border-slate-200 dark:border-white/8 rounded-xl p-4">
-                    <p className="text-sm text-slate-700 dark:text-white/70 leading-relaxed">
+                    <p className="text-sm text-slate-700 dark:text-white/88 leading-relaxed">
                       {report.description}
                     </p>
                   </div>
@@ -305,7 +308,7 @@ export function BuildingReportDetailModal({
 
               {/* Metadata */}
               <div className="space-y-2">
-                <p className="text-xs text-slate-500 dark:text-white/55 flex items-center gap-1.5">
+                <p className="text-xs text-slate-500 dark:text-white/80 flex items-center gap-1.5">
                   <Tag className="w-3.5 h-3.5" />
                   Details
                 </p>
@@ -334,12 +337,12 @@ export function BuildingReportDetailModal({
                       key={label}
                       className="flex items-center justify-between px-4 py-2.5"
                     >
-                      <span className="text-xs text-slate-500 dark:text-white/50">
+                      <span className="text-xs text-slate-500 dark:text-white/75">
                         {label}
                       </span>
                       <span
                         className={cn(
-                          "text-sm text-slate-700 dark:text-white/70",
+                          "text-sm text-slate-700 dark:text-white/88",
                           capitalize && "capitalize",
                         )}
                       >
@@ -358,7 +361,7 @@ export function BuildingReportDetailModal({
                     if (!cats.length) return null;
                     return (
                       <div className="flex items-start justify-between px-4 py-2.5 gap-3">
-                        <span className="text-xs text-slate-500 dark:text-white/50 shrink-0">
+                        <span className="text-xs text-slate-500 dark:text-white/75 shrink-0">
                           Categories
                         </span>
                         <div className="flex flex-wrap gap-1 justify-end">
@@ -380,7 +383,7 @@ export function BuildingReportDetailModal({
 
               {/* Attachments */}
               <div className="space-y-2">
-                <p className="text-xs text-slate-500 dark:text-white/55 flex items-center gap-1.5">
+                <p className="text-xs text-slate-500 dark:text-white/80 flex items-center gap-1.5">
                   <Camera className="w-3.5 h-3.5" />
                   Evidence
                 </p>
@@ -397,8 +400,8 @@ export function BuildingReportDetailModal({
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center gap-2 py-8 border-2 border-dashed border-slate-200 dark:border-white/8 rounded-xl bg-slate-50 dark:bg-white/2">
-                    <Camera className="w-5 h-5 text-slate-300 dark:text-white/20" />
-                    <span className="text-xs text-slate-400 dark:text-white/35">
+                    <Camera className="w-5 h-5 text-slate-300 dark:text-white/65" />
+                    <span className="text-xs text-slate-400 dark:text-white/60">
                       No evidence attached
                     </span>
                   </div>

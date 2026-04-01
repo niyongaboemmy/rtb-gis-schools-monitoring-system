@@ -292,7 +292,7 @@ export function BuildingMediaTab({
         {!building.media || building.media.length === 0 ? (
           <div className="h-40 rounded-3xl border border-dashed border-white/10 flex flex-col items-center justify-center p-8 bg-black/10">
             <Globe className="w-8 h-8 text-white/5 mb-3" />
-            <p className="text-[10px] text-white/40 uppercase font-black tracking-widest text-center leading-relaxed">
+            <p className="text-[10px] text-white/40 font-normal text-center leading-relaxed">
               {" "}
               No digital assets found.
               <br />

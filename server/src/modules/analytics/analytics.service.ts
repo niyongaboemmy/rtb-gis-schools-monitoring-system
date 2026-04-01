@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -15,6 +15,7 @@ import {
   SchoolFacilitySurvey,
   ComplianceLevel,
 } from '../schools/entities/school-facility-survey.entity';
+import { SchoolMetricsDto } from './dto/school-metrics.dto';
 
 @Injectable()
 export class AnalyticsService {
@@ -109,6 +110,116 @@ export class AnalyticsService {
       processed++;
     }
     return { processed };
+  }
+
+  async getSchoolMetrics(schoolId: string): Promise<SchoolMetricsDto> {
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+      relations: ['buildings', 'populationData'],
+    });
+
+    if (!school) {
+      throw new NotFoundException(`School with id "${schoolId}" not found`);
+    }
+
+    const assessment = await this.calculateSchoolScore(school);
+    const facilityComplianceScore =
+      await this.calculateFacilityComplianceScore(schoolId);
+
+    const currentYear = new Date().getFullYear();
+    const buildings = school.buildings ?? [];
+    const programs = (school.educationPrograms as any[]) ?? [];
+
+    const totalStudents = programs.reduce(
+      (sum, p) => sum + (parseFloat(String(p.totalStudents)) || 0),
+      0,
+    );
+    const totalCapacity = programs.reduce(
+      (sum, p) => sum + (parseFloat(String(p.capacity)) || 0),
+      0,
+    );
+
+    const maleTeachers = parseFloat(String(school.maleTeachers)) || 0;
+    const femaleTeachers = parseFloat(String(school.femaleTeachers)) || 0;
+    const totalTeachers = maleTeachers + femaleTeachers;
+    const totalStaff =
+      maleTeachers +
+      femaleTeachers +
+      (parseFloat(String(school.maleAdminStaff)) || 0) +
+      (parseFloat(String(school.femaleAdminStaff)) || 0) +
+      (parseFloat(String(school.maleSupportStaff)) || 0) +
+      (parseFloat(String(school.femaleSupportStaff)) || 0);
+    const maleTeacherRatio =
+      totalTeachers > 0 ? Math.round((maleTeachers / totalTeachers) * 100) : 0;
+
+    const buildingsWithYear = buildings.filter((b) => b.yearBuilt);
+    const ages = buildingsWithYear.map(
+      (b) => currentYear - parseFloat(String(b.yearBuilt)),
+    );
+    const avgBuildingAge =
+      ages.length > 0
+        ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length)
+        : null;
+    const avgBuildingYear =
+      avgBuildingAge !== null ? currentYear - avgBuildingAge : null;
+
+    const ageScore = parseFloat(String(assessment.buildingAgeScore));
+    const ageToBuildingDepreciation: Record<number, number> = {
+      90: 70,
+      70: 50,
+      50: 35,
+      30: 20,
+      15: 10,
+    };
+    const depreciation = ageToBuildingDepreciation[ageScore] ?? 20;
+
+    const dto = new SchoolMetricsDto();
+    dto.schoolId = school.id;
+    dto.schoolName = school.name;
+    dto.schoolCode = school.code;
+    dto.calculatedAt = new Date().toISOString();
+
+    dto.totalStudents = totalStudents;
+    dto.totalCapacity = totalCapacity;
+    dto.totalTeachers = totalTeachers;
+    dto.totalStaff = totalStaff;
+    dto.maleTeacherRatio = maleTeacherRatio;
+
+    dto.buildingCount = buildings.length;
+    dto.avgBuildingAge = avgBuildingAge;
+    dto.avgBuildingYear = avgBuildingYear;
+
+    dto.educationProgramsCount = programs.length;
+    dto.usedLandArea =
+      school.usedLandArea != null
+        ? parseFloat(String(school.usedLandArea))
+        : null;
+    dto.unusedLandArea =
+      school.unusedLandArea != null
+        ? parseFloat(String(school.unusedLandArea))
+        : null;
+    dto.roadStatusPercentage = school.roadStatusPercentage ?? null;
+
+    dto.overallScore = parseFloat(String(assessment.overallScore));
+    dto.infrastructureScore = parseFloat(String(assessment.infrastructureScore));
+    dto.buildingAgeScore = ageScore;
+    dto.accessibilityScore = parseFloat(String(assessment.accessibilityScore));
+    dto.populationPressureScore = parseFloat(
+      String(assessment.populationPressureScore),
+    );
+    dto.facilityComplianceScore = facilityComplianceScore;
+    dto.depreciation = depreciation;
+
+    dto.priorityLevel = assessment.priorityLevel;
+    dto.urgencyMonths = assessment.urgencyMonths ?? null;
+    dto.recommendations = assessment.recommendations ?? [];
+    dto.primaryRecommendation = assessment.primaryRecommendation ?? null;
+    dto.estimatedBudgetRwf =
+      assessment.estimatedBudgetRwf != null
+        ? parseFloat(String(assessment.estimatedBudgetRwf))
+        : null;
+
+    return dto;
   }
 
   async calculateSchoolScore(school: School): Promise<DecisionAssessment> {

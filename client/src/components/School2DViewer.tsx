@@ -123,6 +123,7 @@ export default function School2DViewer({
   const loadingStartTimeRef = useRef<number>(Date.now());
   /** Shared drawing-state flag between useMapSetup click guard & useMapInteractions */
   const isDrawingRef = useRef<boolean>(false);
+  const mapTabAnimatedRef = useRef(false);
 
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("Initialising map…");
@@ -190,12 +191,15 @@ export default function School2DViewer({
   const [isSurveyModalOpen, setIsSurveyModalOpen] = useState(false);
   const [isMissingMapModalOpen, setIsMissingMapModalOpen] = useState(false);
   const [showReportIndicators, setShowReportIndicators] = useState(true);
+  const [reportRefreshKey, setReportRefreshKey] = useState(0);
   const [blockInspectorInitialTab, setBlockInspectorInitialTab] = useState<
     "details" | "media" | "reporting"
   >("details");
   const [showBuildingAreas, setShowBuildingAreas] = useState(true);
   const [showSiteAnnotations, setShowSiteAnnotations] = useState(true);
-  const [hiddenAnnotationGroups, setHiddenAnnotationGroups] = useState<Set<string>>(new Set());
+  const [hiddenAnnotationGroups, setHiddenAnnotationGroups] = useState<
+    Set<string>
+  >(new Set());
 
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const showToast = useCallback(
@@ -440,6 +444,7 @@ export default function School2DViewer({
     schoolId: school.id,
     schoolBuildings,
     showIndicators: showReportIndicators,
+    refreshKey: reportRefreshKey,
     onBuildingClick: useCallback(
       (buildingId: string) => {
         const b = schoolBuildings.find((sb) => sb.id === buildingId);
@@ -453,7 +458,9 @@ export default function School2DViewer({
             Number(b.geolocation.latitude),
           ]);
           blockOverlayRef.current?.setPosition(coord);
-          mapRef.current?.getView().animate({ center: coord, zoom: 21, duration: 600 });
+          mapRef.current
+            ?.getView()
+            .animate({ center: coord, zoom: 21, duration: 600 });
         }
       },
       [schoolBuildings],
@@ -708,6 +715,25 @@ export default function School2DViewer({
     }
   }, [initialBuildingId, schoolBuildings, mapReady]);
 
+  // Animated zoom-in on first reveal of the map tab
+  useEffect(() => {
+    if (activeTab !== "map" || !mapReady) return;
+    if (mapTabAnimatedRef.current) return;
+    mapTabAnimatedRef.current = true;
+
+    const view = mapRef.current?.getView();
+    if (!view) return;
+
+    view.setZoom(15);
+    setTimeout(() => {
+      view.animate({
+        zoom: 19,
+        duration: 1000,
+        easing: (t: number) => 1 - Math.pow(1 - t, 3),
+      });
+    }, 80);
+  }, [activeTab, mapReady]);
+
   const renderToast = () => (
     <AnimatePresence>
       {toast.type && (
@@ -741,7 +767,7 @@ export default function School2DViewer({
 
       {/* ── Back button + school name (top-left, hidden in picker mode) ──── */}
       {!pickerMode && (
-        <div className="absolute top-3 left-3 z-50 flex items-center gap-2 pointer-events-auto">
+        <div className="absolute top-3 left-3 z-40 flex items-center gap-2 pointer-events-auto">
           {onClose && (
             <button
               onClick={onClose}
@@ -996,7 +1022,8 @@ export default function School2DViewer({
                   icon: AlertTriangle,
                   active: showReportIndicators,
                   onToggle: () => setShowReportIndicators((v) => !v),
-                  activeClass: "bg-rose-500/15 border-rose-500/30 text-rose-500",
+                  activeClass:
+                    "bg-rose-500/15 border-rose-500/30 text-rose-500",
                 },
                 {
                   key: "buildings",
@@ -1004,7 +1031,8 @@ export default function School2DViewer({
                   icon: MapPin,
                   active: showBuildingAreas,
                   onToggle: () => setShowBuildingAreas((v) => !v),
-                  activeClass: "bg-blue-500/15 border-blue-500/30 text-blue-500",
+                  activeClass:
+                    "bg-blue-500/15 border-blue-500/30 text-blue-500",
                 },
                 {
                   key: "annotations",
@@ -1012,25 +1040,28 @@ export default function School2DViewer({
                   icon: MapIcon,
                   active: showSiteAnnotations,
                   onToggle: () => setShowSiteAnnotations((v) => !v),
-                  activeClass: "bg-emerald-500/15 border-emerald-500/30 text-emerald-500",
+                  activeClass:
+                    "bg-emerald-500/15 border-emerald-500/30 text-emerald-500",
                 },
               ] as const
-            ).map(({ key, label, icon: Icon, active, onToggle, activeClass }) => (
-              <button
-                key={key}
-                onClick={onToggle}
-                title={active ? `Hide ${label}` : `Show ${label}`}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-medium transition-all active:scale-95",
-                  active
-                    ? activeClass
-                    : "border-transparent text-slate-400 dark:text-white/30 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-600 dark:hover:text-white/50",
-                )}
-              >
-                <Icon className="w-3 h-3 shrink-0" />
-                <span>{label}</span>
-              </button>
-            ))}
+            ).map(
+              ({ key, label, icon: Icon, active, onToggle, activeClass }) => (
+                <button
+                  key={key}
+                  onClick={onToggle}
+                  title={active ? `Hide ${label}` : `Show ${label}`}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-medium transition-all active:scale-95",
+                    active
+                      ? activeClass
+                      : "border-transparent text-slate-400 dark:text-white/30 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-600 dark:hover:text-white/50",
+                  )}
+                >
+                  <Icon className="w-3 h-3 shrink-0" />
+                  <span>{label}</span>
+                </button>
+              ),
+            )}
           </div>
         </div>
       )}
@@ -1236,6 +1267,7 @@ export default function School2DViewer({
                     console.error("Failed to persist building update:", error);
                   }
                 }}
+                onReportStatusChange={() => setReportRefreshKey((k) => k + 1)}
                 onAddAnnotation={() => setActiveTool("annotate_point")}
                 onUploadMedia={() => {}}
                 on3DView={() => {

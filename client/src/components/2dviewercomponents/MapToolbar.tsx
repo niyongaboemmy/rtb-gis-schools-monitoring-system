@@ -170,7 +170,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                       <X className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="left" className="hidden md:block">
+                  <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                     Close Viewer
                   </TooltipContent>
                 </Tooltip>
@@ -191,7 +191,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                       <Info className="h-4 w-4" />
                     </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   Overview
                 </TooltipContent>
               </Tooltip>
@@ -218,7 +218,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <Layers className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   GIS Layers
                 </TooltipContent>
               </Tooltip>
@@ -239,7 +239,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <Building2 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   Buildings Catalog
                 </TooltipContent>
               </Tooltip>
@@ -260,7 +260,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <MapPin className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   Searchable Places
                 </TooltipContent>
               </Tooltip>
@@ -286,7 +286,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <Globe className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   Basemap Library
                 </TooltipContent>
               </Tooltip>
@@ -313,7 +313,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <MousePointer2 className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   Selection Tool
                 </TooltipContent>
               </Tooltip>
@@ -339,7 +339,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <MessageSquare className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   Annotations
                 </TooltipContent>
               </Tooltip>
@@ -362,7 +362,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <PlusCircle className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   Design New Block
                 </TooltipContent>
               </Tooltip>
@@ -391,7 +391,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <Ruler className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   Measure Distance
                 </TooltipContent>
               </Tooltip>
@@ -412,7 +412,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <Square className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   Measure Area
                 </TooltipContent>
               </Tooltip>
@@ -434,7 +434,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                   </TooltipTrigger>
                   <TooltipContent
                     side="left"
-                    className="hidden md:block bg-destructive text-white border-none"
+                    className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl"
                   >
                     Reset Measure
                   </TooltipContent>
@@ -468,7 +468,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <SlidersHorizontal className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   Adjust Opacity
                 </TooltipContent>
               </Tooltip>
@@ -494,7 +494,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <Satellite className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   Visual Post-FX
                 </TooltipContent>
               </Tooltip>
@@ -510,7 +510,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <ZoomIn className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   Zoom In
                 </TooltipContent>
               </Tooltip>
@@ -526,7 +526,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <ZoomOut className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   Zoom Out
                 </TooltipContent>
               </Tooltip>
@@ -542,7 +542,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <Search className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   Fit to Extent
                 </TooltipContent>
               </Tooltip>
@@ -558,7 +558,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <Download className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   Export Map Image
                 </TooltipContent>
               </Tooltip>
@@ -574,7 +574,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                     <Home className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
+                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                   Reset Home View
                 </TooltipContent>
               </Tooltip>
@@ -591,7 +591,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                       <Globe className="h-4 w-4 group-hover:rotate-12 transition-transform" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="left" className="hidden md:block bg-primary text-white border-none font-black uppercase tracking-widest text-[10px]">
+                  <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/10 text-white text-xs font-medium shadow-xl">
                     3D Digital Twin
                   </TooltipContent>
                 </Tooltip>

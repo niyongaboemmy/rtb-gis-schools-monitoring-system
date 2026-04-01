@@ -11,6 +11,7 @@ interface UseReportIndicatorsOptions {
   schoolId: string;
   schoolBuildings: BuildingData[];
   showIndicators: boolean;
+  refreshKey?: number;
   onBuildingClick?: (buildingId: string) => void;
 }
 
@@ -128,6 +129,7 @@ export function useReportIndicators({
   schoolId,
   schoolBuildings,
   showIndicators,
+  refreshKey = 0,
   onBuildingClick,
 }: UseReportIndicatorsOptions) {
   const overlaysRef = useRef<Overlay[]>([]);
@@ -221,7 +223,7 @@ export function useReportIndicators({
       cancelled = true;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, schoolId, schoolBuildings]);
+  }, [mapReady, schoolId, schoolBuildings, refreshKey]);
 
   // Toggle visibility without re-fetching
   useEffect(() => {

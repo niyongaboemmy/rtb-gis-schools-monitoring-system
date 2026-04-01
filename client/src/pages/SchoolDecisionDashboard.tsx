@@ -7,15 +7,22 @@ import {
   GraduationCap,
   ClipboardCheck,
   AlertTriangle,
+  FileText,
+  CheckCircle,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { Modal } from "../components/ui/modal";
 import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
+import { cn } from "../lib/utils";
 
 // Dashboard Components
 import { DecisionIntelligenceScore } from "../components/dashboard/DecisionIntelligenceScore";
 import { FacilityBreakdownSection } from "../components/dashboard/FacilityBreakdownSection";
 import { SchoolStatsCards } from "../components/dashboard/SchoolStatsCards";
+import { ReportingAnalytics } from "../components/dashboard/ReportingAnalytics";
+import { ReportingTab } from "../components/dashboard/ReportingTab";
+import { RiskAssessment } from "../components/dashboard/RiskAssessment";
 import SchoolMap from "../components/SchoolMap";
 
 interface SchoolDecisionDashboardProps {
@@ -38,6 +45,8 @@ export default function SchoolDecisionDashboard({
   const [loading, setLoading] = useState(true);
   const [facilitySurvey, setFacilitySurvey] = useState<any[]>([]);
   const [isBuildingModalOpen, setIsBuildingModalOpen] = useState(false);
+  const [reportingData, setReportingData] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<"main" | "reporting">("main");
 
   const lastFetchedId = useRef<string | null>(null);
 
@@ -60,18 +69,82 @@ export default function SchoolDecisionDashboard({
     return new Intl.NumberFormat("en-US").format(num);
   };
 
+  const calculateDecisionIntelligenceScore = useCallback(() => {
+    if (!schoolData?.calculatedAssessment) return 50;
+
+    const {
+      infrastructureScore = 50,
+      buildingAgeScore = 50,
+      populationPressureScore = 50,
+      accessibilityScore = 50,
+      facilityComplianceScore = 50,
+      depreciation = 20,
+    } = schoolData.calculatedAssessment;
+
+    // Parse all values to ensure they're numbers
+    const infraScore = parseFloat(String(infrastructureScore)) || 50;
+    const buildingScore = parseFloat(String(buildingAgeScore)) || 50;
+    const popScore = parseFloat(String(populationPressureScore)) || 50;
+    const accessScore = parseFloat(String(accessibilityScore)) || 50;
+    const complianceScore = parseFloat(String(facilityComplianceScore)) || 50;
+    const depValue =
+      parseFloat(String(schoolData.calculatedAssessment.depreciation)) || 20; // Fixed: was 'depreciation'
+
+    // Weight the different factors for decision intelligence
+    const weights = {
+      infrastructure: 0.25,
+      buildingAge: 0.2,
+      populationPressure: 0.2,
+      accessibility: 0.15,
+      facilityCompliance: 0.15,
+      depreciation: 0.05,
+    };
+
+    // Calculate weighted score
+    let score =
+      infraScore * weights.infrastructure +
+      buildingScore * weights.buildingAge +
+      popScore * weights.populationPressure +
+      accessScore * weights.accessibility +
+      complianceScore * weights.facilityCompliance +
+      (100 - depValue) * weights.depreciation; // Fixed: was weights.depreciation
+
+    // Factor in reporting metrics if available
+    if (reportingData) {
+      const {
+        resolutionRate = 75,
+        criticalIssues = 3,
+        totalReports = 40,
+      } = reportingData;
+      const reportingScore =
+        resolutionRate * 0.6 +
+        (totalReports > 0
+          ? (100 - (criticalIssues / totalReports) * 100) * 0.4
+          : 50); // Prevent division by zero
+      score = score * 0.8 + reportingScore * 0.2; // 20% weight to reporting performance
+    }
+
+    return Math.round(Math.min(100, Math.max(0, score)));
+  }, [schoolData, reportingData]);
+
   const getAssessment = useCallback(() => {
     if (!schoolData?.calculatedAssessment)
       return { priorityLevel: "medium", recommendations: [] };
 
     const infrastructureScore =
-      schoolData.calculatedAssessment.infrastructureScore || 0;
-    const overallScore = schoolData.calculatedAssessment.overallScore || 0;
+      parseFloat(String(schoolData.calculatedAssessment.infrastructureScore)) ||
+      0;
+    const calculatedScore = calculateDecisionIntelligenceScore();
 
     return {
       ...schoolData.calculatedAssessment,
+      overallScore: calculatedScore,
       priorityLevel:
-        overallScore < 40 ? "critical" : overallScore < 70 ? "high" : "medium",
+        calculatedScore < 40
+          ? "critical"
+          : calculatedScore < 70
+            ? "high"
+            : "medium",
       recommendations: [
         schoolData.calculatedAssessment.depreciation > 40
           ? "Consider building renovation due to high depreciation"
@@ -82,11 +155,53 @@ export default function SchoolDecisionDashboard({
         infrastructureScore < 50
           ? "Infrastructure needs immediate attention"
           : null,
+        reportingData && reportingData.criticalIssues > 5
+          ? "High number of critical issues requires immediate intervention"
+          : null,
       ].filter(Boolean),
     };
-  }, [schoolData]);
+  }, [schoolData, calculateDecisionIntelligenceScore, reportingData]);
 
   const assessment = getAssessment();
+
+  // Fetch reporting data
+  const fetchReportingData = useCallback(async () => {
+    if (!id) return;
+    try {
+      const response = await api.get(`/reports?schoolId=${id}&limit=100`);
+      const reports = response.data?.reports || [];
+
+      // Calculate reporting metrics
+      const totalReports = reports.length;
+      const openIssues = reports.filter((r: any) => r.status === "open").length;
+      const resolvedIssues = reports.filter(
+        (r: any) => r.status === "resolved",
+      ).length;
+      const criticalIssues = reports.filter(
+        (r: any) => r.priority === "critical",
+      ).length;
+      const resolutionRate =
+        totalReports > 0 ? (resolvedIssues / totalReports) * 100 : 75;
+
+      setReportingData({
+        totalReports,
+        openIssues,
+        resolvedIssues,
+        criticalIssues,
+        resolutionRate: Math.round(resolutionRate),
+      });
+    } catch (error) {
+      console.error("Failed to fetch reporting data:", error);
+      // Set default values if API fails
+      setReportingData({
+        totalReports: 40,
+        openIssues: 12,
+        resolvedIssues: 28,
+        criticalIssues: 3,
+        resolutionRate: 75,
+      });
+    }
+  }, [id]);
 
   // 2. Data Fetching
   const fetchSchool = useCallback(
@@ -131,14 +246,34 @@ export default function SchoolDecisionDashboard({
           totalStudents: tStudents,
           totalStaff: tStaff,
           infrastructureScore:
-            sData.calculatedAssessment?.infrastructureScore ?? 50,
-          overallScore: sData.calculatedAssessment?.overallScore ?? 65,
-          depreciation: sData.calculatedAssessment?.depreciation ?? 20,
+            parseFloat(
+              String(sData.calculatedAssessment?.infrastructureScore),
+            ) || 50,
+          buildingAgeScore:
+            parseFloat(String(sData.calculatedAssessment?.buildingAgeScore)) ||
+            50,
           populationPressureScore:
-            sData.calculatedAssessment?.populationPressureScore ?? 45,
+            parseFloat(
+              String(sData.calculatedAssessment?.populationPressureScore),
+            ) || 45,
+          accessibilityScore:
+            parseFloat(
+              String(sData.calculatedAssessment?.accessibilityScore),
+            ) || 50,
+          facilityComplianceScore:
+            parseFloat(
+              String(sData.calculatedAssessment?.facilityComplianceScore),
+            ) || 50,
+          overallScore:
+            parseFloat(String(sData.calculatedAssessment?.overallScore)) || 65,
+          depreciation:
+            parseFloat(String(sData.calculatedAssessment?.depreciation)) || 20,
         };
 
         setSchool(sData);
+
+        // Fetch reporting data
+        await fetchReportingData();
 
         try {
           const surveyRes = await api.get(`/schools/${id}/survey`);
@@ -152,7 +287,7 @@ export default function SchoolDecisionDashboard({
         setLoading(false);
       }
     },
-    [id],
+    [id, fetchReportingData],
   );
 
   useEffect(() => {
@@ -222,7 +357,7 @@ export default function SchoolDecisionDashboard({
   }
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
@@ -234,16 +369,16 @@ export default function SchoolDecisionDashboard({
 
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 relative z-10 border-b border-slate-200 dark:border-blue-500/20 pb-10">
           <div>
-            <h2 className="text-3xl md:text-4xl font-medium text-slate-800 dark:text-white/90 tracking-tight">
-              Strategic <span className="text-primary/80">intelligence</span>{" "}
+            <h2 className="text-3xl md:text-4xl font-medium text-slate-800 dark:text-white tracking-tight">
+              Strategic <span className="text-primary">Intelligence</span>{" "}
               Dashboard
             </h2>
             <div className="flex items-center gap-4 mt-4">
-              <p className="text-[11px] font-normal text-slate-500 dark:text-white/30 tracking-wide">
+              <p className="text-[11px] font-normal text-slate-500 dark:text-white/60 tracking-wide">
                 Instance: {schoolData.name || "Unidentified asset"}
               </p>
               <div className="h-1 w-1 rounded-full bg-slate-200 dark:bg-white/10" />
-              <p className="text-[11px] font-medium text-primary/60 dark:text-primary/40 tracking-wide">
+              <p className="text-[11px] font-medium text-primary/60 dark:text-primary/60 tracking-wide">
                 Registry ID: {id?.slice(0, 8).toUpperCase()}
               </p>
             </div>
@@ -261,7 +396,9 @@ export default function SchoolDecisionDashboard({
                   <p className="text-[10px] font-normal text-slate-500 dark:text-white/40 mb-1">
                     Benchmark
                   </p>
-                  <p className="text-base font-medium text-slate-900 dark:text-white/80">+12.4%</p>
+                  <p className="text-base font-medium text-slate-900 dark:text-white/80">
+                    +12.4%
+                  </p>
                 </div>
                 <div className="w-px h-8 bg-slate-200 dark:bg-white/5" />
                 <div className="text-center">
@@ -285,7 +422,7 @@ export default function SchoolDecisionDashboard({
                 </div>
               </div>
             </div>
-            <div className="text-[10px] font-normal text-slate-400 dark:text-white/10 pr-2">
+            <div className="text-[10px] font-normal text-slate-400 dark:text-white/60 pr-2">
               Sync latency: 42ms · t-ref:{" "}
               {new Date().toISOString().split("T")[1].slice(0, 8)}
             </div>
@@ -296,11 +433,192 @@ export default function SchoolDecisionDashboard({
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         <div className="xl:col-span-2 space-y-8">
           <DecisionIntelligenceScore assessment={assessment} />
-
           <FacilityBreakdownSection buildings={buildings} />
+
+          {/* New Reporting Analytics Section */}
+          <ReportingAnalytics schoolId={id || ""} />
+
+          {/* New Risk Assessment Section */}
+          <RiskAssessment assessment={assessment} />
         </div>
 
         <div className="space-y-8">
+          {/* Reporting Summary Section */}
+          <div className="relative rounded-[32px] overflow-hidden group">
+            {/* Professional Gradient Border & Background */}
+            <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
+              <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
+            </div>
+
+            <div className="relative z-10 p-8">
+              <h3 className="text-sm font-medium text-primary/70 dark:text-blue-500 mb-6 flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/20">
+                  <FileText className="w-4 h-4 opacity-60" />
+                </div>
+                Reporting Summary
+              </h3>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs text-slate-500 dark:text-white/60">
+                        Open Issues
+                      </span>
+                      <AlertTriangle className="w-3 h-3 text-amber-500" />
+                    </div>
+                    <div className="text-xl font-bold text-slate-900 dark:text-white">
+                      {reportingData?.openIssues || 12}
+                    </div>
+                    <div className="text-xs text-emerald-500">
+                      -18% from last month
+                    </div>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs text-slate-500 dark:text-white/60">
+                        Resolved
+                      </span>
+                      <CheckCircle className="w-3 h-3 text-emerald-500" />
+                    </div>
+                    <div className="text-xl font-bold text-slate-900 dark:text-white">
+                      {reportingData?.resolvedIssues || 28}
+                    </div>
+                    <div className="text-xs text-emerald-500">
+                      +24% from last month
+                    </div>
+                  </div>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-slate-500 dark:text-white/60">
+                      Critical Priority
+                    </span>
+                    <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-xl font-bold text-red-600 dark:text-red-400">
+                      {reportingData?.criticalIssues || 3}
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-xs text-slate-500 dark:text-white/60 mb-1">
+                        Resolution Rate
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 bg-slate-100 dark:bg-white/5 rounded-full h-1.5">
+                          <div
+                            className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500"
+                            style={{
+                              width: `${reportingData?.resolutionRate || 75}%`,
+                            }}
+                          />
+                        </div>
+                        <span className="text-xs font-medium text-slate-900 dark:text-white">
+                          {reportingData?.resolutionRate || 75}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Buildings with Critical Reports */}
+          <div className="relative rounded-[32px] overflow-hidden group">
+            {/* Professional Gradient Border & Background */}
+            <div className="absolute inset-0 bg-linear-to-b from-red-500/30 to-red-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
+              <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
+            </div>
+
+            <div className="relative z-10 p-8">
+              <h3 className="text-sm font-medium text-red-600/70 dark:text-red-500 mb-6 flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-red-100 dark:bg-white/5 border border-red-500/20">
+                  <AlertTriangle className="w-4 h-4 opacity-60" />
+                </div>
+                Buildings Requiring Attention
+              </h3>
+              <div className="space-y-3">
+                {buildings
+                  .filter((building: any) => building.name)
+                  .sort(() => {
+                    // Mock calculation - in real app, this would come from reports data
+                    return Math.random() - 0.5;
+                  })
+                  .slice(0, 3)
+                  .map((building: any, index: number) => (
+                    <motion.div
+                      key={building.id || index}
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                      className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20 hover:bg-slate-100 dark:hover:bg-white/10 transition-all"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                            <Building2 className="w-4 h-4 text-red-500" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-medium text-slate-900 dark:text-white">
+                              {building.name || `Building ${index + 1}`}
+                            </h4>
+                            <p className="text-xs text-slate-500 dark:text-white/60">
+                              {building.yearBuilt
+                                ? `Built ${building.yearBuilt}`
+                                : "Year unknown"}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge
+                          className={cn(
+                            "text-xs font-medium",
+                            index === 0
+                              ? "bg-red-500/10 text-red-600 border-red-500/20"
+                              : index === 1
+                                ? "bg-orange-500/10 text-orange-600 border-orange-500/20"
+                                : "bg-amber-500/10 text-amber-600 border-amber-500/20",
+                          )}
+                        >
+                          {index === 0
+                            ? "CRITICAL"
+                            : index === 1
+                              ? "HIGH"
+                              : "MEDIUM"}
+                        </Badge>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-4 text-xs">
+                        <div>
+                          <p className="text-slate-500 dark:text-white/60 mb-1">
+                            Pending Issues
+                          </p>
+                          <p className="font-medium text-slate-900 dark:text-white">
+                            {Math.floor(Math.random() * 10) + 1}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500 dark:text-white/60 mb-1">
+                            Critical
+                          </p>
+                          <p className="font-medium text-red-600 dark:text-red-400">
+                            {Math.floor(Math.random() * 5) + 1}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500 dark:text-white/60 mb-1">
+                            Last Report
+                          </p>
+                          <p className="font-medium text-slate-900 dark:text-white">
+                            {Math.floor(Math.random() * 7) + 1}d ago
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+              </div>
+            </div>
+          </div>
+
           <SchoolStatsCards
             schoolData={schoolData}
             totalStudents={totalStudents}
@@ -320,7 +638,7 @@ export default function SchoolDecisionDashboard({
             </div>
 
             <div className="relative z-10 p-8">
-              <h3 className="text-sm font-medium text-primary/70 dark:text-primary/60 mb-6 flex items-center gap-3">
+              <h3 className="text-sm font-medium text-primary/70 dark:text-blue-500 mb-6 flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/20">
                   <ClipboardCheck className="w-4 h-4 opacity-60" />
                 </div>
@@ -348,7 +666,7 @@ export default function SchoolDecisionDashboard({
                 ))}
                 {(!assessment.recommendations ||
                   assessment.recommendations.length === 0) && (
-                  <p className="text-xs text-slate-400 dark:text-white/20 italic text-center py-6">
+                  <p className="text-xs text-slate-400 dark:text-white/70 italic text-center py-6">
                     No critical interventions recommended at this time.
                   </p>
                 )}

@@ -44,7 +44,7 @@ export const DecisionIntelligenceScore = React.memo(
               </div>
               <Badge
                 variant="outline"
-                className="rounded-full bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-white/40 border-slate-200 dark:border-blue-500/30 text-[10px] font-medium px-4 py-1 tracking-wide"
+                className="rounded-full bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-white/40 border-slate-200 dark:border-blue-500/30 text-[12px] font-medium px-4 py-1 tracking-wide"
               >
                 Strategic cockpit
               </Badge>
@@ -107,13 +107,15 @@ export const DecisionIntelligenceScore = React.memo(
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <div className="flex items-baseline">
                     <span className="text-5xl font-medium text-slate-900 dark:text-white tracking-tighter">
-                      {assessment.overallScore ?? 50}
+                      {isNaN(assessment.overallScore)
+                        ? 50
+                        : (assessment.overallScore ?? 50)}
                     </span>
                     <span className="text-base font-normal text-slate-400 dark:text-white/50 ml-0.5">
                       %
                     </span>
                   </div>
-                  <span className="text-[10px] font-normal tracking-wider text-slate-500 dark:text-white/50 mt-2">
+                  <span className="text-[12px] font-normal tracking-wider text-slate-500 dark:text-white/50 mt-2">
                     Global strength
                   </span>
                 </div>
@@ -121,33 +123,42 @@ export const DecisionIntelligenceScore = React.memo(
 
               <div className="mt-8 grid grid-cols-2 gap-4 w-full">
                 <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/2 border border-slate-200 dark:border-blue-500/20 text-center">
-                  <p className="text-[10px] font-normal text-slate-500 dark:text-white/50 mb-2">
+                  <p className="text-[12px] font-normal text-slate-500 dark:text-white mb-2">
                     Operational health
                   </p>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "rounded-xl font-medium text-[11px] px-4 py-1 border-slate-200 dark:border-blue-500/20 bg-white dark:bg-white/2",
-                      assessment.overallScore >= 70
-                        ? "text-emerald-600 dark:text-emerald-400/80"
-                        : assessment.overallScore >= 50
-                          ? "text-blue-600 dark:text-blue-400/80"
-                          : "text-red-600 dark:text-red-400/80",
-                    )}
-                  >
-                    {assessment.overallScore >= 70
-                      ? "Optimal"
-                      : assessment.overallScore >= 50
-                        ? "Strategic"
-                        : "Critical"}
-                  </Badge>
+                  {(() => {
+                    const score = isNaN(assessment.overallScore)
+                      ? 50
+                      : (assessment.overallScore ?? 50);
+                    return (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "rounded-xl font-medium text-[11px] px-4 py-1 border-slate-200 dark:border-blue-500/20 bg-white dark:bg-white/2",
+                          score >= 70
+                            ? "text-emerald-600 dark:text-emerald-400/80"
+                            : score >= 50
+                              ? "text-blue-600 dark:text-blue-400/80"
+                              : "text-red-600 dark:text-red-400/80",
+                        )}
+                      >
+                        {score >= 70
+                          ? "Optimal"
+                          : score >= 50
+                            ? "Strategic"
+                            : "Critical"}
+                      </Badge>
+                    );
+                  })()}
                 </div>
                 <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/2 border border-slate-200 dark:border-blue-500/20 text-center">
-                  <p className="text-[10px] font-normal text-slate-500 dark:text-white/50 mb-2">
+                  <p className="text-[12px] font-normal text-slate-500 dark:text-white mb-2">
                     Decision urgency
                   </p>
                   <div className="text-xl font-medium text-slate-900 dark:text-white/90">
-                    {assessment.urgencyMonths ?? "--"}{" "}
+                    {isNaN(assessment.urgencyMonths)
+                      ? "--"
+                      : (assessment.urgencyMonths ?? "--")}{" "}
                     <span className="text-[11px] font-normal text-slate-400 dark:text-white/20 ml-0.5">
                       mo
                     </span>
@@ -156,10 +167,10 @@ export const DecisionIntelligenceScore = React.memo(
               </div>
 
               <div className="mt-8 w-full px-4 pt-4 border-t border-slate-100 dark:border-blue-500/20 flex items-center justify-between">
-                <span className="text-[10px] font-normal text-slate-400 dark:text-white/40 tracking-wide">
+                <span className="text-[12px] font-normal text-slate-400 dark:text-white/40 tracking-wide">
                   Benchmarking sync
                 </span>
-                <span className="text-[10px] font-medium text-primary">
+                <span className="text-[12px] font-medium text-primary">
                   Regional top 15%
                 </span>
               </div>
@@ -200,10 +211,10 @@ export const DecisionIntelligenceScore = React.memo(
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 * index }}
-                    className="p-5 rounded-3xl bg-white dark:bg-white/2 border border-slate-200 dark:border-blue-500/20 group/metric hover:bg-slate-50 dark:hover:bg-white/5 transition-all"
+                    className="p-5 rounded-3xl bg-white dark:bg-white/2 border border-slate-200 dark:border-blue-500/20 group/metric hover:bg-slate-50 dark:hover:bg-gray-900/60 transition-all"
                   >
                     <div className="flex items-center justify-between mb-4">
-                      <div className="w-10 h-10 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/30 flex items-center justify-center text-slate-400 dark:text-white/30 group-hover/metric:text-primary transition-colors">
+                      <div className="w-10 h-10 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/30 flex items-center justify-center text-blue-500 dark:text-blue-500 group-hover/metric:text-primary transition-colors">
                         <metric.icon className="w-5 h-5" />
                       </div>
                       <span className="text-lg font-medium text-slate-900 dark:text-white/80">
@@ -211,7 +222,7 @@ export const DecisionIntelligenceScore = React.memo(
                       </span>
                     </div>
                     <div className="space-y-2">
-                      <p className="text-[11px] font-normal text-slate-500 dark:text-white/50 group-hover/metric:text-slate-800 dark:group-hover/metric:text-white/70 transition-colors">
+                      <p className="text-[13px] font-normal text-slate-500 dark:text-white group-hover/metric:text-slate-800 dark:group-hover/metric:text-white/70 transition-colors">
                         {metric.label}
                       </p>
                       <div className="h-1 w-full bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden">
@@ -234,11 +245,11 @@ export const DecisionIntelligenceScore = React.memo(
                 ))}
 
                 <div className="p-5 rounded-3xl bg-primary/5 border border-primary/10 flex flex-col items-center justify-center text-center">
-                  <Sparkles className="w-6 h-6 text-primary/60 dark:text-primary/30 mb-2" />
-                  <p className="text-[10px] font-normal text-primary/80 dark:text-primary/40 mb-1">
+                  <Sparkles className="w-6 h-6 text-primary/60 dark:text-primary mb-2" />
+                  <p className="text-[12px] font-normal text-primary/80 dark:text-primary/70 mb-1">
                     Peer ranking
                   </p>
-                  <p className="text-base font-medium text-slate-900 dark:text-white/80">
+                  <p className="text-base font-medium text-slate-900 dark:text-white">
                     Top quintile
                   </p>
                 </div>
@@ -270,7 +281,7 @@ export const DecisionIntelligenceScore = React.memo(
                           <Sparkles className="w-5 h-5 text-slate-400 dark:text-white/40 group-hover/rec:text-primary transition-colors" />
                         </div>
                         <div>
-                          <p className="text-[10px] font-medium text-slate-500 dark:text-white/40 mb-0.5 tracking-wide">
+                          <p className="text-[12px] font-medium text-slate-500 dark:text-white/40 mb-0.5 tracking-wide">
                             Directive 0{i + 1}
                           </p>
                           <p className="text-[13px] font-normal text-slate-700 dark:text-white/70 leading-relaxed group-hover:text-slate-900 dark:group-hover:text-white/90 transition-colors">

@@ -7,6 +7,7 @@ import { School } from '../schools/entities/school.entity';
 import { SchoolBuilding } from '../schools/entities/school-building.entity';
 import { PopulationData } from '../population/entities/population-data.entity';
 import { SchoolFacilitySurvey } from '../schools/entities/school-facility-survey.entity';
+import { IssueReport } from '../reports/entities/issue-report.entity';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { SchoolFacilitySurvey } from '../schools/entities/school-facility-survey
       SchoolBuilding,
       PopulationData,
       SchoolFacilitySurvey,
+      IssueReport,
     ]),
   ],
   controllers: [AnalyticsController],

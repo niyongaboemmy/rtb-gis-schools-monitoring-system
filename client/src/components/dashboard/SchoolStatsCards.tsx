@@ -147,10 +147,10 @@ export const SchoolStatsCards = React.memo(
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-normal text-slate-500 dark:text-white/50 tracking-wide mb-0.5">
+                    <p className="text-[12px] font-normal text-slate-500 dark:text-white/80 tracking-wide mb-0.5">
                       {item.label}
                     </p>
-                    <h4 className="text-xl font-medium text-slate-900 dark:text-white/90 tracking-tight leading-none group-hover:translate-x-0.5 transition-transform duration-300">
+                    <h4 className="text-xl font-medium text-slate-900 dark:text-white tracking-tight leading-none group-hover:translate-x-0.5 transition-transform duration-300">
                       {item.value}
                     </h4>
                   </div>
@@ -199,7 +199,10 @@ export const SchoolStatsCards = React.memo(
                 <div className="flex items-center justify-between border-t border-slate-100 dark:border-blue-500/20 pt-3">
                   <div className="flex items-center gap-1.5 text-[10px] font-normal text-slate-500 dark:text-white/40">
                     <TrendingUp
-                      className={cn("w-3 h-3 opacity-60 dark:opacity-40", item.color)}
+                      className={cn(
+                        "w-3 h-3 opacity-60 dark:opacity-40",
+                        item.color,
+                      )}
                     />
                     <span className="group-hover:text-slate-900 dark:group-hover:text-white/60 transition-colors truncate max-w-[80px]">
                       {item.subValue}

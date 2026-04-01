@@ -657,7 +657,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
           </div>
         </motion.div>
 
-        {/* Second Row Grid */}
+        {/* Second Row Grid — Human Capital + Building Inventory */}
         <motion.div
           initial="hidden"
           whileInView="visible"
@@ -665,7 +665,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
           variants={{
             visible: { transition: { staggerChildren: 0.1 } },
           }}
-          className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 md:gap-8 mt-8"
+          className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 mt-8"
         >
           {/* 4. Human Capital */}
           <motion.div
@@ -776,7 +776,6 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
             }}
           >
             <Section
-              className="lg:col-span-2 xl:col-span-1"
               icon={Building2}
               iconColor="text-emerald-400"
               title="Official Building Inventory Registry"
@@ -853,20 +852,18 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
             </Section>
           </motion.div>
 
-          {/* 6. Facility Compliance Survey Report */}
-          <motion.div
-            variants={{
-              hidden: { opacity: 0, y: 30 },
-              visible: {
-                opacity: 1,
-                y: 0,
-                transition: { duration: 0.5, ease: "easeOut" },
-              },
-            }}
-          >
-            <Section
-              className="lg:col-span-12"
-              icon={BookOpen}
+        </motion.div>
+
+        {/* Third Row — Full-Width Facility Compliance Survey */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-50px" }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="mt-8"
+        >
+          <Section
+            icon={BookOpen}
               iconColor="text-cyan-400"
               title="Official Facility Compliance Survey Report"
               headerAddon={
@@ -931,7 +928,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                         <div className="h-px flex-1 bg-slate-100 dark:bg-white/5" />
                       </div>
 
-                      <div className="grid grid-cols-1 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                         {fac.items.map((item) => {
                           const survey = surveyData.find(
                             (sv) =>
@@ -1001,7 +998,6 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
               )}
             </Section>
           </motion.div>
-        </motion.div>
       </div>
     </motion.div>
   );

@@ -27,6 +27,7 @@ interface BlockInspectorProps {
   onUploadMedia?: () => void;
   on3DView?: () => void;
   initialTab?: "details" | "media" | "reporting";
+  onReportStatusChange?: () => void;
 }
 
 export function BlockInspector({
@@ -36,6 +37,7 @@ export function BlockInspector({
   onClose,
   onUpdateBuilding,
   initialTab,
+  onReportStatusChange,
 }: BlockInspectorProps) {
   const [activeTab, setActiveTab] = useState<"details" | "media" | "reporting">(
     initialTab ?? "details",
@@ -355,6 +357,7 @@ export function BlockInspector({
             <BuildingReportingTab
               buildingId={building.id}
               schoolId={schoolId}
+              onReportStatusChange={onReportStatusChange}
             />
           </div>
         )}
