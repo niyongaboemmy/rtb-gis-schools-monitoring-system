@@ -14,6 +14,8 @@ import {
   Map as MapIcon,
   FileText,
   AlertTriangle,
+  Box,
+  ExternalLink,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Modal } from "./ui/modal";
@@ -814,6 +816,20 @@ export default function School2DViewer({
                 <span>{label}</span>
               </button>
             ))}
+
+            {/* Divider */}
+            <div className="w-px h-4 bg-slate-200 dark:bg-white/10 mx-0.5" />
+
+            {/* 3D Map — opens the GLB viewer app in a new tab */}
+            <button
+              onClick={handle3DView}
+              className="flex items-center gap-1.5 px-3.5 h-7 rounded-full text-[10px] font-bold tracking-wide transition-all text-slate-600 dark:text-white/80 hover:text-primary dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5"
+              title="Open 3D Map Viewer in a new tab"
+            >
+              <Box className="w-3 h-3 shrink-0" />
+              <span>3D Map</span>
+              <ExternalLink className="w-2.5 h-2.5 opacity-50" />
+            </button>
           </div>
         </div>
       )}

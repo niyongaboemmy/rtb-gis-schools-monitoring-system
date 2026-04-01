@@ -10,6 +10,8 @@ import {
   AlertTriangle,
   FileText,
   CheckCircle,
+  Box,
+  ExternalLink,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { Modal } from "../components/ui/modal";
@@ -377,6 +379,22 @@ export default function SchoolDecisionDashboard({
             </button>
           );
         })}
+
+        {/* 3D View — opens the GLB viewer app in a new tab */}
+        <button
+          onClick={() => {
+            const params = new URLSearchParams();
+            if (id) params.set("schoolId", id);
+            if (school?.name) params.set("schoolName", school.name);
+            window.open(`http://localhost:5175?${params.toString()}`, "_blank", "noopener,noreferrer");
+          }}
+          className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all text-slate-600 dark:text-white/60 hover:bg-slate-100 dark:hover:bg-white/10 ml-auto"
+          title="Open 3D Map Viewer in a new tab"
+        >
+          <Box className="w-4 h-4" />
+          3D View
+          <ExternalLink className="w-3 h-3 opacity-60" />
+        </button>
       </div>
 
       {/* Content Based on Active Tab */}
