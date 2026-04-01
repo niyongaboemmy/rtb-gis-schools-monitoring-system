@@ -26,7 +26,7 @@ const OPTIONS = [
     mode: "3D" as const,
     icon: Box,
     label: "3D View",
-    tagline: "GLB Viewer — Opens in new tab",
+    tagline: "GLB Viewer — Internal Explorer",
     features: [
       { icon: Mountain, text: "High-fidelity 3D models" },
       { icon: Box, text: "GLB / GLTF support" },
@@ -106,7 +106,7 @@ export default function ViewerModeModal({
                 hovered === mode ? "opacity-100 text-primary" : "opacity-0",
               )}
             >
-              {mode === "3D" ? "Open in New Tab →" : `Select ${label} →`}
+              {mode === "3D" ? "Select 3D View →" : `Select ${label} →`}
             </p>
           </button>
         ))}

@@ -20,6 +20,7 @@ import School3DViewPage from "./pages/School3DViewPage";
 import SchoolLevelDashboard from "./pages/SchoolLevelDashboard";
 import SchoolReporting from "./pages/SchoolReporting";
 import GlbViewer from "./pages/GlbViewer";
+import School3DView from "./components/School3DView";
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/schools/:id/glb-viewer" element={<GlbViewer />} />
+          <Route path="/schools/:id/3d-explorer" element={<School3DView schoolId="" schoolName="" onClose={() => window.close()} />} />
 
           <Route
             element={
