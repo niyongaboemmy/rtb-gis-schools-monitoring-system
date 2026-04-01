@@ -17,6 +17,20 @@ import { cn } from "../../lib/utils";
 
 interface RiskAssessmentProps {
   assessment: any;
+  reportingData?: {
+    statusCounts?: {
+      pending: number;
+      needIntervention: number;
+      solved: number;
+      failed: number;
+    };
+    totalReports?: number;
+    critical?: number;
+    high?: number;
+    medium?: number;
+    low?: number;
+    avgResolutionTime?: number;
+  };
 }
 
 interface RiskFactor {
@@ -39,22 +53,71 @@ interface MitigationStrategy {
 }
 
 export const RiskAssessment = React.memo(
-  ({ assessment }: RiskAssessmentProps) => {
-    // Mock risk factors based on school data and assessment
+  ({ assessment, reportingData }: RiskAssessmentProps) => {
+    // Extract actual report counts for dynamic risk calculation
+    const criticalCount = reportingData?.critical || 0;
+    const needInterventionCount =
+      reportingData?.statusCounts?.needIntervention || 0;
+    const totalReports = reportingData?.totalReports || 0;
+    const avgResolutionTime = reportingData?.avgResolutionTime || 0;
+
+    // Calculate risk scores based on actual report data
+    const criticalRiskScore =
+      totalReports > 0 ? (criticalCount / totalReports) * 100 : 0;
+    const interventionRiskScore =
+      totalReports > 0 ? (needInterventionCount / totalReports) * 100 : 0;
+    const resolutionRiskScore =
+      avgResolutionTime > 5 ? Math.min((avgResolutionTime / 10) * 100, 100) : 0;
+
+    // Dynamic risk factors based on actual report data
     const riskFactors: RiskFactor[] = [
       {
         id: "1",
+        title: "Critical Issues Requiring Immediate Attention",
+        level:
+          criticalCount > 5
+            ? "critical"
+            : criticalCount > 2
+              ? "high"
+              : criticalCount > 0
+                ? "medium"
+                : "low",
+        impact: Math.min(criticalRiskScore * 1.2, 100),
+        probability: Math.min(criticalRiskScore * 1.5, 100),
+        mitigation:
+          "Prioritize resolution of critical issues through emergency intervention protocols",
+        timeline: "1-7 days",
+        owner: "Crisis Management Team",
+      },
+      {
+        id: "2",
+        title: "Issues Needing Intervention",
+        level:
+          needInterventionCount > 10
+            ? "high"
+            : needInterventionCount > 5
+              ? "medium"
+              : "low",
+        impact: Math.min(interventionRiskScore * 1.1, 100),
+        probability: Math.min(interventionRiskScore * 1.3, 100),
+        mitigation:
+          "Deploy intervention teams to address escalated issues before they become critical",
+        timeline: "1-4 weeks",
+        owner: "Intervention Team",
+      },
+      {
+        id: "3",
         title: "Infrastructure Deterioration",
         level: assessment.infrastructureScore < 50 ? "high" : "medium",
-        impact: 85,
-        probability: assessment.infrastructureScore < 50 ? 75 : 45,
+        impact: assessment.infrastructureScore < 50 ? 85.0 : 45.0,
+        probability: assessment.infrastructureScore < 50 ? 75.0 : 45.0,
         mitigation:
           "Implement preventive maintenance schedule and prioritize critical repairs",
         timeline: "3-6 months",
         owner: "Facilities Management",
       },
       {
-        id: "2",
+        id: "4",
         title: "Overcapacity Issues",
         level:
           assessment.populationPressureScore > 80
@@ -62,80 +125,62 @@ export const RiskAssessment = React.memo(
             : assessment.populationPressureScore > 60
               ? "high"
               : "medium",
-        impact: 90,
-        probability: assessment.populationPressureScore > 80 ? 85 : 60,
+        impact: assessment.populationPressureScore > 80 ? 90.0 : 60.0,
+        probability: assessment.populationPressureScore > 80 ? 85.0 : 60.0,
         mitigation:
           "Expand facilities or optimize space utilization through scheduling",
         timeline: "6-12 months",
         owner: "School Administration",
       },
       {
-        id: "3",
-        title: "Safety Compliance Gaps",
-        level: assessment.facilityComplianceScore < 60 ? "high" : "medium",
-        impact: 95,
-        probability: assessment.facilityComplianceScore < 60 ? 70 : 40,
-        mitigation:
-          "Conduct comprehensive safety audit and implement corrective actions",
-        timeline: "1-3 months",
-        owner: "Safety Officer",
-      },
-      {
-        id: "4",
-        title: "Technology Infrastructure",
-        level: "medium",
-        impact: 60,
-        probability: 50,
-        mitigation:
-          "Upgrade digital infrastructure and expand e-learning capabilities",
-        timeline: "3-9 months",
-        owner: "IT Department",
-      },
-      {
         id: "5",
-        title: "Staff Retention",
-        level: "medium",
-        impact: 70,
-        probability: 45,
+        title: "Slow Resolution Times",
+        level:
+          avgResolutionTime > 10
+            ? "high"
+            : avgResolutionTime > 5
+              ? "medium"
+              : "low",
+        impact: Math.min(resolutionRiskScore, 100),
+        probability: Math.min(resolutionRiskScore * 1.2, 100),
         mitigation:
-          "Implement professional development programs and improve working conditions",
-        timeline: "Ongoing",
-        owner: "HR Department",
+          "Streamline issue resolution workflows and allocate additional resources",
+        timeline: "2-8 weeks",
+        owner: "Operations Manager",
       },
     ];
 
+    // Dynamic mitigation strategies based on actual risk levels
     const mitigationStrategies: MitigationStrategy[] = [
       {
-        title: "Critical Infrastructure Renovation",
-        priority: "immediate",
+        title: "Emergency Critical Issue Response",
+        priority: criticalCount > 0 ? "immediate" : "short-term",
         cost: "high",
-        effectiveness: 90,
-        description:
-          "Address structural issues and essential systems in oldest buildings",
+        effectiveness: Math.min(90 + criticalCount * 2, 100),
+        description: `Address ${criticalCount} critical issue${criticalCount !== 1 ? "s" : ""} requiring immediate intervention through emergency protocols`,
       },
       {
-        title: "Capacity Expansion Program",
-        priority: "short-term",
-        cost: "high",
-        effectiveness: 85,
-        description:
-          "Construct additional classrooms and facilities to accommodate growth",
-      },
-      {
-        title: "Digital Transformation Initiative",
-        priority: "short-term",
+        title: "Intervention Team Deployment",
+        priority: needInterventionCount > 5 ? "immediate" : "short-term",
         cost: "medium",
-        effectiveness: 75,
-        description:
-          "Modernize teaching tools and expand online learning capabilities",
+        effectiveness: Math.min(85 + needInterventionCount, 100),
+        description: `Deploy teams to handle ${needInterventionCount} issue${needInterventionCount !== 1 ? "s" : ""} needing intervention before escalation`,
+      },
+      {
+        title: "Resolution Workflow Optimization",
+        priority: avgResolutionTime > 7 ? "immediate" : "short-term",
+        cost: avgResolutionTime > 10 ? "high" : "medium",
+        effectiveness: Math.min(80 + (avgResolutionTime > 5 ? 10 : 0), 100),
+        description: `Streamline processes to reduce current ${avgResolutionTime.toFixed(1)} day average resolution time`,
       },
       {
         title: "Preventive Maintenance System",
-        priority: "immediate",
+        priority:
+          assessment.infrastructureScore < 50 ? "immediate" : "long-term",
         cost: "low",
-        effectiveness: 80,
+        effectiveness: assessment.infrastructureScore < 50 ? 85 : 70,
         description:
-          "Implement regular maintenance schedule to prevent major issues",
+          "Implement regular maintenance schedule to prevent infrastructure deterioration",
       },
     ];
 

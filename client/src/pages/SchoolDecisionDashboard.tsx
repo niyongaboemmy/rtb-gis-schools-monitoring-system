@@ -21,7 +21,6 @@ import { cn } from "../lib/utils";
 import { DecisionIntelligenceScore } from "../components/dashboard/DecisionIntelligenceScore";
 import { FacilityBreakdownSection } from "../components/dashboard/FacilityBreakdownSection";
 import { SchoolStatsCards } from "../components/dashboard/SchoolStatsCards";
-import { ReportingAnalytics } from "../components/dashboard/ReportingAnalytics";
 import { ReportingTab } from "../components/dashboard/ReportingTab";
 import { RiskAssessment } from "../components/dashboard/RiskAssessment";
 import SchoolMap from "../components/SchoolMap";
@@ -44,7 +43,6 @@ export default function SchoolDecisionDashboard({
 
   const [school, setSchool] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [facilitySurvey, setFacilitySurvey] = useState<any[]>([]);
   const [isBuildingModalOpen, setIsBuildingModalOpen] = useState(false);
   const [reportingData, setReportingData] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"main" | "reporting">("main");
@@ -274,13 +272,6 @@ export default function SchoolDecisionDashboard({
 
         // Fetch reporting data
         await fetchReportingData();
-
-        try {
-          const surveyRes = await api.get(`/schools/${id}/survey`);
-          setFacilitySurvey(surveyRes.data || []);
-        } catch (e) {
-          console.log("Survey data not available");
-        }
       } catch (error) {
         console.error("Failed to fetch school", error);
       } finally {
@@ -364,7 +355,7 @@ export default function SchoolDecisionDashboard({
       className="container mx-auto space-y-8 pb-12 px-2 md:px-6 pt-8 md:pt-16 bg-transparent"
     >
       {/* Tab Navigation */}
-      <div className="flex gap-2 p-1 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/20 mb-8">
+      <div className="flex gap-2 p-1 bg-slate-50 dark:bg-white/5 rounded-full border border-slate-200 dark:border-blue-500/20 mb-8">
         {[
           { id: "main", label: "Main Dashboard", icon: Activity },
           { id: "reporting", label: "Reporting & Analytics", icon: FileText },
@@ -375,7 +366,7 @@ export default function SchoolDecisionDashboard({
               key={tab.id}
               onClick={() => setActiveTab(tab.id as "main" | "reporting")}
               className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all",
                 activeTab === tab.id
                   ? "bg-primary text-white shadow-sm"
                   : "text-slate-600 dark:text-white/60 hover:bg-slate-100 dark:hover:bg-white/10",
@@ -465,7 +456,7 @@ export default function SchoolDecisionDashboard({
               <DecisionIntelligenceScore assessment={assessment} />
               <FacilityBreakdownSection buildings={buildings} />
 
-          {/* Risk Assessment moved to Reporting tab now */}
+              {/* Risk Assessment moved to Reporting tab now */}
             </div>
 
             <div className="space-y-8">
@@ -656,100 +647,131 @@ export default function SchoolDecisionDashboard({
                 avgBuildingYear={avgBuildingYear}
                 formatNumber={formatNumber}
               />
-
-              <div className="relative rounded-[32px] overflow-hidden group">
-                {/* Professional Gradient Border & Background */}
-                <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
-                  <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
-                </div>
-
-                <div className="relative z-10 p-8">
-                  <h3 className="text-sm font-medium text-primary/70 dark:text-blue-500 mb-6 flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/20">
-                      <ClipboardCheck className="w-4 h-4 opacity-60" />
-                    </div>
-                    Strategic recommendations
-                  </h3>
-                  <div className="space-y-4">
-                    {assessment.recommendations?.map(
-                      (rec: string, i: number) => (
-                        <motion.div
-                          key={i}
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 0.4 + i * 0.1 }}
-                          className="relative group/rec p-px rounded-2xl overflow-hidden transition-all duration-300"
-                        >
-                          <div className="absolute inset-0 bg-linear-to-br from-blue-500/40 to-blue-500/0 opacity-10 group-hover/rec:opacity-30 transition-opacity" />
-                          <div className="absolute inset-px bg-white/80 dark:bg-white/2 backdrop-blur-2xl rounded-[calc(1rem-1px)] transition-colors" />
-
-                          <div className="relative p-5 z-10 flex gap-4">
-                            <div className="w-1.5 h-1.5 rounded-full bg-primary/30 mt-1.5 shrink-0 group-hover/rec:bg-primary/50" />
-                            <p className="text-xs font-normal leading-relaxed text-slate-500 dark:text-white/50 group-hover/rec:text-slate-900 dark:group-hover/rec:text-white/80 transition-colors italic">
-                              {rec}
-                            </p>
-                          </div>
-                        </motion.div>
-                      ),
-                    )}
-                    {(!assessment.recommendations ||
-                      assessment.recommendations.length === 0) && (
-                      <p className="text-xs text-slate-400 dark:text-white/70 italic text-center py-6">
-                        No critical interventions recommended at this time.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
       )}
 
-      {activeTab === "reporting" && (
+      {activeTab === "reporting" && id && (
         <>
-          <ReportingTab reportingData={reportingData} />
+          <ReportingTab schoolId={id} />
           {/* Moved Risk Assessment into this tab for centralized analysis visibility */}
-          <RiskAssessment assessment={assessment} />
+          <RiskAssessment
+            assessment={assessment}
+            reportingData={reportingData}
+          />
         </>
       )}
 
-      <Modal
-        isOpen={isBuildingModalOpen}
-        onClose={() => setIsBuildingModalOpen(false)}
-        title={
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-primary/5 text-primary">
-              <Building2 className="w-5 h-5 opacity-60" />
-            </div>
-            <div>
-              <h3 className="text-lg font-medium text-white/90">
-                Asset report
-              </h3>
-              <p className="text-[10px] font-normal text-white/30 tracking-wide mt-0.5">
-                Asset intelligence report
-              </p>
-            </div>
-          </div>
-        }
-        maxWidth="max-w-md"
-      >
-        <div className="p-8 text-center space-y-6">
-          <div className="w-16 h-16 rounded-full bg-white/2 flex items-center justify-center mx-auto border border-blue-500/20">
-            <GraduationCap className="w-8 h-8 text-white/20" />
-          </div>
-          <p className="text-xs font-normal text-slate-500 dark:text-white/40 italic leading-relaxed">
-            Detailed asset lifecycle analytics for this block are synchronised
-            with the 2D digital twin environment.
-          </p>
-          <Button
-            onClick={() => setIsBuildingModalOpen(false)}
-            className="w-full rounded-full font-medium"
-          >
-            Acknowledge
-          </Button>
+      <motion.div className="relative rounded-[32px] overflow-hidden group">
+        {/* Professional Gradient Border & Background */}
+        <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
+          <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
         </div>
-      </Modal>
+
+        <div className="relative z-10 p-8">
+          <h3 className="text-sm font-medium text-primary/70 dark:text-blue-500 mb-6 flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/20">
+              <ClipboardCheck className="w-4 h-4 opacity-60" />
+            </div>
+            Strategic recommendations
+          </h3>
+          <div className="space-y-4">
+            {assessment.recommendations?.map((rec: string, i: number) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.4 + i * 0.1 }}
+                className="relative group/rec p-px rounded-2xl overflow-hidden transition-all duration-300"
+              >
+                <div className="absolute inset-0 bg-linear-to-br from-blue-500/40 to-blue-500/0 opacity-10 group-hover/rec:opacity-30 transition-opacity" />
+                <div className="absolute inset-px bg-white/80 dark:bg-white/2 backdrop-blur-2xl rounded-[calc(1rem-1px)] transition-colors" />
+
+                <div className="relative p-5 z-10 flex gap-4">
+                  <div className="w-1.5 h-1.5 rounded-full bg-primary/30 mt-1.5 shrink-0 group-hover/rec:bg-primary/50" />
+                  <p className="text-xs font-normal leading-relaxed text-slate-500 dark:text-white/50 group-hover/rec:text-slate-900 dark:group-hover/rec:text-white/80 transition-colors italic">
+                    {rec}
+                  </p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          <div className="relative z-10 p-8">
+            <h3 className="text-sm font-medium text-primary/70 dark:text-blue-500 mb-6 flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/20">
+                <ClipboardCheck className="w-4 h-4 opacity-60" />
+              </div>
+              Strategic recommendations
+            </h3>
+            <div className="space-y-4">
+              {assessment.recommendations?.map((rec: string, i: number) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.4 + i * 0.1 }}
+                  className="relative group/rec p-px rounded-2xl overflow-hidden transition-all duration-300"
+                >
+                  <div className="absolute inset-0 bg-linear-to-br from-blue-500/40 to-blue-500/0 opacity-10 group-hover/rec:opacity-30 transition-opacity" />
+                  <div className="absolute inset-px bg-white/80 dark:bg-white/2 backdrop-blur-2xl rounded-[calc(1rem-1px)] transition-colors" />
+
+                  <div className="relative p-5 z-10 flex gap-4">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary/30 mt-1.5 shrink-0 group-hover/rec:bg-primary/50" />
+                    <p className="text-xs font-normal leading-relaxed text-slate-500 dark:text-white/50 group-hover/rec:text-slate-900 dark:group-hover/rec:text-white/80 transition-colors italic">
+                      {rec}
+                    </p>
+                  </div>
+                </motion.div>
+              ))}
+              {(!assessment.recommendations ||
+                assessment.recommendations.length === 0) && (
+                <p className="text-xs text-slate-400 dark:text-white/70 italic text-center py-6">
+                  No critical interventions recommended at this time.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <Modal
+          isOpen={isBuildingModalOpen}
+          onClose={() => setIsBuildingModalOpen(false)}
+          title={
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-primary/5 text-primary">
+                <Building2 className="w-5 h-5 opacity-60" />
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-white/90">
+                  Asset report
+                </h3>
+                <p className="text-[10px] font-normal text-white/30 tracking-wide mt-0.5">
+                  Asset intelligence report
+                </p>
+              </div>
+            </div>
+          }
+          maxWidth="max-w-md"
+        >
+          <div className="p-8 text-center space-y-6">
+            <div className="w-16 h-16 rounded-full bg-white/2 flex items-center justify-center mx-auto border border-blue-500/20">
+              <GraduationCap className="w-8 h-8 text-white/20" />
+            </div>
+            <p className="text-xs font-normal text-slate-500 dark:text-white/40 italic leading-relaxed">
+              Detailed asset lifecycle analytics for this block are synchronised
+              with 2D digital twin environment.
+            </p>
+            <Button
+              onClick={() => setIsBuildingModalOpen(false)}
+              className="w-full rounded-full font-medium"
+            >
+              Acknowledge
+            </Button>
+          </div>
+        </Modal>
+      </motion.div>
     </motion.div>
   );
 }

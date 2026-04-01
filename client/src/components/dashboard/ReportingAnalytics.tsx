@@ -25,6 +25,7 @@ interface ReportingAnalyticsProps {
 
 interface ReportData {
   total: number;
+  totalReports: number;
   open: number;
   inProgress: number;
   resolved: number;
@@ -71,7 +72,9 @@ export const ReportingAnalytics = React.memo(
         try {
           setLoading(true);
           // Fetch backend Reporting data
-          const response = await api.get(`/api/v1/schools/dashboard/reporting?schoolId=${schoolId}`);
+          const response = await api.get(
+            `/api/v1/schools/dashboard/reporting?schoolId=${schoolId}`,
+          );
           const payload = response.data?.data ?? response.data ?? {};
           const reports = payload?.reports ?? {};
           const analytics = payload?.analytics ?? {};
@@ -91,7 +94,10 @@ export const ReportingAnalytics = React.memo(
           const monthly = (analytics as any).trends?.monthly ?? [];
           const weekly = (analytics as any).trends?.weekly ?? [];
 
-          const avgResolutionTime = (reports as any).avgResolutionTime ?? (payload?.avgResolutionTime ?? 0);
+          const avgResolutionTime =
+            (reports as any).avgResolutionTime ??
+            payload?.avgResolutionTime ??
+            0;
 
           // Categories from backend if available
           const categories = (reports as any).categories ?? {
@@ -104,6 +110,7 @@ export const ReportingAnalytics = React.memo(
 
           setReportData({
             total,
+            totalReports: total,
             open,
             inProgress,
             resolved,
@@ -119,16 +126,17 @@ export const ReportingAnalytics = React.memo(
           // Dynamic decision impact derived from backend analytics (if available)
           setDecisionImpact({
             roi: (decision as any).overallScore ?? 0,
-            riskLevel: ((decision as any).weightBreakdown?.[0]?.category ?? 'medium') as any,
+            riskLevel: ((decision as any).weightBreakdown?.[0]?.category ??
+              "medium") as any,
             timeToImpact: 6,
             stakeholderImpact: (analytics as any).trendScore ?? 0,
             budgetImpact: (reports as any).budgetImpact ?? 0,
             recommendations:
               (decision as any).weightBreakdown?.length > 0
-                ? ((decision as any).weightBreakdown?.map((w: any) => w.category) || [])
-                : [
-                    "Consider updating reporting cadence",
-                  ],
+                ? (decision as any).weightBreakdown?.map(
+                    (w: any) => w.category,
+                  ) || []
+                : ["Consider updating reporting cadence"],
           });
         } catch (error) {
           console.error("Failed to fetch reporting data:", error);
@@ -233,14 +241,14 @@ export const ReportingAnalytics = React.memo(
                   </div>
                   <div className="flex items-center gap-1">
                     {getTrendIcon(
-                      reportData?.trends.monthly[11] || 0,
-                      reportData?.trends.monthly[10] || 0,
+                      reportData?.trends?.monthly?.[11] || 0,
+                      reportData?.trends?.monthly?.[10] || 0,
                     )}
                     <span className="text-xs text-slate-500">+12%</span>
                   </div>
                 </div>
                 <h4 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">
-                  {reportData?.total || 0}
+                  {reportData?.total ?? reportData?.totalReports ?? 0}
                 </h4>
                 <p className="text-sm text-slate-500 dark:text-white/60">
                   Total Reports
@@ -249,13 +257,13 @@ export const ReportingAnalytics = React.memo(
                   <div className="flex items-center gap-1">
                     <div className="w-2 h-2 rounded-full bg-emerald-500" />
                     <span className="text-slate-500">
-                      {reportData?.resolved || 0} resolved
+                      {reportData?.resolved ?? reportData?.high ?? 0} resolved
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
                     <div className="w-2 h-2 rounded-full bg-amber-500" />
                     <span className="text-slate-500">
-                      {reportData?.open || 0} open
+                      {reportData?.open ?? reportData?.totalReports ?? 0} open
                     </span>
                   </div>
                 </div>
@@ -283,7 +291,7 @@ export const ReportingAnalytics = React.memo(
                   </Badge>
                 </div>
                 <h4 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">
-                  {reportData?.critical || 0}
+                  {reportData?.critical ?? 0}
                 </h4>
                 <p className="text-sm text-slate-500 dark:text-white/60">
                   Critical Issues
@@ -292,14 +300,14 @@ export const ReportingAnalytics = React.memo(
                   <div className="flex justify-between text-xs">
                     <span className="text-slate-500">High Priority</span>
                     <span className="font-medium text-slate-900 dark:text-white">
-                      {reportData?.high || 0}
+                      {reportData?.high ?? 0}
                     </span>
                   </div>
                   <div className="w-full bg-slate-100 dark:bg-white/5 rounded-full h-1.5">
                     <div
                       className="bg-red-500 h-1.5 rounded-full transition-all duration-500"
                       style={{
-                        width: `${((reportData?.critical || 0) / (reportData?.total || 1)) * 100}%`,
+                        width: `${((reportData?.critical ?? 0) / ((reportData?.total ?? reportData?.totalReports ?? 0) || 1)) * 100}%`,
                       }}
                     />
                   </div>
@@ -326,7 +334,7 @@ export const ReportingAnalytics = React.memo(
                   </div>
                 </div>
                 <h4 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">
-                  {reportData?.avgResolutionTime || 0}
+                  {reportData?.avgResolutionTime ?? 0}
                 </h4>
                 <p className="text-sm text-slate-500 dark:text-white/60">
                   Avg Resolution (days)
@@ -391,7 +399,7 @@ export const ReportingAnalytics = React.memo(
             </CardHeader>
             <CardContent className="p-6">
               <div className="space-y-4">
-                {Object.entries(reportData?.categories || {}).map(
+                {Object.entries(reportData?.categories ?? {}).map(
                   ([category, count]) => (
                     <div key={category} className="space-y-2">
                       <div className="flex items-center justify-between">
@@ -522,7 +530,7 @@ export const ReportingAnalytics = React.memo(
           </CardHeader>
           <CardContent className="p-6">
             <div className="h-48 flex items-end justify-between gap-2">
-                    {reportData?.trends?.monthly?.map((value, index) => (
+              {reportData?.trends?.monthly?.map((value, index) => (
                 <motion.div
                   key={index}
                   initial={{ height: 0 }}

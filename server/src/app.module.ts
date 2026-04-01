@@ -15,6 +15,7 @@ import { databaseConfig } from './config/database.config';
 import { RolesModule } from './modules/roles/roles.module';
 import { AccessLevelsModule } from './modules/access-levels/access-levels.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [

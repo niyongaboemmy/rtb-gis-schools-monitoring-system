@@ -14,6 +14,24 @@ export interface AnalyticsMetrics {
 export interface ReportingMetrics {
   generatedReportCount: number;
   lastReportDate: string;
+  avgResolutionTime?: number;
+  trends?: {
+    monthly: number[];
+    weekly: number[];
+  };
+  categories?: {
+    infrastructure: number;
+    safety: number;
+    maintenance: number;
+    academic: number;
+    other: number;
+  };
+  statusCounts?: {
+    pending: number;
+    needIntervention: number;
+    solved: number;
+    failed: number;
+  };
 }
 export interface ReportingDashboardDto {
   timestamp: string;
