@@ -14,6 +14,7 @@ import {
   Map as MapIcon,
   FileText,
   AlertTriangle,
+  Box,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Modal } from "./ui/modal";
@@ -25,6 +26,7 @@ import SchoolDecisionDashboard from "../pages/SchoolDecisionDashboard";
 import { SchoolForm } from "./SchoolForm";
 import { FacilitySurveyForm } from "./FacilitySurveyForm";
 import { BuildingFormDrawer } from "./school-form-steps/BuildingFormDrawer";
+import School3DView from "./School3DView";
 import type { BuildingData } from "./school-form-steps/BuildingsStep";
 import { api, FILE_SERVER_URL } from "../lib/api";
 import { cn } from "../lib/utils";
@@ -183,9 +185,9 @@ export default function School2DViewer({
 
   // Picker mode: selected building before confirming
   const [pickerSelected, setPickerSelected] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "map" | "details">(
-    "dashboard",
-  );
+  const [activeTab, setActiveTab] = useState<
+    "dashboard" | "map" | "3d" | "details"
+  >("dashboard");
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSurveyModalOpen, setIsSurveyModalOpen] = useState(false);
@@ -201,7 +203,7 @@ export default function School2DViewer({
     Set<string>
   >(new Set());
 
-  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = useCallback(
     (message: string, type: "success" | "warning") => {
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
@@ -767,11 +769,11 @@ export default function School2DViewer({
 
       {/* ── Back button + school name (top-left, hidden in picker mode) ──── */}
       {!pickerMode && (
-        <div className="absolute top-3 left-3 z-40 flex items-center gap-2 pointer-events-auto">
+        <div className="absolute top-3 left-3 z-[45] flex items-center gap-2 pointer-events-auto">
           {onClose && (
             <button
               onClick={onClose}
-              className="flex items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-card border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white hover:bg-slate-50 dark:hover:bg-white/5 transition-all group active:scale-95 shadow-none"
+              className="flex items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-card/10 dark:hover:bg-blue-600 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white hover:bg-slate-50 transition-all group active:scale-95 shadow-none"
             >
               <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
             </button>
@@ -796,8 +798,9 @@ export default function School2DViewer({
             {(
               [
                 { id: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
-                { id: "map", icon: MapIcon, label: "2D Map" },
                 { id: "details", icon: FileText, label: "Details" },
+                { id: "map", icon: MapIcon, label: "2D Map" },
+                // { id: "3d", icon: Box, label: "3D Map" },
               ] as const
             ).map(({ id, icon: Icon, label }) => (
               <button
@@ -825,6 +828,17 @@ export default function School2DViewer({
             id={school.id}
             standalone={false}
             onUpdateSchool={onUpdateSchool}
+          />
+        </div>
+      )}
+
+      {/* ── 3D View Panel ─────────────────────────────────────────────────── */}
+      {activeTab === "3d" && (
+        <div className="absolute inset-0 z-40 bg-slate-50/95 dark:bg-gray-950/90 backdrop-blur-sm pointer-events-auto overflow-hidden">
+          <School3DView
+            schoolId={school.id}
+            schoolName={school.name}
+            onClose={() => setActiveTab("map")}
           />
         </div>
       )}
