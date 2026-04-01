@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Building2,
   Maximize2,
@@ -26,6 +26,7 @@ interface BlockInspectorProps {
   onAddAnnotation?: () => void;
   onUploadMedia?: () => void;
   on3DView?: () => void;
+  initialTab?: "details" | "media" | "reporting";
 }
 
 export function BlockInspector({
@@ -34,10 +35,15 @@ export function BlockInspector({
   onEdit,
   onClose,
   onUpdateBuilding,
+  initialTab,
 }: BlockInspectorProps) {
   const [activeTab, setActiveTab] = useState<"details" | "media" | "reporting">(
-    "details",
+    initialTab ?? "details",
   );
+
+  useEffect(() => {
+    setActiveTab(initialTab ?? "details");
+  }, [building.id, initialTab]);
 
   const conditionColors: Record<string, string> = {
     good: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
@@ -75,7 +81,8 @@ export function BlockInspector({
 
   const avgLabel = getAvgLabel(avgVal);
   const avgColorClass =
-    conditionColors[avgLabel.toLowerCase()] || "bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white";
+    conditionColors[avgLabel.toLowerCase()] ||
+    "bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white";
 
   return (
     <div
@@ -120,19 +127,19 @@ export function BlockInspector({
 
       {/* Tab Switcher */}
       <div className="px-5 py-2.5 shrink-0 bg-slate-50/50 dark:bg-[#0f1117]/50">
-        <div className="flex gap-1 p-1 rounded-2xl bg-white dark:bg-card/95 border border-slate-200 dark:border-white/10">
+        <div className="flex gap-1 p-1 rounded-full bg-white dark:bg-card/95 border border-slate-200 dark:border-white/10">
           {["details", "media", "reporting"].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
               className={cn(
-                "flex-1 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.2em] transition-all relative overflow-hidden group",
+                "flex-1 py-1.5 rounded-full text-[13px] transition-all relative overflow-hidden group",
                 activeTab === tab
-                  ? "bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white border border-slate-200 dark:border-white/5"
-                  : "text-slate-400 dark:text-white/20 hover:text-slate-900 dark:hover:text-white/40 hover:bg-slate-50 dark:hover:bg-white/2",
+                  ? "font-black bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white border border-slate-200 dark:border-white/5"
+                  : "text-slate-400 dark:text-white hover:text-slate-900 dark:hover:text-white/40 hover:bg-slate-50 dark:hover:bg-white/2",
               )}
             >
-              {tab === "reporting" ? "Analytics" : tab}
+              {tab === "reporting" ? "Reports" : tab}
               {activeTab === tab && (
                 <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-0.5 bg-primary rounded-full animate-pulse" />
               )}
@@ -142,9 +149,7 @@ export function BlockInspector({
       </div>
 
       {/* Main Content Area */}
-      <div
-        className="flex-1 overflow-y-auto px-5 py-2 custom-scrollbar min-h-0"
-      >
+      <div className="flex-1 overflow-y-auto px-5 py-2 custom-scrollbar min-h-0">
         {activeTab === "details" && (
           <div className="space-y-6 py-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
             {/* Status Section */}
@@ -229,27 +234,41 @@ export function BlockInspector({
                 {[
                   {
                     label: "Function",
-                    value: building.buildingFunction || building.function || "N/A",
+                    value:
+                      building.buildingFunction || building.function || "N/A",
                     icon: Layers,
                     color: "text-blue-500 dark:text-blue-400",
                   },
                   {
                     label: "Floors",
-                    value: (building.buildingFloors || building.floors || "1") + " Floor(s)",
+                    value:
+                      (building.buildingFloors || building.floors || "1") +
+                      " Floor(s)",
                     icon: Maximize2,
                     color: "text-purple-500 dark:text-purple-400",
                   },
                   {
                     label: "Area",
-                    value: (building.buildingArea || building.area || building.areaSquareMeters) && Number(building.buildingArea || building.area || building.areaSquareMeters) > 0
-                      ? `${Number(building.buildingArea || building.area || building.areaSquareMeters).toFixed(0)}m²`
-                      : "N/A",
+                    value:
+                      (building.buildingArea ||
+                        building.area ||
+                        building.areaSquareMeters) &&
+                      Number(
+                        building.buildingArea ||
+                          building.area ||
+                          building.areaSquareMeters,
+                      ) > 0
+                        ? `${Number(building.buildingArea || building.area || building.areaSquareMeters).toFixed(0)}m²`
+                        : "N/A",
                     icon: Square,
                     color: "text-emerald-500 dark:text-emerald-400",
                   },
                   {
                     label: "Year Built",
-                    value: building.buildingYearBuilt || building.yearBuilt || "Historic",
+                    value:
+                      building.buildingYearBuilt ||
+                      building.yearBuilt ||
+                      "Historic",
                     icon: Calendar,
                     color: "text-amber-500 dark:text-amber-400",
                   },
@@ -258,11 +277,14 @@ export function BlockInspector({
                     key={i}
                     className={cn(
                       "flex items-center justify-between p-3.5 hover:bg-slate-100 dark:hover:bg-white/3 transition-all group cursor-default",
-                      i !== 3 && "border-b border-slate-100 dark:border-white/3",
+                      i !== 3 &&
+                        "border-b border-slate-100 dark:border-white/3",
                     )}
                   >
                     <div className="flex items-center gap-3 group-hover:translate-x-1 transition-transform">
-                      <item.icon className={cn("w-3.5 h-3.5 transition-all", item.color)} />
+                      <item.icon
+                        className={cn("w-3.5 h-3.5 transition-all", item.color)}
+                      />
                       <span className="text-[10px] font-normal text-slate-500 dark:text-white/60 uppercase tracking-wider">
                         {item.label}
                       </span>
@@ -282,7 +304,10 @@ export function BlockInspector({
                   <p className="text-[9px] font-black text-slate-400 dark:text-white/20 uppercase tracking-[0.2em] font-mono">
                     Facilities
                   </p>
-                  <Badge variant="secondary" className="bg-primary/10 text-primary text-[8px] font-black border-none rounded-full px-2.5 h-5">
+                  <Badge
+                    variant="secondary"
+                    className="bg-primary/10 text-primary text-[8px] font-black border-none rounded-full px-2.5 h-5"
+                  >
                     {building.facilities.length} Rooms
                   </Badge>
                 </div>
@@ -301,7 +326,10 @@ export function BlockInspector({
                           </p>
                         </div>
                       </div>
-                      <Badge variant="outline" className="text-[10px] font-black border-slate-200 dark:border-white/5 bg-blue-50 dark:bg-blue-800/20 text-blue-600 dark:text-primary px-2 py-0.5 rounded-full group-hover:border-primary/20">
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] font-black border-slate-200 dark:border-white/5 bg-blue-50 dark:bg-blue-800/20 text-blue-600 dark:text-primary px-2 py-0.5 rounded-full group-hover:border-primary/20"
+                      >
                         {f.number_of_rooms || f.count || 1} Rooms
                       </Badge>
                     </div>
@@ -324,7 +352,10 @@ export function BlockInspector({
 
         {activeTab === "reporting" && (
           <div className="flex-1 flex flex-col min-h-0 py-4 animate-in fade-in slide-in-from-right-4 duration-500 overflow-hidden">
-            <BuildingReportingTab buildingId={building.id} />
+            <BuildingReportingTab
+              buildingId={building.id}
+              schoolId={schoolId}
+            />
           </div>
         )}
       </div>

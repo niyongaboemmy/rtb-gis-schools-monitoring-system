@@ -31,6 +31,9 @@ interface UseSpatialDataSyncProps {
   geojsonLayerRef: React.MutableRefObject<VectorLayer | null>;
   onBuildingsLoaded?: (buildings: BuildingData[]) => void;
   siteAnnotations?: any[];
+  hiddenAnnotationGroups?: Set<string>;
+  showBuildingAreas?: boolean;
+  showSiteAnnotations?: boolean;
 }
 
 export function useSpatialDataSync({
@@ -47,6 +50,9 @@ export function useSpatialDataSync({
   geojsonLayerRef,
   onBuildingsLoaded,
   siteAnnotations = [],
+  hiddenAnnotationGroups,
+  showBuildingAreas = true,
+  showSiteAnnotations = true,
 }: UseSpatialDataSyncProps) {
   const [buildings, setBuildings] = useState<BuildingData[]>([]);
 
@@ -107,6 +113,9 @@ export function useSpatialDataSync({
     aSrc.clear();
 
     buildings.forEach((b: BuildingData) => {
+      // Skip entire building (pins + annotations) when building areas are hidden
+      if (!showBuildingAreas) return;
+
       // Pins
       if (b.geolocation?.latitude && b.geolocation?.longitude) {
         const hasFootprint = (b.annotations || []).some(
@@ -184,10 +193,15 @@ export function useSpatialDataSync({
     });
 
     // ── Render Site-Level Annotations (not tied to any building) ─────────
+    if (!showSiteAnnotations) return;
     siteAnnotations.forEach((ann: any) => {
       if (!ann?.coordinates) {
         return;
       }
+
+      // Skip annotations whose icon type is hidden
+      const iconType = ann.icon || ann.iconType || ann.style?.iconType || "pin";
+      if (hiddenAnnotationGroups?.has(iconType)) return;
       const rawPts = ann.coordinates;
       if (!rawPts || rawPts.length === 0) return;
 
@@ -230,6 +244,9 @@ export function useSpatialDataSync({
   }, [
     buildings,
     siteAnnotations,
+    hiddenAnnotationGroups,
+    showBuildingAreas,
+    showSiteAnnotations,
     mapReady,
     blocksLayerRef,
     annotationLayerRef,

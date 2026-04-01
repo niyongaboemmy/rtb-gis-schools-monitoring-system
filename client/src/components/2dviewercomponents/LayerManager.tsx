@@ -23,6 +23,8 @@ interface LayerManagerProps {
   onSelectBuilding: (b: BuildingData) => void;
   onFlyToAnnotation: (ann: any) => void;
   selectedBuildingId?: string;
+  hiddenAnnotationGroups: Set<string>;
+  onToggleAnnotationGroup: (iconType: string) => void;
 }
 
 export const LayerManager: React.FC<LayerManagerProps> = ({
@@ -33,6 +35,8 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
   onSelectBuilding,
   onFlyToAnnotation,
   selectedBuildingId,
+  hiddenAnnotationGroups,
+  onToggleAnnotationGroup,
 }) => {
   const [activeTab, setActiveTab] = React.useState<"features" | "buildings">(
     "features",
@@ -67,6 +71,18 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
     const q = searchQuery.toLowerCase();
     return siteAnnotations.filter((a) => a.label?.toLowerCase().includes(q));
   }, [siteAnnotations, searchQuery]);
+
+  const annotationGroups = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    siteAnnotations.forEach((ann) => {
+      const key = ann.icon || ann.iconType || ann.style?.iconType || "pin";
+      counts[key] = (counts[key] ?? 0) + 1;
+    });
+    return ANNOTATION_ICONS.filter((ic) => counts[ic.id] > 0).map((ic) => ({
+      ...ic,
+      count: counts[ic.id],
+    }));
+  }, [siteAnnotations]);
 
   return (
     <Card
@@ -138,6 +154,47 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
       <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar min-h-[300px]">
         {activeTab === "features" && (
           <>
+            {/* Group visibility filter chips */}
+            {annotationGroups.length > 1 && (
+              <div className="mb-2 px-1 py-2 border-b border-slate-100 dark:border-white/5">
+                <p className="text-[9px] text-slate-400 dark:text-white/30 uppercase font-bold mb-1.5 px-1">
+                  Filter by type
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {annotationGroups.map((ic) => {
+                    const isHidden = hiddenAnnotationGroups.has(ic.id);
+                    const IconComp = ic.icon;
+                    return (
+                      <button
+                        key={ic.id}
+                        onClick={() => onToggleAnnotationGroup(ic.id)}
+                        title={isHidden ? `Show ${ic.label}` : `Hide ${ic.label}`}
+                        style={
+                          isHidden
+                            ? undefined
+                            : {
+                                backgroundColor: `${ic.mapColor}18`,
+                                borderColor: `${ic.mapColor}33`,
+                                color: ic.mapColor,
+                              }
+                        }
+                        className={cn(
+                          "flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium transition-all",
+                          isHidden
+                            ? "bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/8 text-slate-400 dark:text-white/25 opacity-50"
+                            : "",
+                        )}
+                      >
+                        <IconComp className="w-2.5 h-2.5 shrink-0" />
+                        <span>{ic.label}</span>
+                        <span className="opacity-60">{ic.count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {filteredAnnotations.length === 0 ? (
               <div className="py-20 text-center text-muted-foreground">
                 <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4 border border-white/5">
@@ -155,11 +212,15 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
                   ANNOTATION_ICONS.find((ic) => ic.id === iconType) ||
                   ANNOTATION_ICONS[0];
                 const IconComp = iconDef.icon;
+                const isGroupHidden = hiddenAnnotationGroups.has(iconType);
                 return (
                   <div
                     key={ann.id}
                     onClick={() => onFlyToAnnotation(ann)}
-                    className="group flex items-center justify-between p-2.5 rounded-2xl transition-all border border-transparent hover:bg-slate-50 dark:hover:bg-white/5 hover:border-slate-200 dark:hover:border-white/10 cursor-pointer"
+                    className={cn(
+                      "group flex items-center justify-between p-2.5 rounded-2xl transition-all border border-transparent hover:bg-slate-50 dark:hover:bg-white/5 hover:border-slate-200 dark:hover:border-white/10 cursor-pointer",
+                      isGroupHidden && "opacity-30",
+                    )}
                   >
                     <div className="flex items-center gap-3">
                       <div

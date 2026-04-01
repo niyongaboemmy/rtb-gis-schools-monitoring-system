@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   Map as MapIcon,
   FileText,
+  AlertTriangle,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Modal } from "./ui/modal";
@@ -47,6 +48,7 @@ import { useKmzLoader } from "./2dviewercomponents/hooks/useKmzLoader";
 import { useMapInteractions } from "./2dviewercomponents/hooks/useMapInteractions";
 import { useSpatialDataSync } from "./2dviewercomponents/hooks/useSpatialDataSync";
 import { useMapMethods } from "./2dviewercomponents/hooks/useMapMethods";
+import { useReportIndicators } from "./2dviewercomponents/hooks/useReportIndicators";
 
 // Utils
 import type { School2DViewerProps } from "./2dviewercomponents/MapUtils";
@@ -187,6 +189,13 @@ export default function School2DViewer({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSurveyModalOpen, setIsSurveyModalOpen] = useState(false);
   const [isMissingMapModalOpen, setIsMissingMapModalOpen] = useState(false);
+  const [showReportIndicators, setShowReportIndicators] = useState(true);
+  const [blockInspectorInitialTab, setBlockInspectorInitialTab] = useState<
+    "details" | "media" | "reporting"
+  >("details");
+  const [showBuildingAreas, setShowBuildingAreas] = useState(true);
+  const [showSiteAnnotations, setShowSiteAnnotations] = useState(true);
+  const [hiddenAnnotationGroups, setHiddenAnnotationGroups] = useState<Set<string>>(new Set());
 
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const showToast = useCallback(
@@ -200,6 +209,15 @@ export default function School2DViewer({
     },
     [],
   );
+
+  const handleToggleAnnotationGroup = useCallback((iconType: string) => {
+    setHiddenAnnotationGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(iconType)) next.delete(iconType);
+      else next.add(iconType);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     // Check if map is missing
@@ -405,12 +423,41 @@ export default function School2DViewer({
       [setSchoolBuildings],
     ),
     siteAnnotations,
+    hiddenAnnotationGroups,
+    showBuildingAreas,
+    showSiteAnnotations,
   });
 
   const { flyToFeature, exportPng } = useMapMethods({
     mapRef,
     selectedFeatureRef: mapSelectedFeatureRef,
     setSelectedFeatureName,
+  });
+
+  useReportIndicators({
+    mapRef,
+    mapReady,
+    schoolId: school.id,
+    schoolBuildings,
+    showIndicators: showReportIndicators,
+    onBuildingClick: useCallback(
+      (buildingId: string) => {
+        const b = schoolBuildings.find((sb) => sb.id === buildingId);
+        if (!b) return;
+        setActiveBlock(b);
+        setIsBlockInspectorOpen(true);
+        setBlockInspectorInitialTab("reporting");
+        if (b.geolocation?.latitude && b.geolocation?.longitude) {
+          const coord = fromLonLat([
+            Number(b.geolocation.longitude),
+            Number(b.geolocation.latitude),
+          ]);
+          blockOverlayRef.current?.setPosition(coord);
+          mapRef.current?.getView().animate({ center: coord, zoom: 21, duration: 600 });
+        }
+      },
+      [schoolBuildings],
+    ),
   });
 
   // ── Callbacks ─────────────────────────────────────────────────────────────
@@ -828,7 +875,7 @@ export default function School2DViewer({
                   top: annotationTooltip.y - 10,
                 }}
               >
-                <div className="max-w-[220px] bg-white/90 dark:bg-[#0f1117]/95 backdrop-blur-xl border border-slate-200 dark:border-white/10 rounded-2xl px-3 py-2.5 space-y-1.5">
+                <div className="max-w-55 bg-white/90 dark:bg-[#0f1117]/95 backdrop-blur-xl border border-slate-200 dark:border-white/10 rounded-2xl px-3 py-2.5 space-y-1.5">
                   <div className="flex items-center gap-2">
                     <div
                       className={cn(
@@ -937,6 +984,57 @@ export default function School2DViewer({
         />
       )}
 
+      {/* ── Layer Visibility Toggle Bar ───────────────────────────────────── */}
+      {!pickerMode && activeTab === "map" && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+          <div className="flex items-center gap-1 px-1.5 py-1.5 rounded-full bg-white/80 dark:bg-[#0f1117]/80 backdrop-blur-xl border border-slate-200 dark:border-white/10 shadow-lg">
+            {(
+              [
+                {
+                  key: "reports",
+                  label: "Report Alerts",
+                  icon: AlertTriangle,
+                  active: showReportIndicators,
+                  onToggle: () => setShowReportIndicators((v) => !v),
+                  activeClass: "bg-rose-500/15 border-rose-500/30 text-rose-500",
+                },
+                {
+                  key: "buildings",
+                  label: "Building Areas",
+                  icon: MapPin,
+                  active: showBuildingAreas,
+                  onToggle: () => setShowBuildingAreas((v) => !v),
+                  activeClass: "bg-blue-500/15 border-blue-500/30 text-blue-500",
+                },
+                {
+                  key: "annotations",
+                  label: "Annotations",
+                  icon: MapIcon,
+                  active: showSiteAnnotations,
+                  onToggle: () => setShowSiteAnnotations((v) => !v),
+                  activeClass: "bg-emerald-500/15 border-emerald-500/30 text-emerald-500",
+                },
+              ] as const
+            ).map(({ key, label, icon: Icon, active, onToggle, activeClass }) => (
+              <button
+                key={key}
+                onClick={onToggle}
+                title={active ? `Hide ${label}` : `Show ${label}`}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-medium transition-all active:scale-95",
+                  active
+                    ? activeClass
+                    : "border-transparent text-slate-400 dark:text-white/30 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-600 dark:hover:text-white/50",
+                )}
+              >
+                <Icon className="w-3 h-3 shrink-0" />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <MapToolbar
         onClose={undefined}
         showNavigator={showNavigator}
@@ -1037,6 +1135,8 @@ export default function School2DViewer({
                 .animate({ center: coord, zoom: 20, duration: 800 });
             }
           }}
+          hiddenAnnotationGroups={hiddenAnnotationGroups}
+          onToggleAnnotationGroup={handleToggleAnnotationGroup}
         />
       )}
 
@@ -1062,7 +1162,7 @@ export default function School2DViewer({
         <div
           className={cn(
             "fixed inset-x-0 bottom-0 z-50 transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] pointer-events-none", // Mobile bottom sheet
-            "md:absolute md:inset-y-0 md:right-0 md:bottom-auto md:w-[500px] md:z-40", // Desktop sidebar (Right side)
+            "md:absolute md:inset-y-0 md:right-0 md:bottom-auto md:w-125 md:z-40", // Desktop sidebar (Right side)
             isBlockInspectorOpen
               ? "translate-y-0 md:translate-x-0 opacity-100"
               : "translate-y-full md:translate-x-full opacity-0",
@@ -1073,8 +1173,10 @@ export default function School2DViewer({
               <BlockInspector
                 building={activeBlock}
                 schoolId={school?.id || ""}
+                initialTab={blockInspectorInitialTab}
                 onClose={() => {
                   setIsBlockInspectorOpen(false);
+                  setBlockInspectorInitialTab("details");
                   setTimeout(() => setActiveBlock(null), 300);
                 }}
                 onEdit={() => {
@@ -1214,7 +1316,7 @@ export default function School2DViewer({
         maxWidth="max-w-md"
       >
         <div className="space-y-6 py-4">
-          <div className="p-6 rounded-[32px] bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/5 space-y-4 text-center">
+          <div className="p-6 rounded-4xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/5 space-y-4 text-center">
             <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center mx-auto mb-2 border border-slate-200 dark:border-white/10">
               <MapIcon className="w-8 h-8 text-amber-500/40" />
             </div>
