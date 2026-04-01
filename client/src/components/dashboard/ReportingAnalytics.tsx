@@ -244,7 +244,17 @@ export const ReportingAnalytics = React.memo(
                       reportData?.trends?.monthly?.[11] || 0,
                       reportData?.trends?.monthly?.[10] || 0,
                     )}
-                    <span className="text-xs text-slate-500">+12%</span>
+                    <span className="text-xs text-slate-500">
+                      {(() => {
+                        const current = reportData?.trends?.monthly?.[11] || 0;
+                        const previous = reportData?.trends?.monthly?.[10] || 0;
+                        if (previous === 0) return "+0%";
+                        const change = Number(
+                          (((current - previous) / previous) * 100).toFixed(1),
+                        );
+                        return `${change > 0 ? "+" : ""}${change}%`;
+                      })()}
+                    </span>
                   </div>
                 </div>
                 <h4 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">
@@ -330,7 +340,14 @@ export const ReportingAnalytics = React.memo(
                   </div>
                   <div className="flex items-center gap-1">
                     <ArrowDownRight className="w-4 h-4 text-emerald-500" />
-                    <span className="text-xs text-slate-500">-18%</span>
+                    <span className="text-xs text-slate-500">
+                      {(() => {
+                        const avgTime = reportData?.avgResolutionTime || 0;
+                        return avgTime > 0
+                          ? `${avgTime.toFixed(1)} days avg`
+                          : "No data";
+                      })()}
+                    </span>
                   </div>
                 </div>
                 <h4 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">
@@ -344,7 +361,17 @@ export const ReportingAnalytics = React.memo(
                     <div className="flex-1 bg-slate-100 dark:bg-white/5 rounded-full h-1.5">
                       <div className="bg-emerald-500 h-1.5 rounded-full w-3/4 transition-all duration-500" />
                     </div>
-                    <span className="text-xs text-slate-500">75% target</span>
+                    <span className="text-xs text-slate-500">
+                      {(() => {
+                        const target = 5.0;
+                        const avgTime = reportData?.avgResolutionTime || 0;
+                        const progress =
+                          avgTime > 0
+                            ? Math.min((target / avgTime) * 100, 100)
+                            : 0;
+                        return `${progress.toFixed(0)}% of ${target} day target`;
+                      })()}
+                    </span>
                   </div>
                 </div>
               </CardContent>

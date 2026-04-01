@@ -48,8 +48,10 @@ export const SchoolStatsCards = React.memo(
             color: "text-primary",
             bg: "bg-primary/5",
             border: "border-primary/20",
-            benchmark: "Top 5% in district",
-            trend: [20, 35, 45, 40, 50, 65, 80],
+            benchmark:
+              totalCapacity > 0
+                ? `${((totalStudents / totalCapacity) * 100).toFixed(1)}% capacity`
+                : "Capacity data unavailable",
           },
           {
             label: "Total staff",
@@ -62,8 +64,10 @@ export const SchoolStatsCards = React.memo(
             color: "text-blue-500",
             bg: "bg-blue-500/5",
             border: "border-blue-500/20",
-            benchmark: "Optimal staffing",
-            trend: [40, 42, 45, 43, 44, 45, 45],
+            benchmark:
+              totalStaff > 0
+                ? `${(totalStaff / (totalStudents || 1)).toFixed(2)} ratio`
+                : "Staff data unavailable",
           },
           {
             label: "Block count",
@@ -73,8 +77,10 @@ export const SchoolStatsCards = React.memo(
             color: "text-emerald-500",
             bg: "bg-emerald-500/5",
             border: "border-emerald-500/20",
-            benchmark: "Strategic estate",
-            trend: [10, 10, 12, 12, 12, 14, 15],
+            benchmark:
+              buildings.length > 0
+                ? `${Math.round(new Date().getFullYear() - avgBuildingYear)} yrs avg`
+                : "No building data",
           },
           {
             label: "Land allocation",
@@ -87,8 +93,10 @@ export const SchoolStatsCards = React.memo(
             color: "text-amber-500",
             bg: "bg-amber-500/5",
             border: "border-amber-500/20",
-            benchmark: "Expansion ready",
-            trend: [100, 95, 90, 85, 80, 82, 85],
+            benchmark:
+              (parseFloat(String(schoolData.usedLandArea)) || 0) > 0
+                ? `${(((parseFloat(String(schoolData.usedLandArea)) || 0) / ((parseFloat(String(schoolData.usedLandArea)) || 0) + (parseFloat(String(schoolData.unusedLandArea)) || 0) || 1)) * 100).toFixed(1)}% used`
+                : "Land data unavailable",
           },
           {
             label: "TVET programs",
@@ -98,21 +106,27 @@ export const SchoolStatsCards = React.memo(
             color: "text-indigo-500",
             bg: "bg-indigo-500/5",
             border: "border-indigo-500/20",
-            benchmark: "Academic leader",
-            trend: [5, 6, 8, 8, 10, 12, 12],
+            benchmark:
+              schoolData.educationPrograms?.length > 0
+                ? `${schoolData.educationPrograms.length} programs`
+                : "No programs",
           },
           {
             label: "Accessibility",
             value: schoolData.roadStatusPercentage
-              ? `${parseFloat(String(schoolData.roadStatusPercentage))}%`
+              ? `${parseFloat(String(schoolData.roadStatusPercentage)).toFixed(1)}%`
               : "--",
             subValue: "Connectivity",
             icon: MapIcon,
             color: "text-slate-500",
             bg: "bg-slate-500/5",
             border: "border-slate-500/20",
-            benchmark: "Standard access",
-            trend: [20, 25, 40, 50, 60, 75, 80],
+            benchmark:
+              parseFloat(String(schoolData.roadStatusPercentage)) > 80
+                ? "Good access"
+                : parseFloat(String(schoolData.roadStatusPercentage)) > 50
+                  ? "Moderate access"
+                  : "Limited access",
           },
         ].map((item, index) => (
           <motion.div
@@ -153,46 +167,6 @@ export const SchoolStatsCards = React.memo(
                     <h4 className="text-xl font-medium text-slate-900 dark:text-white tracking-tight leading-none group-hover:translate-x-0.5 transition-transform duration-300">
                       {item.value}
                     </h4>
-                  </div>
-
-                  <div className="w-12 h-6 flex items-center justify-end">
-                    <svg
-                      viewBox="0 0 100 40"
-                      className="w-full h-full overflow-visible"
-                    >
-                      <defs>
-                        <linearGradient
-                          id={`grad-${index}`}
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop
-                            offset="0%"
-                            stopColor="currentColor"
-                            stopOpacity="0.2"
-                          />
-                          <stop
-                            offset="100%"
-                            stopColor="currentColor"
-                            stopOpacity="0"
-                          />
-                        </linearGradient>
-                      </defs>
-                      <path
-                        d={`M 0,${40 - item.trend[0] / 2.5} ${item.trend.map((v, i) => `L ${i * 16.6},${40 - v / 2.5}`).join(" ")}`}
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className={cn(
-                          item.color,
-                          "opacity-60 dark:opacity-20 group-hover:opacity-100 dark:group-hover:opacity-80 transition-opacity duration-700",
-                        )}
-                      />
-                    </svg>
                   </div>
                 </div>
 

@@ -171,7 +171,13 @@ export const DecisionIntelligenceScore = React.memo(
                   Benchmarking sync
                 </span>
                 <span className="text-[12px] font-medium text-primary">
-                  Regional top 15%
+                  {assessment.overallScore > 80
+                    ? "Regional top 10%"
+                    : assessment.overallScore > 60
+                      ? "Regional top 25%"
+                      : assessment.overallScore > 40
+                        ? "Regional average"
+                        : "Needs improvement"}
                 </span>
               </div>
             </div>
