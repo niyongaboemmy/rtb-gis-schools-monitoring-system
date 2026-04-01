@@ -52,6 +52,7 @@ import { ReportsModule } from './modules/reports/reports.module';
     RolesModule,
     AccessLevelsModule,
     ReportsModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}

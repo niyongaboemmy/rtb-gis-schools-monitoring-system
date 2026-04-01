@@ -70,46 +70,36 @@ export const ReportingAnalytics = React.memo(
       const fetchReportingData = async () => {
         try {
           setLoading(true);
+          // Fetch backend Reporting data
+          const response = await api.get(`/api/v1/schools/dashboard/reporting?schoolId=${schoolId}`);
+          const payload = response.data?.data ?? response.data ?? {};
+          const reports = payload?.reports ?? {};
+          const analytics = payload?.analytics ?? {};
+          const decision = payload?.decisionAssessment ?? {};
 
-          // Fetch reports data
-          const reportsResponse = await api.get(
-            `/reports?schoolId=${schoolId}&limit=100`,
-          );
-          const reports = reportsResponse.data?.reports || [];
+          // Derive counts from the backend payload (fallback to 0 if missing)
+          const total = (reports as any).generatedReportCount ?? 0;
+          const open = (reports as any).open ?? 0;
+          const inProgress = (reports as any).inProgress ?? 0;
+          const resolved = (reports as any).resolved ?? 0;
+          const critical = (reports as any).critical ?? 0;
+          const high = (reports as any).high ?? 0;
+          const medium = (reports as any).medium ?? 0;
+          const low = (reports as any).low ?? 0;
 
-          // Calculate metrics from reports
-          const total = reports.length;
-          const open = reports.filter((r: any) => r.status === "open").length;
-          const inProgress = reports.filter(
-            (r: any) => r.status === "in_progress",
-          ).length;
-          const resolved = reports.filter(
-            (r: any) => r.status === "resolved",
-          ).length;
+          // Trends (from backend, if provided) otherwise keep empty arrays
+          const monthly = (analytics as any).trends?.monthly ?? [];
+          const weekly = (analytics as any).trends?.weekly ?? [];
 
-          const critical = reports.filter(
-            (r: any) => r.priority === "critical",
-          ).length;
-          const high = reports.filter((r: any) => r.priority === "high").length;
-          const medium = reports.filter(
-            (r: any) => r.priority === "medium",
-          ).length;
-          const low = reports.filter((r: any) => r.priority === "low").length;
+          const avgResolutionTime = (reports as any).avgResolutionTime ?? (payload?.avgResolutionTime ?? 0);
 
-          // Calculate trends (mock data for now)
-          const monthly = [45, 52, 38, 65, 59, 72, 68, 74, 82, 79, 85, 91];
-          const weekly = [12, 15, 8, 18, 14, 22, 19, 25, 28, 24, 30, 32];
-
-          // Calculate average resolution time (mock)
-          const avgResolutionTime = 4.2;
-
-          // Categorize reports
-          const categories = {
-            infrastructure: Math.floor(total * 0.35),
-            safety: Math.floor(total * 0.25),
-            maintenance: Math.floor(total * 0.2),
-            academic: Math.floor(total * 0.15),
-            other: Math.floor(total * 0.05),
+          // Categories from backend if available
+          const categories = (reports as any).categories ?? {
+            infrastructure: 0,
+            safety: 0,
+            maintenance: 0,
+            academic: 0,
+            other: 0,
           };
 
           setReportData({
@@ -126,19 +116,19 @@ export const ReportingAnalytics = React.memo(
             categories,
           });
 
-          // Mock decision impact data
+          // Dynamic decision impact derived from backend analytics (if available)
           setDecisionImpact({
-            roi: 127,
-            riskLevel: "medium",
+            roi: (decision as any).overallScore ?? 0,
+            riskLevel: ((decision as any).weightBreakdown?.[0]?.category ?? 'medium') as any,
             timeToImpact: 6,
-            stakeholderImpact: 78,
-            budgetImpact: 450000,
-            recommendations: [
-              "Prioritize infrastructure upgrades in Building A",
-              "Implement preventive maintenance schedule",
-              "Expand digital learning infrastructure",
-              "Enhance safety protocols in workshops",
-            ],
+            stakeholderImpact: (analytics as any).trendScore ?? 0,
+            budgetImpact: (reports as any).budgetImpact ?? 0,
+            recommendations:
+              (decision as any).weightBreakdown?.length > 0
+                ? ((decision as any).weightBreakdown?.map((w: any) => w.category) || [])
+                : [
+                    "Consider updating reporting cadence",
+                  ],
           });
         } catch (error) {
           console.error("Failed to fetch reporting data:", error);
@@ -532,7 +522,7 @@ export const ReportingAnalytics = React.memo(
           </CardHeader>
           <CardContent className="p-6">
             <div className="h-48 flex items-end justify-between gap-2">
-              {reportData?.trends.monthly?.map((value, index) => (
+                    {reportData?.trends?.monthly?.map((value, index) => (
                 <motion.div
                   key={index}
                   initial={{ height: 0 }}

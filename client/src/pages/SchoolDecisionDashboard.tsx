@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuthStore } from "../store/authStore";
 import {
+  Activity,
   Building2,
   GraduationCap,
   ClipboardCheck,
@@ -78,7 +79,6 @@ export default function SchoolDecisionDashboard({
       populationPressureScore = 50,
       accessibilityScore = 50,
       facilityComplianceScore = 50,
-      depreciation = 20,
     } = schoolData.calculatedAssessment;
 
     // Parse all values to ensure they're numbers
@@ -88,7 +88,7 @@ export default function SchoolDecisionDashboard({
     const accessScore = parseFloat(String(accessibilityScore)) || 50;
     const complianceScore = parseFloat(String(facilityComplianceScore)) || 50;
     const depValue =
-      parseFloat(String(schoolData.calculatedAssessment.depreciation)) || 20; // Fixed: was 'depreciation'
+      parseFloat(String(schoolData.calculatedAssessment.depreciation)) || 20;
 
     // Weight the different factors for decision intelligence
     const weights = {
@@ -363,318 +363,356 @@ export default function SchoolDecisionDashboard({
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
       className="container mx-auto space-y-8 pb-12 px-2 md:px-6 pt-8 md:pt-16 bg-transparent"
     >
-      {/* Modern Dashboard Header */}
-      <div className="relative group mb-12">
-        <div className="absolute -inset-x-20 -top-20 h-64 bg-primary/5 dark:bg-primary/2 blur-[120px] rounded-full pointer-events-none" />
-
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 relative z-10 border-b border-slate-200 dark:border-blue-500/20 pb-10">
-          <div>
-            <h2 className="text-3xl md:text-4xl font-medium text-slate-800 dark:text-white tracking-tight">
-              Strategic <span className="text-primary">Intelligence</span>{" "}
-              Dashboard
-            </h2>
-            <div className="flex items-center gap-4 mt-4">
-              <p className="text-[11px] font-normal text-slate-500 dark:text-white/60 tracking-wide">
-                Instance: {schoolData.name || "Unidentified asset"}
-              </p>
-              <div className="h-1 w-1 rounded-full bg-slate-200 dark:bg-white/10" />
-              <p className="text-[11px] font-medium text-primary/60 dark:text-primary/60 tracking-wide">
-                Registry ID: {id?.slice(0, 8).toUpperCase()}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-col items-start md:items-end gap-3">
-            <div className="relative rounded-2xl overflow-hidden group">
-              {/* Professional Gradient Border & Background */}
-              <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-30 dark:opacity-20 group-hover:opacity-40 transition-opacity">
-                <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(1rem-1px)]" />
-              </div>
-
-              <div className="relative z-10 flex items-center gap-8 px-6 py-4">
-                <div className="text-center">
-                  <p className="text-[10px] font-normal text-slate-500 dark:text-white/40 mb-1">
-                    Benchmark
-                  </p>
-                  <p className="text-base font-medium text-slate-900 dark:text-white/80">
-                    +12.4%
-                  </p>
-                </div>
-                <div className="w-px h-8 bg-slate-200 dark:bg-white/5" />
-                <div className="text-center">
-                  <p className="text-[10px] font-normal text-slate-500 dark:text-white/40 mb-1">
-                    Reliability
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <div className="flex gap-1">
-                      {[1, 2, 3, 4].map((i) => (
-                        <div
-                          key={i}
-                          className="w-1 h-3 bg-primary/40 rounded-full"
-                        />
-                      ))}
-                      <div className="w-1 h-3 bg-slate-100 dark:bg-white/5 rounded-full" />
-                    </div>
-                    <span className="text-base font-medium text-slate-900 dark:text-white/80">
-                      88%
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="text-[10px] font-normal text-slate-400 dark:text-white/60 pr-2">
-              Sync latency: 42ms · t-ref:{" "}
-              {new Date().toISOString().split("T")[1].slice(0, 8)}
-            </div>
-          </div>
-        </div>
+      {/* Tab Navigation */}
+      <div className="flex gap-2 p-1 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/20 mb-8">
+        {[
+          { id: "main", label: "Main Dashboard", icon: Activity },
+          { id: "reporting", label: "Reporting & Analytics", icon: FileText },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as "main" | "reporting")}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                activeTab === tab.id
+                  ? "bg-primary text-white shadow-sm"
+                  : "text-slate-600 dark:text-white/60 hover:bg-slate-100 dark:hover:bg-white/10",
+              )}
+            >
+              <Icon className="w-4 h-4" />
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <div className="xl:col-span-2 space-y-8">
-          <DecisionIntelligenceScore assessment={assessment} />
-          <FacilityBreakdownSection buildings={buildings} />
+      {/* Content Based on Active Tab */}
+      {activeTab === "main" && (
+        <div>
+          <div className="space-y-8">
+            {/* Modern Dashboard Header */}
+            <div className="relative group mb-12">
+              <div className="absolute -inset-x-20 -top-20 h-64 bg-primary/5 dark:bg-primary/2 blur-[120px] rounded-full pointer-events-none" />
 
-          {/* New Reporting Analytics Section */}
-          <ReportingAnalytics schoolId={id || ""} />
-
-          {/* New Risk Assessment Section */}
-          <RiskAssessment assessment={assessment} />
-        </div>
-
-        <div className="space-y-8">
-          {/* Reporting Summary Section */}
-          <div className="relative rounded-[32px] overflow-hidden group">
-            {/* Professional Gradient Border & Background */}
-            <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
-              <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
-            </div>
-
-            <div className="relative z-10 p-8">
-              <h3 className="text-sm font-medium text-primary/70 dark:text-blue-500 mb-6 flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/20">
-                  <FileText className="w-4 h-4 opacity-60" />
-                </div>
-                Reporting Summary
-              </h3>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs text-slate-500 dark:text-white/60">
-                        Open Issues
-                      </span>
-                      <AlertTriangle className="w-3 h-3 text-amber-500" />
-                    </div>
-                    <div className="text-xl font-bold text-slate-900 dark:text-white">
-                      {reportingData?.openIssues || 12}
-                    </div>
-                    <div className="text-xs text-emerald-500">
-                      -18% from last month
-                    </div>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs text-slate-500 dark:text-white/60">
-                        Resolved
-                      </span>
-                      <CheckCircle className="w-3 h-3 text-emerald-500" />
-                    </div>
-                    <div className="text-xl font-bold text-slate-900 dark:text-white">
-                      {reportingData?.resolvedIssues || 28}
-                    </div>
-                    <div className="text-xs text-emerald-500">
-                      +24% from last month
-                    </div>
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 relative z-10 border-b border-slate-200 dark:border-blue-500/20 pb-10">
+                <div>
+                  <h2 className="text-3xl md:text-4xl font-medium text-slate-800 dark:text-white tracking-tight">
+                    Strategic <span className="text-primary">Intelligence</span>{" "}
+                    Dashboard
+                  </h2>
+                  <div className="flex items-center gap-4 mt-4">
+                    <p className="text-[11px] font-normal text-slate-500 dark:text-white/60 tracking-wide">
+                      Instance: {schoolData.name || "Unidentified asset"}
+                    </p>
+                    <div className="h-1 w-1 rounded-full bg-slate-200 dark:bg-white/10" />
+                    <p className="text-[11px] font-medium text-primary/60 dark:text-primary/60 tracking-wide">
+                      Registry ID: {id?.slice(0, 8).toUpperCase()}
+                    </p>
                   </div>
                 </div>
-                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-slate-500 dark:text-white/60">
-                      Critical Priority
-                    </span>
-                    <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-xl font-bold text-red-600 dark:text-red-400">
-                      {reportingData?.criticalIssues || 3}
+
+                <div className="flex flex-col items-start md:items-end gap-3">
+                  <div className="relative rounded-2xl overflow-hidden group">
+                    {/* Professional Gradient Border & Background */}
+                    <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-30 dark:opacity-20 group-hover:opacity-40 transition-opacity">
+                      <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(1rem-1px)]" />
                     </div>
-                    <div className="flex-1">
-                      <div className="text-xs text-slate-500 dark:text-white/60 mb-1">
-                        Resolution Rate
+
+                    <div className="relative z-10 flex items-center gap-8 px-6 py-4">
+                      <div className="text-center">
+                        <p className="text-[10px] font-normal text-slate-500 dark:text-white/40 mb-1">
+                          Benchmark
+                        </p>
+                        <p className="text-base font-medium text-slate-900 dark:text-white/80">
+                          +12.4%
+                        </p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 bg-slate-100 dark:bg-white/5 rounded-full h-1.5">
-                          <div
-                            className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500"
-                            style={{
-                              width: `${reportingData?.resolutionRate || 75}%`,
-                            }}
-                          />
+                      <div className="w-px h-8 bg-slate-200 dark:bg-white/5" />
+                      <div className="text-center">
+                        <p className="text-[10px] font-normal text-slate-500 dark:text-white/40 mb-1">
+                          Reliability
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <div className="flex gap-1">
+                            {[1, 2, 3, 4].map((i) => (
+                              <div
+                                key={i}
+                                className="w-1 h-3 bg-primary/40 rounded-full"
+                              />
+                            ))}
+                            <div className="w-1 h-3 bg-slate-100 dark:bg-white/5 rounded-full" />
+                          </div>
+                          <span className="text-base font-medium text-slate-900 dark:text-white/80">
+                            88%
+                          </span>
                         </div>
-                        <span className="text-xs font-medium text-slate-900 dark:text-white">
-                          {reportingData?.resolutionRate || 75}%
-                        </span>
                       </div>
                     </div>
+                  </div>
+                  <div className="text-[10px] font-normal text-slate-400 dark:text-white/60 pr-2">
+                    Sync latency: 42ms · t-ref:{" "}
+                    {new Date().toISOString().split("T")[1].slice(0, 8)}
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Buildings with Critical Reports */}
-          <div className="relative rounded-[32px] overflow-hidden group">
-            {/* Professional Gradient Border & Background */}
-            <div className="absolute inset-0 bg-linear-to-b from-red-500/30 to-red-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
-              <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+            <div className="xl:col-span-2 space-y-8">
+              <DecisionIntelligenceScore assessment={assessment} />
+              <FacilityBreakdownSection buildings={buildings} />
+
+          {/* Risk Assessment moved to Reporting tab now */}
             </div>
 
-            <div className="relative z-10 p-8">
-              <h3 className="text-sm font-medium text-red-600/70 dark:text-red-500 mb-6 flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-red-100 dark:bg-white/5 border border-red-500/20">
-                  <AlertTriangle className="w-4 h-4 opacity-60" />
+            <div className="space-y-8">
+              {/* Reporting Summary Section */}
+              <div className="relative rounded-[32px] overflow-hidden group">
+                {/* Professional Gradient Border & Background */}
+                <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
+                  <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
                 </div>
-                Buildings Requiring Attention
-              </h3>
-              <div className="space-y-3">
-                {buildings
-                  .filter((building: any) => building.name)
-                  .sort(() => {
-                    // Mock calculation - in real app, this would come from reports data
-                    return Math.random() - 0.5;
-                  })
-                  .slice(0, 3)
-                  .map((building: any, index: number) => (
-                    <motion.div
-                      key={building.id || index}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                      className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20 hover:bg-slate-100 dark:hover:bg-white/10 transition-all"
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-                            <Building2 className="w-4 h-4 text-red-500" />
+
+                <div className="relative z-10 p-8">
+                  <h3 className="text-sm font-medium text-primary/70 dark:text-blue-500 mb-6 flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/20">
+                      <FileText className="w-4 h-4 opacity-60" />
+                    </div>
+                    Reporting Summary
+                  </h3>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs text-slate-500 dark:text-white/60">
+                            Open Issues
+                          </span>
+                          <AlertTriangle className="w-3 h-3 text-amber-500" />
+                        </div>
+                        <div className="text-xl font-bold text-slate-900 dark:text-white">
+                          {reportingData?.openIssues || 12}
+                        </div>
+                        <div className="text-xs text-emerald-500">
+                          -18% from last month
+                        </div>
+                      </div>
+                      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs text-slate-500 dark:text-white/60">
+                            Resolved
+                          </span>
+                          <CheckCircle className="w-3 h-3 text-emerald-500" />
+                        </div>
+                        <div className="text-xl font-bold text-slate-900 dark:text-white">
+                          {reportingData?.resolvedIssues || 28}
+                        </div>
+                        <div className="text-xs text-emerald-500">
+                          +24% from last month
+                        </div>
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-slate-500 dark:text-white/60">
+                          Critical Priority
+                        </span>
+                        <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-xl font-bold text-red-600 dark:text-red-400">
+                          {reportingData?.criticalIssues || 3}
+                        </div>
+                        <div className="flex-1">
+                          <div className="text-xs text-slate-500 dark:text-white/60 mb-1">
+                            Resolution Rate
                           </div>
-                          <div>
-                            <h4 className="text-sm font-medium text-slate-900 dark:text-white">
-                              {building.name || `Building ${index + 1}`}
-                            </h4>
-                            <p className="text-xs text-slate-500 dark:text-white/60">
-                              {building.yearBuilt
-                                ? `Built ${building.yearBuilt}`
-                                : "Year unknown"}
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 bg-slate-100 dark:bg-white/5 rounded-full h-1.5">
+                              <div
+                                className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500"
+                                style={{
+                                  width: `${reportingData?.resolutionRate || 75}%`,
+                                }}
+                              />
+                            </div>
+                            <span className="text-xs font-medium text-slate-900 dark:text-white">
+                              {reportingData?.resolutionRate || 75}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Buildings with Critical Reports */}
+              <div className="relative rounded-[32px] overflow-hidden group">
+                {/* Professional Gradient Border & Background */}
+                <div className="absolute inset-0 bg-linear-to-b from-red-500/30 to-red-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
+                  <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
+                </div>
+
+                <div className="relative z-10 p-8">
+                  <h3 className="text-sm font-medium text-red-600/70 dark:text-red-500 mb-6 flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-red-100 dark:bg-white/5 border border-red-500/20">
+                      <AlertTriangle className="w-4 h-4 opacity-60" />
+                    </div>
+                    Buildings Requiring Attention
+                  </h3>
+                  <div className="space-y-3">
+                    {buildings
+                      .filter((building: any) => building.name)
+                      .sort(() => {
+                        // Mock calculation - in real app, this would come from reports data
+                        return Math.random() - 0.5;
+                      })
+                      .slice(0, 3)
+                      .map((building: any, index: number) => (
+                        <motion.div
+                          key={building.id || index}
+                          initial={{ opacity: 0, x: 20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: index * 0.1 }}
+                          className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20 hover:bg-slate-100 dark:hover:bg-white/10 transition-all"
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                                <Building2 className="w-4 h-4 text-red-500" />
+                              </div>
+                              <div>
+                                <h4 className="text-sm font-medium text-slate-900 dark:text-white">
+                                  {building.name || `Building ${index + 1}`}
+                                </h4>
+                                <p className="text-xs text-slate-500 dark:text-white/60">
+                                  {building.yearBuilt
+                                    ? `Built ${building.yearBuilt}`
+                                    : "Year unknown"}
+                                </p>
+                              </div>
+                            </div>
+                            <Badge
+                              className={cn(
+                                "text-xs font-medium",
+                                index === 0
+                                  ? "bg-red-500/10 text-red-600 border-red-500/20"
+                                  : index === 1
+                                    ? "bg-orange-500/10 text-orange-600 border-orange-500/20"
+                                    : "bg-amber-500/10 text-amber-600 border-amber-500/20",
+                              )}
+                            >
+                              {index === 0
+                                ? "CRITICAL"
+                                : index === 1
+                                  ? "HIGH"
+                                  : "MEDIUM"}
+                            </Badge>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-4 text-xs">
+                            <div>
+                              <p className="text-slate-500 dark:text-white/60 mb-1">
+                                Pending Issues
+                              </p>
+                              <p className="font-medium text-slate-900 dark:text-white">
+                                {Math.floor(Math.random() * 10) + 1}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-slate-500 dark:text-white/60 mb-1">
+                                Critical
+                              </p>
+                              <p className="font-medium text-red-600 dark:text-red-400">
+                                {Math.floor(Math.random() * 5) + 1}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-slate-500 dark:text-white/60 mb-1">
+                                Last Report
+                              </p>
+                              <p className="font-medium text-slate-900 dark:text-white">
+                                {Math.floor(Math.random() * 7) + 1}d ago
+                              </p>
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                  </div>
+                </div>
+              </div>
+
+              <SchoolStatsCards
+                schoolData={schoolData}
+                totalStudents={totalStudents}
+                totalCapacity={totalCapacity}
+                totalStaff={totalStaff}
+                totalTeachers={totalTeachers}
+                maleTeachers={maleTeachers}
+                buildings={buildings}
+                avgBuildingYear={avgBuildingYear}
+                formatNumber={formatNumber}
+              />
+
+              <div className="relative rounded-[32px] overflow-hidden group">
+                {/* Professional Gradient Border & Background */}
+                <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
+                  <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
+                </div>
+
+                <div className="relative z-10 p-8">
+                  <h3 className="text-sm font-medium text-primary/70 dark:text-blue-500 mb-6 flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/20">
+                      <ClipboardCheck className="w-4 h-4 opacity-60" />
+                    </div>
+                    Strategic recommendations
+                  </h3>
+                  <div className="space-y-4">
+                    {assessment.recommendations?.map(
+                      (rec: string, i: number) => (
+                        <motion.div
+                          key={i}
+                          initial={{ opacity: 0, x: 20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.4 + i * 0.1 }}
+                          className="relative group/rec p-px rounded-2xl overflow-hidden transition-all duration-300"
+                        >
+                          <div className="absolute inset-0 bg-linear-to-br from-blue-500/40 to-blue-500/0 opacity-10 group-hover/rec:opacity-30 transition-opacity" />
+                          <div className="absolute inset-px bg-white/80 dark:bg-white/2 backdrop-blur-2xl rounded-[calc(1rem-1px)] transition-colors" />
+
+                          <div className="relative p-5 z-10 flex gap-4">
+                            <div className="w-1.5 h-1.5 rounded-full bg-primary/30 mt-1.5 shrink-0 group-hover/rec:bg-primary/50" />
+                            <p className="text-xs font-normal leading-relaxed text-slate-500 dark:text-white/50 group-hover/rec:text-slate-900 dark:group-hover/rec:text-white/80 transition-colors italic">
+                              {rec}
                             </p>
                           </div>
-                        </div>
-                        <Badge
-                          className={cn(
-                            "text-xs font-medium",
-                            index === 0
-                              ? "bg-red-500/10 text-red-600 border-red-500/20"
-                              : index === 1
-                                ? "bg-orange-500/10 text-orange-600 border-orange-500/20"
-                                : "bg-amber-500/10 text-amber-600 border-amber-500/20",
-                          )}
-                        >
-                          {index === 0
-                            ? "CRITICAL"
-                            : index === 1
-                              ? "HIGH"
-                              : "MEDIUM"}
-                        </Badge>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-4 text-xs">
-                        <div>
-                          <p className="text-slate-500 dark:text-white/60 mb-1">
-                            Pending Issues
-                          </p>
-                          <p className="font-medium text-slate-900 dark:text-white">
-                            {Math.floor(Math.random() * 10) + 1}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-slate-500 dark:text-white/60 mb-1">
-                            Critical
-                          </p>
-                          <p className="font-medium text-red-600 dark:text-red-400">
-                            {Math.floor(Math.random() * 5) + 1}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-slate-500 dark:text-white/60 mb-1">
-                            Last Report
-                          </p>
-                          <p className="font-medium text-slate-900 dark:text-white">
-                            {Math.floor(Math.random() * 7) + 1}d ago
-                          </p>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-              </div>
-            </div>
-          </div>
-
-          <SchoolStatsCards
-            schoolData={schoolData}
-            totalStudents={totalStudents}
-            totalCapacity={totalCapacity}
-            totalStaff={totalStaff}
-            totalTeachers={totalTeachers}
-            maleTeachers={maleTeachers}
-            buildings={buildings}
-            avgBuildingYear={avgBuildingYear}
-            formatNumber={formatNumber}
-          />
-
-          <div className="relative rounded-[32px] overflow-hidden group">
-            {/* Professional Gradient Border & Background */}
-            <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
-              <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
-            </div>
-
-            <div className="relative z-10 p-8">
-              <h3 className="text-sm font-medium text-primary/70 dark:text-blue-500 mb-6 flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/20">
-                  <ClipboardCheck className="w-4 h-4 opacity-60" />
-                </div>
-                Strategic recommendations
-              </h3>
-              <div className="space-y-4">
-                {assessment.recommendations?.map((rec: string, i: number) => (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.4 + i * 0.1 }}
-                    className="relative group/rec p-px rounded-2xl overflow-hidden transition-all duration-300"
-                  >
-                    <div className="absolute inset-0 bg-linear-to-br from-blue-500/40 to-blue-500/0 opacity-10 group-hover/rec:opacity-30 transition-opacity" />
-                    <div className="absolute inset-px bg-white/80 dark:bg-white/2 backdrop-blur-2xl rounded-[calc(1rem-1px)] transition-colors" />
-
-                    <div className="relative p-5 z-10 flex gap-4">
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary/30 mt-1.5 shrink-0 group-hover/rec:bg-primary/50" />
-                      <p className="text-xs font-normal leading-relaxed text-slate-500 dark:text-white/50 group-hover/rec:text-slate-900 dark:group-hover/rec:text-white/80 transition-colors italic">
-                        {rec}
+                        </motion.div>
+                      ),
+                    )}
+                    {(!assessment.recommendations ||
+                      assessment.recommendations.length === 0) && (
+                      <p className="text-xs text-slate-400 dark:text-white/70 italic text-center py-6">
+                        No critical interventions recommended at this time.
                       </p>
-                    </div>
-                  </motion.div>
-                ))}
-                {(!assessment.recommendations ||
-                  assessment.recommendations.length === 0) && (
-                  <p className="text-xs text-slate-400 dark:text-white/70 italic text-center py-6">
-                    No critical interventions recommended at this time.
-                  </p>
-                )}
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {activeTab === "reporting" && (
+        <>
+          <ReportingTab reportingData={reportingData} />
+          {/* Moved Risk Assessment into this tab for centralized analysis visibility */}
+          <RiskAssessment assessment={assessment} />
+        </>
+      )}
 
       <Modal
         isOpen={isBuildingModalOpen}
