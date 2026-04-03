@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   FileText,
   TrendingUp,
@@ -16,6 +16,10 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { cn } from "../../lib/utils";
 import { api } from "../../lib/api";
+import {
+  severityLabelFromStatus,
+  type IssueSeverityLabel,
+} from "../../lib/issueReportMetrics";
 
 interface ReportingTabProps {
   schoolId: string;
@@ -53,72 +57,95 @@ interface ReportData {
 export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
   const [activeSubTab, setActiveSubTab] = useState("overview");
   const [reportData, setReportData] = useState<ReportData | null>(null);
+  const [recentIssues, setRecentIssues] = useState<any[]>([]);
+  const [issueFilter, setIssueFilter] = useState<IssueSeverityLabel | "All">(
+    "All",
+  );
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchReportingData = async () => {
-      try {
-        setLoading(true);
+  const loadReportingData = useCallback(async () => {
+    if (!schoolId) return;
+    try {
+      setLoading(true);
 
-        // Fetch backend reporting data
-        const response = await api.get(
-          `/api/v1/schools/dashboard/reporting?schoolId=${schoolId}`,
-        );
-        const payload = response.data?.data ?? response.data ?? {};
-        const reports = payload?.reports ?? {};
-        const analytics = payload?.analytics ?? {};
+      const [dashRes, reportsRes] = await Promise.all([
+        api.get(`/schools/dashboard/reporting?schoolId=${schoolId}`),
+        api.get(`/reports?schoolId=${schoolId}&limit=200`),
+      ]);
 
-        // Derive counts from backend payload (fallback to 0 if missing)
-        const totalReports = (reports as any).generatedReportCount ?? 0;
+      const payload = dashRes.data?.data ?? dashRes.data ?? {};
+      const reports = payload?.reports ?? {};
+      const analytics = payload?.analytics ?? {};
 
-        // Trends (from backend, if provided) otherwise empty arrays
-        const monthly = (analytics as any).trends?.monthly ?? [];
-        const weekly = (analytics as any).trends?.weekly ?? [];
+      const totalReports = (reports as any).generatedReportCount ?? 0;
+      const monthly = (analytics as any).trends?.monthly ?? [];
+      const weekly = (analytics as any).trends?.weekly ?? [];
+      const avgResolutionTime = (reports as any).avgResolutionTime ?? 0;
 
-        const avgResolutionTime = (reports as any).avgResolutionTime ?? 0;
+      const categories = (reports as any).categories ?? {
+        infrastructure: 0,
+        safety: 0,
+        maintenance: 0,
+        academic: 0,
+        other: 0,
+      };
 
-        // Categories from backend if available
-        const categories = (reports as any).categories ?? {
-          infrastructure: 0,
-          safety: 0,
-          maintenance: 0,
-          academic: 0,
-          other: 0,
-        };
+      const statusCounts = (reports as any).statusCounts || {
+        pending: 0,
+        needIntervention: 0,
+        solved: 0,
+        failed: 0,
+      };
 
-        // Status counts from new backend structure
-        const statusCounts = (reports as any).statusCounts || {
-          pending: 0,
-          needIntervention: 0,
-          solved: 0,
-          failed: 0,
-        };
+      setReportData({
+        totalReports,
+        open: statusCounts.pending || 0,
+        inProgress: statusCounts.needIntervention || 0,
+        resolved: statusCounts.solved || 0,
+        critical:
+          (reports as any).severityFromStatus?.critical ??
+          (reports as any).critical ??
+          0,
+        high:
+          (reports as any).severityFromStatus?.high ??
+          (reports as any).high ??
+          0,
+        medium:
+          (reports as any).severityFromStatus?.medium ??
+          (reports as any).medium ??
+          0,
+        low:
+          (reports as any).severityFromStatus?.low ?? (reports as any).low ?? 0,
+        trends: { monthly, weekly },
+        avgResolutionTime,
+        categories,
+        statusCounts,
+      });
 
-        setReportData({
-          totalReports,
-          // Map backend statuses to frontend display
-          open: statusCounts.pending || 0,
-          inProgress: statusCounts.needIntervention || 0,
-          resolved: statusCounts.solved || 0,
-          // Keep priority counts if available
-          critical: (reports as any).critical || 0,
-          high: (reports as any).high || 0,
-          medium: (reports as any).medium || 0,
-          low: (reports as any).low || 0,
-          trends: { monthly, weekly },
-          avgResolutionTime,
-          categories,
-          statusCounts,
-        });
-      } catch (error) {
-        console.error("Failed to fetch reporting data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchReportingData();
+      const raw = reportsRes.data?.data ?? [];
+      setRecentIssues(Array.isArray(raw) ? raw : []);
+    } catch (error) {
+      console.error("Failed to fetch reporting data:", error);
+      setRecentIssues([]);
+    } finally {
+      setLoading(false);
+    }
   }, [schoolId]);
+
+  useEffect(() => {
+    loadReportingData();
+  }, [loadReportingData]);
+
+  const filteredIssues = useMemo(() => {
+    const sorted = [...recentIssues].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+    if (issueFilter === "All") return sorted;
+    return sorted.filter(
+      (r) => severityLabelFromStatus(r.status) === issueFilter,
+    );
+  }, [recentIssues, issueFilter]);
 
   return (
     <div className="space-y-6">
@@ -229,7 +256,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
             <CardHeader className="border-b border-slate-100 dark:border-blue-500/20">
               <CardTitle className="text-base font-medium flex items-center gap-3">
                 <AlertTriangle className="w-5 h-5 text-primary" />
-                Issue Priority Breakdown
+                Status-based severity (from IssueReport.status)
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6">
@@ -418,78 +445,115 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
           <CardContent className="p-6">
             <div className="space-y-4">
               {/* Filter Options */}
-              <div className="flex items-center gap-4 mb-6">
+              <div className="flex flex-wrap items-center gap-4 mb-6">
                 <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-white/60">
                   <Filter className="w-4 h-4" />
-                  <span>Filter by:</span>
+                  <span>Filter by severity (from status):</span>
                 </div>
-                <div className="flex gap-2">
-                  {["All", "Critical", "High", "Medium", "Low"].map(
-                    (priority) => (
+                <div className="flex flex-wrap gap-2">
+                  {(["All", "Critical", "High", "Medium", "Low"] as const).map(
+                    (key) => (
                       <Button
-                        key={priority}
+                        key={key}
+                        type="button"
                         variant="outline"
                         size="sm"
+                        onClick={() => setIssueFilter(key)}
                         className={cn(
                           "px-4 py-2 rounded-lg text-sm font-medium transition-all",
-                          activeSubTab === priority
-                            ? "bg-primary text-white shadow-sm"
+                          issueFilter === key
+                            ? "bg-primary text-white shadow-sm border-primary"
                             : "text-slate-600 dark:text-white/60 hover:bg-slate-100 dark:hover:bg-white/10",
                         )}
                       >
-                        {priority}
+                        {key}
                       </Button>
                     ),
                   )}
                 </div>
               </div>
 
-              {/* Issues List */}
               {loading ? (
                 <div className="space-y-3">
                   {[1, 2, 3, 4, 5].map((i) => (
                     <div
                       key={i}
-                      className="p-4 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/20"
+                      className="p-4 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/20 animate-pulse"
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h4 className="text-sm font-medium text-slate-900 dark:text-white mb-1">
-                            Issue #{i + 1000}
-                          </h4>
-                          <p className="text-xs text-slate-500 dark:text-white/60">
-                            Loading issue data...
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <Badge
-                            className={cn(
-                              "text-xs font-medium",
-                              i === 1
-                                ? "bg-red-500/10 text-red-600 border-red-500/20"
-                                : i === 2
-                                  ? "bg-orange-500/10 text-orange-600 border-orange-500/20"
-                                  : "bg-amber-500/10 text-amber-600 border-amber-500/20",
-                            )}
-                          >
-                            {i === 1 ? "CRITICAL" : i === 2 ? "HIGH" : "MEDIUM"}
-                          </Badge>
-                        </div>
-                      </div>
+                      <div className="h-4 bg-slate-200 dark:bg-white/10 rounded w-2/3 mb-2" />
+                      <div className="h-3 bg-slate-100 dark:bg-white/5 rounded w-full" />
                     </div>
                   ))}
                 </div>
+              ) : filteredIssues.length === 0 ? (
+                <p className="text-sm text-slate-500 dark:text-white/60 py-8 text-center">
+                  {recentIssues.length === 0
+                    ? "No issue reports for this school yet."
+                    : "No issues match this filter."}
+                </p>
               ) : (
                 <div className="space-y-3">
-                  {reportData?.open && reportData?.open > 0 ? (
-                    <div className="text-sm text-slate-500 dark:text-white/60 mb-4">
-                      {reportData?.open} open issues found
-                    </div>
-                  ) : (
-                    <div className="text-sm text-slate-500 dark:text-white/60 mb-4">
-                      No open issues found
-                    </div>
-                  )}
+                  <p className="text-xs text-slate-500 dark:text-white/50 mb-2">
+                    Showing {filteredIssues.length} report
+                    {filteredIssues.length !== 1 ? "s" : ""}
+                    {issueFilter !== "All" ? ` (${issueFilter})` : ""}
+                  </p>
+                  {filteredIssues.map((issue) => {
+                    const sev = severityLabelFromStatus(issue.status);
+                    const buildingName = issue.building?.name;
+                    const reporter = issue.reporter
+                      ? [issue.reporter.firstName, issue.reporter.lastName]
+                          .filter(Boolean)
+                          .join(" ")
+                          .trim() || issue.reporter.email
+                      : null;
+                    const when = issue.createdAt
+                      ? new Date(issue.createdAt).toLocaleString()
+                      : "—";
+                    return (
+                      <div
+                        key={issue.id}
+                        className="p-4 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/20"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-sm font-medium text-slate-900 dark:text-white mb-1 line-clamp-2">
+                              {issue.description?.trim()
+                                ? issue.description
+                                : `Report ${String(issue.id).slice(0, 8)}…`}
+                            </h4>
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-white/50">
+                              <span>
+                                Status:{" "}
+                                <span className="font-medium text-slate-700 dark:text-white/70">
+                                  {String(issue.status ?? "").replace(/_/g, " ")}
+                                </span>
+                              </span>
+                              {buildingName ? (
+                                <span>Building: {buildingName}</span>
+                              ) : null}
+                              {reporter ? <span>Reporter: {reporter}</span> : null}
+                              <span>{when}</span>
+                            </div>
+                          </div>
+                          <Badge
+                            className={cn(
+                              "text-xs font-medium shrink-0",
+                              sev === "Critical"
+                                ? "bg-red-500/10 text-red-600 border-red-500/20"
+                                : sev === "High"
+                                  ? "bg-orange-500/10 text-orange-600 border-orange-500/20"
+                                  : sev === "Medium"
+                                    ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                                    : "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+                            )}
+                          >
+                            {sev.toUpperCase()}
+                          </Badge>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -643,8 +707,17 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
       {/* Action Buttons */}
       <div className="flex items-center justify-between mt-6">
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="text-xs">
-            <RefreshCw className="w-3 h-3 mr-1" />
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs"
+            type="button"
+            disabled={loading}
+            onClick={() => void loadReportingData()}
+          >
+            <RefreshCw
+              className={cn("w-3 h-3 mr-1", loading && "animate-spin")}
+            />
             Refresh Data
           </Button>
           <Button variant="outline" size="sm" className="text-xs">

@@ -14,7 +14,6 @@ import {
   Map as MapIcon,
   FileText,
   AlertTriangle,
-  Box,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Modal } from "./ui/modal";
@@ -588,6 +587,7 @@ export default function School2DViewer({
 
         if (activeBlock?.id === data.id || isNew) setActiveBlock(mappedSaved);
         setDrawerOpen(false);
+        if (isNew) setDrawerBuilding(null);
         showToast(
           `Building "${mappedSaved.buildingName}" saved successfully.`,
           "success",
@@ -828,6 +828,26 @@ export default function School2DViewer({
             id={school.id}
             standalone={false}
             onUpdateSchool={onUpdateSchool}
+            onBuildingClick={(building) => {
+              const b = schoolBuildings.find((sb) => sb.id === building.id);
+              if (!b) return;
+              setActiveTab("map");
+              setActiveBlock(b);
+              setIsBlockInspectorOpen(true);
+              setBlockInspectorInitialTab("reporting");
+              if (b.geolocation?.latitude && b.geolocation?.longitude) {
+                setTimeout(() => {
+                  const coord = fromLonLat([
+                    Number(b.geolocation.longitude),
+                    Number(b.geolocation.latitude),
+                  ]);
+                  blockOverlayRef.current?.setPosition(coord);
+                  mapRef.current
+                    ?.getView()
+                    .animate({ center: coord, zoom: 21, duration: 800 });
+                }, 300);
+              }
+            }}
           />
         </div>
       )}

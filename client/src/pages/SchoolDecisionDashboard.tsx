@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuthStore } from "../store/authStore";
@@ -16,6 +16,12 @@ import { Modal } from "../components/ui/modal";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { cn } from "../lib/utils";
+import {
+  buildBuildingsAttention,
+  rollupIssueReports,
+  formatTrendPct,
+  formatDaysAgo,
+} from "../lib/issueReportMetrics";
 
 // Dashboard Components
 import { DecisionIntelligenceScore } from "../components/dashboard/DecisionIntelligenceScore";
@@ -29,12 +35,14 @@ interface SchoolDecisionDashboardProps {
   id?: string;
   standalone?: boolean;
   onUpdateSchool?: (update: any) => void;
+  onBuildingClick?: (building: any) => void;
 }
 
 export default function SchoolDecisionDashboard({
   id: propId,
   standalone = true,
   onUpdateSchool: propOnUpdateSchool,
+  onBuildingClick,
 }: SchoolDecisionDashboardProps = {}) {
   const { id: paramId } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -79,48 +87,22 @@ export default function SchoolDecisionDashboard({
       facilityComplianceScore = 50,
     } = schoolData.calculatedAssessment;
 
-    // Parse all values to ensure they're numbers
     const infraScore = parseFloat(String(infrastructureScore)) || 50;
     const buildingScore = parseFloat(String(buildingAgeScore)) || 50;
     const popScore = parseFloat(String(populationPressureScore)) || 50;
     const accessScore = parseFloat(String(accessibilityScore)) || 50;
     const complianceScore = parseFloat(String(facilityComplianceScore)) || 50;
-    const depValue =
-      parseFloat(String(schoolData.calculatedAssessment.depreciation)) || 20;
+    const resolutionRateScore =
+      parseFloat(String(reportingData?.resolutionRate ?? 50)) || 50;
 
-    // Weight the different factors for decision intelligence
-    const weights = {
-      infrastructure: 0.25,
-      buildingAge: 0.2,
-      populationPressure: 0.2,
-      accessibility: 0.15,
-      facilityCompliance: 0.15,
-      depreciation: 0.05,
-    };
-
-    // Calculate weighted score
-    let score =
-      infraScore * weights.infrastructure +
-      buildingScore * weights.buildingAge +
-      popScore * weights.populationPressure +
-      accessScore * weights.accessibility +
-      complianceScore * weights.facilityCompliance +
-      (100 - depValue) * weights.depreciation; // Fixed: was weights.depreciation
-
-    // Factor in reporting metrics if available
-    if (reportingData) {
-      const {
-        resolutionRate = 75,
-        criticalIssues = 3,
-        totalReports = 40,
-      } = reportingData;
-      const reportingScore =
-        resolutionRate * 0.6 +
-        (totalReports > 0
-          ? (100 - (criticalIssues / totalReports) * 100) * 0.4
-          : 50); // Prevent division by zero
-      score = score * 0.8 + reportingScore * 0.2; // 20% weight to reporting performance
-    }
+    const score =
+      (infraScore +
+        buildingScore +
+        popScore +
+        accessScore +
+        complianceScore +
+        resolutionRateScore) /
+      6;
 
     return Math.round(Math.min(100, Math.max(0, score)));
   }, [schoolData, reportingData]);
@@ -130,31 +112,37 @@ export default function SchoolDecisionDashboard({
       return { priorityLevel: "medium", recommendations: [] };
 
     const infrastructureScore =
-      parseFloat(String(schoolData.calculatedAssessment.infrastructureScore)) ||
-      0;
+      parseFloat(String(schoolData.calculatedAssessment.infrastructureScore)) || 0;
     const calculatedScore = calculateDecisionIntelligenceScore();
+    const resolutionRate = parseFloat(String(reportingData?.resolutionRate ?? 50)) || 50;
 
     return {
       ...schoolData.calculatedAssessment,
       overallScore: calculatedScore,
+      resolutionRate,
       priorityLevel:
-        calculatedScore < 40
+        calculatedScore < 35
           ? "critical"
-          : calculatedScore < 70
+          : calculatedScore < 55
             ? "high"
-            : "medium",
+            : calculatedScore < 75
+              ? "medium"
+              : "low",
       recommendations: [
-        schoolData.calculatedAssessment.depreciation > 40
-          ? "Consider building renovation due to high depreciation"
-          : null,
-        schoolData.calculatedAssessment.populationPressureScore > 80
-          ? "Population pressure is high - consider expansion"
-          : null,
         infrastructureScore < 50
-          ? "Infrastructure needs immediate attention"
+          ? "Infrastructure health is low — schedule building condition assessments"
           : null,
-        reportingData && reportingData.criticalIssues > 5
-          ? "High number of critical issues requires immediate intervention"
+        schoolData.calculatedAssessment.populationPressureScore < 45
+          ? "Elevated demographic pressure in catchment — review capacity planning"
+          : null,
+        schoolData.calculatedAssessment.buildingAgeScore < 40
+          ? "Asset portfolio skews older — prioritize condition surveys and renewal"
+          : null,
+        (reportingData?.statusCounts?.needIntervention ?? 0) > 5
+          ? "High number of reports flagged NEED_INTERVENTION — prioritize escalation"
+          : null,
+        resolutionRate < 50
+          ? "Low resolution rate is impacting the Global strength score"
           : null,
       ].filter(Boolean),
     };
@@ -162,41 +150,70 @@ export default function SchoolDecisionDashboard({
 
   const assessment = getAssessment();
 
-  // Fetch reporting data
+  const buildingsAttention = useMemo(
+    () =>
+      buildBuildingsAttention(
+        buildings,
+        reportingData?.rawReports ?? [],
+        3,
+      ),
+    [buildings, reportingData?.rawReports],
+  );
+
   const fetchReportingData = useCallback(async () => {
     if (!id) return;
     try {
-      const response = await api.get(`/reports?schoolId=${id}&limit=100`);
-      const reports = response.data?.reports || [];
-
-      // Calculate reporting metrics
-      const totalReports = reports.length;
-      const openIssues = reports.filter((r: any) => r.status === "open").length;
-      const resolvedIssues = reports.filter(
-        (r: any) => r.status === "resolved",
-      ).length;
-      const criticalIssues = reports.filter(
-        (r: any) => r.priority === "critical",
-      ).length;
-      const resolutionRate =
-        totalReports > 0 ? (resolvedIssues / totalReports) * 100 : 75;
+      const response = await api.get(`/reports?schoolId=${id}&limit=1000`);
+      const reports = response.data?.data ?? [];
+      const rollup = rollupIssueReports(reports);
 
       setReportingData({
-        totalReports,
-        openIssues,
-        resolvedIssues,
-        criticalIssues,
-        resolutionRate: Math.round(resolutionRate),
+        rawReports: reports,
+        totalReports: rollup.totalReports,
+        openIssues: rollup.activeIssues,
+        activeIssues: rollup.activeIssues,
+        resolvedIssues: rollup.resolvedIssues,
+        criticalIssues: rollup.needIntervention,
+        resolutionRate: rollup.resolutionRate,
+        statusCounts: rollup.statusCounts,
+        monthComparison: rollup.monthComparison,
+        avgResolutionTime: rollup.avgResolutionDays,
       });
     } catch (error) {
       console.error("Failed to fetch reporting data:", error);
-      // Set default values if API fails
       setReportingData({
-        totalReports: 40,
-        openIssues: 12,
-        resolvedIssues: 28,
-        criticalIssues: 3,
-        resolutionRate: 75,
+        rawReports: [],
+        totalReports: 0,
+        openIssues: 0,
+        activeIssues: 0,
+        resolvedIssues: 0,
+        criticalIssues: 0,
+        resolutionRate: 100,
+        statusCounts: {
+          pending: 0,
+          needIntervention: 0,
+          solved: 0,
+          failed: 0,
+        },
+        monthComparison: {
+          current: {
+            pending: 0,
+            needIntervention: 0,
+            solved: 0,
+            failed: 0,
+            activeCreated: 0,
+          },
+          previous: {
+            pending: 0,
+            needIntervention: 0,
+            solved: 0,
+            failed: 0,
+            activeCreated: 0,
+          },
+          activeChangePct: null,
+          solvedChangePct: null,
+        },
+        avgResolutionTime: 0,
       });
     }
   }, [id]);
@@ -207,8 +224,12 @@ export default function SchoolDecisionDashboard({
       if (!id) return;
       if (!silent) setLoading(true);
       try {
-        const response = await api.get(`/schools/${id}`);
-        const sData = response.data;
+        const [schoolRes, metricsRes] = await Promise.all([
+          api.get(`/schools/${id}`),
+          api.get(`/analytics/schools/${id}/metrics`).catch(() => null),
+        ]);
+        const sData = schoolRes.data;
+        const metrics = metricsRes?.data;
 
         const currentYear = new Date().getFullYear();
         let avgAge = 0;
@@ -238,39 +259,65 @@ export default function SchoolDecisionDashboard({
           (parseFloat(String(sData.maleSupportStaff)) || 0) +
           (parseFloat(String(sData.femaleSupportStaff)) || 0);
 
-        sData.calculatedAssessment = {
-          ...sData.calculatedAssessment,
-          averageBuildingAge: avgAge,
-          totalStudents: tStudents,
-          totalStaff: tStaff,
-          infrastructureScore:
-            parseFloat(
-              String(sData.calculatedAssessment?.infrastructureScore),
-            ) || 50,
-          buildingAgeScore:
-            parseFloat(String(sData.calculatedAssessment?.buildingAgeScore)) ||
-            50,
-          populationPressureScore:
-            parseFloat(
-              String(sData.calculatedAssessment?.populationPressureScore),
-            ) || 45,
-          accessibilityScore:
-            parseFloat(
-              String(sData.calculatedAssessment?.accessibilityScore),
-            ) || 50,
-          facilityComplianceScore:
-            parseFloat(
-              String(sData.calculatedAssessment?.facilityComplianceScore),
-            ) || 50,
-          overallScore:
-            parseFloat(String(sData.calculatedAssessment?.overallScore)) || 65,
-          depreciation:
-            parseFloat(String(sData.calculatedAssessment?.depreciation)) || 20,
-        };
+        if (metrics) {
+          sData.calculatedAssessment = {
+            ...sData.calculatedAssessment,
+            infrastructureScore: metrics.infrastructureScore,
+            buildingAgeScore: metrics.buildingAgeScore,
+            populationPressureScore: metrics.populationPressureScore,
+            accessibilityScore: metrics.accessibilityScore,
+            facilityComplianceScore: metrics.facilityComplianceScore,
+            overallScore: metrics.overallScore,
+            depreciation: metrics.depreciation,
+            averageBuildingAge: metrics.avgBuildingAge ?? avgAge,
+            totalStudents: metrics.totalStudents ?? tStudents,
+            totalCapacity: metrics.totalCapacity ?? 0,
+            totalStaff: metrics.totalStaff ?? tStaff,
+            urgencyMonths: metrics.urgencyMonths,
+            recommendations:
+              metrics.recommendations?.length > 0
+                ? metrics.recommendations
+                : sData.calculatedAssessment?.recommendations,
+          };
+        } else {
+          sData.calculatedAssessment = {
+            ...sData.calculatedAssessment,
+            averageBuildingAge: avgAge,
+            totalStudents: tStudents,
+            totalCapacity:
+              sData.educationPrograms?.reduce(
+                (sum: number, p: any) =>
+                  sum + (parseFloat(String(p.capacity)) || 0),
+                0,
+              ) || 0,
+            totalStaff: tStaff,
+            infrastructureScore:
+              parseFloat(
+                String(sData.calculatedAssessment?.infrastructureScore),
+              ) || 50,
+            buildingAgeScore:
+              parseFloat(String(sData.calculatedAssessment?.buildingAgeScore)) ||
+              50,
+            populationPressureScore:
+              parseFloat(
+                String(sData.calculatedAssessment?.populationPressureScore),
+              ) || 45,
+            accessibilityScore:
+              parseFloat(
+                String(sData.calculatedAssessment?.accessibilityScore),
+              ) || 50,
+            facilityComplianceScore:
+              parseFloat(
+                String(sData.calculatedAssessment?.facilityComplianceScore),
+              ) || 50,
+            overallScore:
+              parseFloat(String(sData.calculatedAssessment?.overallScore)) || 65,
+            depreciation:
+              parseFloat(String(sData.calculatedAssessment?.depreciation)) || 20,
+          };
+        }
 
         setSchool(sData);
-
-        // Fetch reporting data
         await fetchReportingData();
       } catch (error) {
         console.error("Failed to fetch school", error);
@@ -455,11 +502,56 @@ export default function SchoolDecisionDashboard({
             <div className="xl:col-span-2 space-y-8">
               <DecisionIntelligenceScore assessment={assessment} />
               <FacilityBreakdownSection buildings={buildings} />
-
-              {/* Risk Assessment moved to Reporting tab now */}
+              <RiskAssessment
+                assessment={assessment}
+                reportingData={{
+                  ...reportingData,
+                  critical: reportingData?.statusCounts?.needIntervention,
+                  totalReports: reportingData?.totalReports,
+                  avgResolutionTime: reportingData?.avgResolutionTime,
+                }}
+              />
             </div>
 
             <div className="space-y-8">
+              {/* Resolution Rate Card */}
+              <div className="relative rounded-[32px] overflow-hidden group">
+                <div className="absolute inset-0 bg-linear-to-b from-emerald-500/30 to-emerald-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
+                  <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
+                </div>
+                <div className="relative z-10 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-medium text-emerald-600/80 dark:text-emerald-400 flex items-center gap-3">
+                      <div className="p-2 rounded-xl bg-emerald-100 dark:bg-white/5 border border-emerald-500/20">
+                        <CheckCircle className="w-4 h-4 opacity-70" />
+                      </div>
+                      Resolution Rate
+                    </h3>
+                    <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5">
+                      Impacts Decision Score
+                    </span>
+                  </div>
+                  <div className="flex items-end gap-4">
+                    <div className="text-5xl font-bold text-emerald-600 dark:text-emerald-400 leading-none">
+                      {reportingData?.resolutionRate ?? 0}
+                      <span className="text-2xl font-medium">%</span>
+                    </div>
+                    <div className="flex-1 pb-1">
+                      <div className="text-[10px] text-slate-500 dark:text-white/50 mb-1.5">
+                        {reportingData?.resolvedIssues ?? 0} of{" "}
+                        {reportingData?.totalReports ?? 0} reports closed (SOLVED)
+                      </div>
+                      <div className="h-2 bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-500 rounded-full transition-all duration-700"
+                          style={{ width: `${reportingData?.resolutionRate ?? 0}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Reporting Summary Section */}
               <div className="relative rounded-[32px] overflow-hidden group">
                 {/* Professional Gradient Border & Background */}
@@ -479,58 +571,71 @@ export default function SchoolDecisionDashboard({
                       <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs text-slate-500 dark:text-white/60">
-                            Open Issues
+                            Active issues
                           </span>
                           <AlertTriangle className="w-3 h-3 text-amber-500" />
                         </div>
                         <div className="text-xl font-bold text-slate-900 dark:text-white">
-                          {reportingData?.openIssues || 12}
+                          {reportingData?.activeIssues ?? reportingData?.openIssues ?? 0}
                         </div>
-                        <div className="text-xs text-emerald-500">
-                          -18% from last month
+                        <div
+                          className={cn(
+                            "text-xs",
+                            (reportingData?.monthComparison?.activeChangePct ?? 0) > 0
+                              ? "text-amber-600"
+                              : "text-emerald-600",
+                          )}
+                        >
+                          Active created (MTD vs last month):{" "}
+                          {formatTrendPct(
+                            reportingData?.monthComparison?.activeChangePct,
+                          )}
                         </div>
                       </div>
                       <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs text-slate-500 dark:text-white/60">
-                            Resolved
+                            Resolved (SOLVED)
                           </span>
                           <CheckCircle className="w-3 h-3 text-emerald-500" />
                         </div>
                         <div className="text-xl font-bold text-slate-900 dark:text-white">
-                          {reportingData?.resolvedIssues || 28}
+                          {reportingData?.resolvedIssues ?? 0}
                         </div>
-                        <div className="text-xs text-emerald-500">
-                          +24% from last month
+                        <div className="text-xs text-slate-500 dark:text-white/50">
+                          {formatTrendPct(
+                            reportingData?.monthComparison?.solvedChangePct,
+                          )}{" "}
+                          (reports created this month vs last)
                         </div>
                       </div>
                     </div>
                     <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xs text-slate-500 dark:text-white/60">
-                          Critical Priority
+                          NEED_INTERVENTION
                         </span>
                         <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                       </div>
                       <div className="flex items-center gap-4">
                         <div className="text-xl font-bold text-red-600 dark:text-red-400">
-                          {reportingData?.criticalIssues || 3}
+                          {reportingData?.statusCounts?.needIntervention ?? 0}
                         </div>
                         <div className="flex-1">
                           <div className="text-xs text-slate-500 dark:text-white/60 mb-1">
-                            Resolution Rate
+                            Resolution rate (SOLVED / all)
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="flex-1 bg-slate-100 dark:bg-white/5 rounded-full h-1.5">
                               <div
                                 className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500"
                                 style={{
-                                  width: `${reportingData?.resolutionRate || 75}%`,
+                                  width: `${reportingData?.resolutionRate ?? 0}%`,
                                 }}
                               />
                             </div>
                             <span className="text-xs font-medium text-slate-900 dark:text-white">
-                              {reportingData?.resolutionRate || 75}%
+                              {reportingData?.resolutionRate ?? 0}%
                             </span>
                           </div>
                         </div>
@@ -555,20 +660,24 @@ export default function SchoolDecisionDashboard({
                     Buildings Requiring Attention
                   </h3>
                   <div className="space-y-3">
-                    {buildings
-                      .filter((building: any) => building.name)
-                      .sort(() => {
-                        // Mock calculation - in real app, this would come from reports data
-                        return Math.random() - 0.5;
-                      })
-                      .slice(0, 3)
-                      .map((building: any, index: number) => (
+                    {buildingsAttention.length === 0 ? (
+                      <p className="text-xs text-slate-500 dark:text-white/50 px-1">
+                        No building-linked issues or poor-condition blocks detected.
+                      </p>
+                    ) : (
+                      buildingsAttention.map((row, index) => (
                         <motion.div
-                          key={building.id || index}
+                          key={row.buildingId}
                           initial={{ opacity: 0, x: 20 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: index * 0.1 }}
-                          className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20 hover:bg-slate-100 dark:hover:bg-white/10 transition-all"
+                          onClick={() => {
+                            const b = buildings.find(
+                              (x: any) => x.id === row.buildingId,
+                            );
+                            if (b) onBuildingClick?.(b);
+                          }}
+                          className={`p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20 hover:bg-slate-100 dark:hover:bg-white/10 transition-all ${onBuildingClick ? "cursor-pointer" : ""}`}
                         >
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-3">
@@ -577,11 +686,11 @@ export default function SchoolDecisionDashboard({
                               </div>
                               <div>
                                 <h4 className="text-sm font-medium text-slate-900 dark:text-white">
-                                  {building.name || `Building ${index + 1}`}
+                                  {row.name}
                                 </h4>
                                 <p className="text-xs text-slate-500 dark:text-white/60">
-                                  {building.yearBuilt
-                                    ? `Built ${building.yearBuilt}`
+                                  {row.yearBuilt
+                                    ? `Built ${row.yearBuilt}`
                                     : "Year unknown"}
                                 </p>
                               </div>
@@ -589,49 +698,48 @@ export default function SchoolDecisionDashboard({
                             <Badge
                               className={cn(
                                 "text-xs font-medium",
-                                index === 0
+                                row.severityLabel === "CRITICAL"
                                   ? "bg-red-500/10 text-red-600 border-red-500/20"
-                                  : index === 1
+                                  : row.severityLabel === "HIGH"
                                     ? "bg-orange-500/10 text-orange-600 border-orange-500/20"
                                     : "bg-amber-500/10 text-amber-600 border-amber-500/20",
                               )}
                             >
-                              {index === 0
-                                ? "CRITICAL"
-                                : index === 1
-                                  ? "HIGH"
-                                  : "MEDIUM"}
+                              {row.severityLabel}
                             </Badge>
                           </div>
 
                           <div className="grid grid-cols-3 gap-4 text-xs">
                             <div>
                               <p className="text-slate-500 dark:text-white/60 mb-1">
-                                Pending Issues
+                                Pending
                               </p>
                               <p className="font-medium text-slate-900 dark:text-white">
-                                {Math.floor(Math.random() * 10) + 1}
+                                {row.pending}
                               </p>
                             </div>
                             <div>
                               <p className="text-slate-500 dark:text-white/60 mb-1">
-                                Critical
+                                Intervention
                               </p>
                               <p className="font-medium text-red-600 dark:text-red-400">
-                                {Math.floor(Math.random() * 5) + 1}
+                                {row.intervention}
                               </p>
                             </div>
                             <div>
                               <p className="text-slate-500 dark:text-white/60 mb-1">
-                                Last Report
+                                Last reporter
                               </p>
-                              <p className="font-medium text-slate-900 dark:text-white">
-                                {Math.floor(Math.random() * 7) + 1}d ago
+                              <p className="font-medium text-slate-900 dark:text-white truncate">
+                                {row.lastReportAt
+                                  ? `${row.reporterLabel} · ${formatDaysAgo(row.lastReportAt)}`
+                                  : row.reporterLabel}
                               </p>
                             </div>
                           </div>
                         </motion.div>
-                      ))}
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
@@ -652,50 +760,12 @@ export default function SchoolDecisionDashboard({
         </div>
       )}
 
-      {activeTab === "reporting" && id && (
-        <>
-          <ReportingTab schoolId={id} />
-          {/* Moved Risk Assessment into this tab for centralized analysis visibility */}
-          <RiskAssessment
-            assessment={assessment}
-            reportingData={reportingData}
-          />
-        </>
-      )}
+      {activeTab === "reporting" && id && <ReportingTab schoolId={id} />}
 
-      <motion.div className="relative rounded-[32px] overflow-hidden group">
-        {/* Professional Gradient Border & Background */}
-        <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
-          <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
-        </div>
-
-        <div className="relative z-10 p-8">
-          <h3 className="text-sm font-medium text-primary/70 dark:text-blue-500 mb-6 flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/20">
-              <ClipboardCheck className="w-4 h-4 opacity-60" />
-            </div>
-            Strategic recommendations
-          </h3>
-          <div className="space-y-4">
-            {assessment.recommendations?.map((rec: string, i: number) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.4 + i * 0.1 }}
-                className="relative group/rec p-px rounded-2xl overflow-hidden transition-all duration-300"
-              >
-                <div className="absolute inset-0 bg-linear-to-br from-blue-500/40 to-blue-500/0 opacity-10 group-hover/rec:opacity-30 transition-opacity" />
-                <div className="absolute inset-px bg-white/80 dark:bg-white/2 backdrop-blur-2xl rounded-[calc(1rem-1px)] transition-colors" />
-
-                <div className="relative p-5 z-10 flex gap-4">
-                  <div className="w-1.5 h-1.5 rounded-full bg-primary/30 mt-1.5 shrink-0 group-hover/rec:bg-primary/50" />
-                  <p className="text-xs font-normal leading-relaxed text-slate-500 dark:text-white/50 group-hover/rec:text-slate-900 dark:group-hover/rec:text-white/80 transition-colors italic">
-                    {rec}
-                  </p>
-                </div>
-              </motion.div>
-            ))}
+      {activeTab === "main" && (
+        <motion.div className="relative rounded-[32px] overflow-hidden group">
+          <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
+            <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
           </div>
 
           <div className="relative z-10 p-8">
@@ -733,9 +803,10 @@ export default function SchoolDecisionDashboard({
               )}
             </div>
           </div>
-        </div>
+        </motion.div>
+      )}
 
-        <Modal
+      <Modal
           isOpen={isBuildingModalOpen}
           onClose={() => setIsBuildingModalOpen(false)}
           title={
@@ -771,7 +842,6 @@ export default function SchoolDecisionDashboard({
             </Button>
           </div>
         </Modal>
-      </motion.div>
     </motion.div>
   );
 }

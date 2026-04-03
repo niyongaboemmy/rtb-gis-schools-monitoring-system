@@ -4,12 +4,9 @@ import {
   Shield,
   AlertTriangle,
   Target,
-  Zap,
   Clock,
   DollarSign,
   Users,
-  AlertCircle,
-  Info,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
 import { Badge } from "../ui/badge";
@@ -54,8 +51,10 @@ interface MitigationStrategy {
 
 export const RiskAssessment = React.memo(
   ({ assessment, reportingData }: RiskAssessmentProps) => {
-    // Extract actual report counts for dynamic risk calculation
-    const criticalCount = reportingData?.critical || 0;
+    const criticalCount =
+      reportingData?.statusCounts?.needIntervention ??
+      reportingData?.critical ??
+      0;
     const needInterventionCount =
       reportingData?.statusCounts?.needIntervention || 0;
     const totalReports = reportingData?.totalReports || 0;
@@ -118,15 +117,15 @@ export const RiskAssessment = React.memo(
       },
       {
         id: "4",
-        title: "Overcapacity Issues",
+        title: "Demographic pressure on capacity",
         level:
-          assessment.populationPressureScore > 80
+          assessment.populationPressureScore < 30
             ? "critical"
-            : assessment.populationPressureScore > 60
+            : assessment.populationPressureScore < 50
               ? "high"
               : "medium",
-        impact: assessment.populationPressureScore > 80 ? 90.0 : 60.0,
-        probability: assessment.populationPressureScore > 80 ? 85.0 : 60.0,
+        impact: assessment.populationPressureScore < 35 ? 88.0 : 52.0,
+        probability: assessment.populationPressureScore < 35 ? 82.0 : 48.0,
         mitigation:
           "Expand facilities or optimize space utilization through scheduling",
         timeline: "6-12 months",
@@ -454,92 +453,6 @@ export const RiskAssessment = React.memo(
           </CardContent>
         </Card>
 
-        {/* Risk Heatmap */}
-        <Card className="border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/30 rounded-3xl overflow-hidden">
-          <CardHeader className="border-b border-slate-100 dark:border-blue-500/20">
-            <CardTitle className="text-base font-medium flex items-center gap-3">
-              <Zap className="w-5 h-5 text-primary opacity-80" />
-              Risk Impact Matrix
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-6">
-            <div className="grid grid-cols-5 gap-2">
-              {/* Header */}
-              <div></div>
-              {["Very Low", "Low", "Medium", "High", "Very High"].map(
-                (label, i) => (
-                  <div
-                    key={i}
-                    className="text-xs text-center text-slate-500 dark:text-white/60 font-medium"
-                  >
-                    {label}
-                  </div>
-                ),
-              )}
-
-              {/* Rows */}
-              {["Very Low", "Low", "Medium", "High", "Very High"].map(
-                (probLabel, i) => (
-                  <React.Fragment key={i}>
-                    <div className="text-xs text-right text-slate-500 dark:text-white/60 font-medium pr-2 flex items-center justify-end">
-                      {probLabel}
-                    </div>
-                    {[0, 1, 2, 3, 4].map((j) => {
-                      const impact = (j + 1) * 20;
-                      const probability = (5 - i) * 20;
-                      const riskScore = (impact * probability) / 100;
-                      const hasRisk = riskFactors.some(
-                        (risk) =>
-                          Math.abs(risk.impact - impact) < 20 &&
-                          Math.abs(risk.probability - probability) < 20,
-                      );
-
-                      return (
-                        <div
-                          key={j}
-                          className={cn(
-                            "aspect-square rounded-lg border border-slate-200 dark:border-blue-500/20 flex items-center justify-center text-xs font-medium",
-                            riskScore > 60
-                              ? "bg-red-500/20 text-red-600 border-red-500/30"
-                              : riskScore > 40
-                                ? "bg-orange-500/20 text-orange-600 border-orange-500/30"
-                                : riskScore > 20
-                                  ? "bg-amber-500/20 text-amber-600 border-amber-500/30"
-                                  : "bg-emerald-500/20 text-emerald-600 border-emerald-500/30",
-                            hasRisk && "ring-2 ring-primary/50",
-                          )}
-                        >
-                          {hasRisk && <AlertCircle className="w-3 h-3" />}
-                        </div>
-                      );
-                    })}
-                  </React.Fragment>
-                ),
-              )}
-            </div>
-
-            <div className="mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-white/60">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded bg-emerald-500/20 border border-emerald-500/30"></div>
-                  <span>Low Risk</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded bg-amber-500/20 border border-amber-500/30"></div>
-                  <span>Medium Risk</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded bg-red-500/20 border border-red-500/30"></div>
-                  <span>High Risk</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-1">
-                <Info className="w-3 h-3" />
-                <span>Probability vs Impact</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     );
   },

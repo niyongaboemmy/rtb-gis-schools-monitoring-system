@@ -15,7 +15,8 @@ import {
   SchoolFacilitySurvey,
   ComplianceLevel,
 } from '../schools/entities/school-facility-survey.entity';
-import { SchoolMetricsDto } from './dto/school-metrics.dto';
+import { SchoolMetricsDto, ReportSummaryDto } from './dto/school-metrics.dto';
+import { IssueReport, ReportStatus } from '../reports/entities/issue-report.entity';
 
 @Injectable()
 export class AnalyticsService {
@@ -30,6 +31,8 @@ export class AnalyticsService {
     private readonly populationRepository: Repository<PopulationData>,
     @InjectRepository(SchoolFacilitySurvey)
     private readonly surveyRepository: Repository<SchoolFacilitySurvey>,
+    @InjectRepository(IssueReport)
+    private readonly issueReportRepository: Repository<IssueReport>,
   ) {}
 
   async getOverview() {
@@ -130,14 +133,19 @@ export class AnalyticsService {
     const buildings = school.buildings ?? [];
     const programs = (school.educationPrograms as any[]) ?? [];
 
-    const totalStudents = programs.reduce(
+    const totalStudentsFromPrograms = programs.reduce(
       (sum, p) => sum + (parseFloat(String(p.totalStudents)) || 0),
       0,
     );
-    const totalCapacity = programs.reduce(
+    const totalCapacityFromPrograms = programs.reduce(
       (sum, p) => sum + (parseFloat(String(p.capacity)) || 0),
       0,
     );
+    const totalStudents =
+      totalStudentsFromPrograms > 0
+        ? totalStudentsFromPrograms
+        : parseFloat(String(school.totalStudents)) || 0;
+    const totalCapacity = totalCapacityFromPrograms;
 
     const maleTeachers = parseFloat(String(school.maleTeachers)) || 0;
     const femaleTeachers = parseFloat(String(school.femaleTeachers)) || 0;
@@ -164,14 +172,10 @@ export class AnalyticsService {
       avgBuildingAge !== null ? currentYear - avgBuildingAge : null;
 
     const ageScore = parseFloat(String(assessment.buildingAgeScore));
-    const ageToBuildingDepreciation: Record<number, number> = {
-      90: 70,
-      70: 50,
-      50: 35,
-      30: 20,
-      15: 10,
-    };
-    const depreciation = ageToBuildingDepreciation[ageScore] ?? 20;
+    const depreciation = Math.min(
+      100,
+      Math.max(5, Math.round(100 - ageScore)),
+    );
 
     const dto = new SchoolMetricsDto();
     dto.schoolId = school.id;
@@ -219,6 +223,35 @@ export class AnalyticsService {
         ? parseFloat(String(assessment.estimatedBudgetRwf))
         : null;
 
+    const allReports = await this.issueReportRepository.find({
+      where: { schoolId },
+      order: { createdAt: 'DESC' },
+      take: 2000,
+    });
+    const reportSummary: ReportSummaryDto = {
+      total: allReports.length,
+      critical: allReports.filter(
+        (r) => r.status === ReportStatus.NEED_INTERVENTION,
+      ).length,
+      pending: allReports.filter((r) => r.status === ReportStatus.PENDING)
+        .length,
+      resolved: allReports.filter((r) => r.status === ReportStatus.SOLVED)
+        .length,
+      failed: allReports.filter((r) => r.status === ReportStatus.FAILED).length,
+      recentCritical: allReports
+        .filter((r) => r.status === ReportStatus.NEED_INTERVENTION)
+        .slice(0, 5)
+        .map((r) => ({
+          id: r.id,
+          facilityId: r.facilityId,
+          description: r.description,
+          status: r.status,
+          buildingId: r.buildingId,
+          createdAt: r.createdAt.toISOString(),
+        })),
+    };
+    dto.reportSummary = reportSummary;
+
     return dto;
   }
 
@@ -234,28 +267,36 @@ export class AnalyticsService {
     // Infrastructure score (30%) — based on building conditions
     const infraScore = this.calculateInfrastructureScore(buildings);
 
-    // Building age score (20%) — older buildings score higher (need more attention)
+    // Building age score — newer average age = higher score (healthier asset base)
     const ageScore = this.calculateAgeScore(
       buildings,
-      parseFloat(String(school.establishedYear)),
+      school.establishedYear != null
+        ? Number(school.establishedYear)
+        : undefined,
     );
 
-    // Accessibility score (15%) — placeholder based on district
-    const accessScore = Math.floor(Math.random() * 40) + 50;
-
-    // Population pressure score (15%)
-    const popScore = this.calculatePopulationScore(
-      population,
-      parseFloat(String(school.totalStudents)),
+    // Accessibility score — road status percentage (0–100, higher = better connectivity)
+    const accessScore = Math.min(
+      100,
+      Math.max(0, parseFloat(String(school.roadStatusPercentage)) || 50),
     );
 
-    // Overall weighted score: facility(20%) + infra(30%) + age(20%) + access(15%) + pop(15%)
+    const programs = (school.educationPrograms as any[]) ?? [];
+    const studentsFromPrograms = programs.reduce(
+      (sum, p) => sum + (parseFloat(String(p.totalStudents)) || 0),
+      0,
+    );
+    const totalStudents =
+      studentsFromPrograms > 0
+        ? studentsFromPrograms
+        : parseFloat(String(school.totalStudents)) || 0;
+
+    // Population pressure score — lower demographic pressure = higher score
+    const popScore = this.calculatePopulationScore(population, totalStudents);
+
+    // Global strength: simple equal-weight average of all 5 health dimensions
     const overallScore = Math.round(
-      facilityScore * 0.2 +
-        infraScore * 0.3 +
-        ageScore * 0.2 +
-        accessScore * 0.15 +
-        popScore * 0.15,
+      (facilityScore + infraScore + ageScore + accessScore + popScore) / 5,
     );
 
     const priorityLevel = this.scoreToPriorityLevel(overallScore);
@@ -305,15 +346,16 @@ export class AnalyticsService {
   }
 
   private calculateInfrastructureScore(buildings: SchoolBuilding[]): number {
-    if (!buildings || buildings.length === 0) return 0;
+    if (!buildings || buildings.length === 0) return 50;
+    // Higher = healthier infrastructure
     const conditionMap = {
-      [BuildingCondition.CRITICAL]: 90,
-      [BuildingCondition.POOR]: 70,
-      [BuildingCondition.FAIR]: 40,
-      [BuildingCondition.GOOD]: 15,
+      [BuildingCondition.GOOD]: 100,
+      [BuildingCondition.FAIR]: 70,
+      [BuildingCondition.POOR]: 40,
+      [BuildingCondition.CRITICAL]: 10,
     };
     const avg =
-      buildings.reduce((s, b) => s + (conditionMap[b.condition] || 0), 0) /
+      buildings.reduce((s, b) => s + (conditionMap[b.condition] ?? 50), 0) /
       buildings.length;
     return Math.round(avg);
   }
@@ -323,14 +365,25 @@ export class AnalyticsService {
     establishedYear?: number,
   ): number {
     const currentYear = new Date().getFullYear();
-    const year =
-      establishedYear || parseFloat(String(buildings[0]?.yearBuilt)) || 2000;
-    const age = currentYear - year;
-    if (age >= 40) return 90;
-    if (age >= 25) return 70;
-    if (age >= 15) return 50;
-    if (age >= 5) return 30;
-    return 15;
+    const buildingAges = buildings
+      .filter((b) => b.yearBuilt)
+      .map((b) => currentYear - Number(b.yearBuilt));
+
+    let avgAge: number;
+    if (buildingAges.length > 0) {
+      avgAge =
+        buildingAges.reduce((sum, age) => sum + age, 0) / buildingAges.length;
+    } else if (establishedYear) {
+      avgAge = currentYear - establishedYear;
+    } else {
+      return 50;
+    }
+
+    // Newer stock = higher score (aligned with infrastructure “health”)
+    if (avgAge <= 10) return 95;
+    if (avgAge <= 20) return 80;
+    if (avgAge <= 30) return 60;
+    return 40;
   }
 
   private calculatePopulationScore(
@@ -341,17 +394,19 @@ export class AnalyticsService {
     const capacity = currentStudents || 300;
     const demand = parseFloat(String(population.schoolAgePopulation2km || 0));
     const ratio = demand / capacity;
-    if (ratio >= 5) return 90;
-    if (ratio >= 3) return 70;
+    // Higher = lower demographic pressure (more capacity headroom = healthier)
+    if (ratio >= 5) return 10;
+    if (ratio >= 3) return 30;
     if (ratio >= 2) return 50;
-    if (ratio >= 1) return 30;
-    return 15;
+    if (ratio >= 1) return 70;
+    return 100;
   }
 
   private scoreToPriorityLevel(score: number): PriorityLevel {
-    if (score >= 75) return PriorityLevel.CRITICAL;
-    if (score >= 55) return PriorityLevel.HIGH;
-    if (score >= 35) return PriorityLevel.MEDIUM;
+    // Low health score = needs more attention = higher priority
+    if (score < 35) return PriorityLevel.CRITICAL;
+    if (score < 55) return PriorityLevel.HIGH;
+    if (score < 75) return PriorityLevel.MEDIUM;
     return PriorityLevel.LOW;
   }
 
@@ -365,12 +420,20 @@ export class AnalyticsService {
   ): string[] {
     const recs: string[] = [];
     const buildings = school.buildings || [];
+    const programs = school.educationPrograms ?? [];
     const totalCapacity =
-      school.educationPrograms?.reduce(
+      programs.reduce(
         (sum, p) => sum + (parseFloat(String(p.capacity)) || 0),
         0,
       ) || 0;
-    const totalStudents = parseFloat(String(school.totalStudents)) || 0;
+    const totalStudentsFromPrograms = programs.reduce(
+      (sum, p) => sum + (parseFloat(String(p.totalStudents)) || 0),
+      0,
+    );
+    const totalStudents =
+      totalStudentsFromPrograms > 0
+        ? totalStudentsFromPrograms
+        : parseFloat(String(school.totalStudents)) || 0;
 
     // 1. Structural & Safety (High Urgency)
     const criticalBuildings = buildings.filter(

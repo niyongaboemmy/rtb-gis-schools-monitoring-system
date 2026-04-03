@@ -73,7 +73,7 @@ export const ReportingAnalytics = React.memo(
           setLoading(true);
           // Fetch backend Reporting data
           const response = await api.get(
-            `/api/v1/schools/dashboard/reporting?schoolId=${schoolId}`,
+            `/schools/dashboard/reporting?schoolId=${schoolId}`,
           );
           const payload = response.data?.data ?? response.data ?? {};
           const reports = payload?.reports ?? {};

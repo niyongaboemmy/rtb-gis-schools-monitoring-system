@@ -56,7 +56,7 @@ export class ReportsService {
 
     const [data, total] = await this.reportRepository.findAndCount({
       where,
-      relations: ['school', 'building'],
+      relations: ['school', 'building', 'reporter'],
       order: { createdAt: 'DESC' },
       take: limit,
       skip: skip,

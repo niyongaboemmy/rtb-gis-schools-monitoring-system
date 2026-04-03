@@ -70,7 +70,7 @@ export const MapHud: React.FC<MapHudProps> = ({
                 <span className="text-[10px] md:text-xs font-black text-amber-600 dark:text-amber-200">
                   {measureResult}
                 </span>
-                {onSaveMeasurement && (
+                {measurementMode === "area" && onSaveMeasurement && (
                   <Button
                     variant="ghost"
                     size="sm"

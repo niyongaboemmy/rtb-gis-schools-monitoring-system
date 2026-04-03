@@ -173,6 +173,7 @@ export function BuildingReportingTab({
                   onReportSubmitted={() => {
                     setShowCreateModal(false);
                     fetchReports();
+                    onReportStatusChange?.();
                     showToast("Report submitted successfully!", "success");
                   }}
                 />

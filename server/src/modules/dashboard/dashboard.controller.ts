@@ -7,7 +7,7 @@ import { RequirePermissions } from '../../common/decorators/permissions.decorato
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Permission } from '../../common/constants/permissions.constant';
 
-@Controller('api/v1/schools/dashboard')
+@Controller('schools/dashboard')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
@@ -19,7 +19,7 @@ export class DashboardController {
   }
 
   @Get('reporting')
-  @RequirePermissions(Permission.VIEW_ANALYTICS, Permission.SCHOOL_LEVEL_DASHBOARD)
+  @RequirePermissions(Permission.SCHOOL_LEVEL_DASHBOARD)
   async getReporting(
     @Query('schoolId') schoolId: string,
   ): Promise<ReportingDashboardDto> {

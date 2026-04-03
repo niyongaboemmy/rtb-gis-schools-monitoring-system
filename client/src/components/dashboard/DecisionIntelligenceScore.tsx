@@ -7,6 +7,7 @@ import {
   Users,
   MapPin,
   ClipboardCheck,
+  CheckCircle2,
   Sparkles,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
@@ -211,6 +212,11 @@ export const DecisionIntelligenceScore = React.memo(
                     score: assessment.facilityComplianceScore ?? 0,
                     icon: ClipboardCheck,
                   },
+                  {
+                    label: "Resolution rate",
+                    score: assessment.resolutionRate ?? 50,
+                    icon: CheckCircle2,
+                  },
                 ].map((metric, index) => (
                   <motion.div
                     key={metric.label}
@@ -249,16 +255,6 @@ export const DecisionIntelligenceScore = React.memo(
                     </div>
                   </motion.div>
                 ))}
-
-                <div className="p-5 rounded-3xl bg-primary/5 border border-primary/10 flex flex-col items-center justify-center text-center">
-                  <Sparkles className="w-6 h-6 text-primary/60 dark:text-primary mb-2" />
-                  <p className="text-[12px] font-normal text-primary/80 dark:text-primary/70 mb-1">
-                    Peer ranking
-                  </p>
-                  <p className="text-base font-medium text-slate-900 dark:text-white">
-                    Top quintile
-                  </p>
-                </div>
               </div>
 
               <div className="space-y-4">

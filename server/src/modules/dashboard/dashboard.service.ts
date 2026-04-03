@@ -19,7 +19,10 @@ import {
   DecisionAssessmentSummary,
   AnalyticsMetrics,
   ReportingMetrics,
+  SeverityFromStatus,
+  MonthStatusSnapshot,
 } from './dto/reporting-dashboard.dto';
+import { ReportStatus } from '../reports/entities/issue-report.entity';
 
 @Injectable()
 export class DashboardService {
@@ -206,6 +209,24 @@ export class DashboardService {
       failed: 0,
     };
 
+    const emptyMonthSnap = (): MonthStatusSnapshot => ({
+      pending: 0,
+      needIntervention: 0,
+      solved: 0,
+      failed: 0,
+      activeCreated: 0,
+    });
+
+    const severityFromStatus: SeverityFromStatus = {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+    };
+
+    let monthCurrent = emptyMonthSnap();
+    let monthPrevious = emptyMonthSnap();
+
     try {
       const resp = await this.reportsService.findAll({
         schoolId,
@@ -213,6 +234,10 @@ export class DashboardService {
         limit: 1000,
       });
       const reportsList = resp.data || [];
+      const nowDate = new Date();
+      const curYm = nowDate.getFullYear() * 12 + nowDate.getMonth();
+      const prevYm = curYm - 1;
+
       if (reportsList.length > 0) {
         const latest = reportsList
           .slice()
@@ -224,7 +249,6 @@ export class DashboardService {
           ? new Date(latest.createdAt).toISOString()
           : '';
         generatedReportCount = resp.total ?? reportsList.length;
-        const nowDate = new Date();
         reportsList.forEach((r: any) => {
           const d = new Date(r.createdAt);
           const diffMonths =
@@ -240,16 +264,37 @@ export class DashboardService {
             weeklyTrendsBack[6 - diffDays] += 1;
           }
 
-          // Count by status
-          const status = r.status?.toUpperCase();
-          if (status === 'PENDING') {
+          const status = String(r.status || '').toUpperCase() as ReportStatus;
+          if (status === ReportStatus.PENDING) {
             statusCounts.pending += 1;
-          } else if (status === 'NEED_INTERVENTION') {
+            severityFromStatus.medium += 1;
+          } else if (status === ReportStatus.NEED_INTERVENTION) {
             statusCounts.needIntervention += 1;
-          } else if (status === 'SOLVED') {
+            severityFromStatus.critical += 1;
+          } else if (status === ReportStatus.SOLVED) {
             statusCounts.solved += 1;
-          } else if (status === 'FAILED') {
+            severityFromStatus.low += 1;
+          } else if (status === ReportStatus.FAILED) {
             statusCounts.failed += 1;
+            severityFromStatus.high += 1;
+          }
+
+          const rYm = d.getFullYear() * 12 + d.getMonth();
+          const snap =
+            rYm === curYm ? monthCurrent : rYm === prevYm ? monthPrevious : null;
+          if (snap) {
+            if (status === ReportStatus.PENDING) snap.pending += 1;
+            else if (status === ReportStatus.NEED_INTERVENTION)
+              snap.needIntervention += 1;
+            else if (status === ReportStatus.SOLVED) snap.solved += 1;
+            else if (status === ReportStatus.FAILED) snap.failed += 1;
+            if (
+              status === ReportStatus.PENDING ||
+              status === ReportStatus.NEED_INTERVENTION ||
+              status === ReportStatus.FAILED
+            ) {
+              snap.activeCreated += 1;
+            }
           }
 
           try {
@@ -261,7 +306,6 @@ export class DashboardService {
           } catch {
             // ignore
           }
-          // accumulate category counts from report's issueCategory
           const cats = Array.isArray((r as any).issueCategory)
             ? (r as any).issueCategory
             : [];
@@ -280,6 +324,22 @@ export class DashboardService {
       // ignore
     }
 
+    const pctChange = (cur: number, prev: number): number | null => {
+      if (prev === 0 && cur === 0) return null;
+      if (prev === 0) return cur > 0 ? 100 : 0;
+      return Math.round(((cur - prev) / prev) * 1000) / 10;
+    };
+
+    const monthComparison = {
+      current: monthCurrent,
+      previous: monthPrevious,
+      activeChangePct: pctChange(
+        monthCurrent.activeCreated,
+        monthPrevious.activeCreated,
+      ),
+      solvedChangePct: pctChange(monthCurrent.solved, monthPrevious.solved),
+    };
+
     const reports: ReportingMetrics = {
       generatedReportCount,
       lastReportDate,
@@ -296,7 +356,14 @@ export class DashboardService {
         other: categoriesCounts.other,
       },
       statusCounts,
-    } as any;
+      severityFromStatus,
+      monthComparison,
+      // Top-level counts for legacy UI (maps enum → priority-style labels)
+      critical: severityFromStatus.critical,
+      high: severityFromStatus.high,
+      medium: severityFromStatus.medium,
+      low: severityFromStatus.low,
+    } as ReportingMetrics;
 
     const dto: ReportingDashboardDto = {
       timestamp: new Date().toISOString(),
