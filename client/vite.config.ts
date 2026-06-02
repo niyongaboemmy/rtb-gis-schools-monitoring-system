@@ -6,7 +6,7 @@ import cesium from "vite-plugin-cesium";
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), "VITE_");
+  const env = loadEnv(mode, __dirname, "VITE_");
 
   const port = parseInt(env.VITE_PORT ?? "5173");
   const apiTarget = env.VITE_API_TARGET ?? "http://localhost:3001";
