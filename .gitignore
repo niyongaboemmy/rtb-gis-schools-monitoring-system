@@ -19,3 +19,4 @@ file-server/storage/**
 !file-server/storage/.gitkeep
 file-server/node_modules/
 file-server/package-lock.json
+.refact/
