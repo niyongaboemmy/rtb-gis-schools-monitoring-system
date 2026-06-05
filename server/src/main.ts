@@ -1,3 +1,5 @@
+// Load .env before any decorator is evaluated so process.env is populated
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -10,7 +12,9 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // Security
-  app.use(helmet({ contentSecurityPolicy: false }));
+  app.use(helmet({
+    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
+  }));
   app.use(compression());
   app.use(cookieParser());
 
@@ -24,6 +28,17 @@ async function bootstrap() {
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);
+
+  if (
+    process.env.NODE_ENV === 'production' &&
+    corsOrigins.some((o) => o.includes('localhost'))
+  ) {
+    console.warn(
+      '[WARN] APP_CORS_ORIGINS contains a localhost origin in production. ' +
+        'Set APP_CORS_ORIGINS to your production frontend URL(s).',
+    );
+  }
+
   app.enableCors({
     origin: corsOrigins,
     credentials: true,

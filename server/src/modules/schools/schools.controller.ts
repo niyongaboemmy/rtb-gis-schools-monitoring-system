@@ -6,12 +6,17 @@ import {
   Patch,
   Param,
   Delete,
+  HttpCode,
   UseGuards,
   Query,
   ParseUUIDPipe,
+  ParseArrayPipe,
   UseInterceptors,
   UploadedFile,
+  Res,
+  Request,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
@@ -19,13 +24,18 @@ import {
   ApiBearerAuth,
   ApiQuery,
 } from '@nestjs/swagger';
+import * as XLSX from 'xlsx';
 import { SchoolsService } from './schools.service';
 import { CreateSchoolDto } from './dto/create-school.dto';
 import { UpdateSchoolDto } from './dto/update-school.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { PriorityLevel } from './entities/school.entity';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { Permission } from '../../common/constants/permissions.constant';
+import { PriorityLevel, SchoolStatus } from './entities/school.entity';
 import { ComplianceLevel } from './entities/school-facility-survey.entity';
 import { BuildingDto } from './dto/building.dto';
+import { SurveyUpdateItemDto } from './dto/survey-update.dto';
 
 @ApiTags('schools')
 @Controller('schools')
@@ -47,6 +57,7 @@ export class SchoolsController {
   @ApiQuery({ name: 'district', required: false })
   @ApiQuery({ name: 'priority', required: false, enum: PriorityLevel })
   @ApiQuery({ name: 'type', required: false })
+  @ApiQuery({ name: 'status', required: false, enum: SchoolStatus })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   findAll(
@@ -55,6 +66,7 @@ export class SchoolsController {
     @Query('district') district?: string,
     @Query('priority') priority?: PriorityLevel,
     @Query('type') type?: string,
+    @Query('status') status?: SchoolStatus,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
@@ -64,6 +76,7 @@ export class SchoolsController {
       district,
       priority,
       type,
+      status,
       page,
       limit,
     });
@@ -85,6 +98,38 @@ export class SchoolsController {
   @ApiOperation({ summary: 'Get all facility definitions' })
   getAllFacilities() {
     return this.schoolsService.getAllFacilities();
+  }
+
+  @Get('export')
+  @ApiOperation({ summary: 'Export all schools as an Excel spreadsheet' })
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions(Permission.EXPORT_REPORTS)
+  async exportExcel(@Res() res: Response): Promise<void> {
+    const { data: schools } = await this.schoolsService.findAll({ page: 1, limit: 10000 });
+
+    const rows = schools.map((s) => ({
+      Code: s.code ?? '',
+      Name: s.name ?? '',
+      Province: s.province ?? '',
+      District: s.district ?? '',
+      Type: s.type ?? '',
+      Status: s.status ?? '',
+      Score: s.overallScore ?? '',
+      Priority: s.priorityLevel ?? '',
+      Students: s.totalStudents ?? '',
+      'Male Teachers': s.maleTeachers ?? '',
+      'Female Teachers': s.femaleTeachers ?? '',
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Schools');
+
+    const buffer: Buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="schools-export.xlsx"');
+    res.send(buffer);
   }
 
   @Get(':id')
@@ -141,13 +186,8 @@ export class SchoolsController {
   @ApiOperation({ summary: 'Bulk update facility survey items' })
   bulkUpdateSurvey(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body()
-    updates: {
-      itemId: string;
-      facilityId: string;
-      compliance: ComplianceLevel;
-      notes?: string;
-    }[],
+    @Body(new ParseArrayPipe({ items: SurveyUpdateItemDto }))
+    updates: SurveyUpdateItemDto[],
   ) {
     return this.schoolsService.bulkUpdateSurvey(id, updates);
   }
@@ -175,9 +215,10 @@ export class SchoolsController {
   }
 
   @Delete(':id')
+  @HttpCode(204)
   @ApiOperation({ summary: 'Delete a school' })
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.schoolsService.remove(id);
+  remove(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.schoolsService.remove(id, req.user);
   }
 
   // ============ Building Routes ============

@@ -24,23 +24,32 @@
     "migration:revert": "npm run build && npx typeorm migration:revert -d dist/db/data-source.js"
   },
   "dependencies": {
+    "@nestjs/axios": "^4.0.1",
+    "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.0.1",
+    "@nestjs/event-emitter": "^3.1.0",
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/platform-socket.io": "^11.1.24",
+    "@nestjs/schedule": "^6.1.3",
     "@nestjs/serve-static": "^5.0.4",
     "@nestjs/swagger": "^11.2.6",
+    "@nestjs/throttler": "^6.5.0",
     "@nestjs/typeorm": "^11.0.0",
+    "@nestjs/websockets": "^11.1.24",
     "archiver": "^7.0.1",
     "bcryptjs": "^3.0.3",
+    "bullmq": "^5.78.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.4",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
     "helmet": "^8.1.0",
     "jszip": "^3.10.1",
+    "minio": "^8.0.7",
     "multer": "^2.1.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
@@ -49,6 +58,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "sharp": "^0.34.5",
+    "socket.io": "^4.8.3",
     "swagger-ui-express": "^5.0.1",
     "typeorm": "^0.3.28",
     "unzipper": "^0.12.3",
@@ -101,9 +111,19 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "modules/analytics/analytics.service.ts",
+      "modules/auth/auth.service.ts",
+      "modules/schools/schools.service.ts",
+      "modules/dashboard/dashboard.service.ts"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "coverageThreshold": {
+      "global": {
+        "statements": 70,
+        "lines": 70,
+        "functions": 70
+      }
+    }
   }
 }

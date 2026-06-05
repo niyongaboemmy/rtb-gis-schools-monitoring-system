@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { api } from "../lib/api";
+import { useAuthStore } from "../store/authStore";
+import { hasPermission, Permission } from "../lib/permissions";
 import {
   Card,
   CardContent,
@@ -14,9 +16,13 @@ import { format } from "date-fns";
 import { PageHeader } from "../components/ui/page-header";
 
 export default function AnalyticsDecisions() {
+  const { user } = useAuthStore();
+  const canExport = hasPermission(user, Permission.EXPORT_REPORTS);
+
   const [decisions, setDecisions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [recalculating, setRecalculating] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const fetchedRef = useRef(false);
 
   useEffect(() => {
@@ -49,6 +55,23 @@ export default function AnalyticsDecisions() {
     }
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await api.get("/schools/export", { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "schools-export.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Export failed", err);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -68,9 +91,16 @@ export default function AnalyticsDecisions() {
               />
               {recalculating ? "Processing..." : "Recalculate All"}
             </Button>
-            <Button className="gap-2 h-10 rounded-xl font-black uppercase text-[10px] tracking-wider px-6 flex-1 md:flex-none bg-linear-to-r from-primary to-primary/80 hover:bg-primary transition-colors">
-              <Download className="w-4 h-4" /> Export Report
-            </Button>
+            {canExport && (
+              <Button
+                className="gap-2 h-10 rounded-xl font-black uppercase text-[10px] tracking-wider px-6 flex-1 md:flex-none bg-linear-to-r from-primary to-primary/80 hover:bg-primary transition-colors"
+                onClick={handleExport}
+                disabled={exporting}
+              >
+                <Download className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`} />
+                {exporting ? "Exporting…" : "Export Excel"}
+              </Button>
+            )}
           </>
         }
       />

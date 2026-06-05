@@ -49,6 +49,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Create new user' })
   @RequirePermissions(Permission.MANAGE_USERS)
   create(
+    @Request() req: any,
     @Body()
     body: {
       firstName: string;
@@ -59,7 +60,7 @@ export class UsersController {
       location?: any;
     },
   ) {
-    return this.usersService.create(body);
+    return this.usersService.create(body, req.user);
   }
 
   @Get('upload/template')
@@ -165,7 +166,7 @@ export class UsersController {
   @Delete(':id')
   @ApiOperation({ summary: 'Deactivate user' })
   @RequirePermissions(Permission.MANAGE_USERS)
-  deactivate(@Param('id', ParseUUIDPipe) id: string) {
-    return this.usersService.deactivate(id);
+  deactivate(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    return this.usersService.deactivate(id, req.user);
   }
 }

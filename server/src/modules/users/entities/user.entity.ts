@@ -57,8 +57,8 @@ export class User {
   @Column({ nullable: true })
   lastLoginAt: Date;
 
-  @Column({ nullable: true, select: false })
-  refreshToken: string;
+  @Column({ type: 'varchar', nullable: true, select: false })
+  refreshToken: string | null;
 
   @BeforeInsert()
   @BeforeUpdate()

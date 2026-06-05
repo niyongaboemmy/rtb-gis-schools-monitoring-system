@@ -34,8 +34,8 @@ interface RiskFactor {
   id: string;
   title: string;
   level: "low" | "medium" | "high" | "critical";
-  impact: number;
-  probability: number;
+  impact: number;       // consequence severity (0–100) — driven by score deficit
+  probability: number;  // likelihood of failure (0–100) — driven by urgency timeline
   mitigation: string;
   timeline: string;
   owner: string;
@@ -60,15 +60,48 @@ export const RiskAssessment = React.memo(
     const totalReports = reportingData?.totalReports || 0;
     const avgResolutionTime = reportingData?.avgResolutionTime || 0;
 
-    // Calculate risk scores based on actual report data
-    const criticalRiskScore =
-      totalReports > 0 ? (criticalCount / totalReports) * 100 : 0;
-    const interventionRiskScore =
-      totalReports > 0 ? (needInterventionCount / totalReports) * 100 : 0;
-    const resolutionRiskScore =
-      avgResolutionTime > 5 ? Math.min((avgResolutionTime / 10) * 100, 100) : 0;
+    // ── Semantically distinct axes ────────────────────────────────────────────
+    // Impact   = consequence severity if the risk materialises
+    // Probability = likelihood of failure in the next 12 months
+    //
+    // When server-computed values are available (from getSchoolMetrics), prefer
+    // them — they incorporate building age, survey staleness, and pop-data gaps
+    // that the client-side estimate cannot see.
+    const overallScore = Math.min(
+      100,
+      Math.max(0, parseFloat(String(assessment?.overallScore)) || 0),
+    );
+    const urgencyMonths: number = assessment?.urgencyMonths ?? 36;
+    const infrastructureScore =
+      parseFloat(String(assessment?.infrastructureScore)) || 50;
+    const populationScore =
+      parseFloat(String(assessment?.populationPressureScore)) || 50;
 
-    // Dynamic risk factors based on actual report data
+    // Server-computed impact (Phase 4.5) — falls back to score-deficit estimate
+    const baseImpact =
+      assessment?.riskImpactScore != null
+        ? Math.min(100, Math.max(0, parseFloat(String(assessment.riskImpactScore))))
+        : Math.min(100, Math.max(0, Math.round(100 - overallScore)));
+
+    // Server-computed probability — falls back to urgency-band estimate
+    const baseProbability =
+      assessment?.riskProbabilityScore != null
+        ? Math.min(100, Math.max(0, parseFloat(String(assessment.riskProbabilityScore))))
+        : urgencyMonths === 0
+          ? 95
+          : urgencyMonths <= 6
+            ? 75
+            : urgencyMonths <= 12
+              ? 55
+              : urgencyMonths <= 24
+                ? 35
+                : 20;
+
+    const resolutionRiskScore =
+      avgResolutionTime > 5
+        ? Math.min(Math.round((avgResolutionTime / 10) * 100), 100)
+        : 0;
+
     const riskFactors: RiskFactor[] = [
       {
         id: "1",
@@ -81,8 +114,10 @@ export const RiskAssessment = React.memo(
               : criticalCount > 0
                 ? "medium"
                 : "low",
-        impact: Math.min(criticalRiskScore * 1.2, 100),
-        probability: Math.min(criticalRiskScore * 1.5, 100),
+        // Impact: base deficit, amplified by critical count (more unresolved = worse outcome)
+        impact: Math.min(100, baseImpact + Math.min(20, criticalCount * 4)),
+        // Probability: consistently from urgency timeline (independent of impact driver)
+        probability: baseProbability,
         mitigation:
           "Prioritize resolution of critical issues through emergency intervention protocols",
         timeline: "1-7 days",
@@ -97,8 +132,12 @@ export const RiskAssessment = React.memo(
             : needInterventionCount > 5
               ? "medium"
               : "low",
-        impact: Math.min(interventionRiskScore * 1.1, 100),
-        probability: Math.min(interventionRiskScore * 1.3, 100),
+        // Impact: base deficit, amplified by volume of unresolved interventions
+        impact: Math.min(
+          100,
+          baseImpact + Math.min(15, needInterventionCount * 2),
+        ),
+        probability: baseProbability,
         mitigation:
           "Deploy intervention teams to address escalated issues before they become critical",
         timeline: "1-4 weeks",
@@ -107,9 +146,13 @@ export const RiskAssessment = React.memo(
       {
         id: "3",
         title: "Infrastructure Deterioration",
-        level: assessment.infrastructureScore < 50 ? "high" : "medium",
-        impact: assessment.infrastructureScore < 50 ? 85.0 : 45.0,
-        probability: assessment.infrastructureScore < 50 ? 75.0 : 45.0,
+        level: infrastructureScore < 50 ? "high" : "medium",
+        // Impact: infra-specific score deficit (independently meaningful)
+        impact: Math.min(
+          100,
+          Math.max(0, Math.round(100 - infrastructureScore)),
+        ),
+        probability: baseProbability,
         mitigation:
           "Implement preventive maintenance schedule and prioritize critical repairs",
         timeline: "3-6 months",
@@ -117,15 +160,19 @@ export const RiskAssessment = React.memo(
       },
       {
         id: "4",
-        title: "Demographic pressure on capacity",
+        title: "Demographic Pressure on Capacity",
         level:
-          assessment.populationPressureScore < 30
+          populationScore < 30
             ? "critical"
-            : assessment.populationPressureScore < 50
+            : populationScore < 50
               ? "high"
               : "medium",
-        impact: assessment.populationPressureScore < 35 ? 88.0 : 52.0,
-        probability: assessment.populationPressureScore < 35 ? 82.0 : 48.0,
+        // Impact: population-specific score deficit (capacity headroom deficit)
+        impact: Math.min(
+          100,
+          Math.max(0, Math.round(100 - populationScore)),
+        ),
+        probability: baseProbability,
         mitigation:
           "Expand facilities or optimize space utilization through scheduling",
         timeline: "6-12 months",
@@ -140,8 +187,9 @@ export const RiskAssessment = React.memo(
             : avgResolutionTime > 5
               ? "medium"
               : "low",
-        impact: Math.min(resolutionRiskScore, 100),
-        probability: Math.min(resolutionRiskScore * 1.2, 100),
+        // Impact: resolution-time-specific (operational lag severity)
+        impact: Math.min(100, resolutionRiskScore),
+        probability: baseProbability,
         mitigation:
           "Streamline issue resolution workflows and allocate additional resources",
         timeline: "2-8 weeks",
@@ -149,35 +197,43 @@ export const RiskAssessment = React.memo(
       },
     ];
 
-    // Dynamic mitigation strategies based on actual risk levels
+    // ── Mitigation strategies ─────────────────────────────────────────────────
+    // Effectiveness must DECREASE when more critical issues exist:
+    // more critical = stretched resources = lower expected effectiveness (not higher)
     const mitigationStrategies: MitigationStrategy[] = [
       {
         title: "Emergency Critical Issue Response",
         priority: criticalCount > 0 ? "immediate" : "short-term",
         cost: "high",
-        effectiveness: Math.min(90 + criticalCount * 2, 100),
+        // FIXED: was `90 + criticalCount * 2` (inverted) → now decreases with count
+        effectiveness: Math.max(20, Math.min(85, 90 - criticalCount * 8)),
         description: `Address ${criticalCount} critical issue${criticalCount !== 1 ? "s" : ""} requiring immediate intervention through emergency protocols`,
       },
       {
         title: "Intervention Team Deployment",
         priority: needInterventionCount > 5 ? "immediate" : "short-term",
         cost: "medium",
-        effectiveness: Math.min(85 + needInterventionCount, 100),
+        // FIXED: was `85 + needInterventionCount` (inverted) → now decreases with count
+        effectiveness: Math.max(20, Math.min(80, 85 - needInterventionCount * 3)),
         description: `Deploy teams to handle ${needInterventionCount} issue${needInterventionCount !== 1 ? "s" : ""} needing intervention before escalation`,
       },
       {
         title: "Resolution Workflow Optimization",
         priority: avgResolutionTime > 7 ? "immediate" : "short-term",
         cost: avgResolutionTime > 10 ? "high" : "medium",
-        effectiveness: Math.min(80 + (avgResolutionTime > 5 ? 10 : 0), 100),
+        // Reasonable as-is: longer delay = less effective optimization ceiling
+        effectiveness: Math.max(
+          30,
+          Math.min(90, 85 - (avgResolutionTime > 5 ? 10 : 0)),
+        ),
         description: `Streamline processes to reduce current ${avgResolutionTime.toFixed(1)} day average resolution time`,
       },
       {
         title: "Preventive Maintenance System",
         priority:
-          assessment.infrastructureScore < 50 ? "immediate" : "long-term",
+          assessment?.infrastructureScore < 50 ? "immediate" : "long-term",
         cost: "low",
-        effectiveness: assessment.infrastructureScore < 50 ? 85 : 70,
+        effectiveness: infrastructureScore < 50 ? 85 : 70,
         description:
           "Implement regular maintenance schedule to prevent infrastructure deterioration",
       },
@@ -452,7 +508,6 @@ export const RiskAssessment = React.memo(
             </div>
           </CardContent>
         </Card>
-
       </div>
     );
   },

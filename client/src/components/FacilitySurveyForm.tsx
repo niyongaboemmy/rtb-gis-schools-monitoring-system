@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "../lib/api";
 import { Modal } from "./ui/modal";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -76,6 +76,11 @@ export function FacilitySurveyForm({
   const [inspectedBy, setInspectedBy] = useState("");
   const [initialized, setInitialized] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
+  const [scoreToast, setScoreToast] = useState(false);
+  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const [inspectorError, setInspectorError] = useState<string | null>(null);
+  const scoreToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const errorToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Map facility IDs to step icons
   const getStepIcon = (facilityId: string) => {
@@ -132,9 +137,10 @@ export function FacilitySurveyForm({
 
   const initializeSurvey = async () => {
     if (!inspectedBy.trim()) {
-      alert("Please enter your name as the inspector");
+      setInspectorError("Inspector name is required to start the survey.");
       return;
     }
+    setInspectorError(null);
 
     try {
       setLoading(true);
@@ -172,6 +178,18 @@ export function FacilitySurveyForm({
     );
   };
 
+  const showScoreToast = () => {
+    if (scoreToastTimerRef.current) clearTimeout(scoreToastTimerRef.current);
+    setScoreToast(true);
+    scoreToastTimerRef.current = setTimeout(() => setScoreToast(false), 3000);
+  };
+
+  const showErrorToast = (message: string) => {
+    if (errorToastTimerRef.current) clearTimeout(errorToastTimerRef.current);
+    setErrorToast(message);
+    errorToastTimerRef.current = setTimeout(() => setErrorToast(null), 4000);
+  };
+
   const saveSurvey = async () => {
     try {
       setSaving(true);
@@ -183,10 +201,16 @@ export function FacilitySurveyForm({
       }));
 
       await api.patch(`/schools/${schoolId}/survey`, updates);
-      alert("Survey saved successfully!");
+
+      // Recalculate scores in the background after a successful save
+      api.post(`/analytics/schools/${schoolId}/recalculate`).then(() => {
+        showScoreToast();
+      }).catch(() => {
+        // best-effort; don't block the user if recalculate fails
+      });
     } catch (error) {
       console.error("Error saving survey:", error);
-      alert("Failed to save survey");
+      showErrorToast("Failed to save survey — please try again.");
     } finally {
       setSaving(false);
     }
@@ -284,9 +308,18 @@ export function FacilitySurveyForm({
                 <Input
                   placeholder="Enter your name"
                   value={inspectedBy}
-                  onChange={(e) => setInspectedBy(e.target.value)}
-                  className="h-12"
+                  onChange={(e) => {
+                    setInspectedBy(e.target.value);
+                    if (inspectorError) setInspectorError(null);
+                  }}
+                  className={`h-12 ${inspectorError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                 />
+                {inspectorError && (
+                  <p className="text-sm text-red-600 dark:text-red-400 flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    {inspectorError}
+                  </p>
+                )}
               </div>
               <Button
                 onClick={initializeSurvey}
@@ -613,6 +646,38 @@ export function FacilitySurveyForm({
           </div>
         </div>
       </div>
+
+      {/* Scores-updated toast */}
+      <AnimatePresence>
+        {scoreToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.95 }}
+            transition={{ duration: 0.22 }}
+            className="fixed bottom-6 right-6 z-200 flex items-center gap-3 px-5 py-3 rounded-2xl bg-emerald-600 text-white shadow-xl shadow-emerald-900/30 pointer-events-none"
+          >
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span className="text-[13px] font-medium">Scores updated</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Save-error toast */}
+      <AnimatePresence>
+        {errorToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.95 }}
+            transition={{ duration: 0.22 }}
+            className="fixed bottom-6 left-6 z-200 flex items-center gap-3 px-5 py-3 rounded-2xl bg-red-600 text-white shadow-xl shadow-red-900/30 pointer-events-none"
+          >
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span className="text-[13px] font-medium">{errorToast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </Modal>
   );
 }

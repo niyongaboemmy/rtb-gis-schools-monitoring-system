@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { Role } from '../roles/entities/role.entity';
 import * as bcrypt from 'bcryptjs';
+import { AuditService, AuditActor } from '../audit/audit.service';
 
 @Injectable()
 export class UsersService {
@@ -16,6 +17,7 @@ export class UsersService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(Role)
     private readonly roleRepository: Repository<Role>,
+    private readonly auditService: AuditService,
   ) {}
 
   async findAll() {
@@ -40,14 +42,17 @@ export class UsersService {
     return user;
   }
 
-  async create(dto: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    password: string;
-    roleId?: string;
-    location?: Record<string, string>;
-  }) {
+  async create(
+    dto: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      password: string;
+      roleId?: string;
+      location?: Record<string, string>;
+    },
+    actor?: AuditActor,
+  ) {
     const existing = await this.userRepository.findOne({
       where: { email: dto.email },
     });
@@ -60,8 +65,12 @@ export class UsersService {
       userData.role = { id: dto.roleId };
       delete userData.roleId;
     }
-    const user = this.userRepository.create(userData);
-    return this.userRepository.save(user);
+    const user = this.userRepository.create(userData as User);
+    const saved = await this.userRepository.save(user);
+    this.auditService.log(actor ?? null, 'user.create', 'user', saved.id, {
+      email: saved.email,
+    });
+    return saved;
   }
 
   async update(
@@ -95,8 +104,9 @@ export class UsersService {
     return { success: true, message: 'Password updated successfully' };
   }
 
-  async deactivate(id: string) {
+  async deactivate(id: string, actor?: AuditActor) {
     await this.userRepository.update(id, { isActive: false });
+    this.auditService.log(actor ?? null, 'user.deactivate', 'user', id);
     return { message: 'User deactivated' };
   }
 

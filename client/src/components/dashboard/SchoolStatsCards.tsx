@@ -58,16 +58,17 @@ export const SchoolStatsCards = React.memo(
             value: formatNumber(totalStaff),
             subValue:
               totalTeachers > 0
-                ? `Ratio: ${Math.round((maleTeachers / totalTeachers) * 100)}% m`
+                ? `${Math.round((maleTeachers / totalTeachers) * 100)}% male teachers`
                 : "N/A",
             icon: TeacherIcon,
             color: "text-blue-500",
             bg: "bg-blue-500/5",
             border: "border-blue-500/20",
+            // Education standard: students per TEACHING staff (not all staff ÷ students)
             benchmark:
-              totalStaff > 0
-                ? `${(totalStaff / (totalStudents || 1)).toFixed(2)} ratio`
-                : "Staff data unavailable",
+              totalTeachers > 0
+                ? `${Math.round(totalStudents / totalTeachers)}:1 student:teacher`
+                : "No teacher data",
           },
           {
             label: "Block count",

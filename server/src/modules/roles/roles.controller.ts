@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   ParseUUIDPipe,
+  Request,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesService } from './roles.service';
@@ -49,8 +50,12 @@ export class RolesController {
   @Patch(':id')
   @ApiOperation({ summary: 'Update role capabilities' })
   @RequirePermissions(Permission.MANAGE_USERS)
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() body: any) {
-    return this.rolesService.update(id, body);
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: any,
+    @Request() req: any,
+  ) {
+    return this.rolesService.update(id, body, req.user);
   }
 
   @Delete(':id')

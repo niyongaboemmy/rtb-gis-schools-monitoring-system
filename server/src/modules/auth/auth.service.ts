@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import * as bcrypt from 'bcryptjs';
 import { User } from '../users/entities/user.entity';
 import { LoginDto } from './dto/login.dto';
 
@@ -58,8 +59,12 @@ export class AuthService {
       .where('user.id = :userId', { userId })
       .andWhere('user.isActive = :isActive', { isActive: true })
       .getOne();
+
     if (!user || !user.refreshToken)
       throw new UnauthorizedException('Access denied');
+
+    const isTokenValid = await bcrypt.compare(refreshToken, user.refreshToken);
+    if (!isTokenValid) throw new UnauthorizedException('Access denied');
 
     const tokens = await this.generateTokens(user);
     await this.saveRefreshToken(user.id, tokens.refreshToken);
@@ -67,7 +72,7 @@ export class AuthService {
   }
 
   async logout(userId: string) {
-    await this.userRepository.update(userId, { refreshToken: '' });
+    await this.userRepository.update(userId, { refreshToken: null });
     return { message: 'Logged out successfully' };
   }
 
@@ -96,6 +101,7 @@ export class AuthService {
   }
 
   private async saveRefreshToken(userId: string, refreshToken: string) {
-    await this.userRepository.update(userId, { refreshToken });
+    const hash = await bcrypt.hash(refreshToken, 10);
+    await this.userRepository.update(userId, { refreshToken: hash });
   }
 }

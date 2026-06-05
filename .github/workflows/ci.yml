@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    name: Lint · Test · Build
+    runs-on: ubuntu-latest
+
+    # -------------------------------------------------------------------------
+    # Infrastructure services
+    # -------------------------------------------------------------------------
+    services:
+      postgres:
+        image: postgis/postgis:15-3.4
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rtb_gis_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    # -------------------------------------------------------------------------
+    # Environment available to every step
+    # -------------------------------------------------------------------------
+    env:
+      NODE_ENV: test
+      # Database — points at the postgres service container above
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: rtb_gis_test
+      # Redis — points at the redis service container above
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      # JWT — throwaway values; never used outside CI
+      JWT_SECRET: ci-jwt-secret-not-for-production
+      JWT_REFRESH_SECRET: ci-jwt-refresh-secret-not-for-production
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      # Storage — local filesystem avoids requiring MinIO in CI
+      STORAGE_BACKEND: local
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Source
+      # -----------------------------------------------------------------------
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # 2. Runtime — cache keyed on every package-lock.json in the repo
+      # -----------------------------------------------------------------------
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: '**/package-lock.json'
+
+      # -----------------------------------------------------------------------
+      # 3. Dependencies
+      # -----------------------------------------------------------------------
+      - name: Install all dependencies
+        run: npm run install:all
+
+      # -----------------------------------------------------------------------
+      # 4. Lint (fail fast on style / ESLint errors before running tests)
+      # -----------------------------------------------------------------------
+      - name: Lint server
+        run: npm run lint --prefix server
+
+      # -----------------------------------------------------------------------
+      # 5. Unit tests + coverage gate
+      #    jest --coverage is wired to a 70 % function-coverage threshold in
+      #    server/package.json (coverageThreshold.global.functions = 70).
+      #    Jest exits non-zero when the threshold is not met, failing this step.
+      # -----------------------------------------------------------------------
+      - name: Run server unit tests with coverage
+        run: npm run test:cov --prefix server -- --forceExit
+
+      # -----------------------------------------------------------------------
+      # 6. Client TypeScript check + production build
+      #    `npm run build` inside client/ executes `tsc -b && vite build`.
+      #    tsc -b fails the step on any TypeScript compilation error.
+      # -----------------------------------------------------------------------
+      - name: Build client
+        run: npm run build --prefix client
