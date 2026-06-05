@@ -50,7 +50,9 @@ export class KmzService {
 
     const filename = file.originalname.toLowerCase();
     if (!filename.endsWith('.glb')) {
-      throw new BadRequestException('File must be a .glb file. Use POST /kmz/2d for KMZ/KML files');
+      throw new BadRequestException(
+        'File must be a .glb file. Use POST /kmz/2d for KMZ/KML files',
+      );
     }
 
     await this.schoolRepository.update(schoolId, {
@@ -64,7 +66,9 @@ export class KmzService {
       mimetype: file.mimetype,
     } satisfies GlbJobData);
 
-    this.logger.log(`Enqueued process-glb job ${job.id} for school ${schoolId}`);
+    this.logger.log(
+      `Enqueued process-glb job ${job.id} for school ${schoolId}`,
+    );
 
     return {
       message: 'GLB file accepted for processing',
@@ -79,7 +83,11 @@ export class KmzService {
     try {
       const fileBuffer = fs.readFileSync(tempFilePath);
       const filePath = `schools/${schoolId}/3d/${originalName}`;
-      const publicPath = await this.storageService.uploadFile(filePath, fileBuffer, mimetype);
+      const publicPath = await this.storageService.uploadFile(
+        filePath,
+        fileBuffer,
+        mimetype,
+      );
 
       await this.buildingRepository.delete({ schoolId });
       const building = this.buildingRepository.create({
@@ -97,14 +105,20 @@ export class KmzService {
       });
 
       this.logger.log(`GLB processing completed for school ${schoolId}`);
-    } catch (err) {
-      this.logger.error(`GLB processing failed for school ${schoolId}: ${err.message}`);
+    } catch (err: any) {
+      this.logger.error(
+        `GLB processing failed for school ${schoolId}: ${err.message}`,
+      );
       await this.schoolRepository.update(schoolId, {
         kmzStatus: KmzProcessingStatus.FAILED,
       });
       throw err;
     } finally {
-      try { fs.unlinkSync(tempFilePath); } catch { /* already gone */ }
+      try {
+        fs.unlinkSync(tempFilePath);
+      } catch {
+        /* already gone */
+      }
     }
   }
 
@@ -221,7 +235,9 @@ export class KmzService {
           const initialView = rootInitialView || allViews[0] || null;
           const overlaysMetadata = allOverlays;
 
-          const fileServerBase = process.env.FILE_SERVER_BASE_URL || '/files';
+          const fileServerBase = (
+            process.env.FILE_SERVER_BASE_URL || 'http://localhost:3002'
+          ).replace(/\/$/, '');
           const assetsBaseUrl = `${fileServerBase}/schools/${schoolId}/kmz_content`;
 
           const updatedGeoJson = {
@@ -418,7 +434,9 @@ export class KmzService {
         kmzStatus: KmzProcessingStatus.FAILED,
       });
       // Clean up any partially-extracted kmz_content so the DB and disk stay in sync
-      await this.storageService.deleteDirectory(`schools/${schoolId}/kmz_content`);
+      await this.storageService.deleteDirectory(
+        `schools/${schoolId}/kmz_content`,
+      );
       throw error;
     }
   }
@@ -900,7 +918,9 @@ export class KmzService {
         );
 
         if (!publicPath) {
-          throw new Error(`Failed to extract KMZ asset (unzipper): ${fileName}`);
+          throw new Error(
+            `Failed to extract KMZ asset (unzipper): ${fileName}`,
+          );
         }
 
         this.logger.log(`Extracted (unzipper): ${fileName} -> ${publicPath}`);
@@ -1167,7 +1187,7 @@ export class KmzService {
         status: 'completed',
         data: placesOverlayData,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Failed to process places overlay: ${error.message}`);
       throw error;
     }
@@ -1250,7 +1270,9 @@ export class KmzService {
       mimetype: file.mimetype,
     } satisfies Kmz2dJobData);
 
-    this.logger.log(`Enqueued process-kmz2d job ${job.id} for school ${schoolId}`);
+    this.logger.log(
+      `Enqueued process-kmz2d job ${job.id} for school ${schoolId}`,
+    );
 
     return {
       message: '2D KMZ file accepted for processing',
@@ -1266,7 +1288,11 @@ export class KmzService {
       const fileBuffer = fs.readFileSync(tempFilePath);
 
       const filePath = `schools/${schoolId}/kmz_2d/${originalName}`;
-      const publicPath = await this.storageService.uploadFile(filePath, fileBuffer, mimetype);
+      const publicPath = await this.storageService.uploadFile(
+        filePath,
+        fileBuffer,
+        mimetype,
+      );
 
       if (!publicPath) {
         throw new Error('Failed to store 2D KMZ file in storage');
@@ -1274,7 +1300,11 @@ export class KmzService {
 
       let manifest: any = null;
       try {
-        manifest = await this.extractKmz2dAssets(schoolId, fileBuffer, originalName);
+        manifest = await this.extractKmz2dAssets(
+          schoolId,
+          fileBuffer,
+          originalName,
+        );
         this.logger.log(
           `[2D] Manifest built for school ${schoolId}: ${manifest?.kmlUrls?.length || 0} KML(s), ${manifest?.groundOverlays?.length || 0} overlay(s)`,
         );
@@ -1292,14 +1322,20 @@ export class KmzService {
       });
 
       this.logger.log(`2D KMZ processing completed for school ${schoolId}`);
-    } catch (err) {
-      this.logger.error(`2D KMZ processing failed for school ${schoolId}: ${err.message}`);
+    } catch (err: any) {
+      this.logger.error(
+        `2D KMZ processing failed for school ${schoolId}: ${err.message}`,
+      );
       await this.schoolRepository.update(schoolId, {
         kmzStatus: KmzProcessingStatus.FAILED,
       });
       throw err;
     } finally {
-      try { fs.unlinkSync(tempFilePath); } catch { /* already gone */ }
+      try {
+        fs.unlinkSync(tempFilePath);
+      } catch {
+        /* already gone */
+      }
     }
   }
 
@@ -1363,7 +1399,9 @@ export class KmzService {
     }
 
     // ── KMZ (zip) extraction ───────────────────────────────────────────────
-    const fileServerBase = process.env.FILE_SERVER_BASE_URL || '/files';
+    const fileServerBase = (
+      process.env.FILE_SERVER_BASE_URL || 'http://localhost:3002'
+    ).replace(/\/$/, '');
     const assetBaseUrl = `${fileServerBase}/schools/${schoolId}/kmz_2d_content`;
 
     let jszipInstance: any;
@@ -1374,7 +1412,10 @@ export class KmzService {
     }
 
     // Map of in-zip path → { url, isTiled, maxZoom }
-    const assetUrlMap: Record<string, { url: string; isTiled?: boolean; maxZoom?: number }> = {};
+    const assetUrlMap: Record<
+      string,
+      { url: string; isTiled?: boolean; maxZoom?: number }
+    > = {};
     const allKmlPaths: string[] = [];
     const files = Object.keys(jszipInstance.files).filter(
       (f: string) => !jszipInstance.files[f].dir,
@@ -1384,18 +1425,24 @@ export class KmzService {
       localDir: string,
       storagePrefix: string,
     ): Promise<void> => {
-      const dirFiles = await fs.promises.readdir(localDir, { withFileTypes: true });
+      const dirFiles = await fs.promises.readdir(localDir, {
+        withFileTypes: true,
+      });
       for (const file of dirFiles) {
         const p = path.join(localDir, file.name);
         if (file.isDirectory()) {
-           await uploadDirectoryToStorage(p, `${storagePrefix}/${file.name}`);
+          await uploadDirectoryToStorage(p, `${storagePrefix}/${file.name}`);
         } else {
-           const buf = await fs.promises.readFile(p);
-           const ext = path.extname(file.name).toLowerCase();
-           let mime = 'application/octet-stream';
-           if (ext === '.png') mime = 'image/png';
-           else if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
-           await this.storageService.uploadFile(`${storagePrefix}/${file.name}`, buf as any, mime);
+          const buf = await fs.promises.readFile(p);
+          const ext = path.extname(file.name).toLowerCase();
+          let mime = 'application/octet-stream';
+          if (ext === '.png') mime = 'image/png';
+          else if (ext === '.jpg' || ext === '.jpeg') mime = 'image/jpeg';
+          await this.storageService.uploadFile(
+            `${storagePrefix}/${file.name}`,
+            buf as any,
+            mime,
+          );
         }
       }
     };
@@ -1406,44 +1453,60 @@ export class KmzService {
       const batch = files.slice(i, i + BATCH_SIZE);
       await Promise.all(
         batch.map(async (zipPath: string) => {
-          const fileBuf = await jszipInstance.files[zipPath].async(
-            'nodebuffer',
-          );
+          const fileBuf =
+            await jszipInstance.files[zipPath].async('nodebuffer');
           const contentType = this.getContentType(zipPath);
-          
+
           let isTiled = false;
           let tileUrlTemplate = '';
           let maxZoom = 0;
 
-          const isOptimizeable = (contentType === 'image/jpeg' || contentType === 'image/png') && !zipPath.toLowerCase().includes('.tif');
+          const isOptimizeable =
+            (contentType === 'image/jpeg' || contentType === 'image/png') &&
+            !zipPath.toLowerCase().includes('.tif');
 
           if (isOptimizeable) {
-             try {
-               const meta = await sharp(fileBuf).metadata();
-               if ((meta.width && meta.width > 2048) || (meta.height && meta.height > 2048)) {
-                  this.logger.log(`Image ${zipPath} is massive (${meta.width}x${meta.height}). Tiling on backend to save client GPU!`);
-                  const tmpDir = path.join(os.tmpdir(), `kmz_chunk_${Date.now()}_${Math.random()}`);
-                  await fs.promises.mkdir(tmpDir, { recursive: true });
-                  
-                  await sharp(fileBuf)
-                     .tile({ layout: 'google', size: 256 })
-                     .toFile(tmpDir); 
-                  
-                  const storagePrefix = `schools/${schoolId}/kmz_2d_content/${zipPath}_tiled`;
-                  await uploadDirectoryToStorage(tmpDir, storagePrefix);
-                  await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(()=>null);
-                  
-                  let tileExt = 'jpg';
-                  const files00 = await fs.promises.readdir(path.join(tmpDir, '0', '0')).catch(()=>[]);
-                  if (files00.length > 0) tileExt = files00[0].split('.').pop() || 'jpg';
-                  
-                  tileUrlTemplate = `${fileServerBase}/${storagePrefix}/{z}/{x}/{y}.${tileExt}`;
-                  isTiled = true;
-                  maxZoom = Math.ceil(Math.log2(Math.max(meta.width, meta.height) / 256));
-               }
-             } catch (e) {
-                this.logger.warn(`Sharp failed to tile ${zipPath}: ` + e);
-             }
+            try {
+              const meta = await sharp(fileBuf).metadata();
+              if (
+                (meta.width && meta.width > 2048) ||
+                (meta.height && meta.height > 2048)
+              ) {
+                this.logger.log(
+                  `Image ${zipPath} is massive (${meta.width}x${meta.height}). Tiling on backend to save client GPU!`,
+                );
+                const tmpDir = path.join(
+                  os.tmpdir(),
+                  `kmz_chunk_${Date.now()}_${Math.random()}`,
+                );
+                await fs.promises.mkdir(tmpDir, { recursive: true });
+
+                await sharp(fileBuf)
+                  .tile({ layout: 'google', size: 256 })
+                  .toFile(tmpDir);
+
+                const storagePrefix = `schools/${schoolId}/kmz_2d_content/${zipPath}_tiled`;
+                await uploadDirectoryToStorage(tmpDir, storagePrefix);
+                await fs.promises
+                  .rm(tmpDir, { recursive: true, force: true })
+                  .catch(() => null);
+
+                let tileExt = 'jpg';
+                const files00 = await fs.promises
+                  .readdir(path.join(tmpDir, '0', '0'))
+                  .catch(() => []);
+                if (files00.length > 0)
+                  tileExt = files00[0].split('.').pop() || 'jpg';
+
+                tileUrlTemplate = `${fileServerBase}/${storagePrefix}/{z}/{x}/{y}.${tileExt}`;
+                isTiled = true;
+                maxZoom = Math.ceil(
+                  Math.log2(Math.max(meta.width, meta.height) / 256),
+                );
+              }
+            } catch (e) {
+              this.logger.warn(`Sharp failed to tile ${zipPath}: ` + e);
+            }
           }
 
           if (!isTiled) {
@@ -1455,12 +1518,22 @@ export class KmzService {
             if (publicPath) {
               assetUrlMap[zipPath] = { url: publicPath };
               const baseName = zipPath.split('/').pop()!;
-              if (!assetUrlMap[baseName]) assetUrlMap[baseName] = { url: publicPath };
+              if (!assetUrlMap[baseName])
+                assetUrlMap[baseName] = { url: publicPath };
             }
           } else {
-            assetUrlMap[zipPath] = { url: tileUrlTemplate, isTiled: true, maxZoom };
+            assetUrlMap[zipPath] = {
+              url: tileUrlTemplate,
+              isTiled: true,
+              maxZoom,
+            };
             const baseName = zipPath.split('/').pop()!;
-            if (!assetUrlMap[baseName]) assetUrlMap[baseName] = { url: tileUrlTemplate, isTiled: true, maxZoom };
+            if (!assetUrlMap[baseName])
+              assetUrlMap[baseName] = {
+                url: tileUrlTemplate,
+                isTiled: true,
+                maxZoom,
+              };
           }
 
           if (zipPath.toLowerCase().endsWith('.kml')) {
@@ -1496,20 +1569,24 @@ export class KmzService {
         const icon = ov.Icon;
         if (!icon) continue;
         const href = this.getKmlValue(icon.href);
-        const kmlDir = kmlPath.includes('/') ? kmlPath.substring(0, kmlPath.lastIndexOf('/') + 1) : '';
+        const kmlDir = kmlPath.includes('/')
+          ? kmlPath.substring(0, kmlPath.lastIndexOf('/') + 1)
+          : '';
         let resolvedHref = href;
         if (!href.startsWith('http') && !href.startsWith('/')) {
-           resolvedHref = kmlDir + href;
-           resolvedHref = resolvedHref.replace(/\.\//g, '');
+          resolvedHref = kmlDir + href;
+          resolvedHref = resolvedHref.replace(/\.\//g, '');
         }
 
         const mapEntry =
           assetUrlMap[resolvedHref] ||
           assetUrlMap[href] ||
-          Object.entries(assetUrlMap).find(([k]) => k.endsWith('/' + href) || k === href)?.[1];
-          
+          Object.entries(assetUrlMap).find(
+            ([k]) => k.endsWith('/' + href) || k === href,
+          )?.[1];
+
         const imageUrl = mapEntry ? mapEntry.url : `${assetBaseUrl}/${href}`;
-        const isTiled = mapEntry ? (mapEntry.isTiled || false) : false;
+        const isTiled = mapEntry ? mapEntry.isTiled || false : false;
         const maxZoom = mapEntry ? mapEntry.maxZoom : undefined;
 
         const box = ov.LatLonBox || {};
@@ -1550,7 +1627,9 @@ export class KmzService {
   }
 
   async removeOverlay(schoolId: string, index: number) {
-    const school = await this.schoolRepository.findOne({ where: { id: schoolId } });
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+    });
     if (!school || !school.kmz2dManifest) return { success: false };
 
     const overlays = [...(school.kmz2dManifest.groundOverlays || [])];
@@ -1568,37 +1647,58 @@ export class KmzService {
    * This allows stacking multiple drone imagery layers over time.
    */
   async addOverlay(schoolId: string, file: Express.Multer.File) {
-    const school = await this.schoolRepository.findOne({ where: { id: schoolId } });
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+    });
     if (!school) throw new NotFoundException('School not found');
 
     const fileBuffer = fs.readFileSync(file.path);
-    const newManifest = await this.extractKmz2dAssets(schoolId, fileBuffer, file.originalname);
-    
-    // Clean up temp file
-    try { fs.unlinkSync(file.path); } catch (e) { this.logger.warn(`Failed to clean up: ${file.path}`); }
+    const newManifest = await this.extractKmz2dAssets(
+      schoolId,
+      fileBuffer,
+      file.originalname,
+    );
 
-    const currentManifest = school.kmz2dManifest || { kmlUrls: [], groundOverlays: [] };
-    
+    // Clean up temp file
+    try {
+      fs.unlinkSync(file.path);
+    } catch (e) {
+      this.logger.warn(`Failed to clean up: ${file.path}`);
+    }
+
+    const currentManifest = school.kmz2dManifest || {
+      kmlUrls: [],
+      groundOverlays: [],
+    };
+
     // Merge new assets
     const mergedManifest = {
       ...currentManifest,
-      kmlUrls: [...(currentManifest.kmlUrls || []), ...(newManifest.kmlUrls || [])],
-      groundOverlays: [...(currentManifest.groundOverlays || []), ...(newManifest.groundOverlays || [])],
-      initialView: newManifest.initialView || currentManifest.initialView
+      kmlUrls: [
+        ...(currentManifest.kmlUrls || []),
+        ...(newManifest.kmlUrls || []),
+      ],
+      groundOverlays: [
+        ...(currentManifest.groundOverlays || []),
+        ...(newManifest.groundOverlays || []),
+      ],
+      initialView: newManifest.initialView || currentManifest.initialView,
     };
 
     school.kmz2dManifest = mergedManifest;
     await this.schoolRepository.save(school);
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       manifest: mergedManifest,
-      addedOverlays: newManifest.groundOverlays?.length || 0 
+      addedOverlays: newManifest.groundOverlays?.length || 0,
     };
   }
 
   async addSiteAnnotation(schoolId: string, annotation: any) {
-    const school = await this.schoolRepository.findOne({ where: { id: schoolId } });
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+    });
     if (!school) throw new NotFoundException('School not found');
 
     const annotations = school.siteAnnotations || [];
@@ -1618,10 +1718,14 @@ export class KmzService {
   }
 
   async removeSiteAnnotation(schoolId: string, id: string) {
-    const school = await this.schoolRepository.findOne({ where: { id: schoolId } });
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+    });
     if (!school) throw new NotFoundException('School not found');
 
-    const annotations = (school.siteAnnotations || []).filter(a => a.id !== id);
+    const annotations = (school.siteAnnotations || []).filter(
+      (a) => a.id !== id,
+    );
     school.siteAnnotations = annotations;
     await this.schoolRepository.save(school);
     return { success: true };

@@ -8,6 +8,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { APP_GUARD } from '@nestjs/core';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { existsSync } from 'fs';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { SchoolsModule } from './modules/schools/schools.module';
@@ -38,15 +39,30 @@ import { EventsModule } from './modules/events/events.module';
     // Domain events — wildcard enabled for future event-pattern matching
     EventEmitterModule.forRoot({ wildcard: false }),
 
-    // BullMQ — async job queues backed by Redis
+    // BullMQ — async job queues backed by Redis.
+    // REDIS_URL (e.g. Upstash rediss://...) takes priority over host/port.
     BullModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        connection: {
-          host: configService.get<string>('REDIS_HOST', 'localhost'),
-          port: parseInt(configService.get<string>('REDIS_PORT', '6379'), 10),
-        },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const redisUrl = configService.get<string>('REDIS_URL');
+        if (redisUrl) {
+          return {
+            connection: {
+              url: redisUrl,
+              maxRetriesPerRequest: null,
+              enableReadyCheck: false,
+              tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
+            },
+          };
+        }
+        return {
+          connection: {
+            host: configService.get<string>('REDIS_HOST', 'localhost'),
+            port: parseInt(configService.get<string>('REDIS_PORT', '6379'), 10),
+            maxRetriesPerRequest: null,
+          },
+        };
+      },
       inject: [ConfigService],
     }),
 
@@ -57,17 +73,13 @@ import { EventsModule } from './modules/events/events.module';
       inject: [ConfigService],
     }),
 
-    // Static Assets
-    ServeStaticModule.forRoot(
-      {
-        rootPath: join(__dirname, '..', 'public'),
-        serveRoot: '/public',
-      },
-      {
-        rootPath: join(__dirname, '..', 'uploads'),
-        serveRoot: '/uploads',
-      },
-    ),
+    // Static Assets — only mount paths that exist (uploads absent on Vercel)
+    ...(existsSync(join(__dirname, '..', 'public'))
+      ? [ServeStaticModule.forRoot({ rootPath: join(__dirname, '..', 'public'), serveRoot: '/public' })]
+      : []),
+    ...(existsSync(join(__dirname, '..', 'uploads'))
+      ? [ServeStaticModule.forRoot({ rootPath: join(__dirname, '..', 'uploads'), serveRoot: '/uploads' })]
+      : []),
 
     // Feature modules
     AuthModule,

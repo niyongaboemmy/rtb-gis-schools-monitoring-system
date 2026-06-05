@@ -9,7 +9,8 @@ import { SchoolBoundary } from '../schools/entities/school-boundary.entity';
 import { SchoolBuilding } from '../schools/entities/school-building.entity';
 import { MulterModule } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { extname, join } from 'path';
+import { tmpdir } from 'os';
 import { StorageModule } from '../storage/storage.module';
 import { KMZ_QUEUE } from './kmz.constants';
 
@@ -20,7 +21,7 @@ export { KMZ_QUEUE };
     TypeOrmModule.forFeature([School, SchoolBoundary, SchoolBuilding]),
     MulterModule.register({
       storage: diskStorage({
-        destination: './temp/uploads',
+        destination: join(tmpdir(), 'rtb-kmz-uploads'),
         filename: (req, file, cb) => {
           const uniqueSuffix =
             Date.now() + '-' + Math.round(Math.random() * 1e9);

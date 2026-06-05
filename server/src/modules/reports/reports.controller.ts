@@ -20,12 +20,12 @@ import { join } from 'path';
 import { mkdirSync } from 'fs';
 import { v4 as uuid } from 'uuid';
 
-// Resolve report storage dir from env — must match FILE_SERVER_STORAGE_DIR in file-server/.env
-const _fileServerStoragePath = process.env.FILE_SERVER_STORAGE_PATH
-  ? join(process.cwd(), process.env.FILE_SERVER_STORAGE_PATH)
-  : join(process.cwd(), '..', 'file-server', 'storage');
+// Use os.tmpdir() so this works on serverless (Vercel /tmp) and local dev alike
+import { tmpdir } from 'os';
+const REPORTS_STORAGE_DIR = join(tmpdir(), 'rtb-reports');
 
-const REPORTS_STORAGE_DIR = join(_fileServerStoragePath, 'reports');
+// local: http://localhost:3002   production: https://files.rtb.isengesho.com
+const FILE_SERVER_BASE = (process.env.FILE_SERVER_BASE_URL || 'http://localhost:3002').replace(/\/$/, '');
 try {
   mkdirSync(REPORTS_STORAGE_DIR, { recursive: true });
 } catch {
@@ -84,7 +84,7 @@ export class ReportsController {
 
     // Combine uploaded files with any pre-uploaded attachment URLs
     const uploadedPaths =
-      files?.map((file) => `/files/reports/${file.filename}`) || [];
+      files?.map((file) => `${FILE_SERVER_BASE}/files/reports/${file.filename}`) || [];
     const bodyAttachments = Array.isArray(createReportDto.attachments)
       ? createReportDto.attachments
       : typeof createReportDto.attachments === 'string'
