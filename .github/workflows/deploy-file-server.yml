@@ -1,0 +1,59 @@
+name: Deploy File Server to cPanel
+
+on:
+  push:
+    branches: [main, emmy]
+    paths:
+      - 'file-server/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: ./file-server
+        run: npm install --omit=dev
+
+      - name: Deploy file-server via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: premium231.web-hosting.com
+          username: ${{ secrets.CPANEL_FTP_USER }}
+          password: ${{ secrets.CPANEL_FTP_PASSWORD }}
+          local-dir: ./file-server/
+          server-dir: /file-server/
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/storage/**
+            **/.env
+
+      - name: Restart Node.js app via cPanel UAPI
+        run: |
+          curl -s \
+            -u "${{ secrets.CPANEL_FTP_USER }}:${{ secrets.CPANEL_FTP_PASSWORD }}" \
+            "https://premium231.web-hosting.com:2083/execute/NodejsApp/restart_app" \
+            --data "domain=files.rtb.isengesho.com" \
+            -k
+          echo "App restart triggered"
+
+      - name: Verify deployment
+        run: |
+          sleep 15
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://files.rtb.isengesho.com/health || echo "000")
+          echo "Health check: $STATUS"
+          if [ "$STATUS" = "200" ]; then
+            echo "Deployment successful!"
+          else
+            echo "App may still be starting (status: $STATUS)"
+          fi
