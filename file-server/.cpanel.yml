@@ -1,0 +1,9 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/uruzjktk/file-server
+    - /usr/local/bin/node /usr/local/bin/npm install --prefix $DEPLOYPATH --omit=dev
+    - mkdir -p /home/uruzjktk/file-server-storage/reports
+    - mkdir -p /home/uruzjktk/file-server-storage/buildings
+    - mkdir -p /home/uruzjktk/file-server-storage/schools
+    - touch /home/uruzjktk/file-server/tmp/restart.txt
