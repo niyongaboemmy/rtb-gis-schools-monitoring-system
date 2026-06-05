@@ -57,7 +57,6 @@ export const RiskAssessment = React.memo(
       0;
     const needInterventionCount =
       reportingData?.statusCounts?.needIntervention || 0;
-    const totalReports = reportingData?.totalReports || 0;
     const avgResolutionTime = reportingData?.avgResolutionTime || 0;
 
     // ── Semantically distinct axes ────────────────────────────────────────────

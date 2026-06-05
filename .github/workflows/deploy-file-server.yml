@@ -1,6 +1,7 @@
 name: Deploy File Server to cPanel
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, emmy]
     paths:

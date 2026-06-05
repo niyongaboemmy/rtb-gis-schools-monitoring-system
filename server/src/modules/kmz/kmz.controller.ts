@@ -52,6 +52,34 @@ export class KmzController {
     return this.kmzService.uploadGlbModel(schoolId, file);
   }
 
+  // Used by production (Vercel): frontend uploads file to file-server first,
+  // then sends the URL here to avoid Vercel's 4.5 MB body limit.
+  @Post('2d/from-url')
+  @HttpCode(202)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Process 2D KMZ/KML from a pre-uploaded file URL' })
+  @ApiBody({ schema: { type: 'object', properties: { fileUrl: { type: 'string' }, fileName: { type: 'string' } } } })
+  uploadKmz2dFromUrl(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @Body() body: { fileUrl: string; fileName: string },
+  ) {
+    return this.kmzService.uploadKmz2dFromUrl(schoolId, body.fileUrl, body.fileName);
+  }
+
+  @Post('from-url')
+  @HttpCode(202)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Process GLB 3D model from a pre-uploaded file URL' })
+  @ApiBody({ schema: { type: 'object', properties: { fileUrl: { type: 'string' }, fileName: { type: 'string' } } } })
+  uploadGlbFromUrl(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @Body() body: { fileUrl: string; fileName: string },
+  ) {
+    return this.kmzService.uploadGlbFromUrl(schoolId, body.fileUrl, body.fileName);
+  }
+
   @Post('2d')
   @HttpCode(202)
   @UseGuards(JwtAuthGuard)

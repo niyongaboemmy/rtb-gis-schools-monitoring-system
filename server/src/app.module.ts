@@ -51,6 +51,7 @@ import { EventsModule } from './modules/events/events.module';
               url: redisUrl,
               maxRetriesPerRequest: null,
               enableReadyCheck: false,
+              lazyConnect: true,
               tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
             },
           };
@@ -60,6 +61,8 @@ import { EventsModule } from './modules/events/events.module';
             host: configService.get<string>('REDIS_HOST', 'localhost'),
             port: parseInt(configService.get<string>('REDIS_PORT', '6379'), 10),
             maxRetriesPerRequest: null,
+            enableReadyCheck: false,
+            lazyConnect: true,
           },
         };
       },
