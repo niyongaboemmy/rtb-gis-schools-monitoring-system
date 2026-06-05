@@ -24,6 +24,9 @@ export interface School {
   overallScore?: number;
   tifFilePath?: string;
   kmz2dFilePath?: string;
+  /** Populated by the /schools list API — used by DashboardMinimap */
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface FacilityItem {
@@ -51,6 +54,7 @@ export interface SchoolsFilters {
   district: string;
   priority: string;
   type: string;
+  status: string;
   page: number;
   limit: number;
 }
@@ -93,6 +97,7 @@ const DEFAULT_FILTERS: SchoolsFilters = {
   district: '',
   priority: '',
   type: '',
+  status: '',
   page: 1,
   limit: 50,
 };
@@ -103,6 +108,11 @@ const DEFAULT_META: SchoolsMeta = {
   page: 1,
   limit: 50,
 };
+
+// ─── Computed Helpers ────────────────────────────────────────────────────────
+
+/** Single source of truth for a school's intelligence score on the frontend. */
+export const calculatedScore = (school: School): number => school.overallScore ?? 0;
 
 // ─── Store ───────────────────────────────────────────────────────────────────
 
@@ -157,6 +167,7 @@ export const useSchoolsStore = create<SchoolsState>((set, get) => ({
       if (merged.district) query.append('district', merged.district);
       if (merged.priority) query.append('priority', merged.priority);
       if (merged.type) query.append('type', merged.type);
+      if (merged.status) query.append('status', merged.status);
 
       const res = await api.get(`/schools?${query.toString()}`);
 

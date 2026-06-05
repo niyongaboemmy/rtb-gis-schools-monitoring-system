@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, MoreThanOrEqual, LessThanOrEqual } from 'typeorm';
 import { IssueReport, ReportStatus } from './entities/issue-report.entity';
 import { CreateReportDto } from './dto/create-report.dto';
 import { StorageService } from '../storage/storage.service';
+import { EventsGateway } from '../events/events.gateway';
 
 @Injectable()
 export class ReportsService {
@@ -11,6 +12,7 @@ export class ReportsService {
     @InjectRepository(IssueReport)
     private readonly reportRepository: Repository<IssueReport>,
     private readonly storageService: StorageService,
+    @Optional() private readonly eventsGateway?: EventsGateway,
   ) {}
 
   async create(
@@ -88,7 +90,21 @@ export class ReportsService {
   async updateStatus(id: string, status: ReportStatus): Promise<IssueReport> {
     const report = await this.findOne(id);
     report.status = status;
-    return this.reportRepository.save(report);
+    if (status === ReportStatus.SOLVED && !report.resolvedAt) {
+      report.resolvedAt = new Date();
+    }
+    const saved = await this.reportRepository.save(report);
+
+    if (saved.reportedBy) {
+      this.eventsGateway?.emitReportStatusChanged(saved.reportedBy, {
+        reportId: saved.id,
+        schoolId: saved.schoolId,
+        newStatus: saved.status,
+        reportedBy: saved.reportedBy,
+      });
+    }
+
+    return saved;
   }
 
   async delete(id: string): Promise<void> {

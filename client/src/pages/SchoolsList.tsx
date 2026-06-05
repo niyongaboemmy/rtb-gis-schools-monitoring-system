@@ -13,6 +13,7 @@ import {
   MoreVertical,
   Eye,
   Upload,
+  FileDown,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Modal } from "../components/ui/modal";
@@ -33,6 +34,9 @@ import {
 } from "../lib/rwanda-locations";
 import { ImigongoPattern } from "../components/ui/ImigongoPattern";
 import { useSchoolsStore } from "../store/schoolsStore";
+import { useAuthStore } from "../store/authStore";
+import { hasPermission, Permission } from "../lib/permissions";
+import { api } from "../lib/api";
 
 const schoolTypeOptions: DropdownOption[] = [
   { label: "TSS", value: "TSS" },
@@ -47,6 +51,12 @@ const priorityOptions: DropdownOption[] = [
   { label: "Low", value: "low" },
 ];
 
+const statusOptions: DropdownOption[] = [
+  { label: "Active", value: "active" },
+  { label: "Inactive", value: "inactive" },
+  { label: "Under Renovation", value: "under_renovation" },
+];
+
 export default function SchoolsList() {
   // ── Shared Store ──────────────────────────────────────────────────────────
   const {
@@ -58,8 +68,12 @@ export default function SchoolsList() {
     setFilters,
   } = useSchoolsStore();
 
+  const { user } = useAuthStore();
+  const canExport = hasPermission(user, Permission.EXPORT_REPORTS);
+
   // ── Local UI state ────────────────────────────────────────────────────────
   const [searchTerm, setSearchTerm] = useState(filters.search);
+  const [exporting, setExporting] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [localFilters, setLocalFilters] = useState({
@@ -67,6 +81,7 @@ export default function SchoolsList() {
     district: filters.district,
     priority: filters.priority,
     type: filters.type,
+    status: filters.status,
   });
 
   const navigate = useNavigate();
@@ -87,6 +102,7 @@ export default function SchoolsList() {
     filters.district,
     filters.priority,
     filters.type,
+    filters.status,
   ]);
 
   const handleSearch = () => {
@@ -107,7 +123,7 @@ export default function SchoolsList() {
   };
 
   const handleClearFilters = () => {
-    const cleared = { province: "", district: "", priority: "", type: "" };
+    const cleared = { province: "", district: "", priority: "", type: "", status: "" };
     setLocalFilters(cleared);
     setFilters({ ...cleared, page: 1 });
     fetchSchools({ ...cleared, page: 1 });
@@ -116,6 +132,23 @@ export default function SchoolsList() {
 
   const handleSchoolFormSuccess = () => {
     fetchSchools({ page: 1 });
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await api.get("/schools/export", { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "schools-export.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Export failed", err);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const page = filters.page;
@@ -136,12 +169,25 @@ export default function SchoolsList() {
           description="Manage and monitor all national TVET institutions"
           icon={Building2}
           actions={
-            <Button
-              onClick={() => setIsAddModalOpen(true)}
-              className="h-10 rounded-full font-normal text-sm tracking-wider px-6 transition-all hover:scale-95 active:scale-95 bg-linear-to-r from-primary to-primary/80"
-            >
-              <Plus className="w-4 h-4 mr-2" /> Add New School
-            </Button>
+            <div className="flex items-center gap-2">
+              {canExport && (
+                <Button
+                  variant="outline"
+                  onClick={handleExport}
+                  disabled={exporting}
+                  className="h-10 rounded-full font-black uppercase tracking-wider text-[10px] px-5 border-border/20 shadow-none hover:bg-primary/5 transition-all"
+                >
+                  <FileDown className={`w-3.5 h-3.5 mr-2 ${exporting ? "animate-pulse" : ""}`} />
+                  {exporting ? "Exporting…" : "Export Excel"}
+                </Button>
+              )}
+              <Button
+                onClick={() => setIsAddModalOpen(true)}
+                className="h-10 rounded-full font-normal text-sm tracking-wider px-6 transition-all hover:scale-95 active:scale-95 bg-linear-to-r from-primary to-primary/80"
+              >
+                <Plus className="w-4 h-4 mr-2" /> Add New School
+              </Button>
+            </div>
           }
         />
 
@@ -419,6 +465,21 @@ export default function SchoolsList() {
                 value={localFilters.priority}
                 onChange={(val) =>
                   setLocalFilters((prev) => ({ ...prev, priority: val }))
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                Status
+              </label>
+              <RichDropdown
+                options={[
+                  { label: "All Statuses", value: "" },
+                  ...statusOptions,
+                ]}
+                value={localFilters.status}
+                onChange={(val) =>
+                  setLocalFilters((prev) => ({ ...prev, status: val }))
                 }
               />
             </div>

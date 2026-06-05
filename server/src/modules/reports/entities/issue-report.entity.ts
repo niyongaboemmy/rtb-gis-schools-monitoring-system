@@ -66,6 +66,9 @@ export class IssueReport {
   @Column({ type: 'jsonb', nullable: true })
   attachments: string[]; // URLs to images
 
+  @Column({ nullable: true })
+  resolvedAt: Date;
+
   @CreateDateColumn()
   createdAt: Date;
 

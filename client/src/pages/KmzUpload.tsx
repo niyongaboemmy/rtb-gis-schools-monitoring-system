@@ -71,6 +71,18 @@ export default function KmzUpload() {
   const handleUpload = () => {
     if (!file || !id) return;
 
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if (uploadMode === "3d" && ext !== "glb") {
+      setStatus("error");
+      setMessage("3D viewer only accepts .glb files. Please select a GLB model.");
+      return;
+    }
+    if (uploadMode === "2d" && ext !== "kmz" && ext !== "kml") {
+      setStatus("error");
+      setMessage("2D viewer only accepts .kmz or .kml files. Please select a KMZ/KML file.");
+      return;
+    }
+
     setStatus("uploading");
     setMessage("Deploying geospatial payload to cloud storage...");
     setUploadProgress(0);

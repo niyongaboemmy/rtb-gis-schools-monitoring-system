@@ -32,16 +32,28 @@ export class DecisionAssessment {
 
   // Scoring components (0-100)
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
-  infrastructureScore: number; // 40% weight
+  infrastructureScore: number; // 35% weight
 
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
-  buildingAgeScore: number; // 30% weight
+  buildingAgeScore: number; // 25% weight
 
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
-  accessibilityScore: number; // 15% weight
+  accessibilityScore: number; // 10% weight
 
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
-  populationPressureScore: number; // 15% weight
+  populationPressureScore: number; // 10% weight
+
+  @Column({ type: 'float', nullable: true, default: null })
+  facilityComplianceScore: number | null; // 15% weight
+
+  @Column({ type: 'float', nullable: true, default: null })
+  resolutionRateScore: number | null; // 5% weight
+
+  @Column({ default: false })
+  hasInfraDataGap: boolean;
+
+  @Column({ default: false })
+  hasPopDataGap: boolean;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
   overallScore: number; // weighted total

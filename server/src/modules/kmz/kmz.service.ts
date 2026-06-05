@@ -5,6 +5,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 import * as JSZip from 'jszip';
 import * as xml2js from 'xml2js';
@@ -16,6 +18,8 @@ import {
 } from '../schools/entities/school-boundary.entity';
 import { SchoolBuilding } from '../schools/entities/school-building.entity';
 import { StorageService } from '../storage/storage.service';
+import { KMZ_QUEUE } from './kmz.constants';
+import type { GlbJobData, Kmz2dJobData } from './kmz.processor';
 import { Readable } from 'stream';
 import unzipper from 'unzipper';
 import * as path from 'path';
@@ -35,9 +39,10 @@ export class KmzService {
     @InjectRepository(SchoolBuilding)
     private readonly buildingRepository: Repository<SchoolBuilding>,
     private readonly storageService: StorageService,
+    @InjectQueue(KMZ_QUEUE) private readonly kmzQueue: Queue,
   ) {}
 
-  async uploadKmz(schoolId: string, file: Express.Multer.File) {
+  async uploadGlbModel(schoolId: string, file: Express.Multer.File) {
     const school = await this.schoolRepository.findOne({
       where: { id: schoolId },
     });
@@ -45,46 +50,62 @@ export class KmzService {
 
     const filename = file.originalname.toLowerCase();
     if (!filename.endsWith('.glb')) {
-      throw new BadRequestException('File must be a .glb file');
+      throw new BadRequestException('File must be a .glb file. Use POST /kmz/2d for KMZ/KML files');
     }
-
-    const fileBuffer = fs.readFileSync(file.path);
-
-    const filePath = `schools/${schoolId}/3d/${file.originalname}`;
-    const publicPath = await this.storageService.uploadFile(
-      filePath,
-      fileBuffer,
-      file.mimetype,
-    );
-
-    // Clean up temp file
-    try {
-      fs.unlinkSync(file.path);
-    } catch (e) {
-      this.logger.warn(`Failed to clean up temp file: ${file.path}`);
-    }
-
-    // Store as a building record so the 3D viewer can find it
-    await this.buildingRepository.delete({ schoolId });
-    const building = this.buildingRepository.create({
-      schoolId,
-      name: file.originalname,
-      modelPath: publicPath || filePath,
-      modelName: file.originalname,
-    });
-    await this.buildingRepository.save(building);
 
     await this.schoolRepository.update(schoolId, {
-      kmzStatus: KmzProcessingStatus.COMPLETED,
-      kmzFilePath: publicPath || filePath,
-      kmzProcessedAt: new Date(),
+      kmzStatus: KmzProcessingStatus.PROCESSING,
     });
 
-    return {
-      message: '3D GLB model uploaded successfully',
+    const job = await this.kmzQueue.add('process-glb', {
       schoolId,
-      modelPath: publicPath || filePath,
+      tempFilePath: file.path,
+      originalName: file.originalname,
+      mimetype: file.mimetype,
+    } satisfies GlbJobData);
+
+    this.logger.log(`Enqueued process-glb job ${job.id} for school ${schoolId}`);
+
+    return {
+      message: 'GLB file accepted for processing',
+      schoolId,
+      jobId: job.id,
+      statusUrl: `/api/v1/schools/${schoolId}/kmz/status`,
     };
+  }
+
+  async processGlbJob(data: GlbJobData): Promise<void> {
+    const { schoolId, tempFilePath, originalName, mimetype } = data;
+    try {
+      const fileBuffer = fs.readFileSync(tempFilePath);
+      const filePath = `schools/${schoolId}/3d/${originalName}`;
+      const publicPath = await this.storageService.uploadFile(filePath, fileBuffer, mimetype);
+
+      await this.buildingRepository.delete({ schoolId });
+      const building = this.buildingRepository.create({
+        schoolId,
+        name: originalName,
+        modelPath: publicPath || filePath,
+        modelName: originalName,
+      });
+      await this.buildingRepository.save(building);
+
+      await this.schoolRepository.update(schoolId, {
+        kmzStatus: KmzProcessingStatus.COMPLETED,
+        kmzFilePath: publicPath || filePath,
+        kmzProcessedAt: new Date(),
+      });
+
+      this.logger.log(`GLB processing completed for school ${schoolId}`);
+    } catch (err) {
+      this.logger.error(`GLB processing failed for school ${schoolId}: ${err.message}`);
+      await this.schoolRepository.update(schoolId, {
+        kmzStatus: KmzProcessingStatus.FAILED,
+      });
+      throw err;
+    } finally {
+      try { fs.unlinkSync(tempFilePath); } catch { /* already gone */ }
+    }
   }
 
   async processGeospatialBuffer(
@@ -534,6 +555,21 @@ export class KmzService {
         },
         altitudeMode: model.altitudeMode || 'absolute',
       },
+    };
+  }
+
+  async getKmzStatus(schoolId: string) {
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+    });
+    if (!school) throw new NotFoundException(`School ${schoolId} not found`);
+
+    return {
+      schoolId,
+      status: school.kmzStatus,
+      kmzFilePath: school.kmzFilePath ?? null,
+      kmz2dFilePath: school.kmz2dFilePath ?? null,
+      processedAt: school.kmzProcessedAt ?? null,
     };
   }
 
@@ -1203,56 +1239,68 @@ export class KmzService {
       throw new BadRequestException('File must be a .kmz or .kml file');
     }
 
-    const fileBuffer = fs.readFileSync(file.path);
-
-    // Store raw file (kept for 3D compatibility / fallback)
-    const filePath = `schools/${schoolId}/kmz_2d/${file.originalname}`;
-    const publicPath = await this.storageService.uploadFile(
-      filePath,
-      fileBuffer,
-      file.mimetype,
-    );
-
-    try {
-      fs.unlinkSync(file.path);
-    } catch (e) {
-      this.logger.warn(`Failed to clean up temp file: ${file.path}`);
-    }
-
-    if (!publicPath) {
-      throw new BadRequestException('Failed to store 2D KMZ file');
-    }
-
-    // ── Server-side extraction (the heavy work) ────────────────────────────
-    let manifest: any = null;
-    try {
-      manifest = await this.extractKmz2dAssets(
-        schoolId, 
-        fileBuffer, 
-        file.originalname
-      );
-      this.logger.log(
-        `[2D] Manifest built for school ${schoolId}: ${manifest?.kmlUrls?.length || 0} KML(s), ${manifest?.groundOverlays?.length || 0} overlay(s)`,
-      );
-    } catch (err: any) {
-      // Non-fatal: fallback to browser-side processing if extraction fails
-      this.logger.warn(
-        `[2D] Manifest extraction failed (will fall back to browser): ${err.message}`,
-      );
-    }
-
     await this.schoolRepository.update(schoolId, {
-      kmz2dFilePath: publicPath,
-      kmz2dManifest: manifest,
+      kmzStatus: KmzProcessingStatus.PROCESSING,
     });
 
-    return {
-      message: '2D KMZ file uploaded and processed successfully',
+    const job = await this.kmzQueue.add('process-kmz2d', {
       schoolId,
-      kmz2dFilePath: publicPath,
-      manifestReady: manifest !== null,
-      overlayCount: manifest?.groundOverlays?.length ?? 0,
+      tempFilePath: file.path,
+      originalName: file.originalname,
+      mimetype: file.mimetype,
+    } satisfies Kmz2dJobData);
+
+    this.logger.log(`Enqueued process-kmz2d job ${job.id} for school ${schoolId}`);
+
+    return {
+      message: '2D KMZ file accepted for processing',
+      schoolId,
+      jobId: job.id,
+      statusUrl: `/api/v1/schools/${schoolId}/kmz/status`,
     };
+  }
+
+  async processKmz2dJob(data: Kmz2dJobData): Promise<void> {
+    const { schoolId, tempFilePath, originalName, mimetype } = data;
+    try {
+      const fileBuffer = fs.readFileSync(tempFilePath);
+
+      const filePath = `schools/${schoolId}/kmz_2d/${originalName}`;
+      const publicPath = await this.storageService.uploadFile(filePath, fileBuffer, mimetype);
+
+      if (!publicPath) {
+        throw new Error('Failed to store 2D KMZ file in storage');
+      }
+
+      let manifest: any = null;
+      try {
+        manifest = await this.extractKmz2dAssets(schoolId, fileBuffer, originalName);
+        this.logger.log(
+          `[2D] Manifest built for school ${schoolId}: ${manifest?.kmlUrls?.length || 0} KML(s), ${manifest?.groundOverlays?.length || 0} overlay(s)`,
+        );
+      } catch (err: any) {
+        this.logger.warn(
+          `[2D] Manifest extraction failed (client will fall back to browser processing): ${err.message}`,
+        );
+      }
+
+      await this.schoolRepository.update(schoolId, {
+        kmzStatus: KmzProcessingStatus.COMPLETED,
+        kmz2dFilePath: publicPath,
+        kmz2dManifest: manifest,
+        kmzProcessedAt: new Date(),
+      });
+
+      this.logger.log(`2D KMZ processing completed for school ${schoolId}`);
+    } catch (err) {
+      this.logger.error(`2D KMZ processing failed for school ${schoolId}: ${err.message}`);
+      await this.schoolRepository.update(schoolId, {
+        kmzStatus: KmzProcessingStatus.FAILED,
+      });
+      throw err;
+    } finally {
+      try { fs.unlinkSync(tempFilePath); } catch { /* already gone */ }
+    }
   }
 
   /**
@@ -1277,7 +1325,7 @@ export class KmzService {
    * Unpacks the archive, uploads every asset to the file server, then builds
    * a lightweight manifest the client can use instead of the raw KMZ.
    */
-  private async extractKmz2dAssets(
+  async extractKmz2dAssets(
     schoolId: string,
     fileBuffer: Buffer,
     fileName: string,

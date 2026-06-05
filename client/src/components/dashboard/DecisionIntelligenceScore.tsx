@@ -18,11 +18,98 @@ interface DecisionIntelligenceProps {
   assessment: any;
 }
 
+interface ScoreMetric {
+  label: string;
+  /** Displayed as a small badge next to the label so the user always knows the formula */
+  weight: string;
+  score: number | null;
+  icon: React.ComponentType<{ className?: string }>;
+  tooltip?: string;
+}
+
+/** Safe parse: returns 0 for null / NaN / undefined */
+const safeNum = (v: unknown): number => {
+  const n = parseFloat(String(v));
+  return isFinite(n) ? n : 0;
+};
+
 export const DecisionIntelligenceScore = React.memo(
   ({ assessment }: DecisionIntelligenceProps) => {
+    const overallScore = Math.min(
+      100,
+      Math.max(0, Math.round(safeNum(assessment?.overallScore ?? 50))),
+    );
+
+    // Weighted composite breakdown — labels and weights mirror the server formula
+    const metrics: ScoreMetric[] = [
+      {
+        label: "Infrastructure",
+        weight: "35%",
+        score: assessment?.infrastructureScore != null
+          ? Math.min(100, Math.max(0, Math.round(safeNum(assessment.infrastructureScore))))
+          : null,
+        icon: Building2,
+      },
+      {
+        label: "Building Age",
+        weight: "25%",
+        score: assessment?.buildingAgeScore != null
+          ? Math.min(100, Math.max(0, Math.round(safeNum(assessment.buildingAgeScore))))
+          : null,
+        icon: TrendingUp,
+      },
+      {
+        label: "Capacity Resilience",
+        weight: "10%",
+        score: assessment?.populationPressureScore != null
+          ? Math.min(100, Math.max(0, Math.round(safeNum(assessment.populationPressureScore))))
+          : null,
+        icon: Users,
+        tooltip: "Higher = more capacity headroom vs. local school-age population",
+      },
+      {
+        label: "Accessibility",
+        weight: "10%",
+        score: assessment?.accessibilityScore != null
+          ? Math.min(100, Math.max(0, Math.round(safeNum(assessment.accessibilityScore))))
+          : null,
+        icon: MapPin,
+      },
+      {
+        label: "Facility Compliance",
+        weight: "15%",
+        score: assessment?.facilityComplianceScore != null
+          ? Math.min(100, Math.max(0, Math.round(safeNum(assessment.facilityComplianceScore))))
+          : null,
+        icon: ClipboardCheck,
+      },
+      {
+        label: "Resolution Rate",
+        weight: "5%",
+        // resolutionRate is computed client-side in getAssessment(); null = no reports (neutral)
+        score: assessment?.resolutionRate != null
+          ? Math.min(100, Math.max(0, Math.round(safeNum(assessment.resolutionRate))))
+          : null,
+        icon: CheckCircle2,
+      },
+    ];
+
+    const scoreColor =
+      overallScore >= 70
+        ? "text-emerald-500"
+        : overallScore >= 50
+          ? "text-blue-500"
+          : "text-red-500";
+
+    const barColor = (s: number | null) => {
+      if (s == null) return "bg-muted-foreground/20";
+      if (s >= 70)   return "bg-emerald-500/60";
+      if (s >= 50)   return "bg-blue-500/60";
+      return           "bg-red-500/60";
+    };
+
     return (
       <Card className="group relative border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/60 rounded-[32px] overflow-hidden transition-all duration-500">
-        {/* Subtle Shadow Glow */}
         <div className="absolute -inset-x-20 -top-20 h-64 bg-primary/5 blur-[100px] rounded-full pointer-events-none opacity-0 transition-opacity duration-700" />
 
         <CardHeader className="border-b border-slate-100 dark:border-blue-500/20 pb-5 relative z-10">
@@ -55,7 +142,8 @@ export const DecisionIntelligenceScore = React.memo(
 
         <CardContent className="p-0 relative z-10">
           <div className="flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-slate-100 dark:divide-white/5">
-            {/* Main Score Section */}
+
+            {/* ── Overall score ring ───────────────────────────────────── */}
             <div className="lg:w-5/12 p-10 flex flex-col items-center justify-center bg-linear-to-b from-slate-50/80 dark:from-white/2 to-transparent">
               <motion.div
                 initial={{ scale: 0.95, opacity: 0 }}
@@ -65,52 +153,29 @@ export const DecisionIntelligenceScore = React.memo(
               >
                 <svg className="w-full h-full transform -rotate-90">
                   <circle
-                    cx="96"
-                    cy="96"
-                    r="88"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    fill="none"
+                    cx="96" cy="96" r="88"
+                    stroke="currentColor" strokeWidth="2" fill="none"
                     className="text-slate-100 dark:text-white/5"
                   />
                   <circle
-                    cx="96"
-                    cy="96"
-                    r="80"
-                    stroke="currentColor"
-                    strokeWidth="8"
-                    fill="none"
+                    cx="96" cy="96" r="80"
+                    stroke="currentColor" strokeWidth="8" fill="none"
                     className="text-slate-100 dark:text-white/5"
                   />
                   <motion.circle
                     initial={{ pathLength: 0 }}
-                    animate={{
-                      pathLength: (assessment.overallScore ?? 50) / 100,
-                    }}
+                    animate={{ pathLength: overallScore / 100 }}
                     transition={{ duration: 2, ease: "circOut" }}
-                    cx="96"
-                    cy="96"
-                    r="80"
-                    stroke="currentColor"
-                    strokeWidth="8"
-                    fill="none"
+                    cx="96" cy="96" r="80"
+                    stroke="currentColor" strokeWidth="8" fill="none"
                     strokeLinecap="round"
-                    className={cn(
-                      "transition-colors duration-1000 opacity-80",
-                      assessment.overallScore >= 70
-                        ? "text-emerald-500"
-                        : assessment.overallScore >= 50
-                          ? "text-blue-500"
-                          : "text-red-500",
-                    )}
+                    className={cn("transition-colors duration-1000 opacity-80", scoreColor)}
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <div className="flex items-baseline">
                     <span className="text-5xl font-medium text-slate-900 dark:text-white tracking-tighter">
-                      {isNaN(assessment.overallScore)
-                        ? 50
-                        : (assessment.overallScore ?? 50)}
+                      {overallScore}
                     </span>
                     <span className="text-base font-normal text-slate-400 dark:text-white/50 ml-0.5">
                       %
@@ -122,141 +187,118 @@ export const DecisionIntelligenceScore = React.memo(
                 </div>
               </motion.div>
 
+              {/* Urgency + operational health ── */}
               <div className="mt-8 grid grid-cols-2 gap-4 w-full">
                 <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/2 border border-slate-200 dark:border-blue-500/20 text-center">
                   <p className="text-[12px] font-normal text-slate-500 dark:text-white mb-2">
                     Operational health
                   </p>
-                  {(() => {
-                    const score = isNaN(assessment.overallScore)
-                      ? 50
-                      : (assessment.overallScore ?? 50);
-                    return (
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "rounded-xl font-medium text-[11px] px-4 py-1 border-slate-200 dark:border-blue-500/20 bg-white dark:bg-white/2",
-                          score >= 70
-                            ? "text-emerald-600 dark:text-emerald-400/80"
-                            : score >= 50
-                              ? "text-blue-600 dark:text-blue-400/80"
-                              : "text-red-600 dark:text-red-400/80",
-                        )}
-                      >
-                        {score >= 70
-                          ? "Optimal"
-                          : score >= 50
-                            ? "Strategic"
-                            : "Critical"}
-                      </Badge>
-                    );
-                  })()}
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "rounded-xl font-medium text-[11px] px-4 py-1 border-slate-200 dark:border-blue-500/20 bg-white dark:bg-white/2",
+                      overallScore >= 70
+                        ? "text-emerald-600 dark:text-emerald-400/80"
+                        : overallScore >= 50
+                          ? "text-blue-600 dark:text-blue-400/80"
+                          : "text-red-600 dark:text-red-400/80",
+                    )}
+                  >
+                    {overallScore >= 70 ? "Optimal" : overallScore >= 50 ? "Strategic" : "Critical"}
+                  </Badge>
                 </div>
                 <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/2 border border-slate-200 dark:border-blue-500/20 text-center">
                   <p className="text-[12px] font-normal text-slate-500 dark:text-white mb-2">
                     Decision urgency
                   </p>
                   <div className="text-xl font-medium text-slate-900 dark:text-white/90">
-                    {isNaN(assessment.urgencyMonths)
-                      ? "--"
-                      : (assessment.urgencyMonths ?? "--")}{" "}
+                    {assessment?.urgencyMonths != null && !isNaN(assessment.urgencyMonths)
+                      ? assessment.urgencyMonths
+                      : "—"}
                     <span className="text-[11px] font-normal text-slate-400 dark:text-white/20 ml-0.5">
-                      mo
+                      {assessment?.urgencyMonths != null ? " mo" : ""}
                     </span>
                   </div>
                 </div>
               </div>
 
+              {/* Benchmarking strip — uses scoreDeltaFromDistrict when available */}
               <div className="mt-8 w-full px-4 pt-4 border-t border-slate-100 dark:border-blue-500/20 flex items-center justify-between">
                 <span className="text-[12px] font-normal text-slate-400 dark:text-white/40 tracking-wide">
-                  Benchmarking sync
+                  Benchmarking
                 </span>
                 <span className="text-[12px] font-medium text-primary">
-                  {assessment.overallScore > 80
-                    ? "Regional top 10%"
-                    : assessment.overallScore > 60
-                      ? "Regional top 25%"
-                      : assessment.overallScore > 40
-                        ? "Regional average"
-                        : "Needs improvement"}
+                  {(() => {
+                    const delta = assessment?.scoreDeltaFromDistrict;
+                    if (delta != null && isFinite(delta)) {
+                      const sign = delta >= 0 ? "+" : "";
+                      if (delta >= 10)  return `${sign}${delta.toFixed(1)} vs district — Above peers`;
+                      if (delta >= 0)   return `${sign}${delta.toFixed(1)} vs district avg`;
+                      if (delta >= -10) return `${delta.toFixed(1)} vs district avg`;
+                      return `${delta.toFixed(1)} vs district — Below avg`;
+                    }
+                    // Fallback: threshold-based label until peer data is available
+                    if (overallScore > 80) return "Regional top 10%";
+                    if (overallScore > 60) return "Regional top 25%";
+                    if (overallScore > 40) return "Regional average";
+                    return "Needs improvement";
+                  })()}
                 </span>
               </div>
             </div>
 
-            {/* Breakdown Section */}
+            {/* ── Score breakdown ──────────────────────────────────────── */}
             <div className="lg:w-7/12 p-8 space-y-8 bg-slate-50/50 dark:bg-gray-900/10">
               <div className="grid grid-cols-2 gap-4">
-                {[
-                  {
-                    label: "Infrastructure health",
-                    score: assessment.infrastructureScore ?? 50,
-                    icon: Building2,
-                  },
-                  {
-                    label: "Asset life cycle",
-                    score: assessment.buildingAgeScore ?? 50,
-                    icon: TrendingUp,
-                  },
-                  {
-                    label: "Demographic load",
-                    score: assessment.populationPressureScore ?? 50,
-                    icon: Users,
-                  },
-                  {
-                    label: "Hub accessibility",
-                    score: assessment.accessibilityScore ?? 50,
-                    icon: MapPin,
-                  },
-                  {
-                    label: "Facility compliance",
-                    score: assessment.facilityComplianceScore ?? 0,
-                    icon: ClipboardCheck,
-                  },
-                  {
-                    label: "Resolution rate",
-                    score: assessment.resolutionRate ?? 50,
-                    icon: CheckCircle2,
-                  },
-                ].map((metric, index) => (
-                  <motion.div
-                    key={metric.label}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 * index }}
-                    className="p-5 rounded-3xl bg-white dark:bg-white/2 border border-slate-200 dark:border-blue-500/20 group/metric hover:bg-slate-50 dark:hover:bg-gray-900/60 transition-all"
-                  >
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="w-10 h-10 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/30 flex items-center justify-center text-blue-500 dark:text-blue-500 group-hover/metric:text-primary transition-colors">
-                        <metric.icon className="w-5 h-5" />
+                {metrics.map((metric, index) => {
+                  const hasScore = metric.score != null;
+
+                  return (
+                    <motion.div
+                      key={metric.label}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.1 * index }}
+                      title={metric.tooltip}
+                      className="p-5 rounded-3xl bg-white dark:bg-white/2 border border-slate-200 dark:border-blue-500/20 group/metric hover:bg-slate-50 dark:hover:bg-gray-900/60 transition-all"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="w-10 h-10 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/30 flex items-center justify-center text-blue-500 dark:text-blue-500 group-hover/metric:text-primary transition-colors">
+                          <metric.icon className="w-5 h-5" />
+                        </div>
+                        {/* Score value */}
+                        <span className="text-lg font-medium text-slate-900 dark:text-white/80">
+                          {hasScore ? `${metric.score}%` : "—"}
+                        </span>
                       </div>
-                      <span className="text-lg font-medium text-slate-900 dark:text-white/80">
-                        {metric.score}%
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-[13px] font-normal text-slate-500 dark:text-white group-hover/metric:text-slate-800 dark:group-hover/metric:text-white/70 transition-colors">
-                        {metric.label}
-                      </p>
-                      <div className="h-1 w-full bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${metric.score}%` }}
-                          transition={{ duration: 1, delay: 0.1 * index }}
-                          className={cn(
-                            "h-full rounded-full transition-all duration-1000",
-                            metric.score >= 70
-                              ? "bg-emerald-500/60"
-                              : metric.score >= 50
-                                ? "bg-blue-500/60"
-                                : "bg-red-500/60",
-                          )}
-                        />
+
+                      <div className="space-y-2">
+                        {/* Label + weight chip on same row */}
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[13px] font-normal text-slate-500 dark:text-white group-hover/metric:text-slate-800 dark:group-hover/metric:text-white/70 transition-colors leading-tight">
+                            {metric.label}
+                          </p>
+                          <span className="shrink-0 text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-white/30 border border-slate-200 dark:border-white/10">
+                            {metric.weight}
+                          </span>
+                        </div>
+
+                        {/* Progress bar */}
+                        <div className="h-1 w-full bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: hasScore ? `${metric.score}%` : "0%" }}
+                            transition={{ duration: 1, delay: 0.1 * index }}
+                            className={cn("h-full rounded-full transition-all duration-1000", barColor(metric.score))}
+                          />
+                        </div>
                       </div>
-                    </div>
-                  </motion.div>
-                ))}
+                    </motion.div>
+                  );
+                })}
               </div>
 
+              {/* Decision directives ── */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between px-2">
                   <h4 className="text-[11px] font-medium text-slate-500 dark:text-white/50 flex items-center gap-2 tracking-wide">
@@ -269,7 +311,7 @@ export const DecisionIntelligenceScore = React.memo(
                 </div>
 
                 <div className="grid gap-3">
-                  {assessment.recommendations
+                  {assessment?.recommendations
                     ?.slice(0, 2)
                     .map((rec: string, i: number) => (
                       <motion.div
@@ -296,7 +338,65 @@ export const DecisionIntelligenceScore = React.memo(
                         </div>
                       </motion.div>
                     ))}
+                  {(!assessment?.recommendations ||
+                    assessment.recommendations.length === 0) && (
+                    <p className="text-xs text-slate-400 dark:text-white/30 italic px-1">
+                      No critical directives at this time.
+                    </p>
+                  )}
                 </div>
+
+                {/* ── Score interpretation legend (collapsible) ──────── */}
+                <details className="group/legend border-t border-slate-100 dark:border-blue-500/10 pt-3 mt-2">
+                  <summary className="cursor-pointer list-none flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-white/30 hover:text-slate-600 dark:hover:text-white/50 transition-colors select-none">
+                    <span>Score Guide</span>
+                    <span className="transition-transform group-open/legend:rotate-180 text-[9px]">
+                      ▾
+                    </span>
+                  </summary>
+                  <div className="mt-3 grid grid-cols-4 gap-1.5">
+                    {(
+                      [
+                        {
+                          band: "Critical",
+                          range: "0–34",
+                          color:
+                            "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20",
+                        },
+                        {
+                          band: "High",
+                          range: "35–54",
+                          color:
+                            "bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20",
+                        },
+                        {
+                          band: "Medium",
+                          range: "55–74",
+                          color:
+                            "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20",
+                        },
+                        {
+                          band: "Optimal",
+                          range: "75–100",
+                          color:
+                            "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
+                        },
+                      ] as const
+                    ).map(({ band, range, color }) => (
+                      <div
+                        key={band}
+                        className={`rounded-lg p-2 text-center ${color}`}
+                      >
+                        <div className="text-[10px] font-black tabular-nums">
+                          {range}
+                        </div>
+                        <div className="text-[9px] font-medium uppercase tracking-wide mt-0.5">
+                          {band}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
               </div>
             </div>
           </div>

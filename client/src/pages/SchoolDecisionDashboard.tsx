@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { io, Socket } from "socket.io-client";
 import { useNavigate, useParams, Link } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "../store/authStore";
 import {
   Activity,
@@ -10,6 +11,7 @@ import {
   AlertTriangle,
   FileText,
   CheckCircle,
+  CheckCircle2,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { Modal } from "../components/ui/modal";
@@ -54,8 +56,11 @@ export default function SchoolDecisionDashboard({
   const [isBuildingModalOpen, setIsBuildingModalOpen] = useState(false);
   const [reportingData, setReportingData] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"main" | "reporting">("main");
+  const [scoreToast, setScoreToast] = useState(false);
+  const [actions, setActions] = useState<any[]>([]);
 
   const lastFetchedId = useRef<string | null>(null);
+  const scoreToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 1. Calculations & Derived State
   const schoolData = school;
@@ -77,55 +82,36 @@ export default function SchoolDecisionDashboard({
   };
 
   const calculateDecisionIntelligenceScore = useCallback(() => {
-    if (!schoolData?.calculatedAssessment) return 50;
-
-    const {
-      infrastructureScore = 50,
-      buildingAgeScore = 50,
-      populationPressureScore = 50,
-      accessibilityScore = 50,
-      facilityComplianceScore = 50,
-    } = schoolData.calculatedAssessment;
-
-    const infraScore = parseFloat(String(infrastructureScore)) || 50;
-    const buildingScore = parseFloat(String(buildingAgeScore)) || 50;
-    const popScore = parseFloat(String(populationPressureScore)) || 50;
-    const accessScore = parseFloat(String(accessibilityScore)) || 50;
-    const complianceScore = parseFloat(String(facilityComplianceScore)) || 50;
-    const resolutionRateScore =
-      parseFloat(String(reportingData?.resolutionRate ?? 50)) || 50;
-
-    const score =
-      (infraScore +
-        buildingScore +
-        popScore +
-        accessScore +
-        complianceScore +
-        resolutionRateScore) /
-      6;
-
-    return Math.round(Math.min(100, Math.max(0, score)));
-  }, [schoolData, reportingData]);
+    const raw = schoolData?.calculatedAssessment?.overallScore ?? school?.overallScore ?? 0;
+    return Math.min(100, Math.max(0, Math.round(Number(raw))));
+  }, [schoolData, school]);
 
   const getAssessment = useCallback(() => {
     if (!schoolData?.calculatedAssessment)
-      return { priorityLevel: "medium", recommendations: [] };
+      return { priorityLevel: "medium", recommendations: [], resolutionRate: null };
 
+    const overallScore = calculateDecisionIntelligenceScore();
     const infrastructureScore =
       parseFloat(String(schoolData.calculatedAssessment.infrastructureScore)) || 0;
-    const calculatedScore = calculateDecisionIntelligenceScore();
-    const resolutionRate = parseFloat(String(reportingData?.resolutionRate ?? 50)) || 50;
+
+    // Derive resolution rate from the already-fetched reportingData
+    const resolutionRate =
+      (reportingData?.totalReports ?? 0) > 0
+        ? Math.round(
+            ((reportingData?.resolvedIssues ?? 0) / reportingData.totalReports) * 100,
+          )
+        : null;
 
     return {
       ...schoolData.calculatedAssessment,
-      overallScore: calculatedScore,
+      overallScore,
       resolutionRate,
       priorityLevel:
-        calculatedScore < 35
+        overallScore < 35
           ? "critical"
-          : calculatedScore < 55
+          : overallScore < 55
             ? "high"
-            : calculatedScore < 75
+            : overallScore < 75
               ? "medium"
               : "low",
       recommendations: [
@@ -140,9 +126,6 @@ export default function SchoolDecisionDashboard({
           : null,
         (reportingData?.statusCounts?.needIntervention ?? 0) > 5
           ? "High number of reports flagged NEED_INTERVENTION — prioritize escalation"
-          : null,
-        resolutionRate < 50
-          ? "Low resolution rate is impacting the Global strength score"
           : null,
       ].filter(Boolean),
     };
@@ -218,6 +201,47 @@ export default function SchoolDecisionDashboard({
     }
   }, [id]);
 
+  const fetchActions = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await api.get(`/analytics/schools/${id}/actions`);
+      setActions(res.data ?? []);
+    } catch {
+      // best-effort — actions are optional metadata
+    }
+  }, [id]);
+
+  const toggleAction = useCallback(
+    async (recommendation: string) => {
+      if (!id) return;
+      const existing = actions.find((a) => a.recommendation === recommendation);
+      try {
+        if (!existing) {
+          const res = await api.post(`/analytics/schools/${id}/actions`, {
+            recommendation,
+          });
+          setActions((prev) => [...prev, res.data]);
+        } else {
+          const nextStatus =
+            existing.status === "open"
+              ? "in_progress"
+              : existing.status === "in_progress"
+                ? "done"
+                : "open";
+          const res = await api.patch(`/analytics/actions/${existing.id}`, {
+            status: nextStatus,
+          });
+          setActions((prev) =>
+            prev.map((a) => (a.id === existing.id ? res.data : a)),
+          );
+        }
+      } catch {
+        // silent — user can retry
+      }
+    },
+    [id, actions],
+  );
+
   // 2. Data Fetching
   const fetchSchool = useCallback(
     async (silent = false) => {
@@ -278,6 +302,13 @@ export default function SchoolDecisionDashboard({
               metrics.recommendations?.length > 0
                 ? metrics.recommendations
                 : sData.calculatedAssessment?.recommendations,
+            // Phase 3: completeness, timestamp, peer delta
+            dataCompletenessScore: metrics.dataCompletenessScore,
+            calculatedAt: metrics.calculatedAt,
+            scoreDeltaFromDistrict: metrics.scoreDeltaFromDistrict,
+            // Phase 4.5: server-computed risk matrix inputs
+            riskImpactScore: metrics.riskImpactScore,
+            riskProbabilityScore: metrics.riskProbabilityScore,
           };
         } else {
           sData.calculatedAssessment = {
@@ -318,14 +349,14 @@ export default function SchoolDecisionDashboard({
         }
 
         setSchool(sData);
-        await fetchReportingData();
+        await Promise.all([fetchReportingData(), fetchActions()]);
       } catch (error) {
         console.error("Failed to fetch school", error);
       } finally {
         setLoading(false);
       }
     },
-    [id, fetchReportingData],
+    [id, fetchReportingData, fetchActions],
   );
 
   useEffect(() => {
@@ -335,14 +366,67 @@ export default function SchoolDecisionDashboard({
     }
   }, [id, fetchSchool]);
 
+  const showScoreToast = useCallback(() => {
+    if (scoreToastTimerRef.current) clearTimeout(scoreToastTimerRef.current);
+    setScoreToast(true);
+    scoreToastTimerRef.current = setTimeout(() => setScoreToast(false), 3000);
+  }, []);
+
+  const recalculateScores = useCallback(async () => {
+    if (!id) return;
+    try {
+      await api.post(`/analytics/schools/${id}/recalculate`);
+      await fetchSchool(true);
+      showScoreToast();
+    } catch {
+      // recalculate is best-effort; silent failure keeps the UX clean
+    }
+  }, [id, fetchSchool, showScoreToast]);
+
   const handleUpdateSchool = useCallback(
     (update: any) => {
       setSchool((prev: any) => (prev ? { ...prev, ...update } : prev));
-      fetchSchool(true);
+      recalculateScores();
       if (propOnUpdateSchool) propOnUpdateSchool(update);
     },
-    [fetchSchool, propOnUpdateSchool],
+    [recalculateScores, propOnUpdateSchool],
   );
+
+  useEffect(() => {
+    if (!id) return;
+
+    const socket: Socket = io(window.location.origin, { withCredentials: true });
+
+    // Join on every (re)connect so the room survives network drops.
+    const schoolRoom = `school:${id}`;
+    socket.on("connect", () => socket.emit("join", schoolRoom));
+
+    socket.on("scores:updated", (assessment: any) => {
+      setSchool((prev: any) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          overallScore: assessment.overallScore,
+          priorityLevel: assessment.priorityLevel,
+          calculatedAssessment: {
+            ...prev.calculatedAssessment,
+            overallScore: assessment.overallScore,
+            infrastructureScore: assessment.infrastructureScore,
+            buildingAgeScore: assessment.buildingAgeScore,
+            accessibilityScore: assessment.accessibilityScore,
+            populationPressureScore: assessment.populationPressureScore,
+            priorityLevel: assessment.priorityLevel,
+          },
+        };
+      });
+      showScoreToast();
+    });
+
+    return () => {
+      socket.emit("leave", schoolRoom);
+      socket.disconnect();
+    };
+  }, [id, showScoreToast]);
 
   // 3. Render Logic
   if (loading) {
@@ -452,51 +536,33 @@ export default function SchoolDecisionDashboard({
                 </div>
 
                 <div className="flex flex-col items-start md:items-end gap-3">
-                  <div className="relative rounded-2xl overflow-hidden group">
-                    {/* Professional Gradient Border & Background */}
-                    <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-30 dark:opacity-20 group-hover:opacity-40 transition-opacity">
-                      <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(1rem-1px)]" />
-                    </div>
-
-                    <div className="relative z-10 flex items-center gap-8 px-6 py-4">
-                      <div className="text-center">
-                        <p className="text-[10px] font-normal text-slate-500 dark:text-white/40 mb-1">
-                          Benchmark
-                        </p>
-                        <p className="text-base font-medium text-slate-900 dark:text-white/80">
-                          +12.4%
-                        </p>
-                      </div>
-                      <div className="w-px h-8 bg-slate-200 dark:bg-white/5" />
-                      <div className="text-center">
-                        <p className="text-[10px] font-normal text-slate-500 dark:text-white/40 mb-1">
-                          Reliability
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <div className="flex gap-1">
-                            {[1, 2, 3, 4].map((i) => (
-                              <div
-                                key={i}
-                                className="w-1 h-3 bg-primary/40 rounded-full"
-                              />
-                            ))}
-                            <div className="w-1 h-3 bg-slate-100 dark:bg-white/5 rounded-full" />
-                          </div>
-                          <span className="text-base font-medium text-slate-900 dark:text-white/80">
-                            88%
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-[10px] font-normal text-slate-400 dark:text-white/60 pr-2">
-                    Sync latency: 42ms · t-ref:{" "}
-                    {new Date().toISOString().split("T")[1].slice(0, 8)}
+                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-white/40 pr-2">
+                    SCORES AS OF{" "}
+                    {schoolData?.calculatedAssessment?.calculatedAt
+                      ? new Date(
+                          schoolData.calculatedAssessment.calculatedAt,
+                        ).toLocaleDateString("en-RW", { dateStyle: "medium" })
+                      : new Date().toLocaleDateString("en-RW", {
+                          dateStyle: "medium",
+                        })}
                   </div>
                 </div>
               </div>
             </div>
           </div>
+
+          {/* Data completeness warning — shown when fewer than 60 % of key fields are populated */}
+          {(schoolData?.calculatedAssessment?.dataCompletenessScore ?? 100) < 60 && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-400 font-medium flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              Data completeness:{" "}
+              <strong>
+                {schoolData.calculatedAssessment.dataCompletenessScore}%
+              </strong>{" "}
+              — displayed scores may not reflect actual conditions. Complete the
+              school profile to improve accuracy.
+            </div>
+          )}
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
             <div className="xl:col-span-2 space-y-8">
@@ -775,26 +841,69 @@ export default function SchoolDecisionDashboard({
               </div>
               Strategic recommendations
             </h3>
-            <div className="space-y-4">
-              {assessment.recommendations?.map((rec: string, i: number) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.4 + i * 0.1 }}
-                  className="relative group/rec p-px rounded-2xl overflow-hidden transition-all duration-300"
-                >
-                  <div className="absolute inset-0 bg-linear-to-br from-blue-500/40 to-blue-500/0 opacity-10 group-hover/rec:opacity-30 transition-opacity" />
-                  <div className="absolute inset-px bg-white/80 dark:bg-white/2 backdrop-blur-2xl rounded-[calc(1rem-1px)] transition-colors" />
+            <div className="space-y-3">
+              {assessment.recommendations?.map((rec: string, i: number) => {
+                const action = actions.find((a) => a.recommendation === rec);
+                const status: string = action?.status ?? "open";
+                const statusColors: Record<string, string> = {
+                  open:        "bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-white/30 border-slate-200 dark:border-white/10",
+                  in_progress: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
+                  done:        "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+                };
+                const statusLabel: Record<string, string> = {
+                  open: "Open", in_progress: "In Progress", done: "Done",
+                };
 
-                  <div className="relative p-5 z-10 flex gap-4">
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary/30 mt-1.5 shrink-0 group-hover/rec:bg-primary/50" />
-                    <p className="text-xs font-normal leading-relaxed text-slate-500 dark:text-white/50 group-hover/rec:text-slate-900 dark:group-hover/rec:text-white/80 transition-colors italic">
-                      {rec}
-                    </p>
-                  </div>
-                </motion.div>
-              ))}
+                return (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.4 + i * 0.1 }}
+                    className="relative group/rec p-px rounded-2xl overflow-hidden transition-all duration-300"
+                  >
+                    <div className="absolute inset-0 bg-linear-to-br from-blue-500/40 to-blue-500/0 opacity-10 group-hover/rec:opacity-30 transition-opacity" />
+                    <div className="absolute inset-px bg-white/80 dark:bg-white/2 backdrop-blur-2xl rounded-[calc(1rem-1px)] transition-colors" />
+
+                    <div className="relative p-4 z-10 flex items-start gap-3">
+                      {/* Action status toggle checkbox */}
+                      <button
+                        onClick={() => toggleAction(rec)}
+                        title={`Status: ${statusLabel[status]} — click to advance`}
+                        className={cn(
+                          "shrink-0 mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-all",
+                          statusColors[status],
+                        )}
+                      >
+                        {status === "done" && (
+                          <CheckCircle2 className="w-3 h-3" />
+                        )}
+                        {status === "in_progress" && (
+                          <div className="w-2 h-2 rounded-sm bg-amber-500" />
+                        )}
+                      </button>
+
+                      <div className="flex-1 min-w-0">
+                        <p className={cn(
+                          "text-xs font-normal leading-relaxed transition-colors italic",
+                          status === "done"
+                            ? "line-through text-slate-300 dark:text-white/20"
+                            : "text-slate-500 dark:text-white/50 group-hover/rec:text-slate-900 dark:group-hover/rec:text-white/80",
+                        )}>
+                          {rec}
+                        </p>
+                      </div>
+
+                      <span className={cn(
+                        "shrink-0 text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border",
+                        statusColors[status],
+                      )}>
+                        {statusLabel[status]}
+                      </span>
+                    </div>
+                  </motion.div>
+                );
+              })}
               {(!assessment.recommendations ||
                 assessment.recommendations.length === 0) && (
                 <p className="text-xs text-slate-400 dark:text-white/70 italic text-center py-6">
@@ -842,6 +951,22 @@ export default function SchoolDecisionDashboard({
             </Button>
           </div>
         </Modal>
+
+      {/* Scores-updated toast */}
+      <AnimatePresence>
+        {scoreToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.95 }}
+            transition={{ duration: 0.22 }}
+            className="fixed bottom-6 right-6 z-200 flex items-center gap-3 px-5 py-3 rounded-2xl bg-emerald-600 text-white shadow-xl shadow-emerald-900/30 pointer-events-none"
+          >
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span className="text-[13px] font-medium">Scores updated</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

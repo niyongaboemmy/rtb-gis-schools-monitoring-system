@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), tailwindcss(), cesium()],
     optimizeDeps: {
-      include: ["cesium", "react", "react-dom"],
+      include: ["cesium", "react", "react-dom", "socket.io-client", "debug"],
     },
     resolve: {
       dedupe: ["react", "react-dom", "cesium", "resium"],
@@ -39,6 +39,11 @@ export default defineConfig(({ mode }) => {
         "/api": {
           target: apiTarget,
           changeOrigin: true,
+        },
+        "/socket.io": {
+          target: apiTarget,
+          changeOrigin: true,
+          ws: true,
         },
         "/public": {
           target: apiTarget,

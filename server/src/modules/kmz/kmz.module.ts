@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bullmq';
 import { KmzController } from './kmz.controller';
 import { KmzService } from './kmz.service';
+import { KmzProcessor } from './kmz.processor';
 import { School } from '../schools/entities/school.entity';
 import { SchoolBoundary } from '../schools/entities/school-boundary.entity';
 import { SchoolBuilding } from '../schools/entities/school-building.entity';
@@ -9,6 +11,9 @@ import { MulterModule } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { StorageModule } from '../storage/storage.module';
+import { KMZ_QUEUE } from './kmz.constants';
+
+export { KMZ_QUEUE };
 
 @Module({
   imports: [
@@ -23,14 +28,15 @@ import { StorageModule } from '../storage/storage.module';
         },
       }),
       limits: {
-        fileSize: 2 * 1024 * 1024 * 1024, // 2GB limit for large KMZ/KML surveys
+        fileSize: 2 * 1024 * 1024 * 1024, // 2 GB limit for large KMZ/KML surveys
         files: 1,
       },
     }),
     StorageModule,
+    BullModule.registerQueue({ name: KMZ_QUEUE }),
   ],
   controllers: [KmzController],
-  providers: [KmzService],
+  providers: [KmzService, KmzProcessor],
   exports: [KmzService],
 })
 export class KmzModule {}

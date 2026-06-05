@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
+import { io, type Socket } from "socket.io-client";
 import {
   Navigate,
   Outlet,
@@ -24,6 +25,9 @@ import {
   BarChart3,
   GraduationCap,
   ClipboardList,
+  AlertTriangle,
+  CheckCircle2,
+  Info,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -80,6 +84,44 @@ export function AppLayout() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const [reportNotification, setReportNotification] = useState<{
+    reportId: string;
+    schoolId: string;
+    newStatus: string;
+  } | null>(null);
+  const reportToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    // Connect to the same origin — Vite proxies /socket.io → :3001 in dev,
+    // and in production the API server serves both HTTP and WS on the same origin.
+    const socket: Socket = io(window.location.origin, { withCredentials: true });
+
+    // Join on every (re)connect so the room survives network drops.
+    const userId = user.id;
+    socket.on("connect", () => socket.emit("join", `user:${userId}`));
+
+    socket.on(
+      "report:status_changed",
+      (payload: { reportId: string; schoolId: string; newStatus: string; reportedBy: string }) => {
+        setReportNotification({
+          reportId: payload.reportId,
+          schoolId: payload.schoolId,
+          newStatus: payload.newStatus,
+        });
+        if (reportToastTimerRef.current) clearTimeout(reportToastTimerRef.current);
+        reportToastTimerRef.current = setTimeout(() => setReportNotification(null), 5000);
+      },
+    );
+
+    return () => {
+      if (reportToastTimerRef.current) clearTimeout(reportToastTimerRef.current);
+      socket.emit("leave", `user:${userId}`);
+      socket.disconnect();
+    };
+  }, [user?.id]);
 
   const allNavItems = [
     {
@@ -615,6 +657,48 @@ export function AppLayout() {
           </motion.div>
         </main>
       </div>
+
+      {/* ── Report status-change toast ──────────────────── */}
+      <AnimatePresence>
+        {reportNotification && (
+          <motion.div
+            key="report-notif"
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            transition={{ duration: 0.22 }}
+            className="fixed bottom-6 right-6 z-200 flex items-start gap-3 max-w-sm w-full px-5 py-4 rounded-2xl shadow-xl pointer-events-none"
+            style={{
+              background:
+                reportNotification.newStatus === "SOLVED"
+                  ? "rgba(5,150,105,0.95)"
+                  : reportNotification.newStatus === "NEED_INTERVENTION"
+                    ? "rgba(220,38,38,0.95)"
+                    : "rgba(30,41,59,0.95)",
+              backdropFilter: "blur(12px)",
+            }}
+          >
+            <div className="shrink-0 mt-0.5">
+              {reportNotification.newStatus === "SOLVED" ? (
+                <CheckCircle2 className="w-5 h-5 text-white" />
+              ) : reportNotification.newStatus === "NEED_INTERVENTION" ? (
+                <AlertTriangle className="w-5 h-5 text-white" />
+              ) : (
+                <Info className="w-5 h-5 text-white" />
+              )}
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white leading-none mb-1">
+                Report status updated
+              </p>
+              <p className="text-xs text-white/80 leading-snug">
+                Your report was marked{" "}
+                <span className="font-semibold">{reportNotification.newStatus.replace(/_/g, " ")}</span>.
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

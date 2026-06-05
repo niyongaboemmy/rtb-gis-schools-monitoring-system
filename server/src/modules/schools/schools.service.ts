@@ -2,10 +2,12 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Repository, ILike, DeepPartial } from 'typeorm';
-import { School, PriorityLevel } from './entities/school.entity';
+import { School, PriorityLevel, SchoolStatus } from './entities/school.entity';
 import {
   SchoolBuilding,
   BuildingCondition,
@@ -20,9 +22,12 @@ import {
   ComplianceLevel,
 } from './entities/school-facility-survey.entity';
 import { StorageService } from '../storage/storage.service';
+import { AuditService, AuditActor } from '../audit/audit.service';
 
 @Injectable()
 export class SchoolsService {
+  private readonly logger = new Logger(SchoolsService.name);
+
   constructor(
     @InjectRepository(School)
     private readonly schoolRepository: Repository<School>,
@@ -33,6 +38,8 @@ export class SchoolsService {
     @InjectRepository(SchoolFacilitySurvey)
     private readonly surveyRepository: Repository<SchoolFacilitySurvey>,
     private readonly storageService: StorageService,
+    private readonly eventEmitter: EventEmitter2,
+    private readonly auditService: AuditService,
   ) {}
 
   async create(createSchoolDto: CreateSchoolDto): Promise<School> {
@@ -52,8 +59,8 @@ export class SchoolsService {
 
     // Create buildings if provided
     if (buildings && buildings.length > 0) {
-      console.log('Creating buildings for school:', savedSchool.id);
-      console.log('Buildings data:', buildings);
+      this.logger.debug(`Creating buildings for school: ${savedSchool.id}`);
+      this.logger.debug(`Buildings data: ${JSON.stringify(buildings)}`);
       const schoolBuildings = buildings.map((building) => {
           const {
             area,
@@ -78,13 +85,13 @@ export class SchoolsService {
             annotations: annotations || [],
             media: media || [],
           } as DeepPartial<SchoolBuilding>);
-        console.log('Created building:', created);
+        this.logger.debug(`Created building: ${created.buildingCode ?? created.id}`);
         return created;
       });
       const saved = await this.schoolBuildingRepository.save(schoolBuildings);
-      console.log('Saved buildings:', saved);
+      this.logger.debug(`Saved ${saved.length} building(s) for school ${savedSchool.id}`);
     } else {
-      console.log('No buildings to create. Buildings array:', buildings);
+      this.logger.debug(`No buildings to create for school ${savedSchool.id}`);
     }
 
     return this.findOne(savedSchool.id);
@@ -96,6 +103,7 @@ export class SchoolsService {
     district?: string;
     priority?: PriorityLevel;
     type?: string;
+    status?: SchoolStatus;
     page?: number;
     limit?: number;
   }): Promise<{ data: School[]; total: number; page: number; limit: number }> {
@@ -105,30 +113,24 @@ export class SchoolsService {
       district,
       priority,
       type,
+      status,
       page = 1,
       limit = 20,
     } = query || {};
-
-    const where: any = {};
-    if (province) where.province = province;
-    if (district) where.district = district;
-    if (priority) where.priorityLevel = priority;
-    if (type) where.type = type;
 
     const qb = this.schoolRepository.createQueryBuilder('school');
 
     if (search) {
       qb.where(
         'school.name ILIKE :search OR school.code ILIKE :search OR school.district ILIKE :search',
-        {
-          search: `%${search}%`,
-        },
+        { search: `%${search}%` },
       );
     }
     if (province) qb.andWhere('school.province = :province', { province });
     if (district) qb.andWhere('school.district = :district', { district });
     if (priority) qb.andWhere('school.priorityLevel = :priority', { priority });
     if (type) qb.andWhere('school.type = :type', { type });
+    if (status) qb.andWhere('school.status = :status', { status });
 
     qb.skip((page - 1) * limit).take(limit);
     qb.orderBy('school.overallScore', 'DESC').addOrderBy('school.name', 'ASC');
@@ -193,14 +195,14 @@ export class SchoolsService {
 
     // Update buildings if provided
     if (buildings !== undefined) {
-      console.log('UPDATE - Processing buildings for school:', id);
-      console.log('UPDATE - Buildings data:', buildings);
+      this.logger.debug(`UPDATE - Processing buildings for school: ${id}`);
+      this.logger.debug(`UPDATE - Buildings data: ${JSON.stringify(buildings)}`);
       // Delete existing buildings
       await this.schoolBuildingRepository.delete({ schoolId: id });
 
       // Create new buildings if provided
       if (buildings.length > 0) {
-        console.log('UPDATE - Creating new buildings...');
+        this.logger.debug('UPDATE - Creating new buildings...');
         const schoolBuildings = buildings.map((building) => {
           const {
             area,
@@ -227,26 +229,30 @@ export class SchoolsService {
             annotations: annotations || [],
             media: media || [],
           } as DeepPartial<SchoolBuilding>);
-          console.log('UPDATE - Created building:', created);
+          this.logger.debug(`UPDATE - Created building: ${created.buildingCode ?? created.id}`);
           return created;
         });
         const saved = await this.schoolBuildingRepository.save(schoolBuildings);
-        console.log('UPDATE - Saved buildings:', saved);
+        this.logger.debug(`UPDATE - Saved ${saved.length} building(s) for school ${id}`);
       } else {
-        console.log('UPDATE - No buildings to create after deletion');
+        this.logger.debug(`UPDATE - No buildings to create after deletion for school ${id}`);
       }
     } else {
-      console.log('UPDATE - Buildings property not provided');
+      this.logger.debug(`UPDATE - Buildings property not provided for school ${id}`);
     }
 
     return this.findOne(id);
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(id: string, actor?: AuditActor): Promise<void> {
     const school = await this.findOne(id);
     // Delete all spatial assets stored for this school (KMZ, tiles, places overlay, thumbnail)
     await this.storageService.deleteDirectory(`schools/${id}`);
     await this.schoolRepository.remove(school);
+    this.auditService.log(actor ?? null, 'school.delete', 'school', id, {
+      name: school.name,
+      code: school.code,
+    });
   }
 
   async getGeoJson(): Promise<object> {
@@ -333,10 +339,7 @@ export class SchoolsService {
       ...buildingData
     } = dto;
 
-    console.log(
-      '[addBuilding] Received annotations:',
-      JSON.stringify(annotations),
-    );
+    this.logger.debug(`[addBuilding] Received annotations: ${JSON.stringify(annotations)}`);
 
     const created = this.schoolBuildingRepository.create({
       ...buildingData,
@@ -363,8 +366,8 @@ export class SchoolsService {
     id: string,
     dto: BuildingDto,
   ): Promise<SchoolBuilding> {
-    console.log('[SchoolsService] updateBuilding ID:', id);
-    console.log('[SchoolsService] updateBuilding DTO:', JSON.stringify(dto, null, 2));
+    this.logger.debug(`[updateBuilding] ID: ${id}`);
+    this.logger.debug(`[updateBuilding] DTO: ${JSON.stringify(dto)}`);
     
     const building = await this.schoolBuildingRepository.findOne({ where: { id } });
     if (!building) throw new NotFoundException(`Building with ID "${id}" not found`);
@@ -403,7 +406,9 @@ export class SchoolsService {
     };
 
     Object.assign(building, updateData);
-    return this.schoolBuildingRepository.save(building);
+    const saved = await this.schoolBuildingRepository.save(building);
+    this.eventEmitter.emit('school.updated', { schoolId: saved.schoolId });
+    return saved;
   }
 
   async removeBuilding(id: string): Promise<void> {
@@ -492,7 +497,7 @@ export class SchoolsService {
     }[],
   ): Promise<SchoolFacilitySurvey[]> {
     for (const update of updates) {
-      const survey = await this.surveyRepository.findOne({
+      let survey = await this.surveyRepository.findOne({
         where: {
           schoolId,
           facilityId: update.facilityId,
@@ -500,16 +505,27 @@ export class SchoolsService {
         },
       });
 
-      if (survey) {
+      if (!survey) {
+        survey = this.surveyRepository.create({
+          schoolId,
+          facilityId: update.facilityId,
+          itemId: update.itemId,
+          compliance: update.compliance,
+          notes: update.notes,
+        });
+      } else {
         survey.compliance = update.compliance;
-        if (update.notes) {
+        if (update.notes !== undefined) {
           survey.notes = update.notes;
         }
-        await this.surveyRepository.save(survey);
       }
+
+      await this.surveyRepository.save(survey);
     }
 
-    return this.surveyRepository.find({ where: { schoolId } });
+    const result = await this.surveyRepository.find({ where: { schoolId } });
+    this.eventEmitter.emit('school.updated', { schoolId });
+    return result;
   }
 
   async addSiteAnnotation(schoolId: string, annotation: any): Promise<any> {

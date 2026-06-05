@@ -40,7 +40,7 @@ export class DashboardService {
   async mainPayload(schoolId: string): Promise<MainDashboardDto> {
     const school = await this.schoolRepository.findOne({
       where: { id: schoolId },
-      relations: ['buildings', 'educationPrograms', 'populationData'],
+      relations: ['buildings', 'populationData'],
     });
     if (!school) {
       throw new NotFoundException(`School with id "${schoolId}" not found`);
@@ -51,10 +51,10 @@ export class DashboardService {
 
     // Infrastructure health: map physical condition to numeric score and average
     const conditionMap: Record<string, number> = {
-      [BuildingCondition.CRITICAL]: 90,
-      [BuildingCondition.POOR]: 70,
-      [BuildingCondition.FAIR]: 40,
-      [BuildingCondition.GOOD]: 15,
+      [BuildingCondition.GOOD]: 100,
+      [BuildingCondition.FAIR]: 70,
+      [BuildingCondition.POOR]: 40,
+      [BuildingCondition.CRITICAL]: 10,
     };
     const healthSum = buildings.reduce(
       (acc, b) => acc + (conditionMap[b.condition as string] ?? 0),
@@ -298,10 +298,10 @@ export class DashboardService {
           }
 
           try {
-            const cr = new Date(r.createdAt).getTime();
-            const up = new Date(r.updatedAt).getTime();
-            if (cr && up) {
-              computedAvgResolutionTime += (up - cr) / (1000 * 60 * 60 * 24);
+            if (r.resolvedAt) {
+              const cr = new Date(r.createdAt).getTime();
+              const re = new Date(r.resolvedAt).getTime();
+              computedAvgResolutionTime += (re - cr) / (1000 * 60 * 60 * 24);
             }
           } catch {
             // ignore
@@ -316,9 +316,9 @@ export class DashboardService {
             }
           });
         });
-        if (reportsList.length > 0)
-          computedAvgResolutionTime =
-            computedAvgResolutionTime / reportsList.length;
+        const resolvedCount = reportsList.filter((r: any) => r.resolvedAt).length;
+        if (resolvedCount > 0)
+          computedAvgResolutionTime = computedAvgResolutionTime / resolvedCount;
       }
     } catch {
       // ignore

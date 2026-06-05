@@ -6,12 +6,14 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Role } from './entities/role.entity';
+import { AuditService, AuditActor } from '../audit/audit.service';
 
 @Injectable()
 export class RolesService {
   constructor(
     @InjectRepository(Role)
     private roleRepository: Repository<Role>,
+    private readonly auditService: AuditService,
   ) {}
 
   findAll() {
@@ -51,7 +53,7 @@ export class RolesService {
     return this.findOne(role.id);
   }
 
-  async update(id: string, dto: any) {
+  async update(id: string, dto: any, actor?: AuditActor) {
     const role = await this.findOne(id);
 
     const { accessLevelId, ...rest } = dto;
@@ -63,6 +65,11 @@ export class RolesService {
 
     Object.assign(role, rest);
     await this.roleRepository.save(role);
+
+    this.auditService.log(actor ?? null, 'role.update', 'role', id, {
+      name: role.name,
+      changes: rest,
+    });
 
     // Re-fetch to get fully hydrated accessLevel object
     return this.findOne(id);

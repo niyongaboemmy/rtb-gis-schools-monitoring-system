@@ -11,6 +11,7 @@ import {
   Delete,
   Body,
   Patch,
+  HttpCode,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -30,10 +31,11 @@ export class KmzController {
   constructor(private readonly kmzService: KmzService) {}
 
   @Post()
+  @HttpCode(202)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Upload KMZ file and trigger background processing',
+    summary: 'Upload 3D GLB model for school (accepted for async processing)',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -43,18 +45,19 @@ export class KmzController {
     },
   })
   @UseInterceptors(FileInterceptor('file'))
-  uploadKmz(
+  uploadGlbModel(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
-    return this.kmzService.uploadKmz(schoolId, file);
+    return this.kmzService.uploadGlbModel(schoolId, file);
   }
 
   @Post('2d')
+  @HttpCode(202)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Upload 2D KMZ/KML file for the OpenLayers viewer (no 3D model extraction)',
+    summary: 'Upload 2D KMZ/KML file (accepted for async processing)',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -98,6 +101,14 @@ export class KmzController {
   @ApiOperation({ summary: 'Get pre-computed 2D KMZ manifest for a school' })
   getKmz2dManifest(@Param('schoolId', ParseUUIDPipe) schoolId: string) {
     return this.kmzService.getKmz2dManifest(schoolId);
+  }
+
+  @Get('status')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Poll KMZ/GLB processing status for a school' })
+  getKmzStatus(@Param('schoolId', ParseUUIDPipe) schoolId: string) {
+    return this.kmzService.getKmzStatus(schoolId);
   }
 
   @Get('content')
