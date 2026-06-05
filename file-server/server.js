@@ -35,8 +35,10 @@ const schoolsDir = path.join(STORAGE_DIR, 'schools');
 });
 
 // ── CORS ──────────────────────────────────────────────────────────────────
+// Allow all origins — this is a public asset server with no authentication.
+// CORS_ORIGINS env var is kept for reference but not enforced here.
 app.use(cors({
-  origin: CORS_ORIGINS,
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'HEAD', 'OPTIONS'],
 }));
 
