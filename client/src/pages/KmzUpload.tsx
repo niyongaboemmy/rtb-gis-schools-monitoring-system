@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { PageHeader } from "../components/ui/page-header";
-import { useAuthStore } from "../store/authStore";
 import { cn } from "../lib/utils";
 import { api } from "../lib/api";
 
@@ -95,9 +94,6 @@ export default function KmzUpload() {
     setMessage("Uploading file to storage...");
     setUploadProgress(0);
 
-    const apiBaseUrl = import.meta.env.VITE_API_URL || "/api/v1";
-    const token = useAuthStore.getState().token;
-
     try {
       // Step 1 — Upload directly to file server (bypasses Vercel 4.5 MB body limit)
       // Both 2D KMZ and 3D GLB stage in the file-server's `kmz` folder; the
@@ -139,26 +135,21 @@ export default function KmzUpload() {
       setUploadProgress(85);
       setMessage("Processing geospatial data...");
 
-      // Step 2 — Tell backend to process from the URL (tiny JSON body, no size limit)
-      const backendEndpoint =
+      // Step 2 — tell the backend to process from the URL (tiny JSON body).
+      // Goes through the `api` instance on purpose: it reads the JWT fresh at
+      // request time and auto-refreshes + retries on 401 — a multi-GB step-1
+      // upload routinely outlasts the 15-minute access token.
+      const backendPath =
         uploadMode === "2d"
-          ? `${apiBaseUrl}/schools/${id}/kmz/2d/from-url`
-          : `${apiBaseUrl}/schools/${id}/kmz/from-url`;
+          ? `/schools/${id}/kmz/2d/from-url`
+          : `/schools/${id}/kmz/from-url`;
 
-      const response = await fetch(backendEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ fileUrl, fileName: file.name }),
-      });
-
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
+      try {
+        await api.post(backendPath, { fileUrl, fileName: file.name });
+      } catch (e: any) {
         throw new Error(
-          err.message || `Backend processing failed (${response.status})`,
+          e?.response?.data?.message ||
+            `Backend processing failed (${e?.response?.status ?? "network"})`,
         );
       }
 
