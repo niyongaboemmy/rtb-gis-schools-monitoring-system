@@ -21,6 +21,12 @@ import { StorageService } from '../storage/storage.service';
 import { KMZ_QUEUE } from './kmz.constants';
 import type { GlbJobData, Kmz2dJobData } from './kmz.processor';
 import { optimizeGlbFile, ensureGlbTools } from './glb-optimizer';
+import {
+  pickKmlCoordinate,
+  deriveCoordinateFromGlb,
+  isPlausibleLatLng,
+  type DerivedCoordinate,
+} from './geo-derive';
 import { Readable } from 'stream';
 import unzipper from 'unzipper';
 import * as path from 'path';
@@ -129,6 +135,13 @@ export class KmzService {
         ),
       );
 
+      // 3. If the GLB is georeferenced (CESIUM_RTC / ECEF root node), sync the
+      //    school's coordinates to it.
+      await this.syncSchoolCoordinate(
+        schoolId,
+        deriveCoordinateFromGlb(fileBuffer),
+      ).catch(() => {});
+
       await this.buildingRepository.delete({ schoolId });
       const building = this.buildingRepository.create({
         schoolId,
@@ -224,6 +237,40 @@ export class KmzService {
         /* ignore */
       }
     }
+  }
+
+  /**
+   * Overwrite a school's latitude/longitude with a coordinate derived from an
+   * uploaded KMZ/GLB. No-op when the coordinate is missing or implausible.
+   */
+  private async syncSchoolCoordinate(
+    schoolId: string,
+    coord: DerivedCoordinate | null,
+  ): Promise<void> {
+    if (!coord || !isPlausibleLatLng(coord.lat, coord.lng)) return;
+    const lat = Number(coord.lat.toFixed(7));
+    const lng = Number(coord.lng.toFixed(7));
+
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+      select: ['id', 'latitude', 'longitude'],
+    });
+    if (
+      school &&
+      Number(school.latitude) === lat &&
+      Number(school.longitude) === lng
+    ) {
+      return;
+    }
+
+    await this.schoolRepository.update(schoolId, {
+      latitude: lat,
+      longitude: lng,
+    });
+    this.logger.log(
+      `School ${schoolId} coordinates set from upload (${coord.source}): ` +
+        `${school?.latitude ?? '?'},${school?.longitude ?? '?'} -> ${lat},${lng}`,
+    );
   }
 
   async processGeospatialBuffer(
@@ -1584,6 +1631,13 @@ export class KmzService {
         kmzProcessedAt: new Date(),
       });
 
+      // Sync the school's coordinates to whatever the KMZ says (authored view,
+      // ground-overlay bounds, or placemark centroid).
+      await this.syncSchoolCoordinate(
+        schoolId,
+        manifest?.derivedCenter ?? null,
+      ).catch(() => {});
+
       this.logger.log(`2D KMZ processing completed for school ${schoolId}`);
     } catch (err: any) {
       this.logger.error(
@@ -1632,10 +1686,12 @@ export class KmzService {
     kmlUrls: string[];
     groundOverlays: any[];
     initialView: any | null;
+    derivedCenter: DerivedCoordinate | null;
   }> {
     const kmlUrls: string[] = [];
     const groundOverlays: any[] = [];
     let initialView: any = null;
+    const points: Array<[number, number]> = []; // [lng, lat] from placemark geometry
 
     if (fileName.toLowerCase().endsWith('.kml')) {
       // Bare KML file — just store it, no extraction needed
@@ -1655,10 +1711,16 @@ export class KmzService {
         .parseStringPromise(fileBuffer.toString('utf-8'))
         .catch(() => null);
       if (parsed) {
-        const { views } = this.extractKmlFeatures(parsed);
+        const { views, placemarks } = this.extractKmlFeatures(parsed);
         if (views.length > 0) initialView = this.parseKmlView(views[0]);
+        points.push(...this.collectPlacemarkPoints(placemarks));
       }
-      return { kmlUrls, groundOverlays, initialView };
+      return {
+        kmlUrls,
+        groundOverlays,
+        initialView,
+        derivedCenter: pickKmlCoordinate({ initialView, groundOverlays, points }),
+      };
     }
 
     // ── KMZ (zip) extraction ───────────────────────────────────────────────
@@ -1824,7 +1886,8 @@ export class KmzService {
       const parsed = await parser.parseStringPromise(content).catch(() => null);
       if (!parsed) continue;
 
-      const { overlays, views } = this.extractKmlFeatures(parsed);
+      const { overlays, views, placemarks } = this.extractKmlFeatures(parsed);
+      points.push(...this.collectPlacemarkPoints(placemarks));
 
       for (const ov of overlays) {
         const icon = ov.Icon;
@@ -1884,7 +1947,38 @@ export class KmzService {
     // Sort overlays so higher draw-order layers go on top
     uniqueOverlays.sort((a, b) => a.drawOrder - b.drawOrder);
 
-    return { kmlUrls, groundOverlays: uniqueOverlays, initialView };
+    return {
+      kmlUrls,
+      groundOverlays: uniqueOverlays,
+      initialView,
+      derivedCenter: pickKmlCoordinate({
+        initialView,
+        groundOverlays: uniqueOverlays,
+        points,
+      }),
+    };
+  }
+
+  /** Pull representative [lng, lat] pairs out of parsed KML placemarks. */
+  private collectPlacemarkPoints(placemarks: any[]): Array<[number, number]> {
+    const out: Array<[number, number]> = [];
+    for (const pm of placemarks || []) {
+      const geoms = [
+        pm?.Point?.coordinates,
+        pm?.Polygon?.outerBoundaryIs?.LinearRing?.coordinates,
+        pm?.LineString?.coordinates,
+        pm?.MultiGeometry?.Point?.coordinates,
+      ];
+      for (const raw of geoms) {
+        const coords = this.parseKmlCoordinates(raw);
+        if (coords && coords.length) {
+          const [lng, lat] = coords[0];
+          if (Number.isFinite(lng) && Number.isFinite(lat)) out.push([lng, lat]);
+          break;
+        }
+      }
+    }
+    return out;
   }
 
   async removeOverlay(schoolId: string, index: number) {
