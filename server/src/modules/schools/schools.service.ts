@@ -23,6 +23,11 @@ import {
 } from './entities/school-facility-survey.entity';
 import { StorageService } from '../storage/storage.service';
 import { AuditService, AuditActor } from '../audit/audit.service';
+import {
+  AccessScope,
+  applySchoolScope,
+  schoolMatchesScope,
+} from '../../common/scope/access-scope';
 
 @Injectable()
 export class SchoolsService {
@@ -62,34 +67,38 @@ export class SchoolsService {
       this.logger.debug(`Creating buildings for school: ${savedSchool.id}`);
       this.logger.debug(`Buildings data: ${JSON.stringify(buildings)}`);
       const schoolBuildings = buildings.map((building) => {
-          const {
-            area,
-            condition,
-            roofCondition,
-            code,
-            latitude,
-            longitude,
-            annotations,
-            media,
-            ...buildingData
-          } = building;
-          const created = this.schoolBuildingRepository.create({
-            ...buildingData,
-            schoolId: savedSchool.id,
-            buildingCode: code,
-            areaSquareMeters: area,
-            condition: (condition as BuildingCondition) || BuildingCondition.FAIR,
-            roofCondition: (roofCondition as RoofCondition) || RoofCondition.GOOD,
-            centroidLat: latitude ?? null,
-            centroidLng: longitude ?? null,
-            annotations: annotations || [],
-            media: media || [],
-          } as DeepPartial<SchoolBuilding>);
-        this.logger.debug(`Created building: ${created.buildingCode ?? created.id}`);
+        const {
+          area,
+          condition,
+          roofCondition,
+          code,
+          latitude,
+          longitude,
+          annotations,
+          media,
+          ...buildingData
+        } = building;
+        const created = this.schoolBuildingRepository.create({
+          ...buildingData,
+          schoolId: savedSchool.id,
+          buildingCode: code,
+          areaSquareMeters: area,
+          condition: (condition as BuildingCondition) || BuildingCondition.FAIR,
+          roofCondition: (roofCondition as RoofCondition) || RoofCondition.GOOD,
+          centroidLat: latitude ?? null,
+          centroidLng: longitude ?? null,
+          annotations: annotations || [],
+          media: media || [],
+        } as DeepPartial<SchoolBuilding>);
+        this.logger.debug(
+          `Created building: ${created.buildingCode ?? created.id}`,
+        );
         return created;
       });
       const saved = await this.schoolBuildingRepository.save(schoolBuildings);
-      this.logger.debug(`Saved ${saved.length} building(s) for school ${savedSchool.id}`);
+      this.logger.debug(
+        `Saved ${saved.length} building(s) for school ${savedSchool.id}`,
+      );
     } else {
       this.logger.debug(`No buildings to create for school ${savedSchool.id}`);
     }
@@ -97,16 +106,19 @@ export class SchoolsService {
     return this.findOne(savedSchool.id);
   }
 
-  async findAll(query?: {
-    search?: string;
-    province?: string;
-    district?: string;
-    priority?: PriorityLevel;
-    type?: string;
-    status?: SchoolStatus;
-    page?: number;
-    limit?: number;
-  }): Promise<{ data: School[]; total: number; page: number; limit: number }> {
+  async findAll(
+    query?: {
+      search?: string;
+      province?: string;
+      district?: string;
+      priority?: PriorityLevel;
+      type?: string;
+      status?: SchoolStatus;
+      page?: number;
+      limit?: number;
+    },
+    scope?: AccessScope,
+  ): Promise<{ data: School[]; total: number; page: number; limit: number }> {
     const {
       search,
       province,
@@ -131,6 +143,8 @@ export class SchoolsService {
     if (priority) qb.andWhere('school.priorityLevel = :priority', { priority });
     if (type) qb.andWhere('school.type = :type', { type });
     if (status) qb.andWhere('school.status = :status', { status });
+
+    if (scope) applySchoolScope(qb, scope, 'school');
 
     qb.skip((page - 1) * limit).take(limit);
     qb.orderBy('school.overallScore', 'DESC').addOrderBy('school.name', 'ASC');
@@ -196,7 +210,9 @@ export class SchoolsService {
     // Update buildings if provided
     if (buildings !== undefined) {
       this.logger.debug(`UPDATE - Processing buildings for school: ${id}`);
-      this.logger.debug(`UPDATE - Buildings data: ${JSON.stringify(buildings)}`);
+      this.logger.debug(
+        `UPDATE - Buildings data: ${JSON.stringify(buildings)}`,
+      );
       // Delete existing buildings
       await this.schoolBuildingRepository.delete({ schoolId: id });
 
@@ -229,16 +245,24 @@ export class SchoolsService {
             annotations: annotations || [],
             media: media || [],
           } as DeepPartial<SchoolBuilding>);
-          this.logger.debug(`UPDATE - Created building: ${created.buildingCode ?? created.id}`);
+          this.logger.debug(
+            `UPDATE - Created building: ${created.buildingCode ?? created.id}`,
+          );
           return created;
         });
         const saved = await this.schoolBuildingRepository.save(schoolBuildings);
-        this.logger.debug(`UPDATE - Saved ${saved.length} building(s) for school ${id}`);
+        this.logger.debug(
+          `UPDATE - Saved ${saved.length} building(s) for school ${id}`,
+        );
       } else {
-        this.logger.debug(`UPDATE - No buildings to create after deletion for school ${id}`);
+        this.logger.debug(
+          `UPDATE - No buildings to create after deletion for school ${id}`,
+        );
       }
     } else {
-      this.logger.debug(`UPDATE - Buildings property not provided for school ${id}`);
+      this.logger.debug(
+        `UPDATE - Buildings property not provided for school ${id}`,
+      );
     }
 
     return this.findOne(id);
@@ -255,8 +279,11 @@ export class SchoolsService {
     });
   }
 
-  async getGeoJson(): Promise<object> {
-    const schools = await this.schoolRepository.find();
+  async getGeoJson(scope?: AccessScope): Promise<object> {
+    const all = await this.schoolRepository.find();
+    const schools = scope
+      ? all.filter((s) => schoolMatchesScope(s, scope))
+      : all;
     return {
       type: 'FeatureCollection',
       features: schools.map((school) => ({
@@ -295,25 +322,28 @@ export class SchoolsService {
     };
   }
 
-  async getStats(): Promise<object> {
-    const total = await this.schoolRepository.count();
-    const byPriority = await this.schoolRepository
-      .createQueryBuilder('school')
+  async getStats(scope?: AccessScope): Promise<object> {
+    const scoped = () => {
+      const qb = this.schoolRepository.createQueryBuilder('school');
+      if (scope) applySchoolScope(qb, scope, 'school');
+      return qb;
+    };
+
+    const total = await scoped().getCount();
+    const byPriority = await scoped()
       .select('school.priorityLevel', 'priority')
       .addSelect('COUNT(*)', 'count')
       .groupBy('school.priorityLevel')
       .getRawMany();
 
-    const byProvince = await this.schoolRepository
-      .createQueryBuilder('school')
+    const byProvince = await scoped()
       .select('school.province', 'province')
       .addSelect('COUNT(*)', 'count')
       .groupBy('school.province')
       .orderBy('count', 'DESC')
       .getRawMany();
 
-    const byType = await this.schoolRepository
-      .createQueryBuilder('school')
+    const byType = await scoped()
       .select('school.type', 'type')
       .addSelect('COUNT(*)', 'count')
       .groupBy('school.type')
@@ -339,7 +369,9 @@ export class SchoolsService {
       ...buildingData
     } = dto;
 
-    this.logger.debug(`[addBuilding] Received annotations: ${JSON.stringify(annotations)}`);
+    this.logger.debug(
+      `[addBuilding] Received annotations: ${JSON.stringify(annotations)}`,
+    );
 
     const created = this.schoolBuildingRepository.create({
       ...buildingData,
@@ -362,15 +394,15 @@ export class SchoolsService {
     return this.schoolBuildingRepository.save(created);
   }
 
-  async updateBuilding(
-    id: string,
-    dto: BuildingDto,
-  ): Promise<SchoolBuilding> {
+  async updateBuilding(id: string, dto: BuildingDto): Promise<SchoolBuilding> {
     this.logger.debug(`[updateBuilding] ID: ${id}`);
     this.logger.debug(`[updateBuilding] DTO: ${JSON.stringify(dto)}`);
-    
-    const building = await this.schoolBuildingRepository.findOne({ where: { id } });
-    if (!building) throw new NotFoundException(`Building with ID "${id}" not found`);
+
+    const building = await this.schoolBuildingRepository.findOne({
+      where: { id },
+    });
+    if (!building)
+      throw new NotFoundException(`Building with ID "${id}" not found`);
 
     const {
       area,
@@ -393,16 +425,18 @@ export class SchoolsService {
       centroidLat: latitude !== undefined ? latitude : building.centroidLat,
       centroidLng: longitude !== undefined ? longitude : building.centroidLng,
       // Safety net: filter out any remaining nulls/nested arrays from the DTO transform
-      annotations: annotations !== undefined
-        ? (annotations || []).filter(
-            (a: any) => a && typeof a === 'object' && !Array.isArray(a),
-          )
-        : building.annotations,
-      media: media !== undefined
-        ? (media || []).filter(
-            (m: any) => m && typeof m === 'object' && !Array.isArray(m),
-          )
-        : building.media,
+      annotations:
+        annotations !== undefined
+          ? (annotations || []).filter(
+              (a: any) => a && typeof a === 'object' && !Array.isArray(a),
+            )
+          : building.annotations,
+      media:
+        media !== undefined
+          ? (media || []).filter(
+              (m: any) => m && typeof m === 'object' && !Array.isArray(m),
+            )
+          : building.media,
     };
 
     Object.assign(building, updateData);
@@ -412,8 +446,11 @@ export class SchoolsService {
   }
 
   async removeBuilding(id: string): Promise<void> {
-    const building = await this.schoolBuildingRepository.findOne({ where: { id } });
-    if (!building) throw new NotFoundException(`Building with ID "${id}" not found`);
+    const building = await this.schoolBuildingRepository.findOne({
+      where: { id },
+    });
+    if (!building)
+      throw new NotFoundException(`Building with ID "${id}" not found`);
     await this.schoolBuildingRepository.remove(building);
   }
 
@@ -529,13 +566,18 @@ export class SchoolsService {
   }
 
   async addSiteAnnotation(schoolId: string, annotation: any): Promise<any> {
-    const school = await this.schoolRepository.findOne({ where: { id: schoolId } });
-    if (!school) throw new NotFoundException(`School with ID "${schoolId}" not found`);
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+    });
+    if (!school)
+      throw new NotFoundException(`School with ID "${schoolId}" not found`);
 
     if (!school.siteAnnotations) school.siteAnnotations = [];
-    
+
     // Check if annotation already exists (for updates)
-    const existingIdx = school.siteAnnotations.findIndex(a => a.id === annotation.id);
+    const existingIdx = school.siteAnnotations.findIndex(
+      (a) => a.id === annotation.id,
+    );
     if (existingIdx !== -1) {
       school.siteAnnotations[existingIdx] = annotation;
     } else {
@@ -547,11 +589,16 @@ export class SchoolsService {
   }
 
   async removeSiteAnnotation(schoolId: string, annId: string): Promise<void> {
-    const school = await this.schoolRepository.findOne({ where: { id: schoolId } });
-    if (!school) throw new NotFoundException(`School with ID "${schoolId}" not found`);
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+    });
+    if (!school)
+      throw new NotFoundException(`School with ID "${schoolId}" not found`);
 
     if (school.siteAnnotations) {
-      school.siteAnnotations = school.siteAnnotations.filter(a => a.id !== annId);
+      school.siteAnnotations = school.siteAnnotations.filter(
+        (a) => a.id !== annId,
+      );
       await this.schoolRepository.save(school);
     }
   }

@@ -30,10 +30,13 @@ import {
   RequireAnyPermission,
 } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/constants/permissions.constant';
+import { ScopeGuard } from '../../common/scope/scope.guard';
+import { ScopedResource } from '../../common/scope/scope.decorator';
 
 @ApiTags('kmz')
 @Controller('schools/:schoolId/kmz')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, ScopeGuard)
+@ScopedResource('schoolId', 'params')
 @ApiBearerAuth()
 @RequireAnyPermission(
   Permission.VIEW_SCHOOLS,
@@ -74,12 +77,21 @@ export class KmzController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Process 2D KMZ/KML from a pre-uploaded file URL' })
-  @ApiBody({ schema: { type: 'object', properties: { fileUrl: { type: 'string' }, fileName: { type: 'string' } } } })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { fileUrl: { type: 'string' }, fileName: { type: 'string' } },
+    },
+  })
   uploadKmz2dFromUrl(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @Body() body: { fileUrl: string; fileName: string },
   ) {
-    return this.kmzService.uploadKmz2dFromUrl(schoolId, body.fileUrl, body.fileName);
+    return this.kmzService.uploadKmz2dFromUrl(
+      schoolId,
+      body.fileUrl,
+      body.fileName,
+    );
   }
 
   @Post('from-url')
@@ -87,13 +99,24 @@ export class KmzController {
   @HttpCode(202)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Process GLB 3D model from a pre-uploaded file URL' })
-  @ApiBody({ schema: { type: 'object', properties: { fileUrl: { type: 'string' }, fileName: { type: 'string' } } } })
+  @ApiOperation({
+    summary: 'Process GLB 3D model from a pre-uploaded file URL',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { fileUrl: { type: 'string' }, fileName: { type: 'string' } },
+    },
+  })
   uploadGlbFromUrl(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @Body() body: { fileUrl: string; fileName: string },
   ) {
-    return this.kmzService.uploadGlbFromUrl(schoolId, body.fileUrl, body.fileName);
+    return this.kmzService.uploadGlbFromUrl(
+      schoolId,
+      body.fileUrl,
+      body.fileName,
+    );
   }
 
   @Post('2d')
@@ -186,7 +209,9 @@ export class KmzController {
   @RequirePermissions(Permission.EDIT_SITE_ANNOTATIONS)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Remove a specific ground overlay from the 2D manifest' })
+  @ApiOperation({
+    summary: 'Remove a specific ground overlay from the 2D manifest',
+  })
   removeOverlay(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @Param('index') index: number,

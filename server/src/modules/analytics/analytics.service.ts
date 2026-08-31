@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThanOrEqual, Repository } from 'typeorm';
@@ -7,7 +12,10 @@ import {
   PriorityLevel,
 } from './entities/decision-assessment.entity';
 import { ScoreHistory } from './entities/score-history.entity';
-import { RecommendationAction, ActionStatus } from './entities/recommendation-action.entity';
+import {
+  RecommendationAction,
+  ActionStatus,
+} from './entities/recommendation-action.entity';
 import { School, KmzProcessingStatus } from '../schools/entities/school.entity';
 import {
   SchoolBuilding,
@@ -16,7 +24,11 @@ import {
 import { PopulationData } from '../population/entities/population-data.entity';
 import { SchoolFacilitySurvey } from '../schools/entities/school-facility-survey.entity';
 import { SchoolMetricsDto, ReportSummaryDto } from './dto/school-metrics.dto';
-import { IssueReport, ReportStatus } from '../reports/entities/issue-report.entity';
+import {
+  IssueReport,
+  ReportStatus,
+} from '../reports/entities/issue-report.entity';
+import { AccessScope, applySchoolScope } from '../../common/scope/access-scope';
 import {
   NEUTRAL_SCORE,
   CONDITION_SCORE_MAP,
@@ -58,7 +70,27 @@ export class AnalyticsService {
     @Optional() private readonly eventsGateway?: EventsGateway,
   ) {}
 
-  async getOverview() {
+  async getOverview(scope?: AccessScope) {
+    // Resolve the caller's in-scope school ids once, then constrain every
+    // aggregate below with a uniform `id IN (...)`. Null → national, no filter.
+    let scopeIds: string[] | null = null;
+    if (scope && scope.enforced && !scope.isNational) {
+      const rows = await applySchoolScope(
+        this.schoolRepository.createQueryBuilder('s').select('s.id', 'id'),
+        scope,
+        's',
+      ).getRawMany();
+      scopeIds = rows.map((r) => String(r.id));
+      // Nil UUID keeps `s.id IN (...)` valid syntax while matching nothing.
+      if (scopeIds.length === 0)
+        scopeIds = ['00000000-0000-0000-0000-000000000000'];
+    }
+    const inScope = <T extends { andWhere: (...a: any[]) => T }>(
+      qb: T,
+      col: string,
+    ): T =>
+      scopeIds ? qb.andWhere(`${col} IN (:...scopeIds)`, { scopeIds }) : qb;
+
     // Run all aggregate queries in parallel — each raw result is parsed immediately
     // after the Promise.all because the pg driver returns numeric columns as strings.
     const [
@@ -77,32 +109,47 @@ export class AnalyticsService {
       capacityRows,
     ] = await Promise.all([
       // 1. total school count
-      this.schoolRepository.count(),
+      scopeIds
+        ? inScope(
+            this.schoolRepository.createQueryBuilder('s'),
+            's.id',
+          ).getCount()
+        : this.schoolRepository.count(),
 
       // 2. counts per priority band
-      this.schoolRepository
-        .createQueryBuilder('s')
-        .select('s.priorityLevel', 'priority')
-        .addSelect('COUNT(*)', 'count')
+      inScope(
+        this.schoolRepository
+          .createQueryBuilder('s')
+          .select('s.priorityLevel', 'priority')
+          .addSelect('COUNT(*)', 'count'),
+        's.id',
+      )
         .groupBy('s.priorityLevel')
         .getRawMany(),
 
       // 3. critical schools spotlight (top 5)
-      this.schoolRepository.find({
-        where: { priorityLevel: PriorityLevel.CRITICAL as any },
-        take: 5,
-        order: { overallScore: 'DESC' },
-      }),
+      inScope(
+        this.schoolRepository
+          .createQueryBuilder('s')
+          .where('s.priorityLevel = :crit', { crit: PriorityLevel.CRITICAL }),
+        's.id',
+      )
+        .orderBy('s.overallScore', 'DESC')
+        .take(5)
+        .getMany(),
 
       // 4. recent assessments feed — join on schoolId varchar (school_id FK is NULL)
-      this.assessmentRepository
-        .createQueryBuilder('da')
-        .leftJoinAndMapOne(
-          'da.school',
-          'School',
-          's',
-          'CAST(s.id AS text) = da.schoolId',
-        )
+      inScope(
+        this.assessmentRepository
+          .createQueryBuilder('da')
+          .leftJoinAndMapOne(
+            'da.school',
+            'School',
+            's',
+            'CAST(s.id AS text) = da.schoolId',
+          ),
+        'da.schoolId',
+      )
         .orderBy('da.createdAt', 'DESC')
         .take(10)
         .getMany(),
@@ -110,10 +157,13 @@ export class AnalyticsService {
       // 5. national score sub-dimension averages — queried directly from
       //    assessmentRepository to avoid the broken dual-FK situation on
       //    decision_assessments (school_id FK is NULL; schoolId varchar has data).
-      this.assessmentRepository
-        .createQueryBuilder('da')
-        .select('ROUND(AVG(da.overallScore)::numeric, 1)', 'nationalAvgScore')
-        .addSelect('COUNT(da.id)', 'scoredCount')
+      inScope(
+        this.assessmentRepository
+          .createQueryBuilder('da')
+          .select('ROUND(AVG(da.overallScore)::numeric, 1)', 'nationalAvgScore')
+          .addSelect('COUNT(da.id)', 'scoredCount'),
+        'da.schoolId',
+      )
         .addSelect(
           'ROUND(AVG(da.infrastructureScore)::numeric, 1)',
           'nationalAvgInfraScore',
@@ -137,56 +187,71 @@ export class AnalyticsService {
         .getRawOne(),
 
       // 6. total enrolled students (school-level roll-up)
-      this.schoolRepository
-        .createQueryBuilder('s')
-        .select('COALESCE(SUM(s.totalStudents), 0)', 'totalStudents')
-        .getRawOne(),
+      inScope(
+        this.schoolRepository
+          .createQueryBuilder('s')
+          .select('COALESCE(SUM(s.totalStudents), 0)', 'totalStudents'),
+        's.id',
+      ).getRawOne(),
 
       // 7. total teaching staff — prefer gender breakdown when populated,
       //    fall back to s.totalTeachers (seed data only populates totalTeachers).
-      this.schoolRepository
-        .createQueryBuilder('s')
-        .select(
+      inScope(
+        this.schoolRepository.createQueryBuilder('s').select(
           `COALESCE(SUM(CASE
             WHEN s.maleTeachers IS NOT NULL OR s.femaleTeachers IS NOT NULL
             THEN COALESCE(s.maleTeachers, 0) + COALESCE(s.femaleTeachers, 0)
             ELSE COALESCE(s.totalTeachers, 0)
           END), 0)`,
           'totalTeachers',
-        )
-        .getRawOne(),
+        ),
+        's.id',
+      ).getRawOne(),
 
       // 8. KMZ coverage — only COMPLETED uploads count as "mapped"
-      this.schoolRepository
-        .createQueryBuilder('s')
-        .select('COUNT(*)', 'withKmz')
-        .where('s.kmzStatus = :status', { status: KmzProcessingStatus.COMPLETED })
-        .getRawOne(),
+      inScope(
+        this.schoolRepository
+          .createQueryBuilder('s')
+          .select('COUNT(*)', 'withKmz')
+          .where('s.kmzStatus = :status', {
+            status: KmzProcessingStatus.COMPLETED,
+          }),
+        's.id',
+      ).getRawOne(),
 
       // 9. survey coverage — distinct schools with ≥1 facility survey record
-      this.surveyRepository
-        .createQueryBuilder('sv')
-        .select('COUNT(DISTINCT sv.schoolId)', 'withSurvey')
-        .getRawOne(),
+      inScope(
+        this.surveyRepository
+          .createQueryBuilder('sv')
+          .select('COUNT(DISTINCT sv.schoolId)', 'withSurvey'),
+        'sv.schoolId',
+      ).getRawOne(),
 
       // 10. total estimated rehabilitation budget
-      this.assessmentRepository
-        .createQueryBuilder('da')
-        .select('COALESCE(SUM(da.estimatedBudgetRwf), 0)', 'totalBudget')
-        .where('da.estimatedBudgetRwf IS NOT NULL')
-        .getRawOne(),
+      inScope(
+        this.assessmentRepository
+          .createQueryBuilder('da')
+          .select('COALESCE(SUM(da.estimatedBudgetRwf), 0)', 'totalBudget')
+          .where('da.estimatedBudgetRwf IS NOT NULL'),
+        'da.schoolId',
+      ).getRawOne(),
 
       // 11. last recalculation timestamp (most recent assessment write)
-      this.assessmentRepository
-        .createQueryBuilder('da')
-        .select('MAX(da.updatedAt)', 'lastCalculatedAt')
-        .getRawOne(),
+      inScope(
+        this.assessmentRepository
+          .createQueryBuilder('da')
+          .select('MAX(da.updatedAt)', 'lastCalculatedAt'),
+        'da.schoolId',
+      ).getRawOne(),
 
       // 12. province stats — all four priority bands + avg/min/max scores
-      this.schoolRepository
-        .createQueryBuilder('s')
-        .select('s.province', 'province')
-        .addSelect('COUNT(*)', 'total')
+      inScope(
+        this.schoolRepository
+          .createQueryBuilder('s')
+          .select('s.province', 'province')
+          .addSelect('COUNT(*)', 'total'),
+        's.id',
+      )
         .addSelect(
           "SUM(CASE WHEN s.priorityLevel = 'critical' THEN 1 ELSE 0 END)",
           'critical',
@@ -212,9 +277,16 @@ export class AnalyticsService {
 
       // 13. capacity-utilisation inputs — program-level roll-up done in JS
       //     (educationPrograms is a jsonb array; SQL aggregation is brittle).
-      this.schoolRepository.find({
-        select: ['id', 'totalStudents', 'educationPrograms'],
-      }),
+      scopeIds
+        ? inScope(
+            this.schoolRepository
+              .createQueryBuilder('s')
+              .select(['s.id', 's.totalStudents', 's.educationPrograms']),
+            's.id',
+          ).getMany()
+        : this.schoolRepository.find({
+            select: ['id', 'totalStudents', 'educationPrograms'],
+          }),
     ]);
 
     // National capacity utilisation = Σ enrolled ÷ Σ programme capacity (0–100+).
@@ -230,7 +302,9 @@ export class AnalyticsService {
         programs.reduce(
           (sum, p) => sum + (parseFloat(String(p.totalStudents)) || 0),
           0,
-        ) || (parseFloat(String(s.totalStudents)) || 0);
+        ) ||
+        parseFloat(String(s.totalStudents)) ||
+        0;
       if (seats > 0) {
         capSeats += seats;
         capStudents += enrolled;
@@ -262,7 +336,7 @@ export class AnalyticsService {
     const totalTeachers =
       parseInt(String(teachersResult?.totalTeachers), 10) || 0;
 
-    const withKmz    = parseInt(String(kmzResult?.withKmz),       10) || 0;
+    const withKmz = parseInt(String(kmzResult?.withKmz), 10) || 0;
     const withSurvey = parseInt(String(surveyResult?.withSurvey), 10) || 0;
 
     // Coverage rates are percentages of total schools — guard against div/0
@@ -278,11 +352,11 @@ export class AnalyticsService {
     // Normalise province rows — every numeric field is a raw string from the driver
     const provinceStats = provinceStatsRaw.map((p) => ({
       province: p.province as string,
-      total:    parseInt(String(p.total),    10) || 0,
+      total: parseInt(String(p.total), 10) || 0,
       critical: parseInt(String(p.critical), 10) || 0,
-      high:     parseInt(String(p.high),     10) || 0,
-      medium:   parseInt(String(p.medium),   10) || 0,
-      low:      parseInt(String(p.low),      10) || 0,
+      high: parseInt(String(p.high), 10) || 0,
+      medium: parseInt(String(p.medium), 10) || 0,
+      low: parseInt(String(p.low), 10) || 0,
       avgScore: parseFloat(String(p.avgScore)) || 0,
       // minScore/maxScore can legitimately be null (province has no scored schools yet)
       minScore: p.minScore != null ? parseFloat(String(p.minScore)) : null,
@@ -290,7 +364,9 @@ export class AnalyticsService {
     }));
 
     // Extract critical count before the reduce collapses the byPriority array
-    const criticalRow   = byPriority.find((r) => r.priority === PriorityLevel.CRITICAL);
+    const criticalRow = byPriority.find(
+      (r) => r.priority === PriorityLevel.CRITICAL,
+    );
     const criticalCount = parseInt(String(criticalRow?.count), 10) || 0;
 
     const nationalRecommendations = this.generateNationalRecommendations(
@@ -381,7 +457,10 @@ export class AnalyticsService {
 
   // ── Score History ────────────────────────────────────────────────────────
 
-  async getScoreHistory(schoolId: string, months = 12): Promise<ScoreHistory[]> {
+  async getScoreHistory(
+    schoolId: string,
+    months = 12,
+  ): Promise<ScoreHistory[]> {
     const since = new Date();
     since.setMonth(since.getMonth() - months);
     return this.scoreHistoryRepository.find({
@@ -392,24 +471,42 @@ export class AnalyticsService {
 
   // ── Hierarchy Drill-down ─────────────────────────────────────────────────
 
-  async getHierarchy(province?: string, district?: string) {
+  async getHierarchy(
+    province?: string,
+    district?: string,
+    scope?: AccessScope,
+  ) {
+    const scoped = <T extends { andWhere: (...a: any[]) => T }>(qb: T) =>
+      scope ? applySchoolScope(qb, scope, 's') : qb;
     // Parse every raw numeric field — pg driver returns counts/averages as strings.
     const parseRow = (r: any, labelKey: string) => ({
-      label:    r[labelKey] as string,
-      total:    parseInt(String(r.total),    10) || 0,
+      label: r[labelKey] as string,
+      total: parseInt(String(r.total), 10) || 0,
       critical: parseInt(String(r.critical), 10) || 0,
-      high:     parseInt(String(r.high),     10) || 0,
-      medium:   parseInt(String(r.medium),   10) || 0,
-      low:      parseInt(String(r.low),      10) || 0,
-      avgScore: parseFloat(String(r.avgScore))   || 0,
+      high: parseInt(String(r.high), 10) || 0,
+      medium: parseInt(String(r.medium), 10) || 0,
+      low: parseInt(String(r.low), 10) || 0,
+      avgScore: parseFloat(String(r.avgScore)) || 0,
     });
 
     const prioritySelects = (qb: any) =>
       qb
-        .addSelect("SUM(CASE WHEN s.priorityLevel = 'critical' THEN 1 ELSE 0 END)", 'critical')
-        .addSelect("SUM(CASE WHEN s.priorityLevel = 'high'     THEN 1 ELSE 0 END)", 'high')
-        .addSelect("SUM(CASE WHEN s.priorityLevel = 'medium'   THEN 1 ELSE 0 END)", 'medium')
-        .addSelect("SUM(CASE WHEN s.priorityLevel = 'low'      THEN 1 ELSE 0 END)", 'low')
+        .addSelect(
+          "SUM(CASE WHEN s.priorityLevel = 'critical' THEN 1 ELSE 0 END)",
+          'critical',
+        )
+        .addSelect(
+          "SUM(CASE WHEN s.priorityLevel = 'high'     THEN 1 ELSE 0 END)",
+          'high',
+        )
+        .addSelect(
+          "SUM(CASE WHEN s.priorityLevel = 'medium'   THEN 1 ELSE 0 END)",
+          'medium',
+        )
+        .addSelect(
+          "SUM(CASE WHEN s.priorityLevel = 'low'      THEN 1 ELSE 0 END)",
+          'low',
+        )
         .addSelect('ROUND(AVG(s.overallScore)::numeric, 1)', 'avgScore');
 
     if (!province) {
@@ -418,8 +515,15 @@ export class AnalyticsService {
         .select('s.province', 'province')
         .addSelect('COUNT(*)', 'total');
       prioritySelects(qb);
-      const rows = await qb.groupBy('s.province').orderBy('total', 'DESC').getRawMany();
-      return { level: 'national', items: rows.map((r) => parseRow(r, 'province')) };
+      scoped(qb);
+      const rows = await qb
+        .groupBy('s.province')
+        .orderBy('total', 'DESC')
+        .getRawMany();
+      return {
+        level: 'national',
+        items: rows.map((r) => parseRow(r, 'province')),
+      };
     }
 
     if (!district) {
@@ -428,20 +532,35 @@ export class AnalyticsService {
         .select('s.district', 'district')
         .addSelect('COUNT(*)', 'total');
       prioritySelects(qb);
+      qb.where('s.province = :province', { province });
+      scoped(qb);
       const rows = await qb
-        .where('s.province = :province', { province })
         .groupBy('s.district')
         .orderBy('total', 'DESC')
         .getRawMany();
-      return { level: 'province', province, items: rows.map((r) => parseRow(r, 'district')) };
+      return {
+        level: 'province',
+        province,
+        items: rows.map((r) => parseRow(r, 'district')),
+      };
     }
 
     // Province + district → individual school rows
-    const schools = await this.schoolRepository.find({
-      where: { province: province as any, district: district as any },
-      select: ['id', 'name', 'code', 'priorityLevel', 'overallScore', 'kmzStatus'],
-      order: { overallScore: 'ASC' },
-    });
+    const schoolsQb = this.schoolRepository
+      .createQueryBuilder('s')
+      .select([
+        's.id',
+        's.name',
+        's.code',
+        's.priorityLevel',
+        's.overallScore',
+        's.kmzStatus',
+      ])
+      .where('s.province = :province', { province })
+      .andWhere('s.district = :district', { district })
+      .orderBy('s.overallScore', 'ASC');
+    scoped(schoolsQb);
+    const schools = await schoolsQb.getMany();
     return { level: 'district', province, district, schools };
   }
 
@@ -468,7 +587,11 @@ export class AnalyticsService {
 
   async updateAction(
     id: string,
-    patch: { status?: ActionStatus; assignedTo?: string | null; dueDate?: string | null },
+    patch: {
+      status?: ActionStatus;
+      assignedTo?: string | null;
+      dueDate?: string | null;
+    },
   ): Promise<RecommendationAction> {
     const action = await this.actionRepository.findOne({ where: { id } });
     if (!action) throw new NotFoundException(`Action ${id} not found`);
@@ -504,13 +627,18 @@ export class AnalyticsService {
     }
 
     if (recs.length === 0) {
-      recs.push('[INFO] All schools are within acceptable performance bands. Continue routine monitoring.');
+      recs.push(
+        '[INFO] All schools are within acceptable performance bands. Continue routine monitoring.',
+      );
     }
 
     return recs;
   }
 
-  async getDecisions(query?: { province?: string; priority?: string }) {
+  async getDecisions(
+    query?: { province?: string; priority?: string },
+    scope?: AccessScope,
+  ) {
     // Join schools on schoolId (varchar) rather than the broken school_id FK column
     const qb = this.assessmentRepository
       .createQueryBuilder('da')
@@ -529,10 +657,14 @@ export class AnalyticsService {
     if (query?.priority)
       qb.andWhere('da.priorityLevel = :priority', { priority: query.priority });
 
+    if (scope) applySchoolScope(qb, scope, 's');
+
     return qb.getMany();
   }
 
-  async recalculateAllScores(actor?: AuditActor): Promise<{ processed: number }> {
+  async recalculateAllScores(
+    actor?: AuditActor,
+  ): Promise<{ processed: number }> {
     const schools = await this.schoolRepository.find({
       relations: ['buildings', 'populationData'],
     });
@@ -554,9 +686,7 @@ export class AnalyticsService {
     return { processed };
   }
 
-  async recalculateSchoolScore(
-    schoolId: string,
-  ): Promise<DecisionAssessment> {
+  async recalculateSchoolScore(schoolId: string): Promise<DecisionAssessment> {
     const school = await this.schoolRepository.findOne({
       where: { id: schoolId },
       relations: ['buildings', 'populationData'],
@@ -571,7 +701,9 @@ export class AnalyticsService {
   async handleSchoolUpdated(event: { schoolId: string }): Promise<void> {
     try {
       await this.recalculateSchoolScore(event.schoolId);
-      this.logger.debug(`Score recalculated for school ${event.schoolId} after school.updated event`);
+      this.logger.debug(
+        `Score recalculated for school ${event.schoolId} after school.updated event`,
+      );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(
@@ -601,8 +733,8 @@ export class AnalyticsService {
       (await this.calculateFacilityComplianceScore(schoolId));
 
     const currentYear = new Date().getFullYear();
-    const buildings   = school.buildings ?? [];
-    const programs    = (school.educationPrograms as any[]) ?? [];
+    const buildings = school.buildings ?? [];
+    const programs = (school.educationPrograms as any[]) ?? [];
 
     // ── Student / capacity counts ─────────────────────────────────────────────
     const totalStudentsFromPrograms = programs.reduce(
@@ -621,15 +753,15 @@ export class AnalyticsService {
     const totalCapacity = totalCapacityFromPrograms;
 
     // ── Staff counts — parse every field; TypeORM int columns can return strings ──
-    const maleTeachers   = parseFloat(String(school.maleTeachers))   || 0;
+    const maleTeachers = parseFloat(String(school.maleTeachers)) || 0;
     const femaleTeachers = parseFloat(String(school.femaleTeachers)) || 0;
-    const totalTeachers  = maleTeachers + femaleTeachers;
+    const totalTeachers = maleTeachers + femaleTeachers;
     const totalStaff =
       maleTeachers +
       femaleTeachers +
-      (parseFloat(String(school.maleAdminStaff))    || 0) +
-      (parseFloat(String(school.femaleAdminStaff))  || 0) +
-      (parseFloat(String(school.maleSupportStaff))  || 0) +
+      (parseFloat(String(school.maleAdminStaff)) || 0) +
+      (parseFloat(String(school.femaleAdminStaff)) || 0) +
+      (parseFloat(String(school.maleSupportStaff)) || 0) +
       (parseFloat(String(school.femaleSupportStaff)) || 0);
     const maleTeacherRatio =
       totalTeachers > 0 ? Math.round((maleTeachers / totalTeachers) * 100) : 0;
@@ -648,7 +780,7 @@ export class AnalyticsService {
       avgBuildingAge !== null ? currentYear - avgBuildingAge : null;
 
     // ── Score fields from assessment ──────────────────────────────────────────
-    const ageScore   = parseFloat(String(assessment.buildingAgeScore));
+    const ageScore = parseFloat(String(assessment.buildingAgeScore));
     const depreciation = Math.min(100, Math.max(5, Math.round(100 - ageScore)));
 
     // ── School profile ────────────────────────────────────────────────────────
@@ -670,20 +802,18 @@ export class AnalyticsService {
     // latrineCount: field does not yet exist on School or SchoolFacilitySurvey —
     // will be non-null once those columns are added; null is the honest value here.
     const latrineCount =
-      parseFloat(
-        String(
-          (school as any).latrineCount ?? 0,
-        ),
-      ) || 0;
+      parseFloat(String((school as any).latrineCount ?? 0)) || 0;
     const studentToLatrineRatio =
       latrineCount > 0
         ? parseFloat((totalStudents / latrineCount).toFixed(1))
         : null;
 
     // ── Utility / connectivity fields (future schema columns; null until added) ──
-    const hasElectricity: boolean | null = (school as any).hasElectricity  ?? null;
-    const waterSourceType: string | null = (school as any).waterSourceType ?? null;
-    const hasInternet: boolean | null    = (school as any).hasInternet     ?? null;
+    const hasElectricity: boolean | null =
+      (school as any).hasElectricity ?? null;
+    const waterSourceType: string | null =
+      (school as any).waterSourceType ?? null;
+    const hasInternet: boolean | null = (school as any).hasInternet ?? null;
 
     // ── Latest facility survey (used for date + data-completeness check) ───────
     const latestSurvey = await this.surveyRepository.findOne({
@@ -741,16 +871,16 @@ export class AnalyticsService {
 
     // ── Data completeness score (10-point binary checklist) ───────────────────
     const completenessChecks = [
-      buildings.length > 0,                                            // GIS building data
-      totalStudents > 0,                                               // enrolment data
-      totalTeachers > 0,                                               // staffing data
-      school.province != null && school.province !== '',               // location: province
-      school.district != null && school.district !== '',               // location: district
-      school.roadStatusPercentage != null,                             // accessibility data
-      establishedYearParsed != null,                                   // school age data
-      latestSurvey != null,                                            // facility survey done
-      (school.populationData?.length ?? 0) > 0,                       // population data
-      school.kmzStatus === KmzProcessingStatus.COMPLETED,              // GIS mapping completed
+      buildings.length > 0, // GIS building data
+      totalStudents > 0, // enrolment data
+      totalTeachers > 0, // staffing data
+      school.province != null && school.province !== '', // location: province
+      school.district != null && school.district !== '', // location: district
+      school.roadStatusPercentage != null, // accessibility data
+      establishedYearParsed != null, // school age data
+      latestSurvey != null, // facility survey done
+      (school.populationData?.length ?? 0) > 0, // population data
+      school.kmzStatus === KmzProcessingStatus.COMPLETED, // GIS mapping completed
     ];
     const filledCount = completenessChecks.filter(Boolean).length;
     const dataCompletenessScore = Math.round(
@@ -764,7 +894,7 @@ export class AnalyticsService {
         b.condition === BuildingCondition.POOR,
     ).length;
     const safeAvgBuildingAge = avgBuildingAge ?? 50;
-    const urgencyMo          = assessment.urgencyMonths ?? 36;
+    const urgencyMo = assessment.urgencyMonths ?? 36;
 
     // Days since last survey — Infinity when never surveyed (pessimistic, correct)
     const daysSinceLastSurvey = latestSurvey
@@ -778,8 +908,8 @@ export class AnalyticsService {
       100,
       Math.round(
         (100 - overallScoreParsed) * 0.5 +
-        (criticalBuildingCount / Math.max(1, buildings.length)) * 100 * 0.3 +
-        (urgencyMo === 0 ? 100 : Math.max(0, 100 - urgencyMo * 2)) * 0.2,
+          (criticalBuildingCount / Math.max(1, buildings.length)) * 100 * 0.3 +
+          (urgencyMo === 0 ? 100 : Math.max(0, 100 - urgencyMo * 2)) * 0.2,
       ),
     );
 
@@ -790,9 +920,13 @@ export class AnalyticsService {
       100,
       Math.round(
         Math.min(100, safeAvgBuildingAge * 1.5) * 0.5 +
-        ((assessment.hasPopDataGap ?? false) ? 60 : 20) * 0.25 +
-        (daysSinceLastSurvey > 365 ? 80 : daysSinceLastSurvey > 180 ? 50 : 20) *
-          0.25,
+          ((assessment.hasPopDataGap ?? false) ? 60 : 20) * 0.25 +
+          (daysSinceLastSurvey > 365
+            ? 80
+            : daysSinceLastSurvey > 180
+              ? 50
+              : 20) *
+            0.25,
       ),
     );
 
@@ -800,34 +934,34 @@ export class AnalyticsService {
     const dto = new SchoolMetricsDto();
 
     // Metadata
-    dto.schoolId      = school.id;
-    dto.schoolName    = school.name;
-    dto.schoolCode    = school.code;
-    dto.calculatedAt  = new Date().toISOString();
+    dto.schoolId = school.id;
+    dto.schoolName = school.name;
+    dto.schoolCode = school.code;
+    dto.calculatedAt = new Date().toISOString();
 
     // Population / staff
-    dto.totalStudents        = totalStudents;
-    dto.totalCapacity        = totalCapacity;
-    dto.totalTeachers        = totalTeachers;
-    dto.totalStaff           = totalStaff;
-    dto.maleTeacherRatio     = maleTeacherRatio;
+    dto.totalStudents = totalStudents;
+    dto.totalCapacity = totalCapacity;
+    dto.totalTeachers = totalTeachers;
+    dto.totalStaff = totalStaff;
+    dto.maleTeacherRatio = maleTeacherRatio;
     dto.studentToTeacherRatio = studentToTeacherRatio;
     dto.studentToLatrineRatio = studentToLatrineRatio;
-    dto.latrineCount         = latrineCount > 0 ? latrineCount : null;
+    dto.latrineCount = latrineCount > 0 ? latrineCount : null;
 
     // Utilities
-    dto.hasElectricity  = hasElectricity;
+    dto.hasElectricity = hasElectricity;
     dto.waterSourceType = waterSourceType;
-    dto.hasInternet     = hasInternet;
+    dto.hasInternet = hasInternet;
 
     // Buildings
-    dto.buildingCount    = buildings.length;
-    dto.avgBuildingAge   = avgBuildingAge;
-    dto.avgBuildingYear  = avgBuildingYear;
+    dto.buildingCount = buildings.length;
+    dto.avgBuildingAge = avgBuildingAge;
+    dto.avgBuildingYear = avgBuildingYear;
 
     // School profile
     dto.establishedYear = establishedYearParsed;
-    dto.schoolAge       = schoolAge;
+    dto.schoolAge = schoolAge;
 
     // Programs & land
     dto.educationProgramsCount = programs.length;
@@ -842,24 +976,28 @@ export class AnalyticsService {
     dto.roadStatusPercentage = school.roadStatusPercentage ?? null;
 
     // Assessment scores
-    dto.overallScore            = overallScoreParsed;
-    dto.infrastructureScore     = parseFloat(String(assessment.infrastructureScore));
-    dto.buildingAgeScore        = ageScore;
-    dto.accessibilityScore      = parseFloat(String(assessment.accessibilityScore));
-    dto.populationPressureScore = parseFloat(String(assessment.populationPressureScore));
+    dto.overallScore = overallScoreParsed;
+    dto.infrastructureScore = parseFloat(
+      String(assessment.infrastructureScore),
+    );
+    dto.buildingAgeScore = ageScore;
+    dto.accessibilityScore = parseFloat(String(assessment.accessibilityScore));
+    dto.populationPressureScore = parseFloat(
+      String(assessment.populationPressureScore),
+    );
     dto.facilityComplianceScore = facilityComplianceScore;
-    dto.depreciation            = depreciation;
-    dto.resolutionRateScore     =
+    dto.depreciation = depreciation;
+    dto.resolutionRateScore =
       assessment.resolutionRateScore != null
         ? parseFloat(String(assessment.resolutionRateScore))
         : null;
     dto.hasInfraDataGap = assessment.hasInfraDataGap ?? null;
-    dto.hasPopDataGap   = assessment.hasPopDataGap   ?? null;
+    dto.hasPopDataGap = assessment.hasPopDataGap ?? null;
 
     // Decision data
-    dto.priorityLevel        = assessment.priorityLevel;
-    dto.urgencyMonths        = assessment.urgencyMonths ?? null;
-    dto.recommendations      = assessment.recommendations ?? [];
+    dto.priorityLevel = assessment.priorityLevel;
+    dto.urgencyMonths = assessment.urgencyMonths ?? null;
+    dto.recommendations = assessment.recommendations ?? [];
     dto.primaryRecommendation = assessment.primaryRecommendation ?? null;
     dto.estimatedBudgetRwf =
       assessment.estimatedBudgetRwf != null
@@ -872,8 +1010,8 @@ export class AnalyticsService {
       : null;
 
     // Peer benchmarking
-    dto.districtAvgScore       = districtAvg;
-    dto.provinceAvgScore       = provinceAvg;
+    dto.districtAvgScore = districtAvg;
+    dto.provinceAvgScore = provinceAvg;
     dto.scoreDeltaFromDistrict = scoreDeltaFromDistrict;
     dto.scoreDeltaFromProvince = scoreDeltaFromProvince;
 
@@ -882,26 +1020,30 @@ export class AnalyticsService {
     dto.kmzStatus = school.kmzStatus ?? null;
 
     // Risk matrix
-    dto.riskImpactScore       = riskImpactScore;
-    dto.riskProbabilityScore  = riskProbabilityScore;
+    dto.riskImpactScore = riskImpactScore;
+    dto.riskProbabilityScore = riskProbabilityScore;
 
     // Reporting summary
     const reportSummary: ReportSummaryDto = {
-      total:    allReports.length,
-      critical: allReports.filter((r) => r.status === ReportStatus.NEED_INTERVENTION).length,
-      pending:  allReports.filter((r) => r.status === ReportStatus.PENDING).length,
-      resolved: allReports.filter((r) => r.status === ReportStatus.SOLVED).length,
-      failed:   allReports.filter((r) => r.status === ReportStatus.FAILED).length,
+      total: allReports.length,
+      critical: allReports.filter(
+        (r) => r.status === ReportStatus.NEED_INTERVENTION,
+      ).length,
+      pending: allReports.filter((r) => r.status === ReportStatus.PENDING)
+        .length,
+      resolved: allReports.filter((r) => r.status === ReportStatus.SOLVED)
+        .length,
+      failed: allReports.filter((r) => r.status === ReportStatus.FAILED).length,
       recentCritical: allReports
         .filter((r) => r.status === ReportStatus.NEED_INTERVENTION)
         .slice(0, 5)
         .map((r) => ({
-          id:          r.id,
-          facilityId:  r.facilityId,
+          id: r.id,
+          facilityId: r.facilityId,
           description: r.description,
-          status:      r.status,
-          buildingId:  r.buildingId,
-          createdAt:   r.createdAt.toISOString(),
+          status: r.status,
+          buildingId: r.buildingId,
+          createdAt: r.createdAt.toISOString(),
         })),
     };
     dto.reportSummary = reportSummary;
@@ -914,7 +1056,9 @@ export class AnalyticsService {
     const population = school.populationData?.[0];
 
     // Facility survey compliance score (15% weight)
-    const facilityScore = await this.calculateFacilityComplianceScore(school.id);
+    const facilityScore = await this.calculateFacilityComplianceScore(
+      school.id,
+    );
 
     // Issue resolution rate score (5% weight)
     const totalReports = await this.issueReportRepository.count({
@@ -1035,14 +1179,14 @@ export class AnalyticsService {
 
     // Persist score snapshot — parse every value so no raw strings enter the history table
     await this.scoreHistoryRepository.save({
-      schoolId:                school.id,
-      overallScore:            parseFloat(String(overallScore)),
-      infrastructureScore:     parseFloat(String(infraScore)),
-      buildingAgeScore:        parseFloat(String(ageScore)),
-      accessibilityScore:      parseFloat(String(accessScore)),
+      schoolId: school.id,
+      overallScore: parseFloat(String(overallScore)),
+      infrastructureScore: parseFloat(String(infraScore)),
+      buildingAgeScore: parseFloat(String(ageScore)),
+      accessibilityScore: parseFloat(String(accessScore)),
       populationPressureScore: parseFloat(String(popScore)),
       facilityComplianceScore: parseFloat(String(facilityScore)),
-      resolutionRateScore:     parseFloat(String(resolutionRateScore)),
+      resolutionRateScore: parseFloat(String(resolutionRateScore)),
     });
 
     return saved;

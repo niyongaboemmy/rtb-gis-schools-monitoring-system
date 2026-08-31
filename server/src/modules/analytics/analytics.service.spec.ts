@@ -17,7 +17,10 @@ import {
   SchoolFacilitySurvey,
   ComplianceLevel,
 } from '../schools/entities/school-facility-survey.entity';
-import { IssueReport, ReportStatus } from '../reports/entities/issue-report.entity';
+import {
+  IssueReport,
+  ReportStatus,
+} from '../reports/entities/issue-report.entity';
 import { AuditService } from '../audit/audit.service';
 import { computeOverallScore } from './scoring.constants';
 
@@ -36,9 +39,11 @@ const qb = () => ({
   take: jest.fn().mockReturnThis(),
   leftJoinAndMapOne: jest.fn().mockReturnThis(),
   leftJoinAndSelect: jest.fn().mockReturnThis(),
+  innerJoin: jest.fn().mockReturnThis(),
   getRawOne: jest.fn().mockResolvedValue({}),
   getRawMany: jest.fn().mockResolvedValue([]),
   getMany: jest.fn().mockResolvedValue([]),
+  getCount: jest.fn().mockResolvedValue(0),
 });
 
 const makeRepo = (overrides: Partial<Record<string, jest.Mock>> = {}) => ({
@@ -86,9 +91,11 @@ type Repos = {
   issue: ReturnType<typeof makeRepo>;
 };
 
-async function makeService(
-  repos: Partial<Repos> = {},
-): Promise<{ service: AnalyticsService; repos: Repos; audit: { log: jest.Mock } }> {
+async function makeService(repos: Partial<Repos> = {}): Promise<{
+  service: AnalyticsService;
+  repos: Repos;
+  audit: { log: jest.Mock };
+}> {
   const r: Repos = {
     assessment: repos.assessment ?? makeRepo(),
     scoreHistory: repos.scoreHistory ?? makeRepo(),
@@ -104,7 +111,10 @@ async function makeService(
   const module: TestingModule = await Test.createTestingModule({
     providers: [
       AnalyticsService,
-      { provide: getRepositoryToken(DecisionAssessment), useValue: r.assessment },
+      {
+        provide: getRepositoryToken(DecisionAssessment),
+        useValue: r.assessment,
+      },
       { provide: getRepositoryToken(ScoreHistory), useValue: r.scoreHistory },
       { provide: getRepositoryToken(RecommendationAction), useValue: r.action },
       { provide: getRepositoryToken(School), useValue: r.school },
@@ -181,7 +191,11 @@ describe('computeOverallScore (canonical 6-factor 35/25/10/10/15/5)', () => {
         facilityCompliance: 50,
         resolution: 50,
       }),
-    ).toBe(clamp(100 * 0.35 + 0 * 0.25 + 50 * 0.1 + 50 * 0.1 + 50 * 0.15 + 50 * 0.05));
+    ).toBe(
+      clamp(
+        100 * 0.35 + 0 * 0.25 + 50 * 0.1 + 50 * 0.1 + 50 * 0.15 + 50 * 0.05,
+      ),
+    );
   });
 });
 
@@ -513,15 +527,33 @@ describe('getOverview', () => {
     const school = makeRepo({
       count: jest.fn().mockResolvedValue(3),
       find: jest.fn().mockResolvedValue([
-        { id: '1', totalStudents: 100, educationPrograms: [{ totalStudents: 100, capacity: 200 }] },
-        { id: '2', totalStudents: 300, educationPrograms: [{ totalStudents: 300, capacity: 300 }] },
+        {
+          id: '1',
+          totalStudents: 100,
+          educationPrograms: [{ totalStudents: 100, capacity: 200 }],
+        },
+        {
+          id: '2',
+          totalStudents: 300,
+          educationPrograms: [{ totalStudents: 300, capacity: 300 }],
+        },
       ]),
       createQueryBuilder: jest.fn(() => {
         const q = qb();
         q.getRawMany = jest
           .fn()
           .mockResolvedValueOnce([{ priority: 'critical', count: '1' }])
-          .mockResolvedValueOnce([{ province: 'Kigali', total: '3', critical: '1', high: '1', medium: '1', low: '0', avgScore: '55' }]);
+          .mockResolvedValueOnce([
+            {
+              province: 'Kigali',
+              total: '3',
+              critical: '1',
+              high: '1',
+              medium: '1',
+              low: '0',
+              avgScore: '55',
+            },
+          ]);
         q.getRawOne = jest.fn().mockResolvedValue({ nationalAvgScore: '60' });
         return q;
       }),
@@ -538,10 +570,16 @@ describe('getOverview', () => {
   it('nationalCapacityUtilisation is null when no programme capacity exists', async () => {
     const school = makeRepo({
       count: jest.fn().mockResolvedValue(1),
-      find: jest.fn().mockResolvedValue([{ id: '1', totalStudents: 100, educationPrograms: [] }]),
+      find: jest
+        .fn()
+        .mockResolvedValue([
+          { id: '1', totalStudents: 100, educationPrograms: [] },
+        ]),
     });
     const { service } = await makeService({ school });
-    expect((await service.getOverview()).nationalCapacityUtilisation).toBeNull();
+    expect(
+      (await service.getOverview()).nationalCapacityUtilisation,
+    ).toBeNull();
   });
 });
 
@@ -552,7 +590,12 @@ describe('getOverview', () => {
 describe('recalculateAllScores', () => {
   it('processes every school and writes an audit log', async () => {
     const school = makeRepo({
-      find: jest.fn().mockResolvedValue([buildSchool({ id: 'a' }), buildSchool({ id: 'b' })]),
+      find: jest
+        .fn()
+        .mockResolvedValue([
+          buildSchool({ id: 'a' }),
+          buildSchool({ id: 'b' }),
+        ]),
     });
     const { service, audit } = await makeService({ school });
     const res = await service.recalculateAllScores();
@@ -611,9 +654,7 @@ describe('generateRecommendations + estimateBudgetRwf', () => {
         populationData: [{ schoolAgePopulation2km: 200 } as PopulationData],
       }),
     );
-    expect(res.recommendations).toEqual([
-      expect.stringContaining('[OK]'),
-    ]);
+    expect(res.recommendations).toEqual([expect.stringContaining('[OK]')]);
     expect(res.estimatedBudgetRwf ?? null).toBeNull();
   });
 
@@ -666,7 +707,11 @@ describe('getSchoolMetrics', () => {
     });
     const issue = makeRepo({
       find: jest.fn().mockResolvedValue([
-        { id: 'r1', status: ReportStatus.NEED_INTERVENTION, createdAt: new Date() },
+        {
+          id: 'r1',
+          status: ReportStatus.NEED_INTERVENTION,
+          createdAt: new Date(),
+        },
         { id: 'r2', status: ReportStatus.PENDING, createdAt: new Date() },
         { id: 'r3', status: ReportStatus.SOLVED, createdAt: new Date() },
       ]),

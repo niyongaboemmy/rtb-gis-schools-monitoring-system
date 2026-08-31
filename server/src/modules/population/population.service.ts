@@ -7,6 +7,7 @@ import { Cron } from '@nestjs/schedule';
 import { firstValueFrom, timeout } from 'rxjs';
 import { PopulationData } from './entities/population-data.entity';
 import { School } from '../schools/entities/school.entity';
+import { AccessScope, applySchoolScope } from '../../common/scope/access-scope';
 
 interface ArcGISFeature {
   attributes: {
@@ -106,8 +107,12 @@ export class PopulationService {
     return this.populationRepository.findOne({ where: { schoolId } });
   }
 
-  async getAllPopulation(): Promise<PopulationData[]> {
-    return this.populationRepository.find({ relations: ['school'] });
+  async getAllPopulation(scope?: AccessScope): Promise<PopulationData[]> {
+    const qb = this.populationRepository
+      .createQueryBuilder('pop')
+      .leftJoinAndSelect('pop.school', 'school');
+    if (scope) applySchoolScope(qb, scope, 'school');
+    return qb.getMany();
   }
 
   private async fetchArcGISPopulation(
@@ -172,7 +177,11 @@ export class PopulationService {
         schoolAgePopulation500m: Math.round(youthPop * 0.15),
         populationDensityPerKm2: parseFloat(density.toFixed(4)),
         studentToSchoolRatio: parseFloat(studentRatio.toFixed(2)),
-        rawData: { source: 'ArcGIS', features, fetchedAt: new Date().toISOString() },
+        rawData: {
+          source: 'ArcGIS',
+          features,
+          fetchedAt: new Date().toISOString(),
+        },
       };
     } catch (err) {
       this.logger.warn(

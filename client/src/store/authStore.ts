@@ -10,7 +10,12 @@ interface User {
     id: string;
     name: string;
     permissions: string[];
-    accessLevel?: { id: string; name: string } | null;
+    accessLevel?: {
+      id: string;
+      name: string;
+      slug?: string | null;
+      rank?: number | null;
+    } | null;
   };
   location?: {
     province?: string;

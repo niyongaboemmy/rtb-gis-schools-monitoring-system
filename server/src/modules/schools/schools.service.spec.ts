@@ -14,6 +14,7 @@ import { SchoolFacilitySurvey } from './entities/school-facility-survey.entity';
 import { StorageService } from '../storage/storage.service';
 import { AuditService } from '../audit/audit.service';
 import { BuildingDto } from './dto/building.dto';
+import { resolveAccessScope } from '../../common/scope/access-scope';
 
 // ---------------------------------------------------------------------------
 // Test-data factories
@@ -716,6 +717,49 @@ describe('SchoolsService.findOne', () => {
 
     await expect(service.findOne('nonexistent-id')).rejects.toThrow(
       'School with ID "nonexistent-id" not found',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findAll — hierarchical access scope
+// ---------------------------------------------------------------------------
+
+describe('SchoolsService.findAll – access scope', () => {
+  afterEach(() => {
+    delete process.env.SCOPE_ENFORCEMENT;
+  });
+
+  it('adds no geo predicate for a national user', async () => {
+    process.env.SCOPE_ENFORCEMENT = 'true';
+    const qb = makeQb();
+    const { service } = await makeService({
+      schoolRepo: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+    });
+    const scope = resolveAccessScope({ role: { name: 'super_admin' } });
+
+    await service.findAll({}, scope);
+
+    const clauses = qb.andWhere.mock.calls.map((c: any[]) => String(c[0]));
+    expect(clauses.some((c) => c.includes('province'))).toBe(false);
+  });
+
+  it('filters to the bound province for a province user', async () => {
+    process.env.SCOPE_ENFORCEMENT = 'true';
+    const qb = makeQb();
+    const { service } = await makeService({
+      schoolRepo: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+    });
+    const scope = resolveAccessScope({
+      role: { name: 'officer', accessLevel: { slug: 'province', rank: 20 } },
+      location: { province: 'Northern Province' },
+    });
+
+    await service.findAll({}, scope);
+
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'school.province = :scopeProvince',
+      { scopeProvince: 'Northern Province' },
     );
   });
 });

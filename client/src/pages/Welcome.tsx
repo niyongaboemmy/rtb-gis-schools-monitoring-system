@@ -1,4 +1,5 @@
 import { useAuthorization } from "../hooks/useAuthorization";
+import { useScope } from "../hooks/useScope";
 import { Permission } from "../lib/permissions";
 import { Link } from "react-router-dom";
 import {
@@ -19,6 +20,7 @@ import { ImigongoPattern } from "../components/ui/ImigongoPattern";
 
 export default function Welcome() {
   const { user, isAuthorized } = useAuthorization();
+  const scope = useScope();
 
   const firstName = user?.firstName || "User";
   const roleName = (
@@ -200,6 +202,14 @@ export default function Welcome() {
                 <Layers className="w-3.5 h-3.5 text-muted-foreground" />
                 <span className="text-xs font-medium text-muted-foreground">
                   {accessLevelName} Clearance
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <MapPin className="w-3.5 h-3.5 text-primary/70" />
+                <span className="text-xs font-semibold text-primary/80">
+                  {scope.isNational
+                    ? "All schools nationwide"
+                    : `Access limited to ${scope.label}`}
                 </span>
               </div>
             </div>

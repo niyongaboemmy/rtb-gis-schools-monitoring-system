@@ -35,6 +35,12 @@ import {
   RequireAnyPermission,
 } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/constants/permissions.constant';
+import { ScopeGuard } from '../../common/scope/scope.guard';
+import {
+  CurrentScope,
+  ScopedResource,
+} from '../../common/scope/scope.decorator';
+import type { AccessScope } from '../../common/scope/access-scope';
 import { PriorityLevel, SchoolStatus } from './entities/school.entity';
 import { ComplianceLevel } from './entities/school-facility-survey.entity';
 import { BuildingDto } from './dto/building.dto';
@@ -42,7 +48,7 @@ import { SurveyUpdateItemDto } from './dto/survey-update.dto';
 
 @ApiTags('schools')
 @Controller('schools')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, ScopeGuard)
 @RequirePermissions(Permission.VIEW_SCHOOLS)
 @ApiBearerAuth()
 export class SchoolsController {
@@ -74,31 +80,35 @@ export class SchoolsController {
     @Query('status') status?: SchoolStatus,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
+    @CurrentScope() scope?: AccessScope,
   ) {
-    return this.schoolsService.findAll({
-      search,
-      province,
-      district,
-      priority,
-      type,
-      status,
-      page,
-      limit,
-    });
+    return this.schoolsService.findAll(
+      {
+        search,
+        province,
+        district,
+        priority,
+        type,
+        status,
+        page,
+        limit,
+      },
+      scope,
+    );
   }
 
   @Get('geojson')
   @RequireAnyPermission(Permission.VIEW_MAP, Permission.VIEW_SCHOOLS)
   @ApiOperation({ summary: 'Get all schools as GeoJSON FeatureCollection' })
-  getGeoJson() {
-    return this.schoolsService.getGeoJson();
+  getGeoJson(@CurrentScope() scope?: AccessScope) {
+    return this.schoolsService.getGeoJson(scope);
   }
 
   @Get('stats')
   @RequireAnyPermission(Permission.VIEW_DASHBOARD, Permission.VIEW_SCHOOLS)
   @ApiOperation({ summary: 'Get school statistics' })
-  getStats() {
-    return this.schoolsService.getStats();
+  getStats(@CurrentScope() scope?: AccessScope) {
+    return this.schoolsService.getStats(scope);
   }
 
   @Get('facilities')
@@ -111,8 +121,14 @@ export class SchoolsController {
   @ApiOperation({ summary: 'Export all schools as an Excel spreadsheet' })
   @UseGuards(PermissionsGuard)
   @RequirePermissions(Permission.EXPORT_REPORTS)
-  async exportExcel(@Res() res: Response): Promise<void> {
-    const { data: schools } = await this.schoolsService.findAll({ page: 1, limit: 10000 });
+  async exportExcel(
+    @Res() res: Response,
+    @CurrentScope() scope?: AccessScope,
+  ): Promise<void> {
+    const { data: schools } = await this.schoolsService.findAll(
+      { page: 1, limit: 10000 },
+      scope,
+    );
 
     const rows = schools.map((s) => ({
       Code: s.code ?? '',
@@ -132,20 +148,31 @@ export class SchoolsController {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Schools');
 
-    const buffer: Buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    const buffer: Buffer = XLSX.write(workbook, {
+      type: 'buffer',
+      bookType: 'xlsx',
+    });
 
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename="schools-export.xlsx"');
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="schools-export.xlsx"',
+    );
     res.send(buffer);
   }
 
   @Get(':id')
+  @ScopedResource('id')
   @ApiOperation({ summary: 'Get a school by ID with all relations' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.schoolsService.findOne(id);
   }
 
   @Get(':id/survey')
+  @ScopedResource('id')
   @ApiOperation({ summary: 'Get facility survey for a school' })
   getFacilitySurvey(@Param('id', ParseUUIDPipe) id: string) {
     return this.schoolsService.getFacilitySurvey(id);
@@ -159,6 +186,7 @@ export class SchoolsController {
   @ApiQuery({ name: 'maxLat', required: false, type: Number })
   @ApiQuery({ name: 'minLng', required: false, type: Number })
   @ApiQuery({ name: 'maxLng', required: false, type: Number })
+  @ScopedResource('id')
   getBuildings(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('minLat') minLat?: string,
@@ -181,6 +209,7 @@ export class SchoolsController {
   }
 
   @Post(':id/survey/initialize')
+  @ScopedResource('id')
   @RequirePermissions(Permission.RUN_FACILITY_SURVEY)
   @ApiOperation({ summary: 'Initialize a new facility survey for a school' })
   initializeSurvey(
@@ -191,6 +220,7 @@ export class SchoolsController {
   }
 
   @Patch(':id/survey')
+  @ScopedResource('id')
   @RequireAnyPermission(
     Permission.SCHOOL_SURVERY_EDIT,
     Permission.RUN_FACILITY_SURVEY,
@@ -205,6 +235,7 @@ export class SchoolsController {
   }
 
   @Patch('survey/:surveyId')
+  @ScopedResource('surveyId', 'params', 'survey')
   @RequireAnyPermission(
     Permission.SCHOOL_SURVERY_EDIT,
     Permission.RUN_FACILITY_SURVEY,
@@ -222,6 +253,7 @@ export class SchoolsController {
   }
 
   @Patch(':id')
+  @ScopedResource('id')
   @RequireAnyPermission(
     Permission.MANAGE_SCHOOLS,
     Permission.EDIT_SCHOOL_PROFILE,
@@ -235,6 +267,7 @@ export class SchoolsController {
   }
 
   @Delete(':id')
+  @ScopedResource('id')
   @HttpCode(204)
   @RequirePermissions(Permission.DELETE_SCHOOL)
   @ApiOperation({ summary: 'Delete a school' })
@@ -245,6 +278,7 @@ export class SchoolsController {
   // ============ Building Routes ============
 
   @Post(':id/buildings')
+  @ScopedResource('id')
   @RequirePermissions(Permission.EDIT_SCHOOL_BUILDINGS)
   @ApiOperation({ summary: 'Add a new building to a school' })
   addBuilding(
@@ -255,6 +289,7 @@ export class SchoolsController {
   }
 
   @Patch('buildings/:id')
+  @ScopedResource('id', 'params', 'building')
   @RequirePermissions(Permission.EDIT_SCHOOL_BUILDINGS)
   @ApiOperation({ summary: 'Update a specific building' })
   updateBuilding(
@@ -265,6 +300,7 @@ export class SchoolsController {
   }
 
   @Post(':id/kmz/2d/site-annotations')
+  @ScopedResource('id')
   @RequirePermissions(Permission.EDIT_SITE_ANNOTATIONS)
   @ApiOperation({ summary: 'Add a site annotation' })
   addSiteAnnotation(
@@ -275,6 +311,7 @@ export class SchoolsController {
   }
 
   @Delete(':id/kmz/2d/site-annotations/:annId')
+  @ScopedResource('id')
   @RequirePermissions(Permission.EDIT_SITE_ANNOTATIONS)
   @ApiOperation({ summary: 'Delete a site annotation' })
   removeSiteAnnotation(
@@ -285,6 +322,7 @@ export class SchoolsController {
   }
 
   @Delete('buildings/:id')
+  @ScopedResource('id', 'params', 'building')
   @RequirePermissions(Permission.EDIT_SCHOOL_BUILDINGS)
   @ApiOperation({ summary: 'Remove a specific building' })
   removeBuilding(@Param('id', ParseUUIDPipe) id: string) {

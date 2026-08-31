@@ -68,6 +68,8 @@ import {
 } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/constants/permissions.constant';
 import { ReportStatus } from './entities/issue-report.entity';
+import { CurrentScope } from '../../common/scope/scope.decorator';
+import type { AccessScope } from '../../common/scope/access-scope';
 
 @ApiTags('reports')
 @Controller('reports')
@@ -151,24 +153,31 @@ export class ReportsController {
     @Query('endDate') endDate?: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
+    @CurrentScope() scope?: AccessScope,
   ) {
-    return this.reportsService.findAll({
-      schoolId,
-      status,
-      buildingId,
-      facilityId,
-      reportedBy,
-      startDate: startDate ? new Date(startDate) : undefined,
-      endDate: endDate ? new Date(endDate) : undefined,
-      page: page ? Number(page) : undefined,
-      limit: limit ? Number(limit) : undefined,
-    });
+    return this.reportsService.findAll(
+      {
+        schoolId,
+        status,
+        buildingId,
+        facilityId,
+        reportedBy,
+        startDate: startDate ? new Date(startDate) : undefined,
+        endDate: endDate ? new Date(endDate) : undefined,
+        page: page ? Number(page) : undefined,
+        limit: limit ? Number(limit) : undefined,
+      },
+      scope,
+    );
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get a single issue report by ID' })
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.reportsService.findOne(id);
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentScope() scope?: AccessScope,
+  ) {
+    return this.reportsService.findOne(id, scope);
   }
 
   @Patch(':id')
@@ -177,8 +186,9 @@ export class ReportsController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateReportDto: Partial<CreateReportDto>,
+    @CurrentScope() scope?: AccessScope,
   ) {
-    return this.reportsService.update(id, updateReportDto);
+    return this.reportsService.update(id, updateReportDto, scope);
   }
 
   @Patch(':id/status')
@@ -187,14 +197,22 @@ export class ReportsController {
   updateStatus(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateReportStatusDto: UpdateReportStatusDto,
+    @CurrentScope() scope?: AccessScope,
   ) {
-    return this.reportsService.updateStatus(id, updateReportStatusDto.status);
+    return this.reportsService.updateStatus(
+      id,
+      updateReportStatusDto.status,
+      scope,
+    );
   }
 
   @Delete(':id')
   @RequirePermissions(Permission.MANAGE_REPORTS)
   @ApiOperation({ summary: 'Delete a report' })
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.reportsService.delete(id);
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentScope() scope?: AccessScope,
+  ) {
+    return this.reportsService.delete(id, scope);
   }
 }

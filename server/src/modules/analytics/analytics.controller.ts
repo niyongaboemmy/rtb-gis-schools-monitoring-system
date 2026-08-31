@@ -23,10 +23,18 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/constants/permissions.constant';
+import { ScopeGuard } from '../../common/scope/scope.guard';
+import {
+  CurrentScope,
+  RequireNationalScope,
+  ScopedResource,
+} from '../../common/scope/scope.decorator';
+import type { AccessScope } from '../../common/scope/access-scope';
 
 @ApiTags('analytics')
 @Controller('analytics')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, ScopeGuard)
+@ScopedResource('schoolId', 'params')
 @ApiBearerAuth()
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
@@ -36,15 +44,16 @@ export class AnalyticsController {
   @Get('overview')
   @ApiOperation({ summary: 'Get system-wide analytics overview' })
   @RequirePermissions(Permission.VIEW_ANALYTICS)
-  getOverview() {
-    return this.analyticsService.getOverview();
+  getOverview(@CurrentScope() scope?: AccessScope) {
+    return this.analyticsService.getOverview(scope);
   }
 
   // ── Hierarchy drill-down (Province → District → Schools) ─────────────────
 
   @Get('hierarchy')
   @ApiOperation({
-    summary: 'Province → District → School drill-down. Omit both params for national view.',
+    summary:
+      'Province → District → School drill-down. Omit both params for national view.',
   })
   @RequirePermissions(Permission.VIEW_ANALYTICS)
   @ApiQuery({ name: 'province', required: false })
@@ -52,15 +61,17 @@ export class AnalyticsController {
   getHierarchy(
     @Query('province') province?: string,
     @Query('district') district?: string,
+    @CurrentScope() scope?: AccessScope,
   ) {
-    return this.analyticsService.getHierarchy(province, district);
+    return this.analyticsService.getHierarchy(province, district, scope);
   }
 
   // ── School-level metrics & history ───────────────────────────────────────
 
   @Get('schools/:schoolId/metrics')
   @ApiOperation({
-    summary: 'Computed decision metrics, facility stats, and issue summary for one school',
+    summary:
+      'Computed decision metrics, facility stats, and issue summary for one school',
   })
   @RequirePermissions(Permission.SCHOOL_LEVEL_DASHBOARD)
   getSchoolMetrics(@Param('schoolId') schoolId: string) {
@@ -68,7 +79,9 @@ export class AnalyticsController {
   }
 
   @Get('schools/:schoolId/history')
-  @ApiOperation({ summary: 'Score history for a school (default: last 12 months)' })
+  @ApiOperation({
+    summary: 'Score history for a school (default: last 12 months)',
+  })
   @RequirePermissions(Permission.SCHOOL_LEVEL_DASHBOARD)
   @ApiQuery({ name: 'months', required: false, type: Number })
   getHistory(
@@ -118,15 +131,18 @@ export class AnalyticsController {
   // ── Decisions list ────────────────────────────────────────────────────────
 
   @Get('decisions')
-  @ApiOperation({ summary: 'Get school decision assessments ranked by priority' })
+  @ApiOperation({
+    summary: 'Get school decision assessments ranked by priority',
+  })
   @RequirePermissions(Permission.VIEW_ANALYTICS)
   @ApiQuery({ name: 'province', required: false })
   @ApiQuery({ name: 'priority', required: false })
   getDecisions(
     @Query('province') province?: string,
     @Query('priority') priority?: string,
+    @CurrentScope() scope?: AccessScope,
   ) {
-    return this.analyticsService.getDecisions({ province, priority });
+    return this.analyticsService.getDecisions({ province, priority }, scope);
   }
 
   // ── Export ────────────────────────────────────────────────────────────────
@@ -134,8 +150,12 @@ export class AnalyticsController {
   @Get('export')
   @ApiOperation({ summary: 'Export all school assessments as CSV' })
   @RequirePermissions(Permission.EXPORT_REPORTS)
+  @RequireNationalScope()
   @Header('Content-Type', 'text/csv; charset=utf-8')
-  @Header('Content-Disposition', 'attachment; filename="rtb-schools-export.csv"')
+  @Header(
+    'Content-Disposition',
+    'attachment; filename="rtb-schools-export.csv"',
+  )
   exportCsv(): Promise<string> {
     return this.analyticsService.exportNationalCsv();
   }
@@ -146,13 +166,16 @@ export class AnalyticsController {
   @HttpCode(200)
   @ApiOperation({ summary: 'Re-run decision scoring engine for all schools' })
   @RequirePermissions(Permission.MANAGE_DECISIONS)
+  @RequireNationalScope()
   recalculate(@Request() req: any) {
     return this.analyticsService.recalculateAllScores(req.user);
   }
 
   @Post('schools/:schoolId/recalculate')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Re-run decision scoring engine for a single school' })
+  @ApiOperation({
+    summary: 'Re-run decision scoring engine for a single school',
+  })
   @RequirePermissions(Permission.MANAGE_DECISIONS)
   recalculateOne(@Param('schoolId') schoolId: string) {
     return this.analyticsService.recalculateSchoolScore(schoolId);

@@ -48,41 +48,189 @@ export class SeedService implements OnModuleInit {
     await this.seedAdminUser();
     await this.seedSampleSchools();
     await this.seedFacilities();
+    await this.seedScopedTestUsers();
+  }
+
+  /**
+   * One demo user per access-level tier, bound to a real sample-school path, so
+   * hierarchical scoping can be exercised by hand. Opt-in via
+   * SEED_SCOPED_TEST_USERS=true — never seed login accounts in prod by default.
+   * All share the password `Scope@123`.
+   */
+  private async seedScopedTestUsers() {
+    if (this.config.get<string>('SEED_SCOPED_TEST_USERS') !== 'true') {
+      this.logger.log(
+        'Scoped test users disabled (SEED_SCOPED_TEST_USERS != true).',
+      );
+      return;
+    }
+
+    // Anchor sub-national users to a known seeded school's admin path.
+    const anchor = await this.schoolRepo.findOne({
+      where: { code: 'TSS-KGL-001' },
+    });
+    if (!anchor) {
+      this.logger.warn(
+        'Scoped test users skipped — sample school TSS-KGL-001 not found.',
+      );
+      return;
+    }
+
+    // A broad but non-escalating permission set (no user/role management).
+    const perms = [
+      'VIEW_DASHBOARD',
+      'VIEW_MAP',
+      'VIEW_SCHOOLS',
+      'VIEW_ANALYTICS',
+      'VIEW_INTELLIGENCE',
+      'SCHOOL_LEVEL_DASHBOARD',
+      'VIEW_POPULATION',
+      'VIEW_REPORTING',
+      'VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD',
+      'SCHOOL_VIEW_2D3D_MAP',
+      'MANAGE_SCHOOLS',
+      'EDIT_SCHOOL_PROFILE',
+      'EDIT_SCHOOL_BUILDINGS',
+      'UPLOAD_KMZ',
+      'RUN_FACILITY_SURVEY',
+      'SCHOOL_SURVERY_EDIT',
+      'MANAGE_DECISIONS',
+      'EXPORT_REPORTS',
+      'CREATE_REPORT',
+      'MANAGE_REPORTS',
+      'SYNC_POPULATION',
+    ];
+
+    const tiers: {
+      slug: string;
+      levelName: string;
+      email: string;
+      location: Record<string, string>;
+    }[] = [
+      {
+        slug: 'national',
+        levelName: 'National',
+        email: 'scope.national@rtb.gov.rw',
+        location: {},
+      },
+      {
+        slug: 'province',
+        levelName: 'Province',
+        email: 'scope.province@rtb.gov.rw',
+        location: { province: anchor.province },
+      },
+      {
+        slug: 'district',
+        levelName: 'District',
+        email: 'scope.district@rtb.gov.rw',
+        location: { province: anchor.province, district: anchor.district },
+      },
+      {
+        slug: 'sector',
+        levelName: 'Sector',
+        email: 'scope.sector@rtb.gov.rw',
+        location: {
+          province: anchor.province,
+          district: anchor.district,
+          sector: anchor.sector,
+        },
+      },
+      {
+        slug: 'school',
+        levelName: 'School',
+        email: 'scope.school@rtb.gov.rw',
+        location: {
+          province: anchor.province,
+          district: anchor.district,
+          sector: anchor.sector,
+          schoolId: anchor.id,
+          schoolName: anchor.name,
+        },
+      },
+    ];
+
+    for (const t of tiers) {
+      const level = await this.accessLevelRepo.findOne({
+        where: { name: t.levelName },
+      });
+      const roleName = `scope_${t.slug}`;
+      let role = await this.roleRepo.findOne({
+        where: { name: roleName },
+        relations: ['accessLevel'],
+      });
+      if (!role) {
+        role = this.roleRepo.create({
+          name: roleName,
+          description: `Demo role — ${t.levelName} geographic scope`,
+          permissions: perms,
+        });
+      }
+      role.permissions = perms;
+      role.accessLevel = level ?? role.accessLevel;
+      role = await this.roleRepo.save(role);
+
+      let user = await this.userRepo.findOne({ where: { email: t.email } });
+      if (!user) {
+        user = this.userRepo.create({
+          firstName: 'Scope',
+          lastName: `${t.levelName} Demo`,
+          email: t.email,
+          password: 'Scope@123',
+          isActive: true,
+        });
+      }
+      user.role = role;
+      user.location = t.location;
+      user.isActive = true;
+      await this.userRepo.save(user);
+      this.logger.log(
+        `✅ Scoped test user: ${t.email} (${t.levelName}) / Scope@123`,
+      );
+    }
   }
 
   private async seedAccessLevels() {
-    const LEVELS = ['National', 'Province', 'District', 'Sector', 'School'];
+    // name → [slug, rank]. Rank: 10 national … 50 school (lower = broader).
+    const LEVELS: Record<string, { slug: string; rank: number }> = {
+      National: { slug: 'national', rank: 10 },
+      Province: { slug: 'province', rank: 20 },
+      District: { slug: 'district', rank: 30 },
+      Sector: { slug: 'sector', rank: 40 },
+      School: { slug: 'school', rank: 50 },
+    };
     const levelMap: Record<string, AccessLevel> = {};
 
-    for (const name of LEVELS) {
+    for (const [name, meta] of Object.entries(LEVELS)) {
       let level = await this.accessLevelRepo.findOne({ where: { name } });
       if (!level) {
         level = await this.accessLevelRepo.save(
-          this.accessLevelRepo.create({ name }),
+          this.accessLevelRepo.create({ name, ...meta }),
         );
         this.logger.log(`✅ Created access level: ${name}`);
+      } else if (level.slug !== meta.slug || level.rank !== meta.rank) {
+        // Backfill hierarchy metadata on rows created before this field existed.
+        level.slug = meta.slug;
+        level.rank = meta.rank;
+        level = await this.accessLevelRepo.save(level);
+        this.logger.log(`✅ Backfilled hierarchy for access level: ${name}`);
       }
       levelMap[name] = level;
     }
 
-    // Assign default access levels to system roles
-    const roleDefaults: Record<string, string> = {
-      super_admin: 'National',
-      admin: 'Province',
-      viewer: 'School',
-    };
-
-    for (const [roleName, levelName] of Object.entries(roleDefaults)) {
+    // The built-in roles are organisation-wide — they always operate at the
+    // National tier. Geographic limiting is done through custom roles (see the
+    // `scope_*` demo roles). This is authoritative: it also repairs any earlier
+    // sub-national assignment so enforcement never locks these roles out.
+    const systemRoles = ['super_admin', 'admin', 'gis_analyst', 'viewer'];
+    for (const roleName of systemRoles) {
       const role = await this.roleRepo.findOne({
         where: { name: roleName },
         relations: ['accessLevel'],
       });
-      if (role && !role.accessLevel) {
-        role.accessLevel = levelMap[levelName];
+      if (role && role.accessLevel?.name !== 'National') {
+        role.accessLevel = levelMap['National'];
         await this.roleRepo.save(role);
-        this.logger.log(
-          `✅ Assigned access level "${levelName}" to role: ${roleName}`,
-        );
+        this.logger.log(`✅ Set access level "National" on role: ${roleName}`);
       }
     }
   }

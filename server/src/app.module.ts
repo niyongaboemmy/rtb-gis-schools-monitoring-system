@@ -26,6 +26,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { EventsModule } from './modules/events/events.module';
+import { ScopeModule } from './common/scope/scope.module';
 
 @Module({
   imports: [
@@ -101,6 +102,7 @@ import { EventsModule } from './modules/events/events.module';
     DashboardModule,
     AuditModule,
     EventsModule,
+    ScopeModule,
   ],
   controllers: [AppController],
   providers: [

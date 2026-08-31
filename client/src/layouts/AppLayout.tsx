@@ -35,6 +35,7 @@ import { GlobalSearch } from "../components/GlobalSearch";
 import type { PermissionType } from "../lib/permissions";
 import { Permission } from "../lib/permissions";
 import { useAuthorization } from "../hooks/useAuthorization";
+import { useScope } from "../hooks/useScope";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Tooltip,
@@ -206,6 +207,7 @@ export function AppLayout() {
     return true;
   });
 
+  const scope = useScope();
   const initials = `${user?.firstName?.charAt(0) ?? ""}${user?.lastName?.charAt(0) ?? ""}`;
   const roleName = (
     typeof user?.role === "object" ? user.role.name || "" : user?.role || ""
@@ -536,6 +538,29 @@ export function AppLayout() {
           {/* Right: actions */}
           <div className="flex items-center gap-1.5 shrink-0">
             <GlobalSearch />
+
+            {/* Access-scope chip — the geographic window this account operates in */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className={cn(
+                    "hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold select-none",
+                    scope.isNational
+                      ? "border-border/30 text-muted-foreground"
+                      : "border-primary/25 text-primary bg-primary/10",
+                  )}
+                >
+                  <Layers className="w-3 h-3 shrink-0" />
+                  {scope.label}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {scope.isNational
+                  ? "National access — all schools in view"
+                  : `${scope.levelName ?? ""} access — limited to ${scope.label}`}
+              </TooltipContent>
+            </Tooltip>
+
             <ThemeToggle />
 
             {/* Notification bell */}

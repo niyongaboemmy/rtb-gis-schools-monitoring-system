@@ -8,10 +8,17 @@ import {
   RequireAnyPermission,
 } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/constants/permissions.constant';
+import { ScopeGuard } from '../../common/scope/scope.guard';
+import {
+  CurrentScope,
+  RequireNationalScope,
+  ScopedResource,
+} from '../../common/scope/scope.decorator';
+import type { AccessScope } from '../../common/scope/access-scope';
 
 @ApiTags('population')
 @Controller('population')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, ScopeGuard)
 @RequireAnyPermission(
   Permission.VIEW_POPULATION,
   Permission.VIEW_ANALYTICS,
@@ -23,6 +30,7 @@ export class PopulationController {
 
   @Post('sync')
   @RequirePermissions(Permission.SYNC_POPULATION)
+  @RequireNationalScope()
   @ApiOperation({ summary: 'Sync population data from ArcGIS FeatureServer' })
   sync(@Query('schoolId') schoolId?: string) {
     return this.populationService.syncPopulation(schoolId);
@@ -30,11 +38,12 @@ export class PopulationController {
 
   @Get()
   @ApiOperation({ summary: 'Get all population data' })
-  getAll() {
-    return this.populationService.getAllPopulation();
+  getAll(@CurrentScope() scope?: AccessScope) {
+    return this.populationService.getAllPopulation(scope);
   }
 
   @Get(':schoolId')
+  @ScopedResource('schoolId', 'params')
   @ApiOperation({ summary: 'Get population data for a specific school' })
   getBySchool(@Param('schoolId') schoolId: string) {
     return this.populationService.getPopulationBySchool(schoolId);
