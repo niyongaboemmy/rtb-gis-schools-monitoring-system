@@ -1,4 +1,4 @@
-import { fork } from 'child_process';
+import { fork, spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import { Logger } from '@nestjs/common';
@@ -14,7 +14,9 @@ import { Logger } from '@nestjs/common';
 const logger = new Logger('GlbOptimizer');
 
 // pm2 runs rtb-api with cwd = <repo>/server; `nest start` in dev is the same.
-const SCRIPT_PATH = path.join(process.cwd(), 'glb-tools', 'optimize.mjs');
+const TOOLS_DIR = path.join(process.cwd(), 'glb-tools');
+const SCRIPT_PATH = path.join(TOOLS_DIR, 'optimize.mjs');
+const TOOLS_NODE_MODULES = path.join(TOOLS_DIR, 'node_modules', '@gltf-transform');
 
 export interface GlbOptimizeResult {
   bytesIn: number;
@@ -37,7 +39,39 @@ export interface GlbOptimizeOptions {
 }
 
 export function isGlbOptimizerAvailable(): boolean {
-  return fs.existsSync(SCRIPT_PATH);
+  return fs.existsSync(SCRIPT_PATH) && fs.existsSync(TOOLS_NODE_MODULES);
+}
+
+/**
+ * Self-heal: if the pipeline script is present but its deps are not (deploy
+ * didn't run `npm --prefix server/glb-tools install`), install them once in the
+ * background. Runs at most once per process; survives future deploys since
+ * `git reset --hard` doesn't touch node_modules.
+ */
+let ensurePromise: Promise<boolean> | null = null;
+export function ensureGlbTools(): Promise<boolean> {
+  if (ensurePromise) return ensurePromise;
+  ensurePromise = (async () => {
+    if (!fs.existsSync(SCRIPT_PATH)) return false;
+    if (fs.existsSync(TOOLS_NODE_MODULES)) return true;
+    logger.log('glb-tools deps missing — running one-time npm install…');
+    return await new Promise<boolean>((resolve) => {
+      const npm = spawn('npm', ['install', '--omit=dev', '--no-audit', '--no-fund'], {
+        cwd: TOOLS_DIR,
+        stdio: 'ignore',
+      });
+      npm.on('error', (e) => {
+        logger.error(`glb-tools npm install failed to start: ${e.message}`);
+        resolve(false);
+      });
+      npm.on('exit', (code) => {
+        const ok = code === 0 && fs.existsSync(TOOLS_NODE_MODULES);
+        logger[ok ? 'log' : 'error'](`glb-tools npm install exited ${code}${ok ? ' — optimizer ready' : ''}`);
+        resolve(ok);
+      });
+    });
+  })();
+  return ensurePromise;
 }
 
 export function optimizeGlbFile(

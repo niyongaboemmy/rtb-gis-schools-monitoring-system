@@ -20,7 +20,7 @@ import { SchoolBuilding } from '../schools/entities/school-building.entity';
 import { StorageService } from '../storage/storage.service';
 import { KMZ_QUEUE } from './kmz.constants';
 import type { GlbJobData, Kmz2dJobData } from './kmz.processor';
-import { optimizeGlbFile, isGlbOptimizerAvailable } from './glb-optimizer';
+import { optimizeGlbFile, ensureGlbTools } from './glb-optimizer';
 import { Readable } from 'stream';
 import unzipper from 'unzipper';
 import * as path from 'path';
@@ -57,7 +57,10 @@ export class KmzService {
     private readonly buildingRepository: Repository<SchoolBuilding>,
     private readonly storageService: StorageService,
     @InjectQueue(KMZ_QUEUE) private readonly kmzQueue: Queue,
-  ) {}
+  ) {
+    // Warm the GLB optimizer (installs its deps once if the deploy didn't).
+    void ensureGlbTools();
+  }
 
   async uploadGlbModel(schoolId: string, file: Express.Multer.File) {
     const school = await this.schoolRepository.findOne({
@@ -173,9 +176,9 @@ export class KmzService {
     mimetype: string,
     servedObjectName: string,
   ): Promise<void> {
-    if (!isGlbOptimizerAvailable()) {
+    if (!(await ensureGlbTools())) {
       this.logger.warn(
-        'glb-tools not installed (run "npm --prefix server/glb-tools install") — serving raw GLB',
+        'glb-tools unavailable (install failed or script missing) — serving raw GLB',
       );
       return;
     }
