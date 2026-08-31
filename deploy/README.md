@@ -13,9 +13,46 @@ Single **EC2** instance, **no Docker**. One box runs everything:
 
 Uploads live on the root EBS volume at `/var/lib/rtb/storage`.
 
-**CI/CD:** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) (lint/test/build on every PR + push) →
-on success on `main`, [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) SSHes in
-and runs [`deploy/scripts/deploy.sh`](scripts/deploy.sh).
+**CI/CD:** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) runs on every
+push to `main` (protect `main` with a required-PR rule so that means "merged"), SSHes in,
+and runs [`deploy/scripts/deploy.sh`](scripts/deploy.sh). The existing
+[`ci.yml`](../.github/workflows/ci.yml) still runs lint/test/build on PRs; once
+`npm run lint` passes repo-wide you can re-gate deploy on it (`workflow_run`).
+
+---
+
+## Deployment status — provisioned 2026-08-31
+
+| Item | Value |
+|---|---|
+| EC2 instance | `i-0098decdded8b00d0` — t3.large, Ubuntu 26.04 LTS, eu-north-1 |
+| Elastic IP | `16.170.92.234` |
+| DNS | `rtb.aerovyntech.com` → `16.170.92.234` (Route 53) |
+| TLS | Let's Encrypt, auto-renew timer active, expires 2026-11-29 |
+| PostgreSQL | 15.19 + PostGIS 3.6 (PGDG), db `rtb_gis_db`, role `rtb`, localhost only |
+| Redis | 7, localhost, `maxmemory 512mb` / `noeviction` |
+| Processes | PM2 `rtb-api` (:3001), `rtb-file-server` (:3002); `pm2-deploy` systemd unit enabled |
+| Web root | `/var/www/rtb-client` (optimized `vite build`) |
+| Uploads | `/var/lib/rtb/storage` |
+| Secrets | `/var/lib/rtb/env/{server,file-server}.env` (0640, deploy-owned) |
+| Seed | run once — admin `admin@rtb.gov.rw` / `Admin@123` (**change immediately**) |
+| Backups | nightly `pg_dump` cron → `/var/lib/rtb/backups`, 14-day retention |
+| fail2ban | active (SSH jail) |
+
+**Live:** https://rtb.aerovyntech.com
+
+### To activate the GitHub Actions pipeline (remaining manual steps)
+1. Push branch `emmy` and open a PR to `main`; merge so `main` contains `deploy/`
+   and the server changes in this commit.
+2. Repo → Settings → Secrets and variables → Actions — add:
+   `EC2_HOST=16.170.92.234`, `EC2_USER=deploy`, `EC2_APP_DIR=/opt/rtb`,
+   `EC2_SSH_KEY=` the private key printed during provisioning
+   (`/home/deploy/.ssh/gha_deploy` on the box).
+3. Add the checkout **deploy key** (read-only) to the repo:
+   Settings → Deploy keys → the `rtb-ec2-checkout` public key from
+   `/home/deploy/.ssh/repo_key.pub` on the box.
+4. On the box once: `sudo -iu deploy 'cd /opt/rtb && git fetch origin && git reset --hard origin/main'`.
+5. Settings → Branches → protect `main`: require a pull request before merging.
 
 ---
 
@@ -514,7 +551,7 @@ Safe to re-run any time. **Change the admin password after first login.**
 
 Local health checks (still no public traffic):
 ```
-[deploy]$ curl -fsS http://127.0.0.1:3001/api/v1      # -> hello string
+[deploy]$ curl -fsS http://127.0.0.1:3001/api/v1/health   # -> {"status":"ok",...}
 [deploy]$ curl -fsS http://127.0.0.1:3002/health      # -> {"status":"ok",...}
 ```
 If a process is `errored`, read `pm2 logs rtb-api --lines 100`.
@@ -633,7 +670,7 @@ Run after Step 11, and again after the first automated deploy (Step 12.4).
 | 1 | DNS | `dig +short rtb.aerovyntech.com` | returns `EIP` |
 | 2 | TLS | `curl -I https://rtb.aerovyntech.com` | `200`, no cert warning; `curl -I http://…` → `301` to https |
 | 3 | SPA | open `https://rtb.aerovyntech.com`, then hard-reload `…/analytics` | app loads; deep link does **not** 404 (SPA fallback) |
-| 4 | API | `curl https://rtb.aerovyntech.com/api/v1` | hello string |
+| 4 | API | `curl https://rtb.aerovyntech.com/api/v1/health` | `{"status":"ok",...}` |
 | 5 | Swagger | `curl -o /dev/null -w '%{http_code}' https://rtb.aerovyntech.com/api/docs` | `404` (disabled) — or `200` if you set `SWAGGER_ENABLED=true` |
 | 6 | Auth | `curl -X POST https://rtb.aerovyntech.com/api/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@rtb.gov.rw","password":"Admin@123"}'` | JSON with `accessToken` + `refreshToken` |
 | 7 | DB / PostGIS | `PGPASSWORD=… psql -h 127.0.0.1 -U rtb -d rtb_gis_db -c "SELECT postgis_version();"` | version string |
