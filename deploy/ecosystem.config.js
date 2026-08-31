@@ -15,7 +15,11 @@ module.exports = {
       env_file: '/var/lib/rtb/env/server.env',
       instances: 1,
       exec_mode: 'fork',
-      max_memory_restart: '1200M',
+      // KMZ processing runs in-process and buffers the whole archive
+      // (readFileSync + JSZip). A 1 GB+ KMZ needs real headroom; t3.large has
+      // 8 GB and PG + Redis + file-server take ~3 GB.
+      max_memory_restart: '4G',
+      node_args: '--max-old-space-size=3584',
       autorestart: true,
       time: true,
     },
