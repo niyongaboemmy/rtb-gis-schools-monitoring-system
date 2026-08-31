@@ -473,15 +473,49 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   }, [finalizeGLTF]);
 
   const loadGLBFromURL = useCallback(async (url: string, fileName: string) => {
-    setError(null); setPhase("loading"); setProgress(0); setProgressLabel("Loading model…");
+    setError(null); setPhase("loading"); setProgress(0); setProgressLabel("Connecting…");
     origMatsRef.current.clear(); unlitMatsRef.current.clear();
     loadedFileNameRef.current = fileName;
     threeInitPromiseRef.current = new Promise<void>(resolve => { threeInitResolveRef.current = resolve; });
     const startTime = Date.now();
     try {
-      const resp = await fetch(url); if (!resp.ok) throw new Error("Fetch failed");
-      const arrayBuffer = await resp.arrayBuffer();
-      setProgress(85); setProgressLabel("Parsing GLB…");
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`Model download failed (HTTP ${resp.status})`);
+
+      // Stream the body so the user sees real download progress. A large
+      // photogrammetry GLB can be hundreds of MB; fetch().arrayBuffer() would
+      // otherwise sit at 0% for minutes and look frozen.
+      const total = Number(resp.headers.get("Content-Length")) || 0;
+      const mb = (b: number) => (b / 1_048_576).toFixed(0);
+      let arrayBuffer: ArrayBuffer;
+
+      if (resp.body && total > 0) {
+        const reader = resp.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let received = 0;
+        let lastPaint = 0;
+        for (; ;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.length;
+          const now = Date.now();
+          if (now - lastPaint > 120) {
+            lastPaint = now;
+            setProgress(Math.min(75, Math.round((received / total) * 75)));
+            setProgressLabel(`Downloading model — ${mb(received)} / ${mb(total)} MB`);
+          }
+        }
+        const merged = new Uint8Array(received);
+        let offset = 0;
+        for (const c of chunks) { merged.set(c, offset); offset += c.length; }
+        arrayBuffer = merged.buffer;
+      } else {
+        setProgressLabel("Downloading model…");
+        arrayBuffer = await resp.arrayBuffer();
+      }
+
+      setProgress(80); setProgressLabel("Parsing GLB…");
       const loader = new GLTFLoader(); loader.setDRACOLoader(sharedDracoLoader);
       const gltf = await new Promise<GLTF>((res, rej) => loader.parse(arrayBuffer, "", res, rej));
       await finalizeGLTF(gltf, fileName, arrayBuffer.byteLength, startTime);
@@ -498,20 +532,29 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       .catch(e => console.error("Failed to pre-fetch buildings", e));
   }, [schoolId]);
 
+  // Discover + load the school's GLB exactly once per schoolId. Without the ref
+  // guard, a failed load resets `phase` to "idle", which re-triggers this effect
+  // and hammers the endpoint in an infinite retry loop.
+  const discoveryForRef = useRef<string | null>(null);
   useEffect(() => {
-    if (schoolId && phase === "idle") {
-      fetch(`${FILE_SERVER_URL}/schools/${schoolId}/3d`)
-        .then(res => res.ok ? res.json() : Promise.reject("Model not found"))
-        .then(data => {
-          if (data?.url) {
-            loadGLBFromURL(`${FILE_SERVER_URL}${data.url}`, data.filename || "model.glb");
-          }
-        })
-        .catch(e => {
-          console.error("Discovery failed", e);
+    if (!schoolId || phase !== "idle") return;
+    if (discoveryForRef.current === schoolId) return;
+    discoveryForRef.current = schoolId;
+    fetch(`${FILE_SERVER_URL}/schools/${schoolId}/3d`)
+      .then(res => res.ok ? res.json() : Promise.reject("Model not found"))
+      .then(data => {
+        if (data?.url) {
+          // The stored filename may contain spaces/unicode — encode each segment.
+          const safePath = String(data.url).split("/").map(encodeURIComponent).join("/");
+          loadGLBFromURL(`${FILE_SERVER_URL}${safePath}`, data.filename || "model.glb");
+        } else {
           setError("3D model not found for this school.");
-        });
-    }
+        }
+      })
+      .catch(e => {
+        console.error("Discovery failed", e);
+        setError("3D model not found for this school.");
+      });
   }, [schoolId, phase, loadGLBFromURL]);
 
   useEffect(() => {
