@@ -10,12 +10,11 @@ const fs = require('fs');
 const app = express();
 
 // ── Configuration from .env ───────────────────────────────────────────────
-// Behind Passenger / cPanel, PORT is injected; on the EC2 box nginx proxies to
-// FILE_SERVER_PORT. Support both.
-const PORT = parseInt(
-  process.env.PORT || process.env.FILE_SERVER_PORT || '3002',
-  10,
-);
+// Bind FILE_SERVER_PORT authoritatively. Do NOT fall back to process.env.PORT
+// — on the EC2 box the PM2 environment carries PORT=3001 (the API's port) and
+// the file-server would collide with it. (cPanel/Passenger is a separate,
+// unused pipeline; if it ever returns, set FILE_SERVER_PORT from PORT there.)
+const PORT = parseInt(process.env.FILE_SERVER_PORT || '3002', 10);
 const MAX_FILE_SIZE_MB = parseInt(
   process.env.FILE_SERVER_MAX_FILE_SIZE_MB || '10',
   10,
