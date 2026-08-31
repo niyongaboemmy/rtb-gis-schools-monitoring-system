@@ -48,7 +48,7 @@ export default function Login() {
   return (
     <div className="min-h-screen w-full flex bg-background overflow-hidden font-sans">
       {/* Left panel - Branding with Imigongo */}
-      <div className="hidden lg:flex w-1/2 bg-[#001D3D] relative overflow-hidden items-center justify-center p-12 border-r border-white/5">
+      <div className="hidden lg:flex w-1/2 bg-[#001D3D] relative overflow-hidden items-center justify-center p-12 border-r border-white/4">
         {/* Imigongo Background Pattern */}
         <ImigongoPattern
           className="absolute inset-0 text-white mask-[linear-gradient(to_bottom_right,black_0%,transparent_40%,transparent_60%,black_100%)]"
@@ -104,7 +104,7 @@ export default function Login() {
               {[1, 2, 3, 4].map((i) => (
                 <div
                   key={i}
-                  className="w-10 h-10 rounded-full border-2 border-white/10 bg-white/5 backdrop-blur-md flex items-center justify-center text-[10px] font-bold"
+                  className="w-10 h-10 rounded-full border-2 border-white/6 bg-white/5 backdrop-blur-md flex items-center justify-center text-[10px] font-bold"
                 >
                   JS
                 </div>
@@ -195,7 +195,7 @@ export default function Login() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="flex h-12 w-full rounded-xl border border-input dark:border-blue-700/30 bg-background/50 backdrop-blur-sm pl-12 pr-4 py-2 text-sm transition-all focus:bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    className="flex h-12 w-full rounded-xl border border-input dark:border-blue-700/20 bg-background/50 backdrop-blur-sm pl-12 pr-4 py-2 text-sm transition-all focus:bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                     placeholder="admin@rtb.gov.rw"
                     required
                   />
@@ -248,7 +248,7 @@ export default function Login() {
             </motion.button>
           </form>
 
-          <div className="pt-6 border-t border-border/20 dark:border-blue-700/30 text-center">
+          <div className="pt-6 border-t border-border/20 dark:border-blue-700/20 text-center">
             <p className="text-xs text-muted-foreground leading-relaxed">
               Rwanda TVET Board Monitoring Platform &copy; 2026. <br />
               Authorized personnel only. Data usage is monitored.

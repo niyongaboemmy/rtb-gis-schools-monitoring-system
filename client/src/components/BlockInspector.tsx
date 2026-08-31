@@ -49,7 +49,7 @@ export function BlockInspector({
 
   const conditionColors: Record<string, string> = {
     good: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-    fair: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
+    fair: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/12",
     poor: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
     critical: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
   };
@@ -89,7 +89,7 @@ export function BlockInspector({
   return (
     <div
       className={cn(
-        "w-full md:w-[360px] bg-white/95 dark:bg-[#0f1117]/95 backdrop-blur-3xl border-t md:border-t-0 md:border-r border-slate-200 dark:border-white/10 flex flex-col h-full overflow-y-auto transition-all duration-500",
+        "w-full md:w-[360px] bg-white/95 dark:bg-[#0f1117]/95 backdrop-blur-3xl border-t md:border-t-0 md:border-r border-slate-200 dark:border-white/6 flex flex-col h-full overflow-y-auto transition-all duration-500",
         "rounded-t-[32px] md:rounded-none z-60",
       )}
     >
@@ -129,7 +129,7 @@ export function BlockInspector({
 
       {/* Tab Switcher */}
       <div className="px-5 py-2.5 shrink-0 bg-slate-50/50 dark:bg-[#0f1117]/50">
-        <div className="flex gap-1 p-1 rounded-full bg-white dark:bg-card/95 border border-slate-200 dark:border-white/10">
+        <div className="flex gap-1 p-1 rounded-full bg-white dark:bg-card/95 border border-slate-200 dark:border-white/6">
           {["details", "media", "reporting"].map((tab) => (
             <button
               key={tab}
@@ -137,7 +137,7 @@ export function BlockInspector({
               className={cn(
                 "flex-1 py-1.5 rounded-full text-[13px] transition-all relative overflow-hidden group",
                 activeTab === tab
-                  ? "font-black bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white border border-slate-200 dark:border-white/5"
+                  ? "font-black bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white border border-slate-200 dark:border-white/4"
                   : "text-slate-400 dark:text-white hover:text-slate-900 dark:hover:text-white/40 hover:bg-slate-50 dark:hover:bg-white/2",
               )}
             >
@@ -156,7 +156,7 @@ export function BlockInspector({
           <div className="space-y-6 py-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
             {/* Status Section */}
             <div className="space-y-3.5">
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-card/30 border border-slate-200 dark:border-white/10 relative overflow-hidden group hover:border-slate-300 dark:hover:border-white/20 transition-all">
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-card/30 border border-slate-200 dark:border-white/6 relative overflow-hidden group hover:border-slate-300 dark:hover:border-white/12 transition-all">
                 <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
                   <Shield className="w-20 h-20 -mr-6 -mt-4 rotate-12" />
                 </div>
@@ -172,7 +172,7 @@ export function BlockInspector({
                       </span>
                       <Badge
                         className={cn(
-                          "px-2 py-0.5 rounded-lg border-slate-200 dark:border-white/10 font-bold text-[9px] uppercase",
+                          "px-2 py-0.5 rounded-lg border-slate-200 dark:border-white/6 font-bold text-[9px] uppercase",
                           avgColorClass,
                         )}
                       >
@@ -181,7 +181,7 @@ export function BlockInspector({
                     </div>
                   </div>
                   <div className="w-12 h-12 flex items-center justify-center relative">
-                    <div className="absolute inset-0 rounded-full border-2 border-slate-200 dark:border-white/5" />
+                    <div className="absolute inset-0 rounded-full border-2 border-slate-200 dark:border-white/4" />
                     <div className="absolute inset-0 rounded-full border-2 border-primary border-t-transparent animate-[spin_4s_linear_infinite]" />
                     <Shield className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
                   </div>
@@ -205,7 +205,7 @@ export function BlockInspector({
                 ].map((item, i) => (
                   <div
                     key={i}
-                    className="p-2 px-3 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/5 hover:bg-slate-100 dark:hover:bg-white/10 transition-all group"
+                    className="p-2 px-3 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/4 hover:bg-slate-100 dark:hover:bg-white/10 transition-all group"
                   >
                     <div className="flex items-center gap-2">
                       <item.icon className="w-3 h-3 text-slate-300 dark:text-white/20 group-hover:text-primary" />
@@ -232,7 +232,7 @@ export function BlockInspector({
               <p className="text-[9px] font-black text-slate-400 dark:text-white/20 uppercase tracking-[0.2em] pl-1 font-mono">
                 Technical Specs
               </p>
-              <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 overflow-hidden backdrop-blur-3xl">
+              <div className="rounded-2xl border border-slate-200 dark:border-white/6 bg-slate-50 dark:bg-white/5 overflow-hidden backdrop-blur-3xl">
                 {[
                   {
                     label: "Function",
@@ -317,7 +317,7 @@ export function BlockInspector({
                   {building.facilities.map((f: any, idx: number) => (
                     <div
                       key={idx}
-                      className="flex justify-between items-center p-3.5 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/10 transition-all group overflow-hidden relative"
+                      className="flex justify-between items-center p-3.5 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/6 hover:bg-slate-100 dark:hover:bg-white/10 transition-all group overflow-hidden relative"
                     >
                       <div className="absolute inset-y-0 left-0 w-0.5 bg-primary transform scale-y-0 group-hover:scale-y-100 transition-transform duration-300" />
                       <div className="flex items-center gap-3.5 min-w-0">
@@ -330,7 +330,7 @@ export function BlockInspector({
                       </div>
                       <Badge
                         variant="outline"
-                        className="text-[10px] font-black border-slate-200 dark:border-white/5 bg-blue-50 dark:bg-blue-800/20 text-blue-600 dark:text-primary px-2 py-0.5 rounded-full group-hover:border-primary/20"
+                        className="text-[10px] font-black border-slate-200 dark:border-white/4 bg-blue-50 dark:bg-blue-800/20 text-blue-600 dark:text-primary px-2 py-0.5 rounded-full group-hover:border-primary/20"
                       >
                         {f.number_of_rooms || f.count || 1} Rooms
                       </Badge>
@@ -365,10 +365,10 @@ export function BlockInspector({
 
       {/* Footer */}
       {activeTab === "details" && (
-        <div className="p-5 pt-3 shrink-0 border-t border-slate-100 dark:border-white/10 bg-white/80 dark:bg-[#0f1117]/80 backdrop-blur-md">
+        <div className="p-5 pt-3 shrink-0 border-t border-slate-100 dark:border-white/6 bg-white/80 dark:bg-[#0f1117]/80 backdrop-blur-md">
           <Button
             variant="outline"
-            className="w-full h-12 text-[10px] font-black uppercase tracking-[0.25em] rounded-2xl border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/2 hover:bg-primary hover:border-primary hover:text-white transition-all duration-300 active:scale-[0.97] group"
+            className="w-full h-12 text-[10px] font-black uppercase tracking-[0.25em] rounded-2xl border-slate-200 dark:border-white/6 bg-slate-50 dark:bg-white/2 hover:bg-primary hover:border-primary hover:text-white transition-all duration-300 active:scale-[0.97] group"
             onClick={() => onEdit(building)}
           >
             <Pencil className="w-3.5 h-3.5 mr-2 group-hover:scale-110 transition-transform" />

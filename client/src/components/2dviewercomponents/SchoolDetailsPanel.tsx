@@ -63,7 +63,7 @@ const val = (v: any, suffix = "") =>
 
 const statusColors: Record<string, string> = {
   active:
-    "bg-blue-500/10 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/25",
+    "bg-blue-500/10 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/15",
   inactive:
     "bg-red-500/10 dark:bg-red-500/15 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/25",
   under_renovation:
@@ -76,18 +76,18 @@ const priorityColors: Record<string, string> = {
   high: "bg-orange-500/10 dark:bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-500/25",
   medium:
     "bg-yellow-500/10 dark:bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 border-yellow-200 dark:border-yellow-500/25",
-  low: "bg-blue-500/10 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/25",
+  low: "bg-blue-500/10 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/15",
 };
 
 const kmzStatusColors: Record<string, string> = {
   completed:
-    "bg-blue-500/10 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/20",
+    "bg-blue-500/10 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/12",
   failed:
     "bg-red-500/10 dark:bg-red-500/15 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20",
   processing:
-    "bg-blue-500/10 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/20",
+    "bg-blue-500/10 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/12",
   pending:
-    "bg-slate-50 dark:bg-white/5 text-slate-400 dark:text-white/20 border-slate-200 dark:border-gray-500/30",
+    "bg-slate-50 dark:bg-white/5 text-slate-400 dark:text-white/20 border-slate-200 dark:border-gray-500/20",
 };
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
@@ -110,7 +110,7 @@ function Section({
   return (
     <div
       className={cn(
-        "relative rounded-3xl overflow-hidden transition-all duration-500 group bg-white dark:bg-gray-950/20 hover:bg-slate-50 dark:hover:bg-gray-950 border border-slate-200 dark:border-white/5",
+        "relative rounded-3xl overflow-hidden transition-all duration-500 group bg-white dark:bg-gray-950/20 hover:bg-slate-50 dark:hover:bg-gray-950 border border-slate-200 dark:border-white/4",
         className,
       )}
     >
@@ -120,9 +120,9 @@ function Section({
       </div>
 
       <div className="relative z-10 p-6 flex flex-col gap-6">
-        <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-gray-500/20">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-gray-500/12">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-gray-500/20 group-hover:bg-primary/10 group-hover:border-primary/20 transition-all duration-300">
+            <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-gray-500/12 group-hover:bg-primary/10 group-hover:border-primary/20 transition-all duration-300">
               <Icon className={cn("w-4 h-4 shrink-0", iconColor)} />
             </div>
             <span className="text-base font-bold tracking-wide text-slate-700 dark:text-white group-hover:text-primary dark:group-hover:text-white/70 transition-colors antialiased">
@@ -203,7 +203,7 @@ function ComplianceBadge({ compliance }: { compliance: ComplianceLevel }) {
     compliant: {
       icon: CheckCircle2,
       text: "Compliant",
-      color: "text-blue-400 bg-blue-500/10 border-blue-900/20",
+      color: "text-blue-400 bg-blue-500/10 border-blue-900/12",
     },
     partial: {
       icon: MinusCircle,
@@ -356,7 +356,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                   className={cn(
                     "text-[10px] font-normal tracking-wide px-3.5 py-1.5 rounded-xl border-2 bg-slate-50 dark:bg-white/5",
                     statusColors[s.status] ??
-                      "text-slate-400 dark:text-white/50 border-slate-200 dark:border-gray-500/30",
+                      "text-slate-400 dark:text-white/50 border-slate-200 dark:border-gray-500/20",
                   )}
                 >
                   {s.status.replace(/_/g, " ").toLowerCase()}
@@ -367,7 +367,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                   className={cn(
                     "text-[10px] font-normal tracking-wide px-3.5 py-1.5 rounded-xl border-2 bg-slate-50 dark:bg-white/5",
                     priorityColors[s.priorityLevel] ??
-                      "text-slate-400 dark:text-white/50 border-slate-200 dark:border-gray-500/30",
+                      "text-slate-400 dark:text-white/50 border-slate-200 dark:border-gray-500/20",
                   )}
                 >
                   Priority: {s.priorityLevel.toLowerCase()}
@@ -411,7 +411,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
           <div className="flex flex-col sm:flex-row items-center gap-3 md:mb-1">
             <button
               onClick={onEditProfile}
-              className="group relative flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 border border-slate-200 dark:border-white/10 hover:border-blue-500/40 transition-all duration-500 overflow-hidden backdrop-blur-xl"
+              className="group relative flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 border border-slate-200 dark:border-white/6 hover:border-blue-500/25 transition-all duration-500 overflow-hidden backdrop-blur-xl"
             >
               <div className="absolute inset-0 bg-linear-to-r from-blue-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               <div className="relative flex items-center gap-2.5">
@@ -424,7 +424,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
 
             <button
               onClick={onUpdateSurvey}
-              className="group relative flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 border border-slate-200 dark:border-white/10 hover:border-cyan-500/40 transition-all duration-500 overflow-hidden backdrop-blur-xl"
+              className="group relative flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 border border-slate-200 dark:border-white/6 hover:border-cyan-500/40 transition-all duration-500 overflow-hidden backdrop-blur-xl"
             >
               <div className="absolute inset-0 bg-linear-to-r from-cyan-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               <div className="relative flex items-center gap-2.5">
@@ -475,7 +475,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                     <KV label="Physical Address" value={s.address} />
                   </RegistryGrid>
 
-                  <div className="p-6 rounded-2xl bg-slate-50 dark:bg-white/3 border border-slate-200 dark:border-blue-900/20 space-y-4">
+                  <div className="p-6 rounded-2xl bg-slate-50 dark:bg-white/3 border border-slate-200 dark:border-blue-900/12 space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
                         <Activity className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400/60" />
@@ -532,8 +532,8 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
               >
                 <div className="space-y-8">
                   {s.headTeacher && (
-                    <div className="p-3 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-900/20 flex items-center gap-6 group/head hover:bg-white dark:hover:bg-white/8 transition-all duration-300">
-                      <div className="p-2 rounded-2xl bg-white dark:bg-white/5 flex items-center justify-center text-primary border border-slate-100 dark:border-gray-500/30 group-hover/head:scale-105 transition-transform shrink-0">
+                    <div className="p-3 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-900/12 flex items-center gap-6 group/head hover:bg-white dark:hover:bg-white/8 transition-all duration-300">
+                      <div className="p-2 rounded-2xl bg-white dark:bg-white/5 flex items-center justify-center text-primary border border-slate-100 dark:border-gray-500/20 group-hover/head:scale-105 transition-transform shrink-0">
                         <User className="w-7 h-7" />
                       </div>
                       <div className="space-y-1">
@@ -631,8 +631,8 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                     />
                   </RegistryGrid>
 
-                  <div className="p-6 rounded-2xl bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-blue-900/20 space-y-6">
-                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-blue-900/20 pb-4">
+                  <div className="p-6 rounded-2xl bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-blue-900/12 space-y-6">
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-blue-900/12 pb-4">
                       <span className="text-[10px] text-slate-500 dark:text-white/50 font-normal tracking-wide">
                         Logistical infrastructure
                       </span>
@@ -698,7 +698,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                     </span>
                   </div>
                   <RegistryGrid cols={2} gap="gap-4">
-                    <div className="p-4 rounded-3xl bg-blue-50 dark:bg-blue-500/5 border border-blue-100 dark:border-blue-500/10 flex justify-between items-center">
+                    <div className="p-4 rounded-3xl bg-blue-50 dark:bg-blue-500/5 border border-blue-100 dark:border-blue-500/6 flex justify-between items-center">
                       <span className="text-[10px] font-normal text-blue-600 dark:text-blue-400/60 tracking-wide">
                         MALE
                       </span>
@@ -731,7 +731,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                     </span>
                   </div>
                   <RegistryGrid cols={2} gap="gap-4">
-                    <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-900/20 flex justify-between items-center">
+                    <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-900/12 flex justify-between items-center">
                       <span className="text-[10px] font-normal text-slate-500 dark:text-white/40 tracking-wide">
                         MALE
                       </span>
@@ -739,7 +739,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                         {val(s.maleTeachers)}
                       </span>
                     </div>
-                    <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-900/20 flex justify-between items-center">
+                    <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-900/12 flex justify-between items-center">
                       <span className="text-[10px] font-normal text-slate-500 dark:text-white/40 tracking-wide">
                         FEMALE
                       </span>
@@ -751,7 +751,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                 </div>
 
                 {/* Organizational Support */}
-                <div className="pt-4 border-t border-slate-100 dark:border-blue-900/20">
+                <div className="pt-4 border-t border-slate-100 dark:border-blue-900/12">
                   <RegistryGrid cols={2}>
                     <KV
                       label="Administrative Registry"
@@ -791,7 +791,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                     {s.buildings.map((b: any) => (
                       <div
                         key={b.id}
-                        className="group/b p-4 rounded-3xl bg-slate-50 dark:bg-white/3 border border-slate-200 dark:border-blue-900/20 hover:bg-white dark:hover:bg-white/8 hover:border-primary/20 dark:hover:border-gray-500/30 transition-all duration-300"
+                        className="group/b p-4 rounded-3xl bg-slate-50 dark:bg-white/3 border border-slate-200 dark:border-blue-900/12 hover:bg-white dark:hover:bg-white/8 hover:border-primary/20 dark:hover:border-gray-500/20 transition-all duration-300"
                       >
                         <div className="flex justify-between items-start mb-3">
                           <div className="space-y-0.5">
@@ -806,7 +806,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                             className={cn(
                               "text-[12px] font-medium px-2 py-0.5 rounded-md border",
                               b.condition === "good"
-                                ? "text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-400/20 bg-blue-50 dark:bg-blue-400/5"
+                                ? "text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-400/12 bg-blue-50 dark:bg-blue-400/5"
                                 : b.condition === "fair"
                                   ? "text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-400/20 bg-amber-50 dark:bg-amber-400/5"
                                   : "text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-400/20 bg-rose-50 dark:bg-rose-400/5",
@@ -868,7 +868,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
               title="Official Facility Compliance Survey Report"
               headerAddon={
                 surveySummary && (
-                  <div className="flex flex-wrap items-center gap-4 bg-slate-50 dark:bg-white/5 px-4 py-2 rounded-2xl border border-slate-200 dark:border-blue-900/20">
+                  <div className="flex flex-wrap items-center gap-4 bg-slate-50 dark:bg-white/5 px-4 py-2 rounded-2xl border border-slate-200 dark:border-blue-900/12">
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-2 rounded-full bg-blue-500" />
                       <span className="text-[10px] font-medium text-blue-600 dark:text-blue-400">
@@ -899,7 +899,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                   </p>
                 </div>
               ) : facilities.length === 0 ? (
-                <div className="text-center py-20 border-2 border-dashed border-slate-200 dark:border-blue-900/20 rounded-4xl">
+                <div className="text-center py-20 border-2 border-dashed border-slate-200 dark:border-blue-900/12 rounded-4xl">
                   <p className="text-sm font-normal text-slate-400 dark:text-white/10 tracking-wide">
                     No official survey documentation attached
                   </p>
@@ -920,7 +920,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                   {facilities.map((fac) => (
                     <div key={fac.facilityId} className="space-y-6">
                       <div className="flex items-center gap-4">
-                        <div className="px-4 py-2 rounded-full bg-white dark:bg-white/5 border border-slate-200 dark:border-gray-500/20">
+                        <div className="px-4 py-2 rounded-full bg-white dark:bg-white/5 border border-slate-200 dark:border-gray-500/12">
                           <h3 className="text-sm font-bold text-slate-700 dark:text-white/80 tracking-tight">
                             {fac.title}
                           </h3>
@@ -938,7 +938,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                           return (
                             <div
                               key={item.id}
-                              className="group/item flex flex-col gap-3 p-5 rounded-3xl bg-white dark:bg-gray-900/10 border border-slate-200 dark:border-gray-900 hover:bg-slate-50 dark:hover:bg-gray-900/20 hover:border-slate-300 dark:hover:border-gray-500/30 transition-all duration-300"
+                              className="group/item flex flex-col gap-3 p-5 rounded-3xl bg-white dark:bg-gray-900/10 border border-slate-200 dark:border-gray-900 hover:bg-slate-50 dark:hover:bg-gray-900/20 hover:border-slate-300 dark:hover:border-gray-500/20 transition-all duration-300"
                             >
                               <div className="flex items-start justify-between gap-6">
                                 <div className="space-y-1.5 flex-1">
@@ -959,7 +959,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                               </div>
 
                               {(survey?.notes || survey?.inspectedAt) && (
-                                <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-gray-500/10">
+                                <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-gray-500/6">
                                   {survey?.notes && (
                                     <div className="pl-3 border-l-2 border-primary/20">
                                       <p className="text-[11px] text-slate-500 dark:text-white/30 italic leading-relaxed group-hover/item:text-slate-800 dark:group-hover/item:text-white/50 transition-colors">

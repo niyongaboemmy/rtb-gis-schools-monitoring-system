@@ -16,7 +16,7 @@ export const FacilityBreakdownSection = React.memo(
         <CardHeader className="relative z-10">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg font-medium flex items-center gap-3 text-slate-800 dark:text-white/90">
-              <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/30">
+              <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
                 <Building2 className="w-5 h-5 text-primary opacity-80" />
               </div>
               Facility inventory matrix
@@ -24,7 +24,7 @@ export const FacilityBreakdownSection = React.memo(
             <div className="flex items-center gap-2">
               <Badge
                 variant="outline"
-                className="rounded-full bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-white/40 border-slate-200 dark:border-blue-500/30 text-[11px] font-normal px-3 py-0.5"
+                className="rounded-full bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-white/40 border-slate-200 dark:border-blue-500/20 text-[11px] font-normal px-3 py-0.5"
               >
                 {buildings.length} Assets
               </Badge>
@@ -44,12 +44,12 @@ export const FacilityBreakdownSection = React.memo(
                   animate={{ opacity: 1, y: 0 }}
                   whileHover={{ scale: 1.01, translateY: -2 }}
                   transition={{ delay: index * 0.05 }}
-                  className="group/item relative p-px rounded-3xl overflow-hidden transition-all duration-500 cursor-pointer bg-white dark:bg-gray-900/20 border border-slate-200 dark:border-blue-700/20"
+                  className="group/item relative p-px rounded-3xl overflow-hidden transition-all duration-500 cursor-pointer bg-white dark:bg-gray-900/20 border border-slate-200 dark:border-blue-700/12"
                 >
                   <div className="relative p-5 z-10">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-gray-900 border border-slate-100 dark:border-blue-500/30 flex items-center justify-center text-slate-400 dark:text-blue-500 group-hover/item:text-primary transition-colors shadow-inner">
+                        <div className="w-10 h-10 rounded-xl bg-slate-50 dark:bg-gray-900 border border-slate-100 dark:border-blue-500/20 flex items-center justify-center text-slate-400 dark:text-blue-500 group-hover/item:text-primary transition-colors shadow-inner">
                           <Building2 className="w-5 h-5" />
                         </div>
                         <div>

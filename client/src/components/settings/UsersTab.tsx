@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { api } from "../../lib/api";
 import {
   Card,
@@ -37,6 +37,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Layers,
+  Users2,
+  ShieldCheck,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
@@ -131,12 +135,47 @@ export function UsersTab() {
     currentPage * itemsPerPage,
   );
 
+  const overview = useMemo(() => {
+    const total = users.length;
+    const active = users.filter((u) => u.isActive).length;
+    const rolesInUse = new Set(users.map((u) => u.role?.id).filter(Boolean)).size;
+    return { total, active, offline: total - active, rolesInUse };
+  }, [users]);
+
+  const statTiles = [
+    { label: "Total Identities", value: overview.total, icon: Users2, tone: "text-primary bg-primary/10" },
+    { label: "Active", value: overview.active, icon: Wifi, tone: "text-emerald-500 bg-emerald-500/10" },
+    { label: "Offline", value: overview.offline, icon: WifiOff, tone: "text-destructive bg-destructive/10" },
+    { label: "Roles In Use", value: `${overview.rolesInUse}/${roles.length}`, icon: ShieldCheck, tone: "text-violet-500 bg-violet-500/10" },
+  ];
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="fade-in animate-in"
+      className="fade-in animate-in space-y-5"
     >
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {statTiles.map((s) => (
+          <div
+            key={s.label}
+            className="flex items-center gap-3 rounded-2xl border border-border/20 bg-card/60 backdrop-blur-xl p-4"
+          >
+            <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", s.tone)}>
+              <s.icon className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-lg font-black font-mono leading-none tabular-nums">
+                {loading ? "—" : s.value}
+              </div>
+              <div className="text-[9px] uppercase tracking-widest text-muted-foreground font-black mt-1 truncate">
+                {s.label}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
       <Card className="border border-border/20 dark:border-gray-900 bg-card/60 backdrop-blur-xl rounded-3xl overflow-hidden">
         <CardHeader className="flex flex-col md:flex-row items-center justify-between gap-6 p-6 py-4 pr-4 border-b border-border/40">
           <div>

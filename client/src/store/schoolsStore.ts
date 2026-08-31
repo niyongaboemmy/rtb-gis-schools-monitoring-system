@@ -24,7 +24,7 @@ export interface School {
   overallScore?: number;
   tifFilePath?: string;
   kmz2dFilePath?: string;
-  /** Populated by the /schools list API — used by DashboardMinimap */
+  /** Populated by the /schools list API — used by SchoolCoverMap */
   latitude?: number;
   longitude?: number;
 }
@@ -86,6 +86,7 @@ interface SchoolsState {
   invalidateSchools: () => void;
 
   fetchAllSchools: () => Promise<void>;
+  invalidateAllSchools: () => void;
   fetchFacilities: () => Promise<void>;
 }
 
@@ -112,7 +113,11 @@ const DEFAULT_META: SchoolsMeta = {
 // ─── Computed Helpers ────────────────────────────────────────────────────────
 
 /** Single source of truth for a school's intelligence score on the frontend. */
-export const calculatedScore = (school: School): number => school.overallScore ?? 0;
+export const calculatedScore = (school: School): number => {
+  // API returns numeric columns as strings (e.g. "82.00") — coerce safely.
+  const n = Number(school.overallScore);
+  return Number.isFinite(n) ? n : 0;
+};
 
 // ─── Store ───────────────────────────────────────────────────────────────────
 
@@ -216,6 +221,10 @@ export const useSchoolsStore = create<SchoolsState>((set, get) => ({
       set({ allSchoolsLoading: false });
       console.error('[schoolsStore] fetchAllSchools error:', err);
     }
+  },
+
+  invalidateAllSchools: () => {
+    set({ allSchools: [], allSchoolsLoaded: false, allSchoolsLoading: false });
   },
 
   fetchFacilities: async () => {

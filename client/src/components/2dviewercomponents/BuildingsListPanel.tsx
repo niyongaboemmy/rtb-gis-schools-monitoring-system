@@ -71,7 +71,7 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
   return (
     <Card
       className={cn(
-        "fixed z-30 flex flex-col bg-white/95 dark:bg-card/95 backdrop-blur-2xl border border-slate-200 dark:border-white/10 overflow-hidden transition-all duration-500",
+        "fixed z-30 flex flex-col bg-white/95 dark:bg-card/95 backdrop-blur-2xl border border-slate-200 dark:border-white/6 overflow-hidden transition-all duration-500",
         "inset-x-0 bottom-0 h-[60vh] rounded-t-[32px] md:rounded-3xl", // Mobile
         "md:inset-auto md:right-22 md:top-4 md:w-80 md:h-auto md:max-h-[calc(100vh-2rem)]", // Desktop
         "animate-in fade-in slide-in-from-bottom md:slide-in-from-right-8",
@@ -135,7 +135,7 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           onClear={() => setSearchTerm("")}
-          className="h-9 text-xs bg-slate-50 dark:bg-transparent border-slate-200 dark:border-white/10"
+          className="h-9 text-xs bg-slate-50 dark:bg-transparent border-slate-200 dark:border-white/6"
           containerClassName="w-full"
         />
       </div>
@@ -167,7 +167,7 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
                   "group relative flex flex-col gap-1.5 px-4 py-3 transition-all rounded-2xl cursor-pointer border",
                   selectedId === b.id
                     ? "bg-primary/20 border-primary/40"
-                    : "bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 border-slate-100 dark:border-transparent hover:border-slate-200 dark:hover:border-white/10",
+                    : "bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 border-slate-100 dark:border-transparent hover:border-slate-200 dark:hover:border-white/6",
                 )}
               >
               <div className="flex justify-between items-start w-full">
@@ -190,7 +190,7 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
                 {/* Delete Button / Confirm Dialog */}
                 {showConfirm === b.id ? (
                   <div
-                    className="flex flex-col items-end gap-1 absolute right-3 top-2 bg-white dark:bg-[#0f1117] border border-slate-200 dark:border-white/10 p-2 rounded-xl z-10"
+                    className="flex flex-col items-end gap-1 absolute right-3 top-2 bg-white dark:bg-[#0f1117] border border-slate-200 dark:border-white/6 p-2 rounded-xl z-10"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="flex items-center gap-1.5 text-destructive text-[10px] font-bold uppercase mb-1">

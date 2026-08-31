@@ -101,7 +101,7 @@ export function StaffStep({
               placeholder="0"
               value={getValue(maleKey)}
               onChange={(e) => onChange(maleKey, e.target.value)}
-              className="h-11 text-sm font-bold bg-background/50 border-border/20 focus:border-blue-500/50"
+              className="h-11 text-sm font-bold bg-background/50 border-border/20 focus:border-blue-500/35"
             />
           </div>
           <div className="space-y-1.5">

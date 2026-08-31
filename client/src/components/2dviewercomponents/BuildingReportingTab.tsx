@@ -137,11 +137,11 @@ export function BuildingReportingTab({
             className="fixed inset-0 z-101 flex items-center justify-center px-4 py-6 pointer-events-none"
           >
             <div
-              className="relative w-full h-[97vh] bg-white dark:bg-[#0f1117] border border-slate-200 dark:border-white/10 rounded-3xl shadow-2xl flex flex-col overflow-hidden pointer-events-auto"
+              className="relative w-full h-[97vh] bg-white dark:bg-[#0f1117] border border-slate-200 dark:border-white/6 rounded-3xl shadow-2xl flex flex-col overflow-hidden pointer-events-auto"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Modal header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-white/8 bg-slate-50/80 dark:bg-white/3 shrink-0">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-white/5 bg-slate-50/80 dark:bg-white/3 shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-2xl bg-primary/10">
                     <ClipboardList className="w-4 h-4 text-primary" />
@@ -203,7 +203,7 @@ export function BuildingReportingTab({
   if (reports.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-10 space-y-4 text-center">
-        <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/8 flex items-center justify-center">
+        <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/5 flex items-center justify-center">
           <FileText className="w-6 h-6 text-slate-400 dark:text-white/30" />
         </div>
         <div>
@@ -265,7 +265,7 @@ export function BuildingReportingTab({
               </div>
 
               {/* Rows */}
-              <div className="rounded-xl border border-slate-200 dark:border-white/8 overflow-hidden divide-y divide-slate-100 dark:divide-white/5">
+              <div className="rounded-xl border border-slate-200 dark:border-white/5 overflow-hidden divide-y divide-slate-100 dark:divide-white/5">
                 {group.map((report) => (
                   <button
                     key={report.id}

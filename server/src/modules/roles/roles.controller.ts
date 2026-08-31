@@ -26,21 +26,21 @@ export class RolesController {
 
   @Get()
   @ApiOperation({ summary: 'Get all roles' })
-  @RequirePermissions(Permission.MANAGE_USERS)
+  @RequirePermissions(Permission.MANAGE_ROLES)
   findAll() {
     return this.rolesService.findAll();
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get single role' })
-  @RequirePermissions(Permission.MANAGE_USERS)
+  @RequirePermissions(Permission.MANAGE_ROLES)
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.rolesService.findOne(id);
   }
 
   @Post()
   @ApiOperation({ summary: 'Create new role' })
-  @RequirePermissions(Permission.MANAGE_USERS)
+  @RequirePermissions(Permission.MANAGE_ROLES)
   create(
     @Body() body: { name: string; description?: string; permissions: string[] },
   ) {
@@ -49,7 +49,7 @@ export class RolesController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update role capabilities' })
-  @RequirePermissions(Permission.MANAGE_USERS)
+  @RequirePermissions(Permission.MANAGE_ROLES)
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: any,
@@ -60,7 +60,7 @@ export class RolesController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a role' })
-  @RequirePermissions(Permission.MANAGE_USERS)
+  @RequirePermissions(Permission.MANAGE_ROLES)
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.rolesService.remove(id);
   }

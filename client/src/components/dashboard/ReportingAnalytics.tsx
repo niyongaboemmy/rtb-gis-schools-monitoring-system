@@ -169,7 +169,7 @@ export const ReportingAnalytics = React.memo(
         case "low":
           return "text-emerald-500 bg-emerald-500/10 border-emerald-500/20";
         default:
-          return "text-slate-500 bg-slate-500/10 border-slate-500/20";
+          return "text-slate-500 bg-slate-500/10 border-slate-500/12";
       }
     };
 
@@ -197,7 +197,7 @@ export const ReportingAnalytics = React.memo(
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-medium text-slate-800 dark:text-white/90 flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/30">
+              <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
                 <FileText className="w-5 h-5 text-primary opacity-80" />
               </div>
               Reporting & Analytics
@@ -236,7 +236,7 @@ export const ReportingAnalytics = React.memo(
             <Card className="group relative border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/30 hover:bg-slate-50 dark:hover:bg-gray-900/50 transition-all rounded-3xl overflow-hidden">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="p-2 rounded-xl bg-blue-500/5 border border-blue-500/20">
+                  <div className="p-2 rounded-xl bg-blue-500/5 border border-blue-500/12">
                     <FileText className="w-5 h-5 text-blue-500" />
                   </div>
                   <div className="flex items-center gap-1">
@@ -418,7 +418,7 @@ export const ReportingAnalytics = React.memo(
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Issue Categories */}
           <Card className="border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/30 rounded-3xl overflow-hidden">
-            <CardHeader className="border-b border-slate-100 dark:border-blue-500/20">
+            <CardHeader className="border-b border-slate-100 dark:border-blue-500/12">
               <CardTitle className="text-base font-medium flex items-center gap-3">
                 <BarChart3 className="w-5 h-5 text-primary opacity-80" />
                 Issue Categories Distribution
@@ -467,7 +467,7 @@ export const ReportingAnalytics = React.memo(
 
           {/* Decision Impact Assessment */}
           <Card className="border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/30 rounded-3xl overflow-hidden">
-            <CardHeader className="border-b border-slate-100 dark:border-blue-500/20">
+            <CardHeader className="border-b border-slate-100 dark:border-blue-500/12">
               <CardTitle className="text-base font-medium flex items-center gap-3">
                 <Target className="w-5 h-5 text-primary opacity-80" />
                 Decision Impact Assessment
@@ -497,7 +497,7 @@ export const ReportingAnalytics = React.memo(
 
                 {/* Impact Metrics */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12">
                     <div className="flex items-center gap-2 mb-2">
                       <Users className="w-4 h-4 text-blue-500" />
                       <span className="text-xs text-slate-500 dark:text-white/60">
@@ -508,7 +508,7 @@ export const ReportingAnalytics = React.memo(
                       {decisionImpact?.stakeholderImpact || 0}%
                     </p>
                   </div>
-                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12">
                     <div className="flex items-center gap-2 mb-2">
                       <Calendar className="w-4 h-4 text-emerald-500" />
                       <span className="text-xs text-slate-500 dark:text-white/60">
@@ -532,7 +532,7 @@ export const ReportingAnalytics = React.memo(
                       .map((rec, index) => (
                         <div
                           key={index}
-                          className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20"
+                          className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12"
                         >
                           <div className="w-1.5 h-1.5 rounded-full bg-primary/60 mt-1.5 shrink-0" />
                           <p className="text-xs text-slate-600 dark:text-white/60 leading-relaxed">
@@ -549,7 +549,7 @@ export const ReportingAnalytics = React.memo(
 
         {/* Trend Analysis */}
         <Card className="border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/30 rounded-3xl overflow-hidden">
-          <CardHeader className="border-b border-slate-100 dark:border-blue-500/20">
+          <CardHeader className="border-b border-slate-100 dark:border-blue-500/12">
             <CardTitle className="text-base font-medium flex items-center gap-3">
               <Activity className="w-5 h-5 text-primary opacity-80" />
               Reporting Trends & Patterns

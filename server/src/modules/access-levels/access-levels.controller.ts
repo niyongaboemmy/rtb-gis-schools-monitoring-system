@@ -25,28 +25,28 @@ export class AccessLevelsController {
 
   @Get()
   @ApiOperation({ summary: 'List all access levels' })
-  @RequirePermissions(Permission.MANAGE_USERS)
+  @RequirePermissions(Permission.MANAGE_ROLES)
   findAll() {
     return this.service.findAll();
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get single access level' })
-  @RequirePermissions(Permission.MANAGE_USERS)
+  @RequirePermissions(Permission.MANAGE_ROLES)
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.findOne(id);
   }
 
   @Post()
   @ApiOperation({ summary: 'Create access level' })
-  @RequirePermissions(Permission.MANAGE_USERS)
+  @RequirePermissions(Permission.MANAGE_ROLES)
   create(@Body() body: { name: string }) {
     return this.service.create(body);
   }
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update access level' })
-  @RequirePermissions(Permission.MANAGE_USERS)
+  @RequirePermissions(Permission.MANAGE_ROLES)
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: { name: string },
@@ -56,7 +56,7 @@ export class AccessLevelsController {
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete access level' })
-  @RequirePermissions(Permission.MANAGE_USERS)
+  @RequirePermissions(Permission.MANAGE_ROLES)
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(id);
   }

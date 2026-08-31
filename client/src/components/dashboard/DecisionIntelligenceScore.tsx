@@ -112,10 +112,10 @@ export const DecisionIntelligenceScore = React.memo(
       <Card className="group relative border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/60 rounded-[32px] overflow-hidden transition-all duration-500">
         <div className="absolute -inset-x-20 -top-20 h-64 bg-primary/5 blur-[100px] rounded-full pointer-events-none opacity-0 transition-opacity duration-700" />
 
-        <CardHeader className="border-b border-slate-100 dark:border-blue-500/20 pb-5 relative z-10">
+        <CardHeader className="border-b border-slate-100 dark:border-blue-500/12 pb-5 relative z-10">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg font-medium flex items-center gap-3 text-slate-800 dark:text-white/90">
-              <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/30">
+              <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
                 <Activity className="w-5 h-5 text-primary opacity-80" />
               </div>
               Decision intelligence score
@@ -132,7 +132,7 @@ export const DecisionIntelligenceScore = React.memo(
               </div>
               <Badge
                 variant="outline"
-                className="rounded-full bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-white/40 border-slate-200 dark:border-blue-500/30 text-[12px] font-medium px-4 py-1 tracking-wide"
+                className="rounded-full bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-white/40 border-slate-200 dark:border-blue-500/20 text-[12px] font-medium px-4 py-1 tracking-wide"
               >
                 Strategic cockpit
               </Badge>
@@ -189,14 +189,14 @@ export const DecisionIntelligenceScore = React.memo(
 
               {/* Urgency + operational health ── */}
               <div className="mt-8 grid grid-cols-2 gap-4 w-full">
-                <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/2 border border-slate-200 dark:border-blue-500/20 text-center">
+                <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/2 border border-slate-200 dark:border-blue-500/12 text-center">
                   <p className="text-[12px] font-normal text-slate-500 dark:text-white mb-2">
                     Operational health
                   </p>
                   <Badge
                     variant="outline"
                     className={cn(
-                      "rounded-xl font-medium text-[11px] px-4 py-1 border-slate-200 dark:border-blue-500/20 bg-white dark:bg-white/2",
+                      "rounded-xl font-medium text-[11px] px-4 py-1 border-slate-200 dark:border-blue-500/12 bg-white dark:bg-white/2",
                       overallScore >= 70
                         ? "text-emerald-600 dark:text-emerald-400/80"
                         : overallScore >= 50
@@ -207,7 +207,7 @@ export const DecisionIntelligenceScore = React.memo(
                     {overallScore >= 70 ? "Optimal" : overallScore >= 50 ? "Strategic" : "Critical"}
                   </Badge>
                 </div>
-                <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/2 border border-slate-200 dark:border-blue-500/20 text-center">
+                <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/2 border border-slate-200 dark:border-blue-500/12 text-center">
                   <p className="text-[12px] font-normal text-slate-500 dark:text-white mb-2">
                     Decision urgency
                   </p>
@@ -223,7 +223,7 @@ export const DecisionIntelligenceScore = React.memo(
               </div>
 
               {/* Benchmarking strip — uses scoreDeltaFromDistrict when available */}
-              <div className="mt-8 w-full px-4 pt-4 border-t border-slate-100 dark:border-blue-500/20 flex items-center justify-between">
+              <div className="mt-8 w-full px-4 pt-4 border-t border-slate-100 dark:border-blue-500/12 flex items-center justify-between">
                 <span className="text-[12px] font-normal text-slate-400 dark:text-white/40 tracking-wide">
                   Benchmarking
                 </span>
@@ -260,10 +260,10 @@ export const DecisionIntelligenceScore = React.memo(
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.1 * index }}
                       title={metric.tooltip}
-                      className="p-5 rounded-3xl bg-white dark:bg-white/2 border border-slate-200 dark:border-blue-500/20 group/metric hover:bg-slate-50 dark:hover:bg-gray-900/60 transition-all"
+                      className="p-5 rounded-3xl bg-white dark:bg-white/2 border border-slate-200 dark:border-blue-500/12 group/metric hover:bg-slate-50 dark:hover:bg-gray-900/60 transition-all"
                     >
                       <div className="flex items-center justify-between mb-3">
-                        <div className="w-10 h-10 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/30 flex items-center justify-center text-blue-500 dark:text-blue-500 group-hover/metric:text-primary transition-colors">
+                        <div className="w-10 h-10 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20 flex items-center justify-center text-blue-500 dark:text-blue-500 group-hover/metric:text-primary transition-colors">
                           <metric.icon className="w-5 h-5" />
                         </div>
                         {/* Score value */}
@@ -278,7 +278,7 @@ export const DecisionIntelligenceScore = React.memo(
                           <p className="text-[13px] font-normal text-slate-500 dark:text-white group-hover/metric:text-slate-800 dark:group-hover/metric:text-white/70 transition-colors leading-tight">
                             {metric.label}
                           </p>
-                          <span className="shrink-0 text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-white/30 border border-slate-200 dark:border-white/10">
+                          <span className="shrink-0 text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-white/30 border border-slate-200 dark:border-white/6">
                             {metric.weight}
                           </span>
                         </div>
@@ -319,9 +319,9 @@ export const DecisionIntelligenceScore = React.memo(
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: 0.6 + i * 0.1 }}
-                        className="group/rec p-4 rounded-2xl bg-white dark:bg-white/2 border border-slate-200 dark:border-blue-500/20 flex gap-4 items-center hover:bg-slate-50 dark:hover:bg-white/5 transition-all"
+                        className="group/rec p-4 rounded-2xl bg-white dark:bg-white/2 border border-slate-200 dark:border-blue-500/12 flex gap-4 items-center hover:bg-slate-50 dark:hover:bg-white/5 transition-all"
                       >
-                        <div className="w-10 h-10 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/30 flex items-center justify-center shrink-0">
+                        <div className="w-10 h-10 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20 flex items-center justify-center shrink-0">
                           <Sparkles className="w-5 h-5 text-slate-400 dark:text-white/40 group-hover/rec:text-primary transition-colors" />
                         </div>
                         <div>
@@ -329,11 +329,7 @@ export const DecisionIntelligenceScore = React.memo(
                             Directive 0{i + 1}
                           </p>
                           <p className="text-[13px] font-normal text-slate-700 dark:text-white/70 leading-relaxed group-hover:text-slate-900 dark:group-hover:text-white/90 transition-colors">
-                            {rec
-                              .replace("[URGENT]", "")
-                              .replace("[CRITICAL]", "")
-                              .replace("[STRATEGIC]", "")
-                              .trim()}
+                            {rec.replace(/^\[[A-Z]+\]\s*/, "").trim()}
                           </p>
                         </div>
                       </motion.div>
@@ -347,7 +343,7 @@ export const DecisionIntelligenceScore = React.memo(
                 </div>
 
                 {/* ── Score interpretation legend (collapsible) ──────── */}
-                <details className="group/legend border-t border-slate-100 dark:border-blue-500/10 pt-3 mt-2">
+                <details className="group/legend border-t border-slate-100 dark:border-blue-500/6 pt-3 mt-2">
                   <summary className="cursor-pointer list-none flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-white/30 hover:text-slate-600 dark:hover:text-white/50 transition-colors select-none">
                     <span>Score Guide</span>
                     <span className="transition-transform group-open/legend:rotate-180 text-[9px]">

@@ -26,14 +26,14 @@ import { KPICard } from "../components/analytics/KPICard";
 import { IntelligenceScore } from "../components/analytics/IntelligenceScore";
 import { RecommendationList } from "../components/analytics/RecommendationList";
 import { DistributionChart } from "../components/analytics/DistributionChart";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { ImigongoPattern } from "../components/ui/ImigongoPattern";
 import { useSchoolsStore, calculatedScore } from "../store/schoolsStore";
 import { useAuthStore } from "../store/authStore";
 import { hasPermission } from "../lib/permissions";
 import { Button } from "../components/ui/button";
-import { DashboardMinimap } from "../components/analytics/DashboardMinimap";
+import { SchoolCoverMap } from "../components/maps/SchoolCoverMap";
 
 interface DashboardSchool {
   id: string;
@@ -51,6 +51,7 @@ export default function Dashboard() {
   const [drillData, setDrillData] = useState<any>(null);
   const fetchedRef = useRef(false);
 
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const { allSchools, allSchoolsLoading, fetchAllSchools } = useSchoolsStore();
 
@@ -156,6 +157,19 @@ export default function Dashboard() {
       />
 
       <div className="relative z-10 space-y-8">
+        {/* ── Cover map — full-bleed NASA-style locator hero ── */}
+        <SchoolCoverMap
+          schools={allSchools}
+          variant="hero"
+          interactive
+          title="National School Network"
+          subtitle="Live infrastructure intelligence across Rwanda's TVET institutions"
+          href="/map"
+          hrefLabel="Open national map"
+          onSchoolClick={(s) => navigate(`/schools/${s.id}`)}
+          className="-mt-5 w-[calc(100vw-var(--app-shell-inset,0px))] ml-[calc((100%-100vw+var(--app-shell-inset,0px))/2)] transition-[width,margin] duration-200 md:-mt-7"
+        />
+
         <PageHeader
         title="National System Overview"
         description="GIS Intelligence & Infrastructure Monitoring Dashboard"
@@ -320,7 +334,7 @@ export default function Dashboard() {
           />
         </IntelligenceScore>
 
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           {selectedProvince && (
             <button
               onClick={() => { setSelectedProvince(null); setDrillData(null); }}
@@ -330,6 +344,7 @@ export default function Dashboard() {
             </button>
           )}
           <DistributionChart
+            className="flex-1 h-auto min-h-0"
             title={
               selectedProvince
                 ? `${selectedProvince} — Districts`
@@ -355,8 +370,6 @@ export default function Dashboard() {
               []
             }
           />
-          {/* Minimap — non-interactive, shows all school locations coloured by priority */}
-          <DashboardMinimap schools={allSchools} />
         </div>
       </div>
 
@@ -416,7 +429,7 @@ function DirectorySection({
         </div>
       </div>
 
-      <div className="flex flex-col border border-border/20 dark:border-blue-700/20 rounded-3xl bg-card/60 backdrop-blur-sm overflow-hidden">
+      <div className="flex flex-col border border-border/20 dark:border-blue-700/12 rounded-3xl bg-card/60 backdrop-blur-sm overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent border-b border-border/10 bg-muted/20">

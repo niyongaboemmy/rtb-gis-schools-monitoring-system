@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../../lib/utils";
-import { Permission } from "../../lib/permissions";
+import { PERMISSION_GROUPS } from "../../lib/permissions";
 
 export function RolesTab() {
   const [roles, setRoles] = useState<any[]>([]);
@@ -162,65 +162,6 @@ export function RolesTab() {
       alert(err.response?.data?.message || "Failed to delete role");
     } finally {
       setAL(key, false);
-    }
-  };
-
-  const getPermissionDescription = (p: string) => {
-    switch (p) {
-      case "VIEW_DASHBOARD":
-        return "Access the main system dashboard and top-level summaries";
-      case "VIEW_MAP":
-        return "View the interactive National GIS Map and 3D plotting";
-      case "VIEW_SCHOOLS":
-        return "Access the global directory and listing of TVET schools";
-      case "MANAGE_USERS":
-        return "Create, update, and manage system users and roles";
-      case "VIEW_USERS":
-        return "Read-only access to view the user directory";
-      case "MANAGE_SCHOOLS":
-        return "Add, edit, or delete school records";
-      case "UPLOAD_KMZ":
-        return "Upload and trigger geospatial data processing (KMZ)";
-      case "VIEW_ANALYTICS":
-        return "Access standard reporting and analytics dashboards";
-      case "MANAGE_DECISIONS":
-        return "Re-run priority algorithms and modify assessment weights";
-      case "EXPORT_REPORTS":
-        return "Export data tables and comprehensive system reports";
-      case "CREATE_SCHOOL":
-        return "Enable registration of new schools and TVET centers";
-      case "DELETE_SCHOOL":
-        return "Permanent removal of school records from the national database";
-      case "EDIT_SCHOOL_BASIC":
-        return "Modify basic identification, status, and establishing year";
-      case "EDIT_SCHOOL_LOCATION":
-        return "Update geographic coordinates and administrative location data";
-      case "EDIT_SCHOOL_CONTACT":
-        return "Modify contact person, email, phone, and website links";
-      case "EDIT_SCHOOL_PROGRAMS":
-        return "Manage education programs (Trades), levels, and student counts";
-      case "EDIT_SCHOOL_STAFF":
-        return "Update staffing figures for teachers, admin, and support personnel";
-      case "EDIT_SCHOOL_LAND":
-        return "Modify land usage figures (used vs unused square meters)";
-      case "EDIT_SCHOOL_BUILDINGS":
-        return "Manage structural building data, conditions, and footprints";
-      case "VIEW_INTELLIGENCE":
-        return "Access AI-driven decision priority scores and infrastructure delta";
-      case "RUN_FACILITY_SURVEY":
-        return "Conduct or initiate infrastructure compliance assessments";
-      case "SCHOOL_LEVEL_DASHBOARD":
-        return "Access detailed individual school intelligence view";
-      case "CREATE_REPORT":
-        return "Submit new incident or infrastructure status reports";
-      case "EDIT_SCHOOL_PROFILE":
-        return "General ability to modify school-related profile data";
-      case "SCHOOL_SURVERY_EDIT":
-        return "Ability to edit or initiate facility survey compliance entries";
-      case "SCHOOL_VIEW_2D3D_MAP":
-        return "Enable access to the multimodal 2D/3D map viewer overlays";
-      default:
-        return "Operational authority parameter";
     }
   };
 
@@ -397,66 +338,104 @@ export function RolesTab() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {Object.values(Permission).map((permission) => {
-                      const hasPermission =
-                        selectedRole.permissions?.includes(permission);
+                  <div className="space-y-5">
+                    {PERMISSION_GROUPS.map(({ group, items }) => {
+                      const granted = items.filter((it) =>
+                        selectedRole.permissions?.includes(it.key),
+                      ).length;
+                      const allOn = granted === items.length;
                       return (
-                        <motion.button
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                          key={permission}
-                          onClick={() =>
-                            handleTogglePermission(
-                              selectedRole,
-                              permission,
-                              !hasPermission,
-                            )
-                          }
-                          className={cn(
-                            "flex items-start gap-3 p-4 rounded-xl border transition-all text-left group",
-                            hasPermission
-                              ? "bg-primary/10 border-primary/30"
-                              : "bg-muted/10 border-border/40 hover:bg-muted/20",
-                            isAL(`perm-${selectedRole.id}-${permission}`) &&
-                              "opacity-60",
-                          )}
-                          disabled={
-                            isAL(`perm-${selectedRole.id}-${permission}`)
-                          }
-                        >
-                          <div
-                            className={cn(
-                              "w-5 h-5 rounded-lg flex items-center justify-center transition-colors mt-0.5",
-                              hasPermission
-                                ? "bg-primary text-white"
-                                : "bg-muted-foreground/10 text-muted-foreground",
-                            )}
-                          >
-                            {isAL(`perm-${selectedRole.id}-${permission}`) ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : hasPermission ? (
-                              <Plus className="w-3 h-3 rotate-45" />
-                            ) : (
-                              <Shield className="w-3 h-3" />
-                            )}
-                          </div>
-                          <div className="space-y-0.5">
-                            <div
-                              className={cn(
-                                "text-xs font-black uppercase tracking-wide",
-                                hasPermission
-                                  ? "text-primary"
-                                  : "text-muted-foreground",
-                              )}
+                        <div key={group} className="space-y-2">
+                          <div className="flex items-center justify-between px-2">
+                            <h5 className="text-[10px] font-black uppercase tracking-widest text-foreground/70">
+                              {group}
+                              <span className="ml-2 text-muted-foreground/50">
+                                {granted}/{items.length}
+                              </span>
+                            </h5>
+                            <button
+                              onClick={() =>
+                                items.forEach((it) => {
+                                  const has = selectedRole.permissions?.includes(
+                                    it.key,
+                                  );
+                                  if (allOn ? has : !has)
+                                    handleTogglePermission(
+                                      selectedRole,
+                                      it.key,
+                                      !allOn,
+                                    );
+                                })
+                              }
+                              className="text-[9px] font-black uppercase tracking-wider text-primary/70 hover:text-primary"
                             >
-                              {permission.replace("_", " ")}
-                            </div>
-                            <p className="text-[9px] font-medium leading-tight text-muted-foreground/60">
-                              {getPermissionDescription(permission)}
-                            </p>
+                              {allOn ? "Clear group" : "Grant group"}
+                            </button>
                           </div>
-                        </motion.button>
+                          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                            {items.map(({ key: permission, label, description }) => {
+                              const hasPermission =
+                                selectedRole.permissions?.includes(permission);
+                              const busy = isAL(
+                                `perm-${selectedRole.id}-${permission}`,
+                              );
+                              return (
+                                <motion.button
+                                  whileHover={{ scale: 1.01 }}
+                                  whileTap={{ scale: 0.99 }}
+                                  key={permission}
+                                  onClick={() =>
+                                    handleTogglePermission(
+                                      selectedRole,
+                                      permission,
+                                      !hasPermission,
+                                    )
+                                  }
+                                  className={cn(
+                                    "flex items-start gap-3 rounded-xl border p-3 text-left transition-all",
+                                    hasPermission
+                                      ? "border-primary/30 bg-primary/10"
+                                      : "border-border/40 bg-muted/10 hover:bg-muted/20",
+                                    busy && "opacity-60",
+                                  )}
+                                  disabled={busy}
+                                >
+                                  <div
+                                    className={cn(
+                                      "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-lg transition-colors",
+                                      hasPermission
+                                        ? "bg-primary text-white"
+                                        : "bg-muted-foreground/10 text-muted-foreground",
+                                    )}
+                                  >
+                                    {busy ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : hasPermission ? (
+                                      <Plus className="h-3 w-3 rotate-45" />
+                                    ) : (
+                                      <Shield className="h-3 w-3" />
+                                    )}
+                                  </div>
+                                  <div className="min-w-0 space-y-0.5">
+                                    <div
+                                      className={cn(
+                                        "text-[11px] font-black uppercase tracking-wide",
+                                        hasPermission
+                                          ? "text-primary"
+                                          : "text-foreground/70",
+                                      )}
+                                    >
+                                      {label}
+                                    </div>
+                                    <p className="text-[9px] font-medium leading-tight text-muted-foreground/60">
+                                      {description}
+                                    </p>
+                                  </div>
+                                </motion.button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       );
                     })}
                   </div>

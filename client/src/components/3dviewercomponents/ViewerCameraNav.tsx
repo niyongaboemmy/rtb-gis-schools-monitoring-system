@@ -11,7 +11,7 @@ export const ViewerCameraNav: React.FC<ViewerCameraNavProps> = ({ setView }) => 
   return (
     <TooltipProvider delayDuration={0}>
       <div className="fixed bottom-6 left-6 z-30 flex flex-col gap-2">
-        <Card className="bg-background/80 backdrop-blur-2xl rounded-2xl border border-white/10 p-1.5 flex flex-col gap-1 shadow-2xl pointer-events-auto">
+        <Card className="bg-background/80 backdrop-blur-2xl rounded-2xl border border-white/6 p-1.5 flex flex-col gap-1 shadow-2xl pointer-events-auto">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button 

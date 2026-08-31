@@ -245,7 +245,7 @@ function ProvinceRow({
 
 export default function PopulationAnalytics() {
   const { user } = useAuthStore();
-  const canSync = hasPermission(user, Permission.MANAGE_DECISIONS);
+  const canSync = hasPermission(user, Permission.SYNC_POPULATION);
 
   const [records, setRecords] = useState<PopulationRecord[]>([]);
   const [loading, setLoading] = useState(true);

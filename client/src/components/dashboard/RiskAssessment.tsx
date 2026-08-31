@@ -249,7 +249,7 @@ export const RiskAssessment = React.memo(
         case "low":
           return "text-emerald-500 bg-emerald-500/10 border-emerald-500/20";
         default:
-          return "text-slate-500 bg-slate-500/10 border-slate-500/20";
+          return "text-slate-500 bg-slate-500/10 border-slate-500/12";
       }
     };
 
@@ -260,9 +260,9 @@ export const RiskAssessment = React.memo(
         case "short-term":
           return "text-amber-600 bg-amber-500/10 border-amber-500/20";
         case "long-term":
-          return "text-blue-600 bg-blue-500/10 border-blue-500/20";
+          return "text-blue-600 bg-blue-500/10 border-blue-500/12";
         default:
-          return "text-slate-600 bg-slate-500/10 border-slate-500/20";
+          return "text-slate-600 bg-slate-500/10 border-slate-500/12";
       }
     };
 
@@ -303,7 +303,7 @@ export const RiskAssessment = React.memo(
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-medium text-slate-800 dark:text-white/90 flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/30">
+              <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
                 <Shield className="w-5 h-5 text-primary opacity-80" />
               </div>
               Risk Assessment & Mitigation
@@ -333,7 +333,7 @@ export const RiskAssessment = React.memo(
 
         {/* Risk Matrix */}
         <Card className="border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/30 rounded-3xl overflow-hidden">
-          <CardHeader className="border-b border-slate-100 dark:border-blue-500/20">
+          <CardHeader className="border-b border-slate-100 dark:border-blue-500/12">
             <CardTitle className="text-base font-medium flex items-center gap-3">
               <AlertTriangle className="w-5 h-5 text-primary opacity-80" />
               Risk Factor Analysis
@@ -347,7 +347,7 @@ export const RiskAssessment = React.memo(
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20 hover:bg-slate-100 dark:hover:bg-white/10 transition-all"
+                  className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12 hover:bg-slate-100 dark:hover:bg-white/10 transition-all"
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
@@ -433,7 +433,7 @@ export const RiskAssessment = React.memo(
 
         {/* Mitigation Strategies */}
         <Card className="border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/30 rounded-3xl overflow-hidden">
-          <CardHeader className="border-b border-slate-100 dark:border-blue-500/20">
+          <CardHeader className="border-b border-slate-100 dark:border-blue-500/12">
             <CardTitle className="text-base font-medium flex items-center gap-3">
               <Target className="w-5 h-5 text-primary opacity-80" />
               Strategic Mitigation Plan
@@ -447,7 +447,7 @@ export const RiskAssessment = React.memo(
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
-                  className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20 hover:bg-slate-100 dark:hover:bg-white/10 transition-all"
+                  className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12 hover:bg-slate-100 dark:hover:bg-white/10 transition-all"
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">

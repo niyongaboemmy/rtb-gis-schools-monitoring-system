@@ -84,7 +84,7 @@ export const ViewerRightToolbar: React.FC<ViewerRightToolbarProps> = ({
   return (
     <TooltipProvider delayDuration={0}>
       <div className="fixed right-6 top-6 bottom-6 z-30 flex flex-col items-end gap-3 pointer-events-none">
-        <Card className="bg-background/80 backdrop-blur-2xl rounded-[32px] border border-white/10 p-2 flex flex-col gap-2 shadow-2xl pointer-events-auto items-center w-[56px] overflow-y-auto no-scrollbar">
+        <Card className="bg-background/80 backdrop-blur-2xl rounded-[32px] border border-white/6 p-2 flex flex-col gap-2 shadow-2xl pointer-events-auto items-center w-[56px] overflow-y-auto no-scrollbar">
           
           {/* Group 1: Session */}
           <div className="flex flex-col gap-1 shrink-0">
@@ -320,7 +320,7 @@ export const ViewerRightToolbar: React.FC<ViewerRightToolbarProps> = ({
         <div className="relative pointer-events-auto">
           {/* Render Modes Popover */}
           {showRenders && (
-            <Card className="absolute bottom-[-100px] right-16 bg-background/90 backdrop-blur-2xl rounded-3xl border border-white/10 p-3 shadow-2xl w-44 flex flex-col gap-1 animate-in slide-in-from-right-4 duration-200">
+            <Card className="absolute bottom-[-100px] right-16 bg-background/90 backdrop-blur-2xl rounded-3xl border border-white/6 p-3 shadow-2xl w-44 flex flex-col gap-1 animate-in slide-in-from-right-4 duration-200">
               <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1 px-1">Render Mode</div>
               {(["unlit", "lit", "wireframe"] as RenderMode[]).map(m => (
                 <Button
@@ -328,7 +328,7 @@ export const ViewerRightToolbar: React.FC<ViewerRightToolbarProps> = ({
                   variant={renderMode === m ? "default" : "outline"}
                   size="sm"
                   className={cn(
-                    "flex items-center justify-between h-10 px-3 rounded-xl border-white/5",
+                    "flex items-center justify-between h-10 px-3 rounded-xl border-white/4",
                     renderMode === m && "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
                   )}
                   onClick={() => { setRenderMode(m); setShowRenders(false); }}
@@ -342,7 +342,7 @@ export const ViewerRightToolbar: React.FC<ViewerRightToolbarProps> = ({
 
           {/* Speed Control Popover */}
           {showSpeeds && (
-            <Card className="absolute bottom-[-40px] right-16 bg-background/90 backdrop-blur-2xl rounded-3xl border border-white/10 p-4 shadow-2xl w-56 flex flex-col gap-4 animate-in slide-in-from-right-4 duration-200">
+            <Card className="absolute bottom-[-40px] right-16 bg-background/90 backdrop-blur-2xl rounded-3xl border border-white/6 p-4 shadow-2xl w-56 flex flex-col gap-4 animate-in slide-in-from-right-4 duration-200">
               <div className="flex items-center justify-between">
                 <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Movement Speed</div>
                 <div className="text-[10px] font-mono text-primary bg-primary/10 px-2 py-0.5 rounded-lg">{fmtSpeed(speedSteps[speedIdx])}</div>
@@ -359,7 +359,7 @@ export const ViewerRightToolbar: React.FC<ViewerRightToolbarProps> = ({
 
           {/* Measurement Unit Popover (Only if measuring) */}
           {measureMode && measureMode !== "annotate" && (
-            <Card className="absolute bottom-[200px] right-16 bg-background/90 backdrop-blur-2xl rounded-3xl border border-white/10 p-3 shadow-2xl w-40 flex flex-col gap-1 animate-in slide-in-from-right-4 duration-200">
+            <Card className="absolute bottom-[200px] right-16 bg-background/90 backdrop-blur-2xl rounded-3xl border border-white/6 p-3 shadow-2xl w-40 flex flex-col gap-1 animate-in slide-in-from-right-4 duration-200">
               <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 mb-1 px-1">Units</div>
               {(Object.keys(unitLabels) as Unit[]).map(u => (
                 <Button
@@ -367,7 +367,7 @@ export const ViewerRightToolbar: React.FC<ViewerRightToolbarProps> = ({
                   variant={unit === u ? "default" : "outline"}
                   size="sm"
                   className={cn(
-                    "flex items-center justify-between h-9 px-3 rounded-xl border-white/5",
+                    "flex items-center justify-between h-9 px-3 rounded-xl border-white/4",
                     unit === u && "bg-amber-500/20 text-amber-400 border-amber-500/30"
                   )}
                   onClick={() => setUnit(u)}

@@ -40,10 +40,10 @@ export const ANNOTATION_ICONS: AnnotationIcon[] = [
   { id: "danger",        label: "Danger",       icon: AlertOctagon,  color: "text-red-400",    bg: "bg-red-500/20",      border: "border-red-500/30",     mapColor: "#ef4444" },
   { id: "construction",  label: "Construction", icon: Construction,  color: "text-orange-400", bg: "bg-orange-500/20",   border: "border-orange-500/30",  mapColor: "#f97316" },
   { id: "flag",          label: "Flag",         icon: Flag,          color: "text-pink-400",   bg: "bg-pink-500/20",     border: "border-pink-500/30",    mapColor: "#ec4899" },
-  { id: "maintenance",   label: "Maintenance",  icon: Wrench,        color: "text-slate-400",  bg: "bg-slate-500/20",    border: "border-slate-500/30",   mapColor: "#94a3b8" },
+  { id: "maintenance",   label: "Maintenance",  icon: Wrench,        color: "text-slate-400",  bg: "bg-slate-500/20",    border: "border-slate-500/20",   mapColor: "#94a3b8" },
   { id: "poi",           label: "Point of Int.", icon: Star,         color: "text-yellow-400", bg: "bg-yellow-500/20",   border: "border-yellow-500/30",  mapColor: "#eab308" },
   { id: "inspection",    label: "Inspection",   icon: Eye,           color: "text-cyan-400",   bg: "bg-cyan-500/20",     border: "border-cyan-500/30",    mapColor: "#06b6d4" },
-  { id: "water",         label: "Water",        icon: Droplets,      color: "text-blue-400",   bg: "bg-blue-500/20",     border: "border-blue-500/30",    mapColor: "#3b82f6" },
+  { id: "water",         label: "Water",        icon: Droplets,      color: "text-blue-400",   bg: "bg-blue-500/20",     border: "border-blue-500/20",    mapColor: "#3b82f6" },
   { id: "power",         label: "Electrical",   icon: Zap,           color: "text-lime-400",   bg: "bg-lime-500/20",     border: "border-lime-500/30",    mapColor: "#84cc16" },
   { id: "green",         label: "Green Area",   icon: Trees,         color: "text-emerald-400",bg: "bg-emerald-500/20",  border: "border-emerald-500/30", mapColor: "#10b981" },
   { id: "facility",      label: "Facility",     icon: School,        color: "text-indigo-400", bg: "bg-indigo-500/20",   border: "border-indigo-500/30",  mapColor: "#6366f1" },
@@ -109,10 +109,10 @@ export function AnnotationPickerModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 16 }}
             transition={{ type: "spring", damping: 26, stiffness: 340 }}
-            className="relative w-[380px] bg-[#0f1117]/95 backdrop-blur-3xl border border-white/10 rounded-3xl overflow-hidden"
+            className="relative w-[380px] bg-[#0f1117]/95 backdrop-blur-3xl border border-white/6 rounded-3xl overflow-hidden"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/4">
               <div className="flex items-center gap-2.5">
                 <div
                   className={cn(
@@ -155,7 +155,7 @@ export function AnnotationPickerModal({
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Escape") onCancel(); }}
-                  className="h-10 bg-white/5 border-white/10 rounded-xl text-white text-sm placeholder:text-white/20 focus-visible:ring-primary/40 focus:bg-white/[0.07] transition-all"
+                  className="h-10 bg-white/5 border-white/6 rounded-xl text-white text-sm placeholder:text-white/20 focus-visible:ring-primary/40 focus:bg-white/[0.07] transition-all"
                 />
               </div>
 
@@ -170,7 +170,7 @@ export function AnnotationPickerModal({
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   rows={2}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-primary/40 focus:bg-white/[0.07] transition-all resize-none px-3 py-2 font-medium"
+                  className="w-full bg-white/5 border border-white/6 rounded-xl text-white text-sm placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-primary/40 focus:bg-white/[0.07] transition-all resize-none px-3 py-2 font-medium"
                 />
               </div>
             </div>
@@ -190,7 +190,7 @@ export function AnnotationPickerModal({
                         "flex flex-col items-center gap-1 p-2 rounded-xl border transition-all duration-200 group",
                         selectedIcon.id === ic.id
                           ? cn(ic.bg, ic.border, "ring-1 ring-white/20 scale-105")
-                          : "bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10"
+                          : "bg-white/5 border-white/4 hover:bg-white/10 hover:border-white/6"
                       )}
                     >
                       <ic.icon

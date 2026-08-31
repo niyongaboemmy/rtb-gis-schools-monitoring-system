@@ -28,8 +28,32 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/schools/:id/glb-viewer" element={<GlbViewer />} />
-          <Route path="/schools/:id/3d-explorer" element={<School3DView schoolId="" schoolName="" onClose={() => window.close()} />} />
+
+          {/* Stand-alone viewers (own full-screen chrome, still auth-gated) */}
+          <Route
+            path="/schools/:id/glb-viewer"
+            element={
+              <ProtectedRoute
+                requiredPermission={Permission.SCHOOL_VIEW_2D3D_MAP}
+              >
+                <GlbViewer />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/schools/:id/3d-explorer"
+            element={
+              <ProtectedRoute
+                requiredPermission={Permission.SCHOOL_VIEW_2D3D_MAP}
+              >
+                <School3DView
+                  schoolId=""
+                  schoolName=""
+                  onClose={() => window.close()}
+                />
+              </ProtectedRoute>
+            }
+          />
 
           <Route
             element={
@@ -39,7 +63,7 @@ export default function App() {
             }
           >
             <Route path="/welcome" element={<Welcome />} />
-            
+
             <Route
               element={
                 <ProtectedRoute requiredPermission={Permission.VIEW_DASHBOARD} />
@@ -69,6 +93,7 @@ export default function App() {
               <Route path="/map" element={<NationalMap />} />
             </Route>
 
+            {/* Schools directory + records */}
             <Route
               element={
                 <ProtectedRoute requiredPermission={Permission.VIEW_SCHOOLS} />
@@ -76,41 +101,87 @@ export default function App() {
             >
               <Route path="/schools" element={<SchoolsList />} />
               <Route path="/schools/:id" element={<SchoolDetail />} />
-              <Route path="/schools/:id/decision" element={<SchoolDecisionDashboard />} />
-              <Route path="/schools/:id/3dview" element={<School3DViewPage />} />
             </Route>
 
-            {/* Permission-protected routes */}
             <Route
               element={
                 <ProtectedRoute
-                  requiredPermission={Permission.VIEW_ANALYTICS}
+                  requiredPermission={Permission.VIEW_INTELLIGENCE}
                 />
               }
             >
+              <Route
+                path="/schools/:id/decision"
+                element={<SchoolDecisionDashboard />}
+              />
+            </Route>
+
+            <Route
+              element={
+                <ProtectedRoute
+                  requiredPermission={Permission.SCHOOL_VIEW_2D3D_MAP}
+                />
+              }
+            >
+              <Route path="/schools/:id/3dview" element={<School3DViewPage />} />
+            </Route>
+
+            {/* Analytics */}
+            <Route
+              element={
+                <ProtectedRoute requiredPermission={Permission.VIEW_ANALYTICS} />
+              }
+            >
               <Route path="/analytics" element={<AnalyticsDecisions />} />
+            </Route>
+
+            <Route
+              element={
+                <ProtectedRoute
+                  requiredAnyPermission={[
+                    Permission.VIEW_POPULATION,
+                    Permission.VIEW_ANALYTICS,
+                  ]}
+                />
+              }
+            >
               <Route
                 path="/analytics/population"
                 element={<PopulationAnalytics />}
               />
             </Route>
 
+            {/* Geospatial uploads */}
             <Route
               element={
                 <ProtectedRoute requiredPermission={Permission.UPLOAD_KMZ} />
               }
             >
               <Route path="/schools/:id/kmz" element={<KmzUpload />} />
+            </Route>
+
+            <Route
+              element={
+                <ProtectedRoute
+                  requiredPermission={Permission.EDIT_SITE_ANNOTATIONS}
+                />
+              }
+            >
               <Route
                 path="/schools/:id/places-overlay"
                 element={<PlacesOverlayUpload />}
               />
             </Route>
 
+            {/* Field reporting */}
             <Route
               element={
                 <ProtectedRoute
-                  requiredPermission={Permission.CREATE_REPORT}
+                  requiredAnyPermission={[
+                    Permission.VIEW_REPORTING,
+                    Permission.CREATE_REPORT,
+                    Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD,
+                  ]}
                 />
               }
             >
@@ -120,16 +191,26 @@ export default function App() {
             <Route
               element={
                 <ProtectedRoute
-                  requiredPermission={Permission.EXPORT_REPORTS}
+                  requiredPermission={
+                    Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD
+                  }
                 />
               }
             >
               <Route path="/reports" element={<Reports />} />
             </Route>
 
+            {/* Administration */}
             <Route
               element={
-                <ProtectedRoute requiredPermission={Permission.MANAGE_USERS} />
+                <ProtectedRoute
+                  requiredAnyPermission={[
+                    Permission.MANAGE_USERS,
+                    Permission.VIEW_USERS,
+                    Permission.MANAGE_ROLES,
+                    Permission.VIEW_AUDIT_LOGS,
+                  ]}
+                />
               }
             >
               <Route path="/settings" element={<Settings />} />

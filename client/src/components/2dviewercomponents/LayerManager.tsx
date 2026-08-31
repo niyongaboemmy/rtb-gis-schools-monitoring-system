@@ -87,7 +87,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
   return (
     <Card
       className={cn(
-        "fixed z-40 bg-white/95 dark:bg-card/95 backdrop-blur-3xl border border-slate-200 dark:border-white/10 overflow-hidden flex flex-col transition-all duration-500 ease-out",
+        "fixed z-40 bg-white/95 dark:bg-card/95 backdrop-blur-3xl border border-slate-200 dark:border-white/6 overflow-hidden flex flex-col transition-all duration-500 ease-out",
         "inset-x-0 bottom-0 h-[60vh] rounded-t-[32px] md:rounded-[24px]", // Mobile: bottom sheet
         "md:inset-auto md:right-20 md:top-4 md:w-85 md:h-auto md:max-h-[calc(100vh-60px)]", // Desktop: floating panel
         "animate-in slide-in-from-bottom md:slide-in-from-right-4",
@@ -98,7 +98,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
         <div className="w-12 h-1.5 rounded-full bg-slate-200 dark:bg-white/20" />
       </div>
 
-      <div className="p-4 border-b border-slate-100 dark:border-white/5 flex items-center justify-between shrink-0">
+      <div className="p-4 border-b border-slate-100 dark:border-white/4 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <Layers className="h-4 w-4 text-primary" />
           <h3 className="text-xs font-black uppercase tracking-[0.15em] text-slate-700 dark:text-foreground/80">
@@ -115,7 +115,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
         </Button>
       </div>
 
-      <div className="flex p-1 gap-1 border-b border-slate-100 dark:border-white/5 bg-slate-50 dark:bg-primary/5">
+      <div className="flex p-1 gap-1 border-b border-slate-100 dark:border-white/4 bg-slate-50 dark:bg-primary/5">
         {[
           { id: "features", label: "Features", icon: MapPin },
           { id: "buildings", label: "Buildings", icon: Building2 },
@@ -141,13 +141,13 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
         ))}
       </div>
 
-      <div className="p-3 border-b border-slate-100 dark:border-white/5">
+      <div className="p-3 border-b border-slate-100 dark:border-white/4">
         <SearchInput
           placeholder={`Search ${activeTab === "features" ? "site features" : "building blocks"}...`}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onClear={() => setSearchQuery("")}
-          className="h-9 text-[11px] bg-transparent border-slate-200 dark:border-white/10 rounded-xl focus-visible:ring-primary/40 focus:bg-slate-50 dark:focus:bg-black/40 transition-all font-medium text-slate-700 dark:text-white"
+          className="h-9 text-[11px] bg-transparent border-slate-200 dark:border-white/6 rounded-xl focus-visible:ring-primary/40 focus:bg-slate-50 dark:focus:bg-black/40 transition-all font-medium text-slate-700 dark:text-white"
         />
       </div>
 
@@ -156,7 +156,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
           <>
             {/* Group visibility filter chips */}
             {annotationGroups.length > 1 && (
-              <div className="mb-2 px-1 py-2 border-b border-slate-100 dark:border-white/5">
+              <div className="mb-2 px-1 py-2 border-b border-slate-100 dark:border-white/4">
                 <p className="text-[9px] text-slate-400 dark:text-white/30 uppercase font-bold mb-1.5 px-1">
                   Filter by type
                 </p>
@@ -181,7 +181,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
                         className={cn(
                           "flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium transition-all",
                           isHidden
-                            ? "bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/8 text-slate-400 dark:text-white/25 opacity-50"
+                            ? "bg-slate-100 dark:bg-white/5 border-slate-200 dark:border-white/5 text-slate-400 dark:text-white/25 opacity-50"
                             : "",
                         )}
                       >
@@ -197,7 +197,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
 
             {filteredAnnotations.length === 0 ? (
               <div className="py-20 text-center text-muted-foreground">
-                <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4 border border-white/5">
+                <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4 border border-white/4">
                   <MapPin className="h-6 w-6 opacity-20" />
                 </div>
                 <p className="text-[10px] uppercase font-black tracking-widest opacity-40">
@@ -218,7 +218,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
                     key={ann.id}
                     onClick={() => onFlyToAnnotation(ann)}
                     className={cn(
-                      "group flex items-center justify-between p-2.5 rounded-2xl transition-all border border-transparent hover:bg-slate-50 dark:hover:bg-white/5 hover:border-slate-200 dark:hover:border-white/10 cursor-pointer",
+                      "group flex items-center justify-between p-2.5 rounded-2xl transition-all border border-transparent hover:bg-slate-50 dark:hover:bg-white/5 hover:border-slate-200 dark:hover:border-white/6 cursor-pointer",
                       isGroupHidden && "opacity-30",
                     )}
                   >
@@ -276,7 +276,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
           <>
             {filteredBuildings.length === 0 ? (
               <div className="py-20 text-center text-muted-foreground">
-                <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4 border border-white/5">
+                <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4 border border-white/4">
                   <Building2 className="h-6 w-6 opacity-20" />
                 </div>
                 <p className="text-[10px] uppercase font-black tracking-widest opacity-40">
@@ -293,11 +293,11 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
                         "group flex items-center justify-between p-2.5 rounded-2xl transition-all border cursor-pointer",
                         selectedBuildingId === b.id
                           ? "bg-primary/20 border-primary/40"
-                          : "border-transparent hover:bg-slate-50 dark:hover:bg-white/5 hover:border-slate-200 dark:hover:border-white/10",
+                          : "border-transparent hover:bg-slate-50 dark:hover:bg-white/5 hover:border-slate-200 dark:hover:border-white/6",
                       )}
                     >
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+                    <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center border border-blue-500/12">
                       <Building2 className="h-5 w-5 text-blue-500" />
                     </div>
                     <div className="flex flex-col gap-0.5">
@@ -331,7 +331,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
         )}
       </div>
 
-      <div className="p-3 border-t border-slate-100 dark:border-white/5 bg-slate-50 dark:bg-primary/5 mt-auto">
+      <div className="p-3 border-t border-slate-100 dark:border-white/4 bg-slate-50 dark:bg-primary/5 mt-auto">
         {activeTab === "features" && (
           <p className="text-[9px] text-center text-slate-400 dark:text-muted-foreground uppercase font-black tracking-widest py-1">
             Use GIS Tools to add more features

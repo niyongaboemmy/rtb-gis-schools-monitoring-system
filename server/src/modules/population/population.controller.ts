@@ -2,15 +2,27 @@ import { Controller, Post, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { PopulationService } from './population.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import {
+  RequirePermissions,
+  RequireAnyPermission,
+} from '../../common/decorators/permissions.decorator';
+import { Permission } from '../../common/constants/permissions.constant';
 
 @ApiTags('population')
 @Controller('population')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequireAnyPermission(
+  Permission.VIEW_POPULATION,
+  Permission.VIEW_ANALYTICS,
+  Permission.SCHOOL_LEVEL_DASHBOARD,
+)
 @ApiBearerAuth()
 export class PopulationController {
   constructor(private readonly populationService: PopulationService) {}
 
   @Post('sync')
+  @RequirePermissions(Permission.SYNC_POPULATION)
   @ApiOperation({ summary: 'Sync population data from ArcGIS FeatureServer' })
   sync(@Query('schoolId') schoolId?: string) {
     return this.populationService.syncPopulation(schoolId);
