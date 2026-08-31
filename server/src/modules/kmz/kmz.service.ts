@@ -235,10 +235,9 @@ export class KmzService {
           const initialView = rootInitialView || allViews[0] || null;
           const overlaysMetadata = allOverlays;
 
-          const fileServerBase = (
-            process.env.FILE_SERVER_BASE_URL || 'http://localhost:3002'
-          ).replace(/\/$/, '');
-          const assetsBaseUrl = `${fileServerBase}/schools/${schoolId}/kmz_content`;
+          // Relative, same-origin path (matches StorageService.urlPrefix). The
+          // client prepends its file-server base; nginx serves it in prod.
+          const assetsBaseUrl = `/files/schools/${schoolId}/kmz_content`;
 
           const updatedGeoJson = {
             type: 'FeatureCollection',
@@ -1248,19 +1247,117 @@ export class KmzService {
    * Extracts all assets server-side and stores a pre-computed manifest
    * so the client does NOT need to download and unzip the raw KMZ.
    */
-  // Downloads a file from a URL, saves to /tmp, then enqueues exactly like a direct upload.
-  private async downloadToTemp(fileUrl: string, fileName: string): Promise<string> {
+  /**
+   * Downloads a pre-uploaded asset from the file-server to a temp file, then the
+   * caller enqueues it exactly like a direct upload.
+   *
+   * Production-hardened: resolves relative URLs against FILE_SERVER_BASE_URL
+   * (the client builds with VITE_FILE_SERVER_URL=/files, so `fileUrl` arrives as
+   * `/files/...`), verifies the HTTP status, follows redirects, enforces a
+   * timeout and a size ceiling, and always cleans up a partial file on failure.
+   */
+  private async downloadToTemp(
+    fileUrl: string,
+    fileName: string,
+  ): Promise<string> {
     const https = require('https');
     const http = require('http');
-    const tempPath = path.join(os.tmpdir(), `rtb-upload-${Date.now()}-${fileName}`);
-    const protocol = fileUrl.startsWith('https') ? https : http;
-    await new Promise<void>((resolve, reject) => {
-      const file = fs.createWriteStream(tempPath);
-      protocol.get(fileUrl, (res: any) => {
-        res.pipe(file);
-        file.on('finish', () => { file.close(); resolve(); });
-      }).on('error', (err: Error) => { fs.unlink(tempPath, () => {}); reject(err); });
-    });
+
+    const base = (
+      process.env.FILE_SERVER_BASE_URL || 'http://localhost:3002'
+    ).replace(/\/$/, '');
+    const startUrl = /^https?:\/\//i.test(fileUrl)
+      ? fileUrl
+      : `${base}/${fileUrl.replace(/^\/+/, '')}`;
+
+    const maxBytes =
+      parseInt(process.env.KMZ_MAX_DOWNLOAD_MB || '6144', 10) * 1024 * 1024;
+    const timeoutMs = parseInt(
+      process.env.KMZ_DOWNLOAD_TIMEOUT_MS || '600000',
+      10,
+    );
+
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_') || 'upload.bin';
+    const tempPath = path.join(
+      os.tmpdir(),
+      `rtb-upload-${Date.now()}-${safeName}`,
+    );
+
+    const fetchOnce = (url: string, redirectsLeft: number): Promise<void> =>
+      new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const done = (err?: Error) => {
+          if (settled) return;
+          settled = true;
+          if (err) {
+            fs.unlink(tempPath, () => {});
+            reject(err);
+          } else {
+            resolve();
+          }
+        };
+
+        const client = url.startsWith('https') ? https : http;
+        const req = client.get(url, (res: any) => {
+          const status = res.statusCode || 0;
+
+          // Redirects
+          if (status >= 300 && status < 400 && res.headers.location) {
+            res.resume();
+            if (redirectsLeft <= 0) {
+              return done(new Error(`Too many redirects fetching ${fileUrl}`));
+            }
+            const next = new URL(res.headers.location, url).toString();
+            return fetchOnce(next, redirectsLeft - 1).then(
+              () => done(),
+              (e) => done(e),
+            );
+          }
+
+          if (status < 200 || status >= 300) {
+            res.resume();
+            return done(
+              new Error(
+                `File-server returned ${status} for ${fileUrl} — the asset may not have finished uploading.`,
+              ),
+            );
+          }
+
+          const declared = parseInt(res.headers['content-length'] || '0', 10);
+          if (declared && declared > maxBytes) {
+            res.destroy();
+            return done(
+              new Error(
+                `Asset is ${Math.round(declared / 1048576)} MB — exceeds the ${Math.round(
+                  maxBytes / 1048576,
+                )} MB limit.`,
+              ),
+            );
+          }
+
+          let received = 0;
+          const out = fs.createWriteStream(tempPath);
+          out.on('error', done);
+          res.on('error', done);
+          res.on('data', (chunk: Buffer) => {
+            received += chunk.length;
+            if (received > maxBytes) {
+              res.destroy();
+              out.destroy();
+              done(new Error(`Asset exceeds the download size limit.`));
+            }
+          });
+          res.pipe(out);
+          out.on('finish', () => out.close(() => done()));
+        });
+
+        req.setTimeout(timeoutMs, () => {
+          req.destroy(new Error(`Timed out downloading ${fileUrl}`));
+        });
+        req.on('error', done);
+      });
+
+    await fetchOnce(startUrl, 3);
     return tempPath;
   }
 
@@ -1461,10 +1558,8 @@ export class KmzService {
     }
 
     // ── KMZ (zip) extraction ───────────────────────────────────────────────
-    const fileServerBase = (
-      process.env.FILE_SERVER_BASE_URL || 'http://localhost:3002'
-    ).replace(/\/$/, '');
-    const assetBaseUrl = `${fileServerBase}/schools/${schoolId}/kmz_2d_content`;
+    // Relative, same-origin path (matches StorageService.urlPrefix).
+    const assetBaseUrl = `/files/schools/${schoolId}/kmz_2d_content`;
 
     let jszipInstance: any;
     try {
@@ -1560,7 +1655,7 @@ export class KmzService {
                 if (files00.length > 0)
                   tileExt = files00[0].split('.').pop() || 'jpg';
 
-                tileUrlTemplate = `${fileServerBase}/${storagePrefix}/{z}/{x}/{y}.${tileExt}`;
+                tileUrlTemplate = `/files/${storagePrefix}/{z}/{x}/{y}.${tileExt}`;
                 isTiled = true;
                 maxZoom = Math.ceil(
                   Math.log2(Math.max(meta.width, meta.height) / 256),

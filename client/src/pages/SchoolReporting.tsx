@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, Fragment, useMemo } from "react";
 import { useAuthStore } from "../store/authStore";
 import { useSchoolsStore } from "../store/schoolsStore";
-import { api } from "../lib/api";
+import { api, fileApi } from "../lib/api";
 import { hasPermission, Permission } from "../lib/permissions";
 import { AdminReportingDashboard } from "../components/reports/AdminReportingDashboard";
 import {
@@ -537,15 +537,11 @@ export default function SchoolReporting({
     const formData = new FormData();
     files.forEach((file) => formData.append("files", file));
 
-    const response = await fetch("/upload", {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) throw new Error("File server upload failed");
-
-    const data = await response.json();
-    // data.urls are relative /files/... paths — use as-is
+    const { data } = await fileApi.post("/upload?folder=reports", formData);
+    if (!data?.success || !Array.isArray(data.urls)) {
+      throw new Error(data?.message || "File server upload failed");
+    }
+    // data.urls are relative /files/... paths — stored as-is
     return data.urls as string[];
   };
 

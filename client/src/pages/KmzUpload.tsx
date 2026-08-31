@@ -100,7 +100,9 @@ export default function KmzUpload() {
 
     try {
       // Step 1 — Upload directly to file server (bypasses Vercel 4.5 MB body limit)
-      const folder = uploadMode === "2d" ? "kmz" : "buildings";
+      // Both 2D KMZ and 3D GLB stage in the file-server's `kmz` folder; the
+      // backend then downloads, processes, and moves assets to their final home.
+      const folder = "kmz";
       const formData = new FormData();
       formData.append("files", file);
 

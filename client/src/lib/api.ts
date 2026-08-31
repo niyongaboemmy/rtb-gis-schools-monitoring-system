@@ -11,10 +11,17 @@ export const api = axios.create({
 
 export const FILE_SERVER_URL = import.meta.env.VITE_FILE_SERVER_URL || "/files";
 
-// Dedicated instance for the file-server to avoid /api/v1 prefix and 404 errors
+// Dedicated instance for the file-server. It has no auth and its CORS policy
+// forbids credentials, so this instance must NOT send cookies. Base URL is the
+// file-server origin without the `/files` suffix (same-origin `/` in prod).
+export const FILE_SERVER_ORIGIN = (
+  import.meta.env.VITE_FILE_SERVER_URL || "/files"
+).replace(/\/files\/?$/, "");
+
 export const fileApi = axios.create({
-  withCredentials: true,
-  timeout: 3600000, // 1 hour timeout for massive 5GB+ uploads
+  baseURL: FILE_SERVER_ORIGIN || undefined,
+  withCredentials: false,
+  timeout: 3600000, // 1 hour timeout for massive multi-GB uploads
 });
 
 api.interceptors.request.use(

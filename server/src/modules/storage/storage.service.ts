@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs/promises';
-import { join, dirname } from 'path';
+import { join, dirname, isAbsolute } from 'path';
 import * as Minio from 'minio';
 
 // ---------------------------------------------------------------------------
@@ -212,8 +212,12 @@ export class StorageService {
       this.logger.log(`Storage backend: MinIO (${endpoint}:${port}/${bucket})`);
     } else {
       const configured = configService.get<string>('FILE_SERVER_STORAGE_PATH');
+      // Accept both an absolute path (production: /var/lib/rtb/storage) and a
+      // path relative to the API's cwd (dev: ../file-server/storage).
       const uploadDir = configured
-        ? join(process.cwd(), configured)
+        ? isAbsolute(configured)
+          ? configured
+          : join(process.cwd(), configured)
         : join(process.cwd(), '..', 'file-server', 'storage');
 
       this.backend = new LocalFsBackend(uploadDir, this.logger);

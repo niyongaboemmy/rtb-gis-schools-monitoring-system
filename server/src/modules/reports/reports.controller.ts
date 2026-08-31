@@ -20,12 +20,29 @@ import { join } from 'path';
 import { mkdirSync } from 'fs';
 import { v4 as uuid } from 'uuid';
 
-// Use os.tmpdir() so this works on serverless (Vercel /tmp) and local dev alike
 import { tmpdir } from 'os';
-const REPORTS_STORAGE_DIR = join(tmpdir(), 'rtb-reports');
+import { isAbsolute } from 'path';
 
-// local: http://localhost:3002   production: https://files.rtb.isengesho.com
-const FILE_SERVER_BASE = (process.env.FILE_SERVER_BASE_URL || 'http://localhost:3002').replace(/\/$/, '');
+/**
+ * The client normally pre-uploads attachments to the file-server and sends only
+ * URLs, but this endpoint also accepts multipart. When it does, the file must
+ * land in the file-server's storage root so the returned `/files/reports/...`
+ * URL actually resolves. FILE_SERVER_STORAGE_PATH points at the shared volume
+ * (same value the API's StorageService uses); tmpdir is only a dev fallback.
+ */
+const REPORTS_STORAGE_DIR = (() => {
+  const cfg = process.env.FILE_SERVER_STORAGE_PATH;
+  if (!cfg) return join(tmpdir(), 'rtb-reports-fallback');
+  return isAbsolute(cfg)
+    ? join(cfg, 'reports')
+    : join(process.cwd(), cfg, 'reports');
+})();
+
+const MAX_ATTACHMENT_MB = parseInt(
+  process.env.REPORT_ATTACHMENT_MAX_MB || '25',
+  10,
+);
+
 try {
   mkdirSync(REPORTS_STORAGE_DIR, { recursive: true });
 } catch {
@@ -79,8 +96,9 @@ export class ReportsController {
           cb(null, `report-${uniqueSuffix}${path.extname(file.originalname)}`);
         },
       }),
+      limits: { fileSize: MAX_ATTACHMENT_MB * 1024 * 1024, files: 5 },
       fileFilter: (req, file, cb) => {
-        if (!file.originalname.match(/\.(jpg|jpeg|png|pdf)$/)) {
+        if (!/\.(jpe?g|png|webp|heic|pdf)$/i.test(file.originalname)) {
           return cb(new Error('Only images and PDF files are allowed!'), false);
         }
         cb(null, true);
@@ -94,9 +112,10 @@ export class ReportsController {
   ) {
     const userId = req.user.id;
 
-    // Combine uploaded files with any pre-uploaded attachment URLs
+    // Relative URL — resolves behind the same-origin nginx proxy that fronts
+    // both the API and the file-server (see deploy/nginx/*.conf).
     const uploadedPaths =
-      files?.map((file) => `${FILE_SERVER_BASE}/files/reports/${file.filename}`) || [];
+      files?.map((file) => `/files/reports/${file.filename}`) || [];
     const bodyAttachments = Array.isArray(createReportDto.attachments)
       ? createReportDto.attachments
       : typeof createReportDto.attachments === 'string'
