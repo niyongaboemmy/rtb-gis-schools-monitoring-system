@@ -28,6 +28,22 @@ import type { Response } from 'express';
 import sharp from 'sharp';
 import * as os from 'os';
 
+/**
+ * Scratch space for KMZ downloads / extraction. Defaults to the OS temp dir,
+ * but on the EC2 box `/tmp` is a ~4 GB tmpfs (RAM-backed) — a multi-GB KMZ
+ * fills it and every write fails with EDQUOT. Point KMZ_TMP_DIR at the EBS
+ * data volume (e.g. /var/lib/rtb/tmp) in production.
+ */
+export const KMZ_TMP_DIR: string = (() => {
+  const dir = process.env.KMZ_TMP_DIR || os.tmpdir();
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch {
+    /* best effort */
+  }
+  return dir;
+})();
+
 @Injectable()
 export class KmzService {
   private readonly logger = new Logger(KmzService.name);
@@ -1279,7 +1295,7 @@ export class KmzService {
 
     const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_') || 'upload.bin';
     const tempPath = path.join(
-      os.tmpdir(),
+      KMZ_TMP_DIR,
       `rtb-upload-${Date.now()}-${safeName}`,
     );
 
@@ -1633,7 +1649,7 @@ export class KmzService {
                   `Image ${zipPath} is massive (${meta.width}x${meta.height}). Tiling on backend to save client GPU!`,
                 );
                 const tmpDir = path.join(
-                  os.tmpdir(),
+                  KMZ_TMP_DIR,
                   `kmz_chunk_${Date.now()}_${Math.random()}`,
                 );
                 await fs.promises.mkdir(tmpDir, { recursive: true });
