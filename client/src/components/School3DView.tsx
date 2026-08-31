@@ -221,6 +221,9 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const hoverPtRef = useRef<MeasurePoint | null>(null);
 
   const [phase, setPhase] = useState<"idle" | "loading" | "viewing">("idle");
+  // True while we're still asking the file-server whether this school has a GLB,
+  // so the "no model" drop-zone doesn't flash before loading actually starts.
+  const [discovering, setDiscovering] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -487,6 +490,11 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       // otherwise sit at 0% for minutes and look frozen.
       const total = Number(resp.headers.get("Content-Length")) || 0;
       const mb = (b: number) => (b / 1_048_576).toFixed(0);
+      const eta = (secs: number) => {
+        if (!isFinite(secs) || secs <= 0) return "";
+        if (secs < 60) return `~${Math.ceil(secs)}s left`;
+        return `~${Math.ceil(secs / 60)} min left`;
+      };
       let arrayBuffer: ArrayBuffer;
 
       if (resp.body && total > 0) {
@@ -494,16 +502,24 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         const chunks: Uint8Array[] = [];
         let received = 0;
         let lastPaint = 0;
+        const dlStart = Date.now();
         for (; ;) {
           const { done, value } = await reader.read();
           if (done) break;
           chunks.push(value);
           received += value.length;
           const now = Date.now();
-          if (now - lastPaint > 120) {
+          if (now - lastPaint > 150) {
             lastPaint = now;
+            // Download spans 0–75% of the bar; parse/build take the rest.
             setProgress(Math.min(75, Math.round((received / total) * 75)));
-            setProgressLabel(`Downloading model — ${mb(received)} / ${mb(total)} MB`);
+            const elapsed = (now - dlStart) / 1000;
+            const speed = received / Math.max(elapsed, 0.001); // bytes/s
+            const remain = eta((total - received) / speed);
+            setProgressLabel(
+              `Downloading model — ${mb(received)} / ${mb(total)} MB` +
+              (remain ? ` · ${remain}` : ""),
+            );
           }
         }
         const merged = new Uint8Array(received);
@@ -515,7 +531,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         arrayBuffer = await resp.arrayBuffer();
       }
 
-      setProgress(80); setProgressLabel("Parsing GLB…");
+      setProgress(80); setProgressLabel("Preparing 3D scene — almost there…");
       const loader = new GLTFLoader(); loader.setDRACOLoader(sharedDracoLoader);
       const gltf = await new Promise<GLTF>((res, rej) => loader.parse(arrayBuffer, "", res, rej));
       await finalizeGLTF(gltf, fileName, arrayBuffer.byteLength, startTime);
@@ -540,6 +556,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     if (!schoolId || phase !== "idle") return;
     if (discoveryForRef.current === schoolId) return;
     discoveryForRef.current = schoolId;
+    setDiscovering(true);
     fetch(`${FILE_SERVER_URL}/schools/${schoolId}/3d`)
       .then(res => res.ok ? res.json() : Promise.reject("Model not found"))
       .then(data => {
@@ -554,7 +571,8 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       .catch(e => {
         console.error("Discovery failed", e);
         setError("3D model not found for this school.");
-      });
+      })
+      .finally(() => setDiscovering(false));
   }, [schoolId, phase, loadGLBFromURL]);
 
   useEffect(() => {
@@ -1238,7 +1256,13 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
           Saving Changes...
         </div>
       )}
-      {phase === "idle" && (
+      {phase === "idle" && discovering && (
+        <div className="loading-overlay">
+          <div className="spinner-ring" />
+          <div className="progress-label">Checking for 3D model…</div>
+        </div>
+      )}
+      {phase === "idle" && !discovering && (
         <ViewerLoadingScreens phase={phase} progress={progress} progressLabel={progressLabel} isDragging={isDragging} schoolName={schoolName} setIsDragging={setIsDragging} handleDrop={handleDrop} handleInputChange={handleInputChange} />
       )}
       {phase !== "idle" && (
