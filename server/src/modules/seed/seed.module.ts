@@ -12,5 +12,6 @@ import { AccessLevel } from '../access-levels/entities/access-level.entity';
     TypeOrmModule.forFeature([User, Role, School, FacilityEntity, AccessLevel]),
   ],
   providers: [SeedService],
+  exports: [SeedService],
 })
 export class SeedModule {}

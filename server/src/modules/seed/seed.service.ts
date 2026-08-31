@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
@@ -25,9 +26,24 @@ export class SeedService implements OnModuleInit {
     private facilityRepo: Repository<FacilityEntity>,
     @InjectRepository(AccessLevel)
     private accessLevelRepo: Repository<AccessLevel>,
+    private readonly config: ConfigService,
   ) {}
 
   async onModuleInit() {
+    // Startup seeding is opt-in. Production keeps SEED_ON_STARTUP unset/false and
+    // runs the standalone `npm run seed` command explicitly when needed.
+    if (this.config.get<string>('SEED_ON_STARTUP') === 'true') {
+      this.logger.log('SEED_ON_STARTUP=true → running seed on startup');
+      await this.run();
+    } else {
+      this.logger.log(
+        'Startup seeding disabled (SEED_ON_STARTUP != true). Use `npm run seed`.',
+      );
+    }
+  }
+
+  /** Idempotent full seed. Safe to run repeatedly. */
+  async run() {
     await this.seedAccessLevels();
     await this.seedAdminUser();
     await this.seedSampleSchools();

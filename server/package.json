@@ -20,8 +20,11 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "typeorm": "npm run build && npx typeorm -d dist/db/data-source.js",
     "migration:run": "npm run build && npx typeorm migration:run -d dist/db/data-source.js",
+    "migration:prod": "npx typeorm migration:run -d dist/db/data-source.js",
     "migration:generate": "npm run build && npx typeorm migration:generate -d dist/db/data-source.js",
-    "migration:revert": "npm run build && npx typeorm migration:revert -d dist/db/data-source.js"
+    "migration:revert": "npm run build && npx typeorm migration:revert -d dist/db/data-source.js",
+    "seed": "npm run build && node dist/seed",
+    "seed:prod": "node dist/seed"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",

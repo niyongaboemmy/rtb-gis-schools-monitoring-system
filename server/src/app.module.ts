@@ -7,6 +7,8 @@ import { BullModule } from '@nestjs/bullmq';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { APP_GUARD } from '@nestjs/core';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { AuthModule } from './modules/auth/auth.module';
@@ -100,6 +102,10 @@ import { EventsModule } from './modules/events/events.module';
     AuditModule,
     EventsModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  controllers: [AppController],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}
