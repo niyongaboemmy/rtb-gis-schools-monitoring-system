@@ -200,10 +200,16 @@ function BuildingsTab({ buildings }: { buildings: any[] }) {
   );
 }
 
-function MapTab({ school }: { school: any }) {
+function MapTab({
+  school,
+  onClose,
+}: {
+  school: any;
+  onClose?: () => void;
+}) {
   return (
     <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-white/6" style={{ height: 480 }}>
-      <SchoolMap school={school} isEmbed />
+      <SchoolMap school={school} isEmbed onClose={onClose} />
     </div>
   );
 }
@@ -460,7 +466,9 @@ export default function SchoolDetail() {
       >
         {activeTab === "overview" && <OverviewTab school={school} />}
         {activeTab === "buildings" && <BuildingsTab buildings={school.buildings ?? []} />}
-        {activeTab === "map" && <MapTab school={school} />}
+        {activeTab === "map" && (
+          <MapTab school={school} onClose={() => setActiveTab("overview")} />
+        )}
         {activeTab === "analytics" && (
           <AnalyticsTab assessment={assessment} schoolId={id!} onRefresh={fetchSchool} />
         )}

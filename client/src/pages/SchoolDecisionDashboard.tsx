@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { io, Socket } from "socket.io-client";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
+import { useGoBack } from "../hooks/useGoBack";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "../store/authStore";
 import {
@@ -47,7 +48,7 @@ export default function SchoolDecisionDashboard({
   onBuildingClick,
 }: SchoolDecisionDashboardProps = {}) {
   const { id: paramId } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const goBack = useGoBack("/schools");
   const { user } = useAuthStore();
   const id = propId || paramId || user?.location?.schoolId;
 
@@ -475,7 +476,7 @@ export default function SchoolDecisionDashboard({
           school={school}
           buildings={buildings}
           onUpdateSchool={handleUpdateSchool}
-          onClose={() => navigate("/schools")}
+          onClose={goBack}
         />
       </div>
     );

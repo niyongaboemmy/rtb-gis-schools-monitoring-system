@@ -14,7 +14,9 @@ export class DashboardController {
 
   @Get('main')
   @RequirePermissions(Permission.SCHOOL_LEVEL_DASHBOARD)
-  async getMain(@Query('schoolId') schoolId: string): Promise<MainDashboardDto> {
+  async getMain(
+    @Query('schoolId') schoolId: string,
+  ): Promise<MainDashboardDto> {
     return this.dashboardService.mainPayload(schoolId);
   }
 

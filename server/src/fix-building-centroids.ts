@@ -7,29 +7,33 @@ import { Repository } from 'typeorm';
 
 async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule);
-  const repo = app.get<Repository<SchoolBuilding>>(getRepositoryToken(SchoolBuilding));
-  
+  const repo = app.get<Repository<SchoolBuilding>>(
+    getRepositoryToken(SchoolBuilding),
+  );
+
   const buildings = await repo.find();
   console.log(`Found ${buildings.length} buildings to update.`);
-  
+
   if (buildings.length > 0) {
-    console.log("Sample building data:", JSON.stringify(buildings[0], null, 2));
+    console.log('Sample building data:', JSON.stringify(buildings[0], null, 2));
   }
-  
+
   let updated = 0;
   for (const b of buildings) {
     // If centroid is NULL, try to find coordinates in annotations or other fields
     if (!b.centroidLat || !b.centroidLng) {
       // 1. Check annotations for coordinates
-      const anyAnnotationWithCoords = b.annotations?.find(a => a && a.coordinates && a.coordinates.length > 0);
-      
+      const anyAnnotationWithCoords = b.annotations?.find(
+        (a) => a && a.coordinates && a.coordinates.length > 0,
+      );
+
       let lat: number | null = null;
       let lng: number | null = null;
-      
+
       if (anyAnnotationWithCoords) {
         const ann = anyAnnotationWithCoords;
         const rawPts = ann.coordinates;
-        
+
         if (!rawPts || rawPts.length === 0) continue;
 
         if (ann.type === 'point' || (ann.type as string) === 'pin') {
@@ -39,9 +43,11 @@ async function bootstrap() {
           // It's a line or polygon
           let pairs: [number, number][] = [];
           if (Array.isArray(rawPts[0])) {
-            pairs = (rawPts as any[]).map((c: any) => [Number(c[0]), Number(c[1])] as [number, number]);
+            pairs = (rawPts as any[]).map(
+              (c: any) => [Number(c[0]), Number(c[1])] as [number, number],
+            );
           } else {
-            for (let i = 0; i + 1 < (rawPts as number[]).length; i += 2) {
+            for (let i = 0; i + 1 < rawPts.length; i += 2) {
               pairs.push([Number(rawPts[i]), Number(rawPts[i + 1])]);
             }
           }
@@ -51,7 +57,7 @@ async function bootstrap() {
           }
         }
       }
-      
+
       if (lat && lng) {
         b.centroidLat = lat;
         b.centroidLng = lng;
@@ -60,7 +66,7 @@ async function bootstrap() {
       }
     }
   }
-  
+
   console.log(`Successfully updated ${updated} buildings with centroids.`);
   await app.close();
 }

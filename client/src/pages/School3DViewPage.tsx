@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import SchoolMap from "../components/SchoolMap";
 import { Button } from "../components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import { api } from "../lib/api";
+import { useGoBack } from "../hooks/useGoBack";
 
 export default function School3DViewPage() {
-  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
+  const goBack = useGoBack(id ? `/schools/${id}` : "/schools");
   const [school, setSchool] = useState<any>(null);
   const [placesOverlay, setPlacesOverlay] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -58,14 +59,13 @@ export default function School3DViewPage() {
       {/* Back Button */}
       <div className="fixed top-6 left-6 z-50">
         <Button
-          asChild
+          onClick={goBack}
           variant="outline"
           size="icon"
+          aria-label="Back"
           className="rounded-full h-12 w-12 bg-black/30 backdrop-blur-md border-white/12 hover:bg-black/50"
         >
-          <Link to={`/schools/${id}/decision`}>
-            <ArrowLeft className="h-5 w-5 text-white" />
-          </Link>
+          <ArrowLeft className="h-5 w-5 text-white" />
         </Button>
       </div>
 
@@ -81,7 +81,7 @@ export default function School3DViewPage() {
       <SchoolMap
         school={school}
         placesOverlay={placesOverlay}
-        onClose={() => navigate(`/schools/${id}/decision`)}
+        onClose={goBack}
       />
     </div>
   );

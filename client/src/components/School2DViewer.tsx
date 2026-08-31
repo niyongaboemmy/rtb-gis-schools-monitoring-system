@@ -15,7 +15,8 @@ import {
   FileText,
   AlertTriangle,
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { useGoBack } from "../hooks/useGoBack";
 import { Modal } from "./ui/modal";
 import { Button } from "./ui/button";
 
@@ -107,13 +108,14 @@ export default function School2DViewer({
     [school, buildings, placesOverlay, buildUrl, tifFilePath],
   );
 
-  // Always give the viewer a way out — fall back to the school record when the
-  // host didn't pass an explicit onClose handler.
-  const navigate = useNavigate();
+  // Always give the viewer a way out. Prefer the host's onClose; otherwise step
+  // back through browser history so the user lands where they came from
+  // (Dashboard, National Map, a deep link, …) rather than a fixed route.
+  const goBack = useGoBack(school?.id ? `/schools/${school.id}` : "/schools");
   const handleClose = useCallback(() => {
     if (onClose) return onClose();
-    navigate(school?.id ? `/schools/${school.id}` : "/schools");
-  }, [onClose, navigate, school?.id]);
+    goBack();
+  }, [onClose, goBack]);
 
   // ── Refs & Basic State ─────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement | null>(null);
