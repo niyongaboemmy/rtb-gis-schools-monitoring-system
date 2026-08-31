@@ -91,8 +91,19 @@ export default function SchoolDecisionDashboard({
       return { priorityLevel: "medium", recommendations: [], resolutionRate: null };
 
     const overallScore = calculateDecisionIntelligenceScore();
-    const infrastructureScore =
-      parseFloat(String(schoolData.calculatedAssessment.infrastructureScore)) || 0;
+    // null-safe parse: a missing sub-score must NOT read as 0 (which would
+    // silently trip every "score is low" recommendation below).
+    const sub = (v: unknown): number | null => {
+      const n = parseFloat(String(v));
+      return Number.isFinite(n) ? n : null;
+    };
+    const infrastructureScore = sub(
+      schoolData.calculatedAssessment.infrastructureScore,
+    );
+    const populationPressureScore = sub(
+      schoolData.calculatedAssessment.populationPressureScore,
+    );
+    const buildingAgeScore = sub(schoolData.calculatedAssessment.buildingAgeScore);
 
     // Derive resolution rate from the already-fetched reportingData
     const resolutionRate =
@@ -115,13 +126,13 @@ export default function SchoolDecisionDashboard({
               ? "medium"
               : "low",
       recommendations: [
-        infrastructureScore < 50
+        infrastructureScore != null && infrastructureScore < 50
           ? "Infrastructure health is low — schedule building condition assessments"
           : null,
-        schoolData.calculatedAssessment.populationPressureScore < 45
+        populationPressureScore != null && populationPressureScore < 45
           ? "Elevated demographic pressure in catchment — review capacity planning"
           : null,
-        schoolData.calculatedAssessment.buildingAgeScore < 40
+        buildingAgeScore != null && buildingAgeScore < 40
           ? "Asset portfolio skews older — prioritize condition surveys and renewal"
           : null,
         (reportingData?.statusCounts?.needIntervention ?? 0) > 5
@@ -311,8 +322,16 @@ export default function SchoolDecisionDashboard({
             riskProbabilityScore: metrics.riskProbabilityScore,
           };
         } else {
+          // Metrics endpoint unavailable — surface only values we can derive
+          // locally. Never fabricate scores: leave them null so the UI renders
+          // "—" rather than a misleading magic number.
+          const num = (v: unknown): number | null => {
+            const n = parseFloat(String(v));
+            return Number.isFinite(n) ? n : null;
+          };
+          const prev = sData.calculatedAssessment ?? {};
           sData.calculatedAssessment = {
-            ...sData.calculatedAssessment,
+            ...prev,
             averageBuildingAge: avgAge,
             totalStudents: tStudents,
             totalCapacity:
@@ -322,29 +341,13 @@ export default function SchoolDecisionDashboard({
                 0,
               ) || 0,
             totalStaff: tStaff,
-            infrastructureScore:
-              parseFloat(
-                String(sData.calculatedAssessment?.infrastructureScore),
-              ) || 50,
-            buildingAgeScore:
-              parseFloat(String(sData.calculatedAssessment?.buildingAgeScore)) ||
-              50,
-            populationPressureScore:
-              parseFloat(
-                String(sData.calculatedAssessment?.populationPressureScore),
-              ) || 45,
-            accessibilityScore:
-              parseFloat(
-                String(sData.calculatedAssessment?.accessibilityScore),
-              ) || 50,
-            facilityComplianceScore:
-              parseFloat(
-                String(sData.calculatedAssessment?.facilityComplianceScore),
-              ) || 50,
-            overallScore:
-              parseFloat(String(sData.calculatedAssessment?.overallScore)) || 65,
-            depreciation:
-              parseFloat(String(sData.calculatedAssessment?.depreciation)) || 20,
+            infrastructureScore: num(prev.infrastructureScore),
+            buildingAgeScore: num(prev.buildingAgeScore),
+            populationPressureScore: num(prev.populationPressureScore),
+            accessibilityScore: num(prev.accessibilityScore),
+            facilityComplianceScore: num(prev.facilityComplianceScore),
+            overallScore: num(prev.overallScore),
+            depreciation: num(prev.depreciation),
           };
         }
 
@@ -457,7 +460,7 @@ export default function SchoolDecisionDashboard({
         <Button
           asChild
           variant="outline"
-          className="rounded-full mt-2 font-medium text-[11px] px-6 border-blue-500/30 hover:bg-white/5"
+          className="rounded-full mt-2 font-medium text-[11px] px-6 border-blue-500/20 hover:bg-white/5"
         >
           <Link to="/schools">Return to registry</Link>
         </Button>
@@ -486,7 +489,7 @@ export default function SchoolDecisionDashboard({
       className="container mx-auto space-y-8 pb-12 px-2 md:px-6 pt-8 md:pt-16 bg-transparent"
     >
       {/* Tab Navigation */}
-      <div className="flex gap-2 p-1 bg-slate-50 dark:bg-white/5 rounded-full border border-slate-200 dark:border-blue-500/20 mb-8">
+      <div className="flex gap-2 p-1 bg-slate-50 dark:bg-white/5 rounded-full border border-slate-200 dark:border-blue-500/12 mb-8">
         {[
           { id: "main", label: "Main Dashboard", icon: Activity },
           { id: "reporting", label: "Reporting & Analytics", icon: FileText },
@@ -518,7 +521,7 @@ export default function SchoolDecisionDashboard({
             <div className="relative group mb-12">
               <div className="absolute -inset-x-20 -top-20 h-64 bg-primary/5 dark:bg-primary/2 blur-[120px] rounded-full pointer-events-none" />
 
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 relative z-10 border-b border-slate-200 dark:border-blue-500/20 pb-10">
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 relative z-10 border-b border-slate-200 dark:border-blue-500/12 pb-10">
                 <div>
                   <h2 className="text-3xl md:text-4xl font-medium text-slate-800 dark:text-white tracking-tight">
                     Strategic <span className="text-primary">Intelligence</span>{" "}
@@ -627,14 +630,14 @@ export default function SchoolDecisionDashboard({
 
                 <div className="relative z-10 p-8">
                   <h3 className="text-sm font-medium text-primary/70 dark:text-blue-500 mb-6 flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/20">
+                    <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/12">
                       <FileText className="w-4 h-4 opacity-60" />
                     </div>
                     Reporting Summary
                   </h3>
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
+                      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs text-slate-500 dark:text-white/60">
                             Active issues
@@ -658,7 +661,7 @@ export default function SchoolDecisionDashboard({
                           )}
                         </div>
                       </div>
-                      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
+                      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs text-slate-500 dark:text-white/60">
                             Resolved (SOLVED)
@@ -676,7 +679,7 @@ export default function SchoolDecisionDashboard({
                         </div>
                       </div>
                     </div>
-                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
+                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12">
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-xs text-slate-500 dark:text-white/60">
                           NEED_INTERVENTION
@@ -743,7 +746,7 @@ export default function SchoolDecisionDashboard({
                             );
                             if (b) onBuildingClick?.(b);
                           }}
-                          className={`p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20 hover:bg-slate-100 dark:hover:bg-white/10 transition-all ${onBuildingClick ? "cursor-pointer" : ""}`}
+                          className={`p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12 hover:bg-slate-100 dark:hover:bg-white/10 transition-all ${onBuildingClick ? "cursor-pointer" : ""}`}
                         >
                           <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-3">
@@ -836,7 +839,7 @@ export default function SchoolDecisionDashboard({
 
           <div className="relative z-10 p-8">
             <h3 className="text-sm font-medium text-primary/70 dark:text-blue-500 mb-6 flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/20">
+              <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/12">
                 <ClipboardCheck className="w-4 h-4 opacity-60" />
               </div>
               Strategic recommendations
@@ -846,7 +849,7 @@ export default function SchoolDecisionDashboard({
                 const action = actions.find((a) => a.recommendation === rec);
                 const status: string = action?.status ?? "open";
                 const statusColors: Record<string, string> = {
-                  open:        "bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-white/30 border-slate-200 dark:border-white/10",
+                  open:        "bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-white/30 border-slate-200 dark:border-white/6",
                   in_progress: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
                   done:        "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
                 };
@@ -936,7 +939,7 @@ export default function SchoolDecisionDashboard({
           maxWidth="max-w-md"
         >
           <div className="p-8 text-center space-y-6">
-            <div className="w-16 h-16 rounded-full bg-white/2 flex items-center justify-center mx-auto border border-blue-500/20">
+            <div className="w-16 h-16 rounded-full bg-white/2 flex items-center justify-center mx-auto border border-blue-500/12">
               <GraduationCap className="w-8 h-8 text-white/20" />
             </div>
             <p className="text-xs font-normal text-slate-500 dark:text-white/40 italic leading-relaxed">

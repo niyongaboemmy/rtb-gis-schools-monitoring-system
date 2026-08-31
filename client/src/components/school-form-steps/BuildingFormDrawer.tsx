@@ -353,10 +353,10 @@ export function BuildingFormDrawer({
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: "-100%", opacity: 0 }}
               transition={{ type: "spring", damping: 30, stiffness: 220 }}
-              className="fixed left-6 top-6 bottom-6 z-9999 w-full max-w-[380px] bg-background/90 backdrop-blur-3xl border border-white/10 flex flex-col rounded-[32px] overflow-hidden pointer-events-auto"
+              className="fixed left-6 top-6 bottom-6 z-9999 w-full max-w-[380px] bg-background/90 backdrop-blur-3xl border border-white/6 flex flex-col rounded-[32px] overflow-hidden pointer-events-auto"
             >
               {/* Header */}
-              <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/5 shrink-0">
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/4 shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 rounded-2xl bg-primary border border-primary/20 text-white">
                     <Building2 className="w-5 h-5" />

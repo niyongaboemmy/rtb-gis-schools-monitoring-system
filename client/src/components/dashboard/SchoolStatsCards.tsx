@@ -63,7 +63,7 @@ export const SchoolStatsCards = React.memo(
             icon: TeacherIcon,
             color: "text-blue-500",
             bg: "bg-blue-500/5",
-            border: "border-blue-500/20",
+            border: "border-blue-500/12",
             // Education standard: students per TEACHING staff (not all staff ÷ students)
             benchmark:
               totalTeachers > 0
@@ -121,7 +121,7 @@ export const SchoolStatsCards = React.memo(
             icon: MapIcon,
             color: "text-slate-500",
             bg: "bg-slate-500/5",
-            border: "border-slate-500/20",
+            border: "border-slate-500/12",
             benchmark:
               parseFloat(String(schoolData.roadStatusPercentage)) > 80
                 ? "Good access"
@@ -148,7 +148,7 @@ export const SchoolStatsCards = React.memo(
                   <div className="relative shrink-0">
                     <div
                       className={cn(
-                        "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border border-white/10 dark:border-white/5",
+                        "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border border-white/6 dark:border-white/4",
                         item.bg,
                       )}
                     >
@@ -171,7 +171,7 @@ export const SchoolStatsCards = React.memo(
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between border-t border-slate-100 dark:border-blue-500/20 pt-3">
+                <div className="flex items-center justify-between border-t border-slate-100 dark:border-blue-500/12 pt-3">
                   <div className="flex items-center gap-1.5 text-[10px] font-normal text-slate-500 dark:text-white/40">
                     <TrendingUp
                       className={cn(
@@ -185,7 +185,7 @@ export const SchoolStatsCards = React.memo(
                   </div>
                   <Badge
                     variant="outline"
-                    className="text-[9px] font-normal border-slate-200 dark:border-blue-500/20 bg-slate-50 dark:bg-white/2 text-slate-500 dark:text-white/40 group-hover:text-primary dark:group-hover:text-primary/60 group-hover:border-primary/20 transition-all rounded-full h-5 px-2.5 shrink-0"
+                    className="text-[9px] font-normal border-slate-200 dark:border-blue-500/12 bg-slate-50 dark:bg-white/2 text-slate-500 dark:text-white/40 group-hover:text-primary dark:group-hover:text-primary/60 group-hover:border-primary/20 transition-all rounded-full h-5 px-2.5 shrink-0"
                   >
                     {item.benchmark}
                   </Badge>

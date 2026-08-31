@@ -113,7 +113,7 @@ export const OverlayUploader: React.FC<OverlayUploaderProps> = ({
             "border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center transition-all cursor-pointer bg-white/5",
             isDragActive
               ? "border-primary bg-primary/10"
-              : "border-white/10 hover:border-white/20 hover:bg-white/10",
+              : "border-white/6 hover:border-white/12 hover:bg-white/10",
           )}
         >
           <input {...getInputProps()} />
@@ -128,7 +128,7 @@ export const OverlayUploader: React.FC<OverlayUploaderProps> = ({
           </p>
         </div>
       ) : (
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col gap-3">
+        <div className="bg-white/5 border border-white/6 rounded-2xl p-4 flex flex-col gap-3">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
               <FileCheck className="h-5 w-5 text-primary" />

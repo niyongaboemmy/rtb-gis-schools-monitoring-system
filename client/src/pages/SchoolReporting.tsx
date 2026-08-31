@@ -739,7 +739,7 @@ export default function SchoolReporting({
           <h3 className="text-3xl font-black uppercase tracking-tighter leading-none mb-2 flex items-center gap-4">
             Review & Confirm
             {selectedSchoolDetails?.tifFilePath && (
-              <Badge className="bg-blue-500/20 text-blue-500 border-blue-500/20 text-[11px] font-black uppercase rounded-full px-3 py-1">
+              <Badge className="bg-blue-500/20 text-blue-500 border-blue-500/12 text-[11px] font-black uppercase rounded-full px-3 py-1">
                 High-Res Mapping Active
               </Badge>
             )}
@@ -970,7 +970,7 @@ export default function SchoolReporting({
       case "NEED_INTERVENTION":
         return "bg-rose-500/10 text-rose-500 border-rose-500/20";
       case "FAILED":
-        return "bg-slate-500/10 text-slate-500 border-slate-500/20";
+        return "bg-slate-500/10 text-slate-500 border-slate-500/12";
       default:
         return "bg-muted text-muted-foreground";
     }
@@ -2333,7 +2333,7 @@ export default function SchoolReporting({
                       }}
                     />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Badge className="bg-white/20 backdrop-blur-md border-white/30 text-white font-black uppercase text-[13px]">
+                      <Badge className="bg-white/20 backdrop-blur-md border-white/20 text-white font-black uppercase text-[13px]">
                         Evidence #{idx + 1}
                       </Badge>
                     </div>

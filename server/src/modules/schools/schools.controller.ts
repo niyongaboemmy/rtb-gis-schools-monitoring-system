@@ -30,7 +30,10 @@ import { CreateSchoolDto } from './dto/create-school.dto';
 import { UpdateSchoolDto } from './dto/update-school.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
-import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import {
+  RequirePermissions,
+  RequireAnyPermission,
+} from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/constants/permissions.constant';
 import { PriorityLevel, SchoolStatus } from './entities/school.entity';
 import { ComplianceLevel } from './entities/school-facility-survey.entity';
@@ -39,12 +42,14 @@ import { SurveyUpdateItemDto } from './dto/survey-update.dto';
 
 @ApiTags('schools')
 @Controller('schools')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermissions(Permission.VIEW_SCHOOLS)
 @ApiBearerAuth()
 export class SchoolsController {
   constructor(private readonly schoolsService: SchoolsService) {}
 
   @Post()
+  @RequirePermissions(Permission.CREATE_SCHOOL)
   @ApiOperation({ summary: 'Create a new school' })
   create(@Body() createSchoolDto: CreateSchoolDto) {
     return this.schoolsService.create(createSchoolDto);
@@ -83,12 +88,14 @@ export class SchoolsController {
   }
 
   @Get('geojson')
+  @RequireAnyPermission(Permission.VIEW_MAP, Permission.VIEW_SCHOOLS)
   @ApiOperation({ summary: 'Get all schools as GeoJSON FeatureCollection' })
   getGeoJson() {
     return this.schoolsService.getGeoJson();
   }
 
   @Get('stats')
+  @RequireAnyPermission(Permission.VIEW_DASHBOARD, Permission.VIEW_SCHOOLS)
   @ApiOperation({ summary: 'Get school statistics' })
   getStats() {
     return this.schoolsService.getStats();
@@ -174,6 +181,7 @@ export class SchoolsController {
   }
 
   @Post(':id/survey/initialize')
+  @RequirePermissions(Permission.RUN_FACILITY_SURVEY)
   @ApiOperation({ summary: 'Initialize a new facility survey for a school' })
   initializeSurvey(
     @Param('id', ParseUUIDPipe) id: string,
@@ -183,6 +191,10 @@ export class SchoolsController {
   }
 
   @Patch(':id/survey')
+  @RequireAnyPermission(
+    Permission.SCHOOL_SURVERY_EDIT,
+    Permission.RUN_FACILITY_SURVEY,
+  )
   @ApiOperation({ summary: 'Bulk update facility survey items' })
   bulkUpdateSurvey(
     @Param('id', ParseUUIDPipe) id: string,
@@ -193,6 +205,10 @@ export class SchoolsController {
   }
 
   @Patch('survey/:surveyId')
+  @RequireAnyPermission(
+    Permission.SCHOOL_SURVERY_EDIT,
+    Permission.RUN_FACILITY_SURVEY,
+  )
   @ApiOperation({ summary: 'Update a single survey item' })
   updateSurveyItem(
     @Param('surveyId', ParseUUIDPipe) surveyId: string,
@@ -206,6 +222,10 @@ export class SchoolsController {
   }
 
   @Patch(':id')
+  @RequireAnyPermission(
+    Permission.MANAGE_SCHOOLS,
+    Permission.EDIT_SCHOOL_PROFILE,
+  )
   @ApiOperation({ summary: 'Update a school' })
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -216,6 +236,7 @@ export class SchoolsController {
 
   @Delete(':id')
   @HttpCode(204)
+  @RequirePermissions(Permission.DELETE_SCHOOL)
   @ApiOperation({ summary: 'Delete a school' })
   remove(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
     return this.schoolsService.remove(id, req.user);
@@ -224,6 +245,7 @@ export class SchoolsController {
   // ============ Building Routes ============
 
   @Post(':id/buildings')
+  @RequirePermissions(Permission.EDIT_SCHOOL_BUILDINGS)
   @ApiOperation({ summary: 'Add a new building to a school' })
   addBuilding(
     @Param('id', ParseUUIDPipe) id: string,
@@ -233,6 +255,7 @@ export class SchoolsController {
   }
 
   @Patch('buildings/:id')
+  @RequirePermissions(Permission.EDIT_SCHOOL_BUILDINGS)
   @ApiOperation({ summary: 'Update a specific building' })
   updateBuilding(
     @Param('id', ParseUUIDPipe) id: string,
@@ -242,6 +265,7 @@ export class SchoolsController {
   }
 
   @Post(':id/kmz/2d/site-annotations')
+  @RequirePermissions(Permission.EDIT_SITE_ANNOTATIONS)
   @ApiOperation({ summary: 'Add a site annotation' })
   addSiteAnnotation(
     @Param('id', ParseUUIDPipe) id: string,
@@ -251,6 +275,7 @@ export class SchoolsController {
   }
 
   @Delete(':id/kmz/2d/site-annotations/:annId')
+  @RequirePermissions(Permission.EDIT_SITE_ANNOTATIONS)
   @ApiOperation({ summary: 'Delete a site annotation' })
   removeSiteAnnotation(
     @Param('id', ParseUUIDPipe) id: string,
@@ -260,6 +285,7 @@ export class SchoolsController {
   }
 
   @Delete('buildings/:id')
+  @RequirePermissions(Permission.EDIT_SCHOOL_BUILDINGS)
   @ApiOperation({ summary: 'Remove a specific building' })
   removeBuilding(@Param('id', ParseUUIDPipe) id: string) {
     return this.schoolsService.removeBuilding(id);

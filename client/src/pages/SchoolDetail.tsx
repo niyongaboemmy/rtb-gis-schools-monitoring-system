@@ -46,7 +46,7 @@ const CONDITION_STYLES: Record<string, string> = {
   FAIR: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
   POOR: "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20",
   CRITICAL: "bg-red-100 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20",
-  UNDER_CONSTRUCTION: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20",
+  UNDER_CONSTRUCTION: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/12",
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -117,8 +117,8 @@ function buildAssessment(school: any, metrics: any) {
 
 function OverviewField({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string | undefined | null }) {
   return (
-    <div className="flex items-start gap-3 p-4 rounded-2xl bg-slate-50 dark:bg-white/2 border border-slate-100 dark:border-white/5">
-      <div className="p-2 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 shrink-0">
+    <div className="flex items-start gap-3 p-4 rounded-2xl bg-slate-50 dark:bg-white/2 border border-slate-100 dark:border-white/4">
+      <div className="p-2 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/6 shrink-0">
         <Icon className="w-4 h-4 text-slate-500 dark:text-white/40" />
       </div>
       <div className="min-w-0">
@@ -170,11 +170,11 @@ function BuildingsTab({ buildings }: { buildings: any[] }) {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.04 }}
-            className="p-4 rounded-2xl bg-white dark:bg-white/2 border border-slate-200 dark:border-white/5 flex flex-col gap-3"
+            className="p-4 rounded-2xl bg-white dark:bg-white/2 border border-slate-200 dark:border-white/4 flex flex-col gap-3"
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/5">
+                <div className="p-1.5 rounded-lg bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/4">
                   <Building2 className="w-4 h-4 text-slate-400 dark:text-white/30" />
                 </div>
                 <span className="text-[13px] font-medium text-slate-800 dark:text-white/80 truncate max-w-35">
@@ -202,7 +202,7 @@ function BuildingsTab({ buildings }: { buildings: any[] }) {
 
 function MapTab({ school }: { school: any }) {
   return (
-    <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10" style={{ height: 480 }}>
+    <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-white/6" style={{ height: 480 }}>
       <SchoolMap school={school} isEmbed />
     </div>
   );
@@ -313,9 +313,9 @@ function ActionsTab({ id, user }: { id: string; user: any }) {
               to={action.href}
               target={action.newTab ? "_blank" : undefined}
               rel={action.newTab ? "noopener noreferrer" : undefined}
-              className="group flex items-center gap-4 p-5 rounded-2xl bg-white dark:bg-white/2 border border-slate-200 dark:border-white/5 hover:border-primary/30 dark:hover:border-primary/30 hover:bg-slate-50 dark:hover:bg-white/4 transition-all"
+              className="group flex items-center gap-4 p-5 rounded-2xl bg-white dark:bg-white/2 border border-slate-200 dark:border-white/4 hover:border-primary/30 dark:hover:border-primary/30 hover:bg-slate-50 dark:hover:bg-white/4 transition-all"
             >
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 group-hover:bg-primary/5 group-hover:border-primary/20 transition-colors shrink-0">
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/6 group-hover:bg-primary/5 group-hover:border-primary/20 transition-colors shrink-0">
                 <action.icon className="w-5 h-5 text-slate-500 dark:text-white/40 group-hover:text-primary transition-colors" />
               </div>
               <div className="flex-1 min-w-0">
@@ -325,8 +325,8 @@ function ActionsTab({ id, user }: { id: string; user: any }) {
               <ChevronRight className="w-4 h-4 text-slate-300 dark:text-white/20 group-hover:text-primary/60 transition-colors shrink-0" />
             </Link>
           ) : (
-            <div className="flex items-center gap-4 p-5 rounded-2xl bg-slate-50 dark:bg-white/1 border border-slate-100 dark:border-white/5 opacity-50 cursor-not-allowed">
-              <div className="p-3 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 shrink-0">
+            <div className="flex items-center gap-4 p-5 rounded-2xl bg-slate-50 dark:bg-white/1 border border-slate-100 dark:border-white/4 opacity-50 cursor-not-allowed">
+              <div className="p-3 rounded-xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/6 shrink-0">
                 <action.icon className="w-5 h-5 text-slate-400 dark:text-white/30" />
               </div>
               <div className="flex-1 min-w-0">
@@ -413,7 +413,7 @@ export default function SchoolDetail() {
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-[12px] text-slate-500 dark:text-white/40 font-mono">{school.code}</span>
             {school.type && (
-              <Badge variant="outline" className="text-[10px] rounded-full px-2 py-0.5 border-slate-200 dark:border-white/10 text-slate-500 dark:text-white/40">
+              <Badge variant="outline" className="text-[10px] rounded-full px-2 py-0.5 border-slate-200 dark:border-white/6 text-slate-500 dark:text-white/40">
                 {school.type}
               </Badge>
             )}

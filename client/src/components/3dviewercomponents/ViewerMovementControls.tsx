@@ -47,7 +47,7 @@ export const ViewerMovementControls: React.FC<ViewerMovementControlsProps> = ({
                 size="icon"
                 variant={isSprinting ? "default" : "outline"}
                 className={cn(
-                  "w-10 h-10 rounded-xl transition-all duration-300 shadow-xl border border-white/10",
+                  "w-10 h-10 rounded-xl transition-all duration-300 shadow-xl border border-white/6",
                   isSprinting 
                     ? "bg-amber-500 hover:bg-amber-600 text-white scale-110 shadow-amber-500/20" 
                     : "bg-background/80 backdrop-blur-2xl hover:bg-white/10"
@@ -65,7 +65,7 @@ export const ViewerMovementControls: React.FC<ViewerMovementControlsProps> = ({
 
         <div className="flex gap-3 items-end pointer-events-auto">
           {/* Height & Rotation Grid */}
-          <Card className="bg-background/80 backdrop-blur-2xl rounded-2xl border border-white/10 p-1.5 shadow-2xl flex flex-col gap-1">
+          <Card className="bg-background/80 backdrop-blur-2xl rounded-2xl border border-white/6 p-1.5 shadow-2xl flex flex-col gap-1">
             {/* Top Row: Height Controls */}
             <div className="flex gap-1">
               <Tooltip>
@@ -139,7 +139,7 @@ export const ViewerMovementControls: React.FC<ViewerMovementControlsProps> = ({
           </Card>
 
           {/* D-Pad Horizontal Movement */}
-          <Card className="bg-background/80 backdrop-blur-2xl rounded-[24px] border border-white/10 p-2 shadow-2xl flex flex-col items-center gap-1">
+          <Card className="bg-background/80 backdrop-blur-2xl rounded-[24px] border border-white/6 p-2 shadow-2xl flex flex-col items-center gap-1">
             <div className="flex justify-center">
               <Button
                 variant="ghost"

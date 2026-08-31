@@ -31,11 +31,11 @@ export function DistributionChart({
   return (
     <Card
       className={cn(
-        'h-full border border-border/20 dark:border-blue-700/30 bg-card/60 backdrop-blur-sm rounded-3xl overflow-hidden shadow-none',
+        'h-full border border-border/20 dark:border-blue-700/20 bg-card/60 backdrop-blur-sm rounded-3xl overflow-hidden shadow-none',
         className,
       )}
     >
-      <CardHeader className="border-b border-border/20 dark:border-blue-700/30 pb-4">
+      <CardHeader className="border-b border-border/20 dark:border-blue-700/20 pb-4">
         <CardTitle className="text-base font-black uppercase tracking-widest text-muted-foreground/80">
           {title}
         </CardTitle>
@@ -107,7 +107,7 @@ export function DistributionChart({
                       initial={{ width: 0 }}
                       animate={{ width: `${highPct}%` }}
                       transition={{ duration: 1, delay: 0.6 + idx * 0.1 }}
-                      className="bg-amber-500 h-full border-l border-white/10"
+                      className="bg-amber-500 h-full border-l border-white/6"
                       title={`High: ${high}`}
                     />
                   )}
@@ -116,7 +116,7 @@ export function DistributionChart({
                       initial={{ width: 0 }}
                       animate={{ width: `${optPct}%` }}
                       transition={{ duration: 1, delay: 0.7 + idx * 0.1 }}
-                      className="bg-emerald-500 h-full border-l border-white/10"
+                      className="bg-emerald-500 h-full border-l border-white/6"
                       title={`Optimal: ${remaining}`}
                     />
                   )}

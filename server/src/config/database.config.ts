@@ -6,10 +6,15 @@ export const databaseConfig = (
 ): TypeOrmModuleOptions => {
   const databaseUrl = configService.get<string>('DATABASE_URL');
   const isProduction = configService.get<string>('NODE_ENV') === 'production';
-  // DB_SYNC=true lets you force a one-time schema sync (e.g. initial Supabase setup).
-  // Never leave enabled in production after the first deploy.
-  const syncEnabled =
-    configService.get<string>('DB_SYNC') === 'true' || !isProduction;
+  // Schema management:
+  //  - dev: synchronize is on for convenience.
+  //  - production: synchronize is ALWAYS off — schema is owned by TypeORM
+  //    migrations (`npm run migration:prod`, run automatically on every deploy).
+  //    The only exception is DB_SYNC=true, kept solely for the one-time initial
+  //    schema bootstrap on a brand-new database; unset it immediately after.
+  const syncEnabled = isProduction
+    ? configService.get<string>('DB_SYNC') === 'true'
+    : true;
 
   if (databaseUrl) {
     return {

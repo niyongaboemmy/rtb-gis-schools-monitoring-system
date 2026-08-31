@@ -24,13 +24,27 @@ import {
 } from '@nestjs/swagger';
 import { KmzService } from './kmz.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import {
+  RequirePermissions,
+  RequireAnyPermission,
+} from '../../common/decorators/permissions.decorator';
+import { Permission } from '../../common/constants/permissions.constant';
 
 @ApiTags('kmz')
 @Controller('schools/:schoolId/kmz')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@ApiBearerAuth()
+@RequireAnyPermission(
+  Permission.VIEW_SCHOOLS,
+  Permission.SCHOOL_VIEW_2D3D_MAP,
+  Permission.VIEW_MAP,
+)
 export class KmzController {
   constructor(private readonly kmzService: KmzService) {}
 
   @Post()
+  @RequirePermissions(Permission.UPLOAD_KMZ)
   @HttpCode(202)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -52,7 +66,38 @@ export class KmzController {
     return this.kmzService.uploadGlbModel(schoolId, file);
   }
 
+  // Used by production (Vercel): frontend uploads file to file-server first,
+  // then sends the URL here to avoid Vercel's 4.5 MB body limit.
+  @Post('2d/from-url')
+  @RequirePermissions(Permission.UPLOAD_KMZ)
+  @HttpCode(202)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Process 2D KMZ/KML from a pre-uploaded file URL' })
+  @ApiBody({ schema: { type: 'object', properties: { fileUrl: { type: 'string' }, fileName: { type: 'string' } } } })
+  uploadKmz2dFromUrl(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @Body() body: { fileUrl: string; fileName: string },
+  ) {
+    return this.kmzService.uploadKmz2dFromUrl(schoolId, body.fileUrl, body.fileName);
+  }
+
+  @Post('from-url')
+  @RequirePermissions(Permission.UPLOAD_KMZ)
+  @HttpCode(202)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Process GLB 3D model from a pre-uploaded file URL' })
+  @ApiBody({ schema: { type: 'object', properties: { fileUrl: { type: 'string' }, fileName: { type: 'string' } } } })
+  uploadGlbFromUrl(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @Body() body: { fileUrl: string; fileName: string },
+  ) {
+    return this.kmzService.uploadGlbFromUrl(schoolId, body.fileUrl, body.fileName);
+  }
+
   @Post('2d')
+  @RequirePermissions(Permission.UPLOAD_KMZ)
   @HttpCode(202)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -75,6 +120,7 @@ export class KmzController {
   }
 
   @Post('places-overlay')
+  @RequirePermissions(Permission.EDIT_SITE_ANNOTATIONS)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
@@ -137,6 +183,7 @@ export class KmzController {
   }
 
   @Delete('2d/overlays/:index')
+  @RequirePermissions(Permission.EDIT_SITE_ANNOTATIONS)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Remove a specific ground overlay from the 2D manifest' })
@@ -148,6 +195,7 @@ export class KmzController {
   }
 
   @Post('2d/overlays')
+  @RequirePermissions(Permission.EDIT_SITE_ANNOTATIONS)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
@@ -169,6 +217,7 @@ export class KmzController {
   }
 
   @Post('2d/site-annotations')
+  @RequirePermissions(Permission.EDIT_SITE_ANNOTATIONS)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Add a site-wide annotation (measurement/label)' })
@@ -180,6 +229,7 @@ export class KmzController {
   }
 
   @Delete('2d/site-annotations/:id')
+  @RequirePermissions(Permission.EDIT_SITE_ANNOTATIONS)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Remove a site-wide annotation' })

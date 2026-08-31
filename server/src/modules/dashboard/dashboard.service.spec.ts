@@ -1,14 +1,13 @@
 /**
  * BUG-02 regression suite — healthIndex in DashboardService.mainPayload
  *
- * BUG-02: healthIndex was incorrectly calculated when building conditions were
- * unknown/missing (the `?? 0` fallback was previously `?? 50`, inflating the
- * score for poor-condition schools). These tests pin the three canonical cases
- * so any regression immediately surfaces as a failure.
+ * healthIndex now shares the canonical condition map with analytics.service
+ * (scoring.constants.ts) so the school dashboard's healthIndex always matches
+ * its infrastructureScore. These tests pin the arithmetic.
  *
- * Logic under test (dashboard.service.ts):
- *   conditionMap = { good: 100, fair: 70, poor: 40, critical: 10 }
- *   healthSum    = buildings.reduce((acc, b) => acc + (conditionMap[b.condition] ?? 0), 0)
+ * Logic under test (dashboard.service.ts + scoring.constants.ts):
+ *   CONDITION_SCORE_MAP = { good: 100, fair: 70, poor: 30, critical: 10 }
+ *   healthSum    = buildings.reduce((acc, b) => acc + (CONDITION_SCORE_MAP[b.condition] ?? 50), 0)
  *   healthIndex  = buildings.length > 0 ? round(healthSum / buildings.length) : 50
  */
 
@@ -157,12 +156,12 @@ describe('DashboardService.mainPayload – healthIndex exact values', () => {
     expect(data.infrastructure.healthIndex).toBe(70);
   });
 
-  it('single POOR building → healthIndex = 40', async () => {
+  it('single POOR building → healthIndex = 30 (canonical condition map)', async () => {
     const { service, schoolRepo } = await makeService();
     schoolRepo.findOne.mockResolvedValue(buildSchool([buildBuilding(BuildingCondition.POOR)]));
 
     const { data } = await service.mainPayload('school-1');
-    expect(data.infrastructure.healthIndex).toBe(40);
+    expect(data.infrastructure.healthIndex).toBe(30);
   });
 
   it('single CRITICAL building → healthIndex = 10', async () => {
@@ -197,9 +196,9 @@ describe('DashboardService.mainPayload – healthIndex exact values', () => {
     expect(data.infrastructure.healthIndex).toBe(85);
   });
 
-  it('unknown condition falls back to 0, pulling average down', async () => {
-    // BUG-02 variant: if ?? was `?? 50` instead of `?? 0`, this test would fail
-    // because unknown conditions would inflate a CRITICAL school's score.
+  it('unknown condition falls back to neutral 50 in the average', async () => {
+    // Canonical model: an unrecognised condition string is treated as "no data"
+    // for that building (neutral 50), matching analytics.service.
     const buildings = [
       buildBuilding(BuildingCondition.CRITICAL),
       { ...buildBuilding(BuildingCondition.CRITICAL), condition: 'unknown_xyz' } as any,
@@ -208,8 +207,8 @@ describe('DashboardService.mainPayload – healthIndex exact values', () => {
     schoolRepo.findOne.mockResolvedValue(buildSchool(buildings));
 
     const { data } = await service.mainPayload('school-1');
-    // (10 + 0) / 2 = 5, round(5) = 5
-    expect(data.infrastructure.healthIndex).toBe(5);
+    // (10 + 50) / 2 = 30
+    expect(data.infrastructure.healthIndex).toBe(30);
   });
 });
 

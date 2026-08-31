@@ -61,7 +61,7 @@ export default function School3DViewPage() {
           asChild
           variant="outline"
           size="icon"
-          className="rounded-full h-12 w-12 bg-black/30 backdrop-blur-md border-white/20 hover:bg-black/50"
+          className="rounded-full h-12 w-12 bg-black/30 backdrop-blur-md border-white/12 hover:bg-black/50"
         >
           <Link to={`/schools/${id}/decision`}>
             <ArrowLeft className="h-5 w-5 text-white" />
@@ -71,7 +71,7 @@ export default function School3DViewPage() {
 
       {/* School Info Badge */}
       <div className="fixed top-6 right-6 z-50">
-        <div className="bg-black/70 backdrop-blur-xl rounded-2xl px-6 py-3 border border-white/20">
+        <div className="bg-black/70 backdrop-blur-xl rounded-2xl px-6 py-3 border border-white/12">
           <p className="text-white font-bold text-lg">{school?.name}</p>
           <p className="text-blue-300 text-sm font-medium">{school?.code}</p>
         </div>

@@ -1,0 +1,16 @@
+{
+  "Comment": "rtb.aerovyntech.com -> RTB GIS EC2 Elastic IP",
+  "Changes": [
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "rtb.aerovyntech.com",
+        "Type": "A",
+        "TTL": 300,
+        "ResourceRecords": [
+          { "Value": "REPLACE_WITH_ELASTIC_IP" }
+        ]
+      }
+    }
+  ]
+}

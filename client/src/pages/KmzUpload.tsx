@@ -19,6 +19,10 @@ import { useAuthStore } from "../store/authStore";
 import { cn } from "../lib/utils";
 import { api } from "../lib/api";
 
+const FILE_SERVER_BASE = (
+  import.meta.env.VITE_FILE_SERVER_URL || "http://localhost:3002/files"
+).replace(/\/files\/?$/, "");
+
 export default function KmzUpload() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -68,94 +72,106 @@ export default function KmzUpload() {
     }
   };
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (!file || !id) return;
 
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
     if (uploadMode === "3d" && ext !== "glb") {
       setStatus("error");
-      setMessage("3D viewer only accepts .glb files. Please select a GLB model.");
+      setMessage(
+        "3D viewer only accepts .glb files. Please select a GLB model.",
+      );
       return;
     }
     if (uploadMode === "2d" && ext !== "kmz" && ext !== "kml") {
       setStatus("error");
-      setMessage("2D viewer only accepts .kmz or .kml files. Please select a KMZ/KML file.");
+      setMessage(
+        "2D viewer only accepts .kmz or .kml files. Please select a KMZ/KML file.",
+      );
       return;
     }
 
     setStatus("uploading");
-    setMessage("Deploying geospatial payload to cloud storage...");
+    setMessage("Uploading file to storage...");
     setUploadProgress(0);
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const xhr = new XMLHttpRequest();
-    xhrRef.current = xhr;
 
     const apiBaseUrl = import.meta.env.VITE_API_URL || "/api/v1";
     const token = useAuthStore.getState().token;
 
-    const endpoint =
-      uploadMode === "2d"
-        ? `${apiBaseUrl}/schools/${id}/kmz/2d`
-        : `${apiBaseUrl}/schools/${id}/kmz`;
-    xhr.open("POST", endpoint);
-    xhr.setRequestHeader("Accept", "application/json");
-    if (token) {
-      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-    }
+    try {
+      // Step 1 — Upload directly to file server (bypasses Vercel 4.5 MB body limit)
+      const folder = uploadMode === "2d" ? "kmz" : "buildings";
+      const formData = new FormData();
+      formData.append("files", file);
 
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        const percentComplete = (event.loaded / event.total) * 100;
-        setUploadProgress(percentComplete);
-        if (percentComplete < 100) {
-          setMessage(`Uploading: ${percentComplete.toFixed(0)}%`);
-        } else {
-          setMessage("Processing geospatial data...");
-        }
-      }
-    };
+      const xhr = new XMLHttpRequest();
+      xhrRef.current = xhr;
 
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        setStatus("success");
-        setUploadProgress(100);
-        setMessage(
-          "Geospatial data successfully integrated into GIS database.",
+      const fileUrl: string = await new Promise((resolve, reject) => {
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const pct = (event.loaded / event.total) * 80;
+            setUploadProgress(pct);
+            setMessage(`Uploading: ${pct.toFixed(0)}%`);
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            const data = JSON.parse(xhr.responseText);
+            // data.urls[0] is like /files/kmz/filename.kmz — make it absolute
+            const relUrl: string = data.urls?.[0] || "";
+            const absUrl = relUrl.startsWith("http")
+              ? relUrl
+              : `${FILE_SERVER_BASE}${relUrl.startsWith("/") ? "" : "/"}${relUrl}`;
+            resolve(absUrl);
+          } else {
+            reject(new Error(`File server upload failed (${xhr.status})`));
+          }
+        };
+        xhr.onerror = () =>
+          reject(new Error("Network error uploading to file server"));
+        xhr.open("POST", `${FILE_SERVER_BASE}/upload?folder=${folder}`);
+        xhr.send(formData);
+      });
+
+      setUploadProgress(85);
+      setMessage("Processing geospatial data...");
+
+      // Step 2 — Tell backend to process from the URL (tiny JSON body, no size limit)
+      const backendEndpoint =
+        uploadMode === "2d"
+          ? `${apiBaseUrl}/schools/${id}/kmz/2d/from-url`
+          : `${apiBaseUrl}/schools/${id}/kmz/from-url`;
+
+      const response = await fetch(backendEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ fileUrl, fileName: file.name }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(
+          err.message || `Backend processing failed (${response.status})`,
         );
-        setTimeout(() => {
-          navigate(`/schools/${id}`);
-        }, 3000);
-      } else {
-        setStatus("error");
-        try {
-          const errorData = JSON.parse(xhr.responseText);
-          setMessage(
-            errorData.message ||
-              "Failed to analyze geospatial payload. File format mismatch or file exceeds size limits.",
-          );
-        } catch {
-          setMessage(
-            "Failed to upload file. The file may be too large for the server to process.",
-          );
-        }
       }
-    };
 
-    xhr.onerror = () => {
+      setStatus("success");
+      setUploadProgress(100);
+      setMessage("Geospatial data successfully integrated into GIS database.");
+      setTimeout(() => navigate(`/schools/${id}`), 3000);
+    } catch (err: any) {
       setStatus("error");
-      setMessage("Network error occurred while uploading file.");
-    };
-
-    xhr.send(formData);
+      setMessage(err.message || "Upload failed. Please try again.");
+    }
   };
 
   const existingFile = uploadMode === "3d" ? existingFile3d : existingFile2d;
-  const existingFileName = existingFile
-    ? existingFile.split("/").pop()
-    : null;
+  const existingFileName = existingFile ? existingFile.split("/").pop() : null;
   const isUpdate = !!existingFile;
 
   const acceptAttr = uploadMode === "3d" ? ".glb" : ".kmz,.kml";
@@ -221,7 +237,9 @@ export default function KmzUpload() {
               <Icon
                 className={cn(
                   "w-6 h-6",
-                  uploadMode === mode ? "text-primary" : "text-muted-foreground",
+                  uploadMode === mode
+                    ? "text-primary"
+                    : "text-muted-foreground",
                 )}
               />
               {!loadingSchool && fileLabel && (
@@ -304,7 +322,10 @@ export default function KmzUpload() {
                     <span className="text-lg font-medium text-primary hover:underline">
                       {isUpdate ? "Click to replace file" : "Click to upload"}
                     </span>
-                    <span className="text-muted-foreground"> or drag and drop</span>
+                    <span className="text-muted-foreground">
+                      {" "}
+                      or drag and drop
+                    </span>
                   </div>
                   <p className="text-xs text-muted-foreground">{formatHint}</p>
                 </label>

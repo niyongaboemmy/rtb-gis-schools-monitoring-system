@@ -19,7 +19,15 @@ import {
   getFeatureName,
 } from "../MapUtils";
 import type { GroundOverlayData } from "../MapUtils";
-import { api } from "../../../lib/api";
+import { api, FILE_SERVER_URL } from "../../../lib/api";
+
+// Resolve a /files/... relative path to the full file server URL
+const resolveFileUrl = (url: string): string => {
+  if (!url) return url;
+  if (url.startsWith("http") || url.startsWith("blob:")) return url;
+  const clean = url.replace(/^\/?files\//i, "");
+  return `${FILE_SERVER_URL}/${clean}`;
+};
 
 interface UseKmzLoaderProps {
   mapRef: React.MutableRefObject<OLMap | null>;
@@ -352,9 +360,12 @@ export function useKmzLoader({
             
             if (manifestData && manifestData.kmlUrls && manifestData.kmlUrls.length > 0) {
               setLoadingMessage("Loading server-processed map data…");
-              const kmlRes = await fetch(manifestData.kmlUrls[0], { signal: abortController.signal });
+              const kmlRes = await fetch(resolveFileUrl(manifestData.kmlUrls[0]), { signal: abortController.signal });
               manifestKmlText = await kmlRes.text();
-              manifestOverlays = manifestData.groundOverlays || [];
+              manifestOverlays = (manifestData.groundOverlays || []).map((ov: GroundOverlayData) => ({
+                ...ov,
+                imageUrl: resolveFileUrl(ov.imageUrl),
+              }));
               useManifest = true;
             }
           } catch (mErr) {

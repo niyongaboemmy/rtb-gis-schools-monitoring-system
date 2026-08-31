@@ -50,15 +50,24 @@ export function ProtectedRoute({
   children,
   allowedRoles = [],
   requiredPermission,
+  requiredAnyPermission,
 }: {
   children?: ReactNode;
   allowedRoles?: string[];
   requiredPermission?: PermissionType;
+  requiredAnyPermission?: PermissionType[];
 }) {
-  const { isAuthenticated, user, isAuthorized } = useAuthorization();
+  const { isAuthenticated, user, isAuthorized, isAnyAuthorized } =
+    useAuthorization();
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (requiredPermission && !isAuthorized(requiredPermission))
+    return <Navigate to="/welcome" replace />;
+  if (
+    requiredAnyPermission &&
+    requiredAnyPermission.length > 0 &&
+    !isAnyAuthorized(requiredAnyPermission)
+  )
     return <Navigate to="/welcome" replace />;
   if (allowedRoles.length > 0 && user) {
     const rawRole = typeof user.role === "object" ? user.role.name : user.role;
@@ -77,7 +86,7 @@ export function ProtectedRoute({
 /* ─── main layout ─────────────────────────────────────────────── */
 export function AppLayout() {
   const { logout } = useAuthStore();
-  const { user, isAuthorized } = useAuthorization();
+  const { user, isAuthorized, isAnyAuthorized } = useAuthorization();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -158,25 +167,44 @@ export function AppLayout() {
       name: "School Reporting",
       path: "/reporting",
       icon: ClipboardList,
-      requiredPermission: Permission.CREATE_REPORT,
+      requiredAnyPermission: [
+        Permission.VIEW_REPORTING,
+        Permission.CREATE_REPORT,
+        Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD,
+      ] as PermissionType[],
     },
     {
       name: "Reports",
       path: "/reports",
       icon: FileSearch,
-      requiredPermission: Permission.EXPORT_REPORTS,
+      requiredPermission: Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD,
     },
     {
       name: "Settings",
       path: "/settings",
       icon: Settings,
-      requiredPermission: Permission.MANAGE_USERS,
+      requiredAnyPermission: [
+        Permission.MANAGE_USERS,
+        Permission.VIEW_USERS,
+        Permission.MANAGE_ROLES,
+        Permission.VIEW_AUDIT_LOGS,
+      ] as PermissionType[],
     },
-  ];
+  ] as {
+    name: string;
+    path: string;
+    icon: typeof LayoutDashboard;
+    requiredPermission?: PermissionType;
+    requiredAnyPermission?: PermissionType[];
+  }[];
 
-  const navItems = allNavItems.filter(
-    (item) => !item.requiredPermission || isAuthorized(item.requiredPermission),
-  );
+  const navItems = allNavItems.filter((item) => {
+    if (item.requiredPermission && !isAuthorized(item.requiredPermission))
+      return false;
+    if (item.requiredAnyPermission && !isAnyAuthorized(item.requiredAnyPermission))
+      return false;
+    return true;
+  });
 
   const initials = `${user?.firstName?.charAt(0) ?? ""}${user?.lastName?.charAt(0) ?? ""}`;
   const roleName = (
@@ -609,7 +637,12 @@ export function AppLayout() {
                     <User className="w-3.5 h-3.5 text-muted-foreground" />
                     My profile
                   </button>
-                  {isAuthorized(Permission.MANAGE_USERS) && (
+                  {isAnyAuthorized([
+                    Permission.MANAGE_USERS,
+                    Permission.VIEW_USERS,
+                    Permission.MANAGE_ROLES,
+                    Permission.VIEW_AUDIT_LOGS,
+                  ]) && (
                     <button
                       onClick={() => {
                         setIsProfileOpen(false);
@@ -641,7 +674,14 @@ export function AppLayout() {
         </AnimatePresence>
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto bg-slate-200/20 dark:bg-black">
+        <main
+          className={cn(
+            "flex-1 overflow-auto bg-slate-200/20 dark:bg-black [--app-shell-inset:0px]",
+            isSidebarCollapsed
+              ? "lg:[--app-shell-inset:68px]"
+              : "lg:[--app-shell-inset:256px]",
+          )}
+        >
           <motion.div
             key={location.pathname}
             initial={{ opacity: 0, y: 8 }}

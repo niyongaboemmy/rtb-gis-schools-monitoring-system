@@ -44,8 +44,8 @@ export function IntelligenceScore({
       transition={{ delay: 0.4 }}
       className={cn("col-span-1", className)}
     >
-      <Card className="border border-border/20 dark:border-blue-700/30 bg-card/60 backdrop-blur-sm rounded-3xl overflow-hidden shadow-none">
-        <CardHeader className="border-b border-border/10 dark:border-blue-700/30 pb-4">
+      <Card className="border border-border/20 dark:border-blue-700/20 bg-card/60 backdrop-blur-sm rounded-3xl overflow-hidden shadow-none">
+        <CardHeader className="border-b border-border/10 dark:border-blue-700/20 pb-4">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg font-black flex items-center gap-2">
               <Activity className="w-5 h-5 text-primary" />
@@ -183,7 +183,11 @@ export function IntelligenceScore({
                     Strategic Overview
                   </h4>
                   <p className="text-[11px] font-medium text-muted-foreground leading-relaxed">
-                    This score represents the weighted average of infrastructure, accessibility, and compliance metrics across all registered institutions.
+                    This is the arithmetic mean of every scored institution's
+                    overall decision-intelligence score (a 6-factor weighted
+                    composite: infrastructure 35%, building age 25%, facility
+                    compliance 15%, capacity 10%, accessibility 10%, issue
+                    resolution 5%).
                   </p>
                 </div>
               )}
@@ -191,7 +195,7 @@ export function IntelligenceScore({
           </div>
 
           {children && (
-            <div className="p-6 pt-0 border-t border-border/10 dark:border-blue-700/30">
+            <div className="p-6 pt-0 border-t border-border/10 dark:border-blue-700/20">
               {children}
             </div>
           )}

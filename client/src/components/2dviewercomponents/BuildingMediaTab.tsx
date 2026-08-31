@@ -152,7 +152,7 @@ export function BuildingMediaTab({
           className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-500 group relative"
         >
           {/* Mode Switcher */}
-          <div className="flex p-1 rounded-xl bg-white/5 border border-white/5">
+          <div className="flex p-1 rounded-xl bg-white/5 border border-white/4">
             {[
               { id: "local", label: "Local Upload", icon: Upload },
               { id: "remote", label: "Remote URL", icon: Globe },
@@ -183,7 +183,7 @@ export function BuildingMediaTab({
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 placeholder="Name this asset..."
-                className="bg-white/3 border-white/5 h-11 text-xs rounded-xl focus:ring-primary/20 placeholder:text-white/10"
+                className="bg-white/3 border-white/4 h-11 text-xs rounded-xl focus:ring-primary/20 placeholder:text-white/10"
               />
             </div>
 
@@ -206,7 +206,7 @@ export function BuildingMediaTab({
                       "flex flex-col items-center justify-center min-h-[140px] border-2 border-dashed rounded-2xl transition-all cursor-pointer overflow-hidden",
                       selectedFile
                         ? "border-primary/50 bg-primary/5"
-                        : "border-white/5 hover:border-white/10 bg-white/2",
+                        : "border-white/4 hover:border-white/6 bg-white/2",
                     )}
                   >
                     {previewUrl ? (
@@ -236,7 +236,7 @@ export function BuildingMediaTab({
                       </div>
                     ) : (
                       <div className="flex flex-col items-center text-white/40 group-hover:text-white/40 transition-all">
-                        <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-2 border border-white/5 group-hover:scale-110 transition-transform">
+                        <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-2 border border-white/4 group-hover:scale-110 transition-transform">
                           <Upload className="w-5 h-5" />
                         </div>
                         <p className="text-[9px] uppercase font-black tracking-widest">
@@ -258,7 +258,7 @@ export function BuildingMediaTab({
                     value={newPath}
                     onChange={(e) => setNewPath(e.target.value)}
                     placeholder="https://..."
-                    className="bg-white/3 border-white/5 h-11 pl-10 text-xs rounded-xl focus:ring-primary/20 placeholder:text-white/10"
+                    className="bg-white/3 border-white/4 h-11 pl-10 text-xs rounded-xl focus:ring-primary/20 placeholder:text-white/10"
                   />
                 </div>
               </div>
@@ -274,7 +274,7 @@ export function BuildingMediaTab({
           >
             {isSaving ? (
               <div className="flex items-center gap-3">
-                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-white/12 border-t-white rounded-full animate-spin" />
                 Processing Asset...
               </div>
             ) : (
@@ -290,7 +290,7 @@ export function BuildingMediaTab({
       {/* Media Grid */}
       <div className="grid grid-cols-1 gap-3 pb-8">
         {!building.media || building.media.length === 0 ? (
-          <div className="h-40 rounded-3xl border border-dashed border-white/10 flex flex-col items-center justify-center p-8 bg-black/10">
+          <div className="h-40 rounded-3xl border border-dashed border-white/6 flex flex-col items-center justify-center p-8 bg-black/10">
             <Globe className="w-8 h-8 text-white/5 mb-3" />
             <p className="text-[10px] text-white/40 font-normal text-center leading-relaxed">
               {" "}
@@ -308,10 +308,10 @@ export function BuildingMediaTab({
             return (
               <div
                 key={idx}
-                className="group relative flex items-center gap-4 p-3 rounded-2xl bg-white/3 border border-white/5 hover:bg-white/6 hover:border-white/10 transition-all overflow-hidden"
+                className="group relative flex items-center gap-4 p-3 rounded-2xl bg-white/3 border border-white/4 hover:bg-white/6 hover:border-white/6 transition-all overflow-hidden"
               >
                 {/* Preview / Icon - High Fidelity Preview */}
-                <div className="w-16 h-16 rounded-xl bg-black/40 border border-white/5 flex items-center justify-center shrink-0 overflow-hidden relative group-hover:border-primary/30 transition-colors">
+                <div className="w-16 h-16 rounded-xl bg-black/40 border border-white/4 flex items-center justify-center shrink-0 overflow-hidden relative group-hover:border-primary/30 transition-colors">
                   {isVideo ? (
                     <div className="flex flex-col items-center">
                       <Video className="w-6 h-6 text-primary/40 group-hover:text-primary transition-colors" />

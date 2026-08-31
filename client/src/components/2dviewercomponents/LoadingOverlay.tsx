@@ -23,7 +23,7 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
       <div className="relative z-10 w-full max-w-md px-8 text-center animate-in fade-in zoom-in duration-500">
         {/* Main Visual: Animated Scanning Ring */}
         <div className="relative mx-auto mb-10 h-32 w-32">
-          <div className="absolute inset-0 rounded-full border-4 border-white/5" />
+          <div className="absolute inset-0 rounded-full border-4 border-white/4" />
           <svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 100 100">
             <circle
               cx="50"
@@ -47,7 +47,7 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
           </div>
           {/* Spinning highlight */}
           <div 
-            className="absolute inset-0 rounded-full border-t-2 border-blue-400/40" 
+            className="absolute inset-0 rounded-full border-t-2 border-blue-400/25" 
             style={{ animation: "spin 1.5s linear infinite" }}
           />
         </div>
@@ -57,13 +57,13 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
             Synchronising School Assets
           </h2>
           <div className="flex flex-col items-center gap-1">
-            <span className="text-blue-400 font-semibold text-xs py-1 px-3 rounded-full bg-blue-500/10 border border-blue-500/20 inline-block uppercase tracking-widest">
+            <span className="text-blue-400 font-semibold text-xs py-1 px-3 rounded-full bg-blue-500/10 border border-blue-500/12 inline-block uppercase tracking-widest">
               {loadingMessage}
             </span>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 p-5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm mb-10">
+        <div className="grid grid-cols-1 p-5 rounded-2xl bg-white/5 border border-white/6 backdrop-blur-sm mb-10">
           <div className="text-center">
             <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">Session Elapsed</p>
             <p className="text-lg font-mono font-medium text-white/90">

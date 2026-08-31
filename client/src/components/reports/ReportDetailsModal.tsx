@@ -32,7 +32,7 @@ const STATUS_CONFIG = {
   PENDING: { label: "Pending Review", color: "bg-amber-500/10 text-amber-500 border-amber-500/20", icon: <Clock className="w-3.5 h-3.5" /> },
   SOLVED: { label: "Solved", color: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20", icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
   NEED_INTERVENTION: { label: "Critical Priority", color: "bg-rose-500/10 text-rose-500 border-rose-500/20", icon: <AlertTriangle className="w-3.5 h-3.5" /> },
-  FAILED: { label: "Failed/Invalid", color: "bg-slate-500/10 text-slate-500 border-slate-500/20", icon: <Info className="w-3.5 h-3.5" /> },
+  FAILED: { label: "Failed/Invalid", color: "bg-slate-500/10 text-slate-500 border-slate-500/12", icon: <Info className="w-3.5 h-3.5" /> },
 };
 
 export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating }: ReportDetailsModalProps) {
@@ -80,7 +80,7 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
               { id: 'PENDING', label: 'Reset', color: 'hover:bg-amber-500 hover:text-white border-amber-500/30 text-amber-500' },
               { id: 'SOLVED', label: 'Resolve', color: 'hover:bg-emerald-500 hover:text-white border-emerald-500/30 text-emerald-500' },
               { id: 'NEED_INTERVENTION', label: 'Critical', color: 'hover:bg-rose-500 hover:text-white border-rose-500/30 text-rose-500' },
-              { id: 'FAILED', label: 'Invalid', color: 'hover:bg-slate-500 hover:text-white border-slate-500/30 text-slate-500' }
+              { id: 'FAILED', label: 'Invalid', color: 'hover:bg-slate-500 hover:text-white border-slate-500/20 text-slate-500' }
             ].map(btn => (
               <Button 
                 key={btn.id}

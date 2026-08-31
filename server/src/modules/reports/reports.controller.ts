@@ -44,16 +44,28 @@ import {
   UpdateReportStatusDto,
 } from './dto/create-report.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import {
+  RequirePermissions,
+  RequireAnyPermission,
+} from '../../common/decorators/permissions.decorator';
+import { Permission } from '../../common/constants/permissions.constant';
 import { ReportStatus } from './entities/issue-report.entity';
 
 @ApiTags('reports')
 @Controller('reports')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequireAnyPermission(
+  Permission.VIEW_REPORTING,
+  Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD,
+  Permission.CREATE_REPORT,
+)
 @ApiBearerAuth()
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
   @Post()
+  @RequirePermissions(Permission.CREATE_REPORT)
   @ApiOperation({
     summary:
       'Create a new issue report (Supports both multipart and JSON with URLs)',
@@ -141,6 +153,7 @@ export class ReportsController {
   }
 
   @Patch(':id')
+  @RequirePermissions(Permission.MANAGE_REPORTS)
   @ApiOperation({ summary: 'Update report details' })
   update(
     @Param('id', ParseUUIDPipe) id: string,
@@ -150,6 +163,7 @@ export class ReportsController {
   }
 
   @Patch(':id/status')
+  @RequirePermissions(Permission.MANAGE_REPORTS)
   @ApiOperation({ summary: 'Update report status' })
   updateStatus(
     @Param('id', ParseUUIDPipe) id: string,
@@ -159,6 +173,7 @@ export class ReportsController {
   }
 
   @Delete(':id')
+  @RequirePermissions(Permission.MANAGE_REPORTS)
   @ApiOperation({ summary: 'Delete a report' })
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.reportsService.delete(id);

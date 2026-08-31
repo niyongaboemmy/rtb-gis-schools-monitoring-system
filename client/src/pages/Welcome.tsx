@@ -76,7 +76,7 @@ export default function Welcome() {
       path: "/reports",
       color: "from-amber-500 to-orange-400",
       shadow: "shadow-amber-500/30",
-      permission: Permission.EXPORT_REPORTS,
+      permission: Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD,
     },
     {
       title: "User Management",
@@ -157,7 +157,7 @@ export default function Welcome() {
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-white/60 dark:bg-slate-900/40 backdrop-blur-xl border border-white/40 dark:border-slate-700/50 flex items-center justify-center p-3 sm:p-4 ring-1 ring-black/5 dark:ring-white/10 shrink-0"
+                className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-2xl md:rounded-3xl bg-white/60 dark:bg-slate-900/40 backdrop-blur-xl border border-white/25 dark:border-slate-700/35 flex items-center justify-center p-3 sm:p-4 ring-1 ring-black/5 dark:ring-white/10 shrink-0"
               >
                 <img
                   src="/logortb.png"
@@ -231,7 +231,7 @@ export default function Welcome() {
 
                       <div className="relative z-10 flex flex-col h-full">
                         <div
-                          className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-linear-to-br ${link.color} flex items-center justify-center text-white mb-4 sm:mb-6 border border-white/20 shrink-0`}
+                          className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-linear-to-br ${link.color} flex items-center justify-center text-white mb-4 sm:mb-6 border border-white/12 shrink-0`}
                         >
                           <link.icon className="w-5 h-5 sm:w-6 sm:h-6" />
                         </div>

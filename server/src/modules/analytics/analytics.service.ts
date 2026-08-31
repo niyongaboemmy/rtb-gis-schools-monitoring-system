@@ -14,12 +14,22 @@ import {
   BuildingCondition,
 } from '../schools/entities/school-building.entity';
 import { PopulationData } from '../population/entities/population-data.entity';
-import {
-  SchoolFacilitySurvey,
-  ComplianceLevel,
-} from '../schools/entities/school-facility-survey.entity';
+import { SchoolFacilitySurvey } from '../schools/entities/school-facility-survey.entity';
 import { SchoolMetricsDto, ReportSummaryDto } from './dto/school-metrics.dto';
 import { IssueReport, ReportStatus } from '../reports/entities/issue-report.entity';
+import {
+  NEUTRAL_SCORE,
+  CONDITION_SCORE_MAP,
+  COMPLIANCE_SCORE_MAP,
+  DEFAULT_CATCHMENT_CAPACITY,
+  ageToScore,
+  demandRatioToScore,
+  scoreToPriorityLevel,
+  urgencyMonthsFromScore,
+  computeOverallScore,
+  clamp0to100,
+  safeScore,
+} from './scoring.constants';
 import { AuditService, AuditActor } from '../audit/audit.service';
 import { EventsGateway } from '../events/events.gateway';
 
@@ -64,6 +74,7 @@ export class AnalyticsService {
       budgetResult,
       lastCalcResult,
       provinceStatsRaw,
+      capacityRows,
     ] = await Promise.all([
       // 1. total school count
       this.schoolRepository.count(),
@@ -103,6 +114,14 @@ export class AnalyticsService {
         .createQueryBuilder('da')
         .select('ROUND(AVG(da.overallScore)::numeric, 1)', 'nationalAvgScore')
         .addSelect('COUNT(da.id)', 'scoredCount')
+        .addSelect(
+          'ROUND(AVG(da.infrastructureScore)::numeric, 1)',
+          'nationalAvgInfraScore',
+        )
+        .addSelect(
+          'ROUND(AVG(da.populationPressureScore)::numeric, 1)',
+          'nationalAvgPopScore',
+        )
         .addSelect(
           'ROUND(AVG(da.buildingAgeScore)::numeric, 1)',
           'nationalAvgAgeScore',
@@ -190,7 +209,35 @@ export class AnalyticsService {
         .groupBy('s.province')
         .orderBy('total', 'DESC')
         .getRawMany(),
+
+      // 13. capacity-utilisation inputs — program-level roll-up done in JS
+      //     (educationPrograms is a jsonb array; SQL aggregation is brittle).
+      this.schoolRepository.find({
+        select: ['id', 'totalStudents', 'educationPrograms'],
+      }),
     ]);
+
+    // National capacity utilisation = Σ enrolled ÷ Σ programme capacity (0–100+).
+    let capStudents = 0;
+    let capSeats = 0;
+    for (const s of capacityRows) {
+      const programs = (s.educationPrograms as any[]) ?? [];
+      const seats = programs.reduce(
+        (sum, p) => sum + (parseFloat(String(p.capacity)) || 0),
+        0,
+      );
+      const enrolled =
+        programs.reduce(
+          (sum, p) => sum + (parseFloat(String(p.totalStudents)) || 0),
+          0,
+        ) || (parseFloat(String(s.totalStudents)) || 0);
+      if (seats > 0) {
+        capSeats += seats;
+        capStudents += enrolled;
+      }
+    }
+    const nationalCapacityUtilisation =
+      capSeats > 0 ? Math.round((capStudents / capSeats) * 100) : null;
 
     // ── Parse all raw results — pg driver returns numerics as strings ──────────
 
@@ -198,6 +245,10 @@ export class AnalyticsService {
       parseFloat(String(scoreAvgResult?.nationalAvgScore)) || 0;
     const scoredSchoolCount =
       parseInt(String(scoreAvgResult?.scoredCount), 10) || 0;
+    const nationalAvgInfraScore =
+      parseFloat(String(scoreAvgResult?.nationalAvgInfraScore)) || 0;
+    const nationalAvgPopScore =
+      parseFloat(String(scoreAvgResult?.nationalAvgPopScore)) || 0;
     const nationalAvgAgeScore =
       parseFloat(String(scoreAvgResult?.nationalAvgAgeScore)) || 0;
     const nationalAvgAccessScore =
@@ -251,9 +302,12 @@ export class AnalyticsService {
       totalSchools,
       nationalAvgScore,
       scoredSchoolCount,
+      nationalAvgInfraScore,
+      nationalAvgPopScore,
       nationalAvgAgeScore,
       nationalAvgAccessScore,
       nationalAvgComplianceScore,
+      nationalCapacityUtilisation,
       totalStudents,
       totalTeachers,
       kmzCoverageRate,
@@ -466,7 +520,9 @@ export class AnalyticsService {
         's',
         'CAST(s.id AS text) = da.schoolId',
       )
-      .orderBy('da.overallScore', 'DESC');
+      // Intervention queue → most urgent (lowest score) first.
+      .orderBy('da.overallScore', 'ASC')
+      .addOrderBy('da.urgencyMonths', 'ASC');
 
     if (query?.province)
       qb.andWhere('s.province = :province', { province: query.province });
@@ -885,9 +941,8 @@ export class AnalyticsService {
     );
 
     // Accessibility score (10%) — road status percentage (0–100, higher = better)
-    const accessScore = Math.min(
-      100,
-      Math.max(0, parseFloat(String(school.roadStatusPercentage)) || 50),
+    const accessScore = clamp0to100(
+      safeScore(school.roadStatusPercentage, NEUTRAL_SCORE),
     );
 
     const programs = (school.educationPrograms as any[]) ?? [];
@@ -906,43 +961,33 @@ export class AnalyticsService {
       totalStudents,
     );
 
-    // Clamp every component before combining (parseFloat may produce NaN)
-    const safeInfra      = Math.min(100, Math.max(0, parseFloat(String(infraScore))          || 0));
-    const safeAge        = Math.min(100, Math.max(0, parseFloat(String(ageScore))             || 0));
-    const safeAccess     = Math.min(100, Math.max(0, parseFloat(String(accessScore))          || 0));
-    const safePop        = Math.min(100, Math.max(0, parseFloat(String(popScore))             || 0));
-    const safeFacility   = Math.min(100, Math.max(0, parseFloat(String(facilityScore))        || 0));
-    const safeResolution = Math.min(100, Math.max(0, parseFloat(String(resolutionRateScore))  || 50));
+    // Weighted composite — the one formula (see scoring.constants.ts)
+    const overallScore = computeOverallScore({
+      infrastructure: infraScore,
+      buildingAge: ageScore,
+      accessibility: accessScore,
+      population: popScore,
+      facilityCompliance: facilityScore,
+      resolution: resolutionRateScore,
+    });
 
-    // Weighted composite — weights sum to 1.0
-    const overallScore = Math.min(100, Math.round(
-      safeInfra      * 0.35 +
-      safeAge        * 0.25 +
-      safeAccess     * 0.10 +
-      safePop        * 0.10 +
-      safeFacility   * 0.15 +
-      safeResolution * 0.05,
-    ));
-
-    // Urgency timeline derived from overall score band
-    const urgencyMonths = (() => {
-      if (overallScore < 35) return 0;
-      if (overallScore < 45) return 3;
-      if (overallScore < 55) return 6;
-      if (overallScore < 65) return 12;
-      if (overallScore < 75) return 18;
-      return 36;
-    })();
-
-    const priorityLevel = this.scoreToPriorityLevel(overallScore);
-    const recommendations = this.generateRecommendations(
-      school,
-      overallScore,
-      infraScore,
-      ageScore,
-      popScore,
-      facilityScore,
-    );
+    const urgencyMonths = urgencyMonthsFromScore(overallScore);
+    const priorityLevel = scoreToPriorityLevel(overallScore);
+    const components = {
+      infra: infraScore,
+      age: ageScore,
+      access: accessScore,
+      pop: popScore,
+      facility: facilityScore,
+      resolution: resolutionRateScore,
+    };
+    const recommendations = this.generateRecommendations(school, {
+      ...components,
+      hasInfraDataGap,
+      hasPopDataGap,
+    });
+    const estimatedBudgetRwf = this.estimateBudgetRwf(school, components);
+    const primaryRecommendation = recommendations[0] ?? null;
 
     // Upsert
     const existing = await this.assessmentRepository.findOne({
@@ -962,6 +1007,8 @@ export class AnalyticsService {
       urgencyMonths,
       priorityLevel,
       recommendations,
+      primaryRecommendation: primaryRecommendation ?? undefined,
+      estimatedBudgetRwf: estimatedBudgetRwf ?? undefined,
     };
 
     const assessment = existing
@@ -1002,17 +1049,15 @@ export class AnalyticsService {
   }
 
   private calculateInfrastructureScore(buildings: SchoolBuilding[]): number {
-    if (!buildings || buildings.length === 0) return 0; // missing data is a risk
-    const conditionMap = {
-      [BuildingCondition.GOOD]: 100,
-      [BuildingCondition.FAIR]: 70,
-      [BuildingCondition.POOR]: 30,
-      [BuildingCondition.CRITICAL]: 10,
-    };
+    // No building data → neutral (50). The missing-data risk is surfaced
+    // separately via `hasInfraDataGap`, not by tanking the condition score.
+    if (!buildings || buildings.length === 0) return NEUTRAL_SCORE;
     const avg =
-      buildings.reduce((s, b) => s + (conditionMap[b.condition] ?? 50), 0) /
-      buildings.length;
-    return Math.min(100, Math.max(0, Math.round(avg)));
+      buildings.reduce(
+        (s, b) => s + (CONDITION_SCORE_MAP[b.condition] ?? NEUTRAL_SCORE),
+        0,
+      ) / buildings.length;
+    return clamp0to100(Math.round(avg));
   }
 
   private calculateAgeScore(
@@ -1031,95 +1076,195 @@ export class AnalyticsService {
     } else if (establishedYear) {
       avgAge = currentYear - parseInt(String(establishedYear), 10);
     } else {
-      return 50; // no age data — neutral; flagged via hasInfraDataGap
+      return NEUTRAL_SCORE; // no age data — neutral; flagged via hasInfraDataGap
     }
 
-    if (avgAge <= 10) return 95;
-    if (avgAge <= 20) return 80;
-    if (avgAge <= 30) return 60;
-    if (avgAge <= 40) return 45;
-    if (avgAge <= 50) return 30;
-    if (avgAge <= 60) return 20;
-    return 10; // > 60 years — critical structural risk
+    return ageToScore(avgAge);
   }
 
   private calculatePopulationScore(
     population?: PopulationData,
     currentStudents?: number,
   ): { score: number; hasPopDataGap: boolean } {
-    if (!population) return { score: 50, hasPopDataGap: true };
-    const capacity = Math.max(1, parseFloat(String(currentStudents)) || 300);
+    if (!population) return { score: NEUTRAL_SCORE, hasPopDataGap: true };
+    const capacity = Math.max(
+      1,
+      parseFloat(String(currentStudents)) || DEFAULT_CATCHMENT_CAPACITY,
+    );
     const demand = parseFloat(String(population.schoolAgePopulation2km)) || 0;
-    const ratio = demand / capacity;
     // Higher score = more capacity headroom = better (label: "Capacity Resilience")
-    let score: number;
-    if (ratio >= 5) score = 10;
-    else if (ratio >= 3) score = 30;
-    else if (ratio >= 2) score = 50;
-    else if (ratio >= 1) score = 70;
-    else score = 100;
-    return { score, hasPopDataGap: false };
+    return {
+      score: demandRatioToScore(demand / capacity),
+      hasPopDataGap: false,
+    };
   }
 
-  private scoreToPriorityLevel(score: number): PriorityLevel {
-    // Low health score = needs more attention = higher priority
-    if (score < 35) return PriorityLevel.CRITICAL;
-    if (score < 55) return PriorityLevel.HIGH;
-    if (score < 75) return PriorityLevel.MEDIUM;
-    return PriorityLevel.LOW;
-  }
-
-  private generateRecommendations(
-    school: School,
-    overall: number,
-    infra: number,
-    age: number,
-    pop: number,
-    facility: number,
-  ): string[] {
-    const recs: string[] = [];
-    const buildings = school.buildings || [];
+  /** Total enrolment vs total programme capacity (0 when either is unknown). */
+  private capacityGap(school: School): {
+    totalStudents: number;
+    totalCapacity: number;
+    classroomsNeeded: number;
+    overCapacityPct: number;
+  } {
     const programs = school.educationPrograms ?? [];
-    const totalCapacity =
-      programs.reduce(
-        (sum, p) => sum + (parseFloat(String(p.capacity)) || 0),
-        0,
-      ) || 0;
-    const totalStudentsFromPrograms = programs.reduce(
+    const totalCapacity = programs.reduce(
+      (sum, p) => sum + (parseFloat(String(p.capacity)) || 0),
+      0,
+    );
+    const fromPrograms = programs.reduce(
       (sum, p) => sum + (parseFloat(String(p.totalStudents)) || 0),
       0,
     );
     const totalStudents =
-      totalStudentsFromPrograms > 0
-        ? totalStudentsFromPrograms
+      fromPrograms > 0
+        ? fromPrograms
         : parseFloat(String(school.totalStudents)) || 0;
+    const over =
+      totalCapacity > 0 && totalStudents > totalCapacity * 1.1
+        ? totalStudents - totalCapacity
+        : 0;
+    return {
+      totalStudents,
+      totalCapacity,
+      classroomsNeeded: over > 0 ? Math.ceil(over / 40) : 0, // 40 learners / classroom
+      overCapacityPct:
+        totalCapacity > 0
+          ? Math.round((totalStudents / totalCapacity - 1) * 100)
+          : 0,
+    };
+  }
 
-    // 1. Structural & Safety (High Urgency)
+  /**
+   * Severity-ordered, tagged recommendations. Every weak sub-dimension and every
+   * data gap produces an actionable line — a school is never told "all good"
+   * while it sits in a high-priority band.
+   */
+  private generateRecommendations(
+    school: School,
+    ctx: {
+      infra: number;
+      age: number;
+      access: number;
+      pop: number;
+      facility: number;
+      resolution: number;
+      hasInfraDataGap: boolean;
+      hasPopDataGap: boolean;
+    },
+  ): string[] {
+    const recs: string[] = [];
+    const buildings = school.buildings || [];
     const criticalBuildings = buildings.filter(
       (b) =>
         b.condition === BuildingCondition.CRITICAL ||
         b.condition === BuildingCondition.POOR,
     );
+    const cap = this.capacityGap(school);
+
+    // ── Urgent: structural & overcrowding ──────────────────────────────────
     if (criticalBuildings.length > 0) {
       recs.push(
         `[URGENT] Structural renovation required for ${criticalBuildings.length} building(s) in poor/critical condition.`,
       );
+    } else if (ctx.infra < 35 && !ctx.hasInfraDataGap) {
+      recs.push(
+        `[URGENT] Building stock scores ${Math.round(ctx.infra)}/100 — commission a structural safety audit.`,
+      );
+    }
+    if (cap.classroomsNeeded > 0) {
+      recs.push(
+        `[CRITICAL] Over capacity by ${cap.overCapacityPct}% — add ${cap.classroomsNeeded} classroom(s) or introduce shift scheduling.`,
+      );
     }
 
-    // 2. Capacity & Overcrowding (Critical)
-    if (totalCapacity > 0 && totalStudents > totalCapacity * 1.1) {
-      const excess = totalStudents - totalCapacity;
-      const classroomsNeeded = Math.ceil(excess / 40); // Assuming 40 students per classroom
+    // ── Data gaps: cannot score accurately without these ───────────────────
+    if (ctx.hasInfraDataGap) {
       recs.push(
-        `[CRITICAL] School is over capacity by ${Math.round((totalStudents / totalCapacity - 1) * 100)}%. Recommended addition of ${classroomsNeeded} classrooms.`,
+        '[DATA] No building-condition records on file — dispatch a facility survey / drone KMZ capture to enable accurate scoring.',
+      );
+    }
+    if (ctx.hasPopDataGap) {
+      recs.push(
+        '[DATA] Catchment demographic data unavailable — request an ArcGIS population pull for this sector.',
+      );
+    }
+
+    // ── Planned interventions by weak sub-dimension ────────────────────────
+    if (ctx.age < 45 && !ctx.hasInfraDataGap) {
+      recs.push(
+        `[PLAN] Ageing asset portfolio (age score ${Math.round(ctx.age)}/100) — budget for phased renewal.`,
+      );
+    }
+    if (ctx.access < 45) {
+      recs.push(
+        `[ACCESS] Poor road access (${Math.round(ctx.access)}/100) — coordinate all-season access works with RTDA / district.`,
+      );
+    }
+    if (ctx.pop < 40) {
+      recs.push(
+        '[CAPACITY] Demographic pressure exceeds capacity headroom — begin an expansion feasibility study.',
+      );
+    }
+    if (ctx.facility < 50) {
+      recs.push(
+        `[COMPLIANCE] Facility survey shows gaps (${Math.round(ctx.facility)}/100) — remediate WASH, safety and accessibility items.`,
+      );
+    }
+    if (ctx.resolution < 50) {
+      recs.push(
+        '[OPERATIONS] Low issue-resolution rate — strengthen maintenance follow-through and close outstanding reports.',
       );
     }
 
     if (recs.length === 0) {
-      recs.push('Continue routine maintenance and monitoring.');
+      recs.push(
+        '[OK] All indicators within acceptable range — continue routine maintenance and monitoring.',
+      );
     }
 
-    return recs;
+    return recs.slice(0, 6);
+  }
+
+  /**
+   * Indicative rehabilitation budget in RWF. Not a bill of quantities — a
+   * planning-grade estimate so the decision queue can be sorted/summed by cost.
+   */
+  private estimateBudgetRwf(
+    school: School,
+    ctx: {
+      infra: number;
+      age: number;
+      access: number;
+      pop: number;
+      facility: number;
+    },
+  ): number | null {
+    const UNIT = {
+      criticalBlock: 45_000_000, // major rehab of a poor/critical block
+      ageingBlock: 12_000_000, // renewal contribution per block
+      survey: 3_500_000, // facility survey + KMZ capture
+      classroom: 18_000_000, // one new classroom
+      access: 20_000_000, // all-season access works
+      compliance: 8_000_000, // WASH / safety remediation package
+    };
+    const buildings = school.buildings || [];
+    const criticalBuildings = buildings.filter(
+      (b) =>
+        b.condition === BuildingCondition.CRITICAL ||
+        b.condition === BuildingCondition.POOR,
+    ).length;
+    const cap = this.capacityGap(school);
+
+    let budget = 0;
+    budget += criticalBuildings * UNIT.criticalBlock;
+    if (buildings.length === 0) budget += UNIT.survey;
+    if (ctx.age < 40 && buildings.length > 0)
+      budget += buildings.length * UNIT.ageingBlock;
+    budget += cap.classroomsNeeded * UNIT.classroom;
+    if (ctx.access < 45) budget += UNIT.access;
+    if (ctx.facility < 50) budget += UNIT.compliance;
+
+    return budget > 0 ? budget : null;
   }
 
   private async calculateFacilityComplianceScore(
@@ -1129,16 +1274,12 @@ export class AnalyticsService {
       where: { schoolId },
     });
 
-    if (surveys.length === 0) return 50; // Default if no surveys
+    if (surveys.length === 0) return NEUTRAL_SCORE; // Default if no surveys
 
-    const complianceMap = {
-      [ComplianceLevel.COMPLIANT]: 100,
-      [ComplianceLevel.PARTIAL]: 50,
-      [ComplianceLevel.NON_COMPLIANT]: 0,
-    };
-
+    // `?? NEUTRAL_SCORE` (not `||`) so NON_COMPLIANT → 0 is not silently coerced to 50.
     const totalScore = surveys.reduce(
-      (sum, survey) => sum + (complianceMap[survey.compliance] || 50),
+      (sum, survey) =>
+        sum + (COMPLIANCE_SCORE_MAP[survey.compliance] ?? NEUTRAL_SCORE),
       0,
     );
 

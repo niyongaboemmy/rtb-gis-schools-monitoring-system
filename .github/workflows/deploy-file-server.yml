@@ -1,6 +1,7 @@
 name: Deploy File Server to cPanel
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, emmy]
     paths:
@@ -14,16 +15,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        working-directory: ./file-server
-        run: npm install --omit=dev
-
-      - name: Deploy file-server via FTP
+      - name: Deploy file-server source via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: premium231.web-hosting.com
@@ -34,11 +26,22 @@ jobs:
           exclude: |
             **/.git*
             **/.git*/**
+            **/node_modules/**
             **/storage/**
             **/.env
 
+      - name: Run npm install via cPanel UAPI
+        run: |
+          curl -s \
+            -u "${{ secrets.CPANEL_FTP_USER }}:${{ secrets.CPANEL_FTP_PASSWORD }}" \
+            "https://premium231.web-hosting.com:2083/execute/NodejsApp/rebuild_app" \
+            --data "domain=files.rtb.isengesho.com" \
+            -k
+          echo "npm install triggered"
+
       - name: Restart Node.js app via cPanel UAPI
         run: |
+          sleep 10
           curl -s \
             -u "${{ secrets.CPANEL_FTP_USER }}:${{ secrets.CPANEL_FTP_PASSWORD }}" \
             "https://premium231.web-hosting.com:2083/execute/NodejsApp/restart_app" \

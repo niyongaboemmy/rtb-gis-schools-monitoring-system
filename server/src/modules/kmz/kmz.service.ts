@@ -1248,6 +1248,68 @@ export class KmzService {
    * Extracts all assets server-side and stores a pre-computed manifest
    * so the client does NOT need to download and unzip the raw KMZ.
    */
+  // Downloads a file from a URL, saves to /tmp, then enqueues exactly like a direct upload.
+  private async downloadToTemp(fileUrl: string, fileName: string): Promise<string> {
+    const https = require('https');
+    const http = require('http');
+    const tempPath = path.join(os.tmpdir(), `rtb-upload-${Date.now()}-${fileName}`);
+    const protocol = fileUrl.startsWith('https') ? https : http;
+    await new Promise<void>((resolve, reject) => {
+      const file = fs.createWriteStream(tempPath);
+      protocol.get(fileUrl, (res: any) => {
+        res.pipe(file);
+        file.on('finish', () => { file.close(); resolve(); });
+      }).on('error', (err: Error) => { fs.unlink(tempPath, () => {}); reject(err); });
+    });
+    return tempPath;
+  }
+
+  async uploadKmz2dFromUrl(schoolId: string, fileUrl: string, fileName: string) {
+    const school = await this.schoolRepository.findOne({ where: { id: schoolId } });
+    if (!school) throw new NotFoundException(`School ${schoolId} not found`);
+
+    const name = (fileName || fileUrl.split('/').pop() || 'upload.kmz').toLowerCase();
+    if (!name.endsWith('.kmz') && !name.endsWith('.kml')) {
+      throw new BadRequestException('File must be a .kmz or .kml file');
+    }
+
+    const tempFilePath = await this.downloadToTemp(fileUrl, name);
+    await this.schoolRepository.update(schoolId, { kmzStatus: KmzProcessingStatus.PROCESSING });
+
+    const job = await this.kmzQueue.add('process-kmz2d', {
+      schoolId,
+      tempFilePath,
+      originalName: name,
+      mimetype: name.endsWith('.kml') ? 'application/vnd.google-earth.kml+xml' : 'application/vnd.google-earth.kmz',
+    } satisfies Kmz2dJobData);
+
+    this.logger.log(`Enqueued process-kmz2d (from-url) job ${job.id} for school ${schoolId}`);
+    return { message: '2D KMZ file accepted for processing', schoolId, jobId: job.id, statusUrl: `/api/v1/schools/${schoolId}/kmz/status` };
+  }
+
+  async uploadGlbFromUrl(schoolId: string, fileUrl: string, fileName: string) {
+    const school = await this.schoolRepository.findOne({ where: { id: schoolId } });
+    if (!school) throw new NotFoundException(`School ${schoolId} not found`);
+
+    const name = (fileName || fileUrl.split('/').pop() || 'model.glb').toLowerCase();
+    if (!name.endsWith('.glb')) {
+      throw new BadRequestException('File must be a .glb file');
+    }
+
+    const tempFilePath = await this.downloadToTemp(fileUrl, name);
+    await this.schoolRepository.update(schoolId, { kmzStatus: KmzProcessingStatus.PROCESSING });
+
+    const job = await this.kmzQueue.add('process-glb', {
+      schoolId,
+      tempFilePath,
+      originalName: name,
+      mimetype: 'model/gltf-binary',
+    } satisfies GlbJobData);
+
+    this.logger.log(`Enqueued process-glb (from-url) job ${job.id} for school ${schoolId}`);
+    return { message: 'GLB file accepted for processing', schoolId, jobId: job.id, statusUrl: `/api/v1/schools/${schoolId}/kmz/status` };
+  }
+
   async uploadKmz2d(schoolId: string, file: Express.Multer.File) {
     const school = await this.schoolRepository.findOne({
       where: { id: schoolId },

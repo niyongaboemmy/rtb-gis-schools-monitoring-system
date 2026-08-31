@@ -15,7 +15,7 @@ import {
   FileText,
   AlertTriangle,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Modal } from "./ui/modal";
 import { Button } from "./ui/button";
 
@@ -106,6 +106,14 @@ export default function School2DViewer({
     }),
     [school, buildings, placesOverlay, buildUrl, tifFilePath],
   );
+
+  // Always give the viewer a way out — fall back to the school record when the
+  // host didn't pass an explicit onClose handler.
+  const navigate = useNavigate();
+  const handleClose = useCallback(() => {
+    if (onClose) return onClose();
+    navigate(school?.id ? `/schools/${school.id}` : "/schools");
+  }, [onClose, navigate, school?.id]);
 
   // ── Refs & Basic State ─────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -770,15 +778,15 @@ export default function School2DViewer({
       {/* ── Back button + school name (top-left, hidden in picker mode) ──── */}
       {!pickerMode && (
         <div className="absolute top-3 left-3 z-[45] flex items-center gap-2 pointer-events-auto">
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="flex items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-card/10 dark:hover:bg-blue-600 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white hover:bg-slate-50 transition-all group active:scale-95 shadow-none"
-            >
-              <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
-            </button>
-          )}
-          <div className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/40 dark:bg-card/20 backdrop-blur-2xl border border-slate-200 dark:border-white/10 max-w-45">
+          <button
+            onClick={handleClose}
+            aria-label="Back"
+            title="Back"
+            className="flex items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-card/10 dark:hover:bg-blue-600 border border-slate-200 dark:border-white/6 text-slate-900 dark:text-white hover:bg-slate-50 transition-all group active:scale-95 shadow-none"
+          >
+            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
+          </button>
+          <div className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/40 dark:bg-card/20 backdrop-blur-2xl border border-slate-200 dark:border-white/6 max-w-45">
             <span className="text-[13px] font-bold text-slate-600 dark:text-white/60 truncate">
               {school.name}
             </span>
@@ -794,7 +802,7 @@ export default function School2DViewer({
       {/* ── Floating pill tabs (top-center, hidden in picker mode) ────────── */}
       {!pickerMode && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
-          <div className="flex items-center gap-0.5 bg-white/60 dark:bg-card/50 backdrop-blur-2xl border border-slate-200 dark:border-white/5 rounded-full px-1 py-1">
+          <div className="flex items-center gap-0.5 bg-white/60 dark:bg-card/50 backdrop-blur-2xl border border-slate-200 dark:border-white/4 rounded-full px-1 py-1">
             {(
               [
                 { id: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -935,7 +943,7 @@ export default function School2DViewer({
                   top: annotationTooltip.y - 10,
                 }}
               >
-                <div className="max-w-55 bg-white/90 dark:bg-[#0f1117]/95 backdrop-blur-xl border border-slate-200 dark:border-white/10 rounded-2xl px-3 py-2.5 space-y-1.5">
+                <div className="max-w-55 bg-white/90 dark:bg-[#0f1117]/95 backdrop-blur-xl border border-slate-200 dark:border-white/6 rounded-2xl px-3 py-2.5 space-y-1.5">
                   <div className="flex items-center gap-2">
                     <div
                       className={cn(
@@ -972,7 +980,7 @@ export default function School2DViewer({
 
       {/* ── Picker Mode Banner ───────────────────────────────────────────── */}
       {pickerMode && (
-        <div className="absolute top-0 left-0 right-0 z-40 flex items-center justify-between px-3 md:px-6 py-2 md:py-3 bg-primary/90 backdrop-blur-md border-b border-white/10 transition-all">
+        <div className="absolute top-0 left-0 right-0 z-40 flex items-center justify-between px-3 md:px-6 py-2 md:py-3 bg-primary/90 backdrop-blur-md border-b border-white/6 transition-all">
           <div className="flex items-center gap-2 md:gap-3">
             <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center animate-pulse shrink-0">
               <MapPin className="w-4 h-4 text-white" />
@@ -1047,7 +1055,7 @@ export default function School2DViewer({
       {/* ── Layer Visibility Toggle Bar ───────────────────────────────────── */}
       {!pickerMode && activeTab === "map" && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
-          <div className="flex items-center gap-1 px-1.5 py-1.5 rounded-full bg-white/80 dark:bg-[#0f1117]/80 backdrop-blur-xl border border-slate-200 dark:border-white/10 shadow-lg">
+          <div className="flex items-center gap-1 px-1.5 py-1.5 rounded-full bg-white/80 dark:bg-[#0f1117]/80 backdrop-blur-xl border border-slate-200 dark:border-white/6 shadow-lg">
             {(
               [
                 {
@@ -1066,7 +1074,7 @@ export default function School2DViewer({
                   active: showBuildingAreas,
                   onToggle: () => setShowBuildingAreas((v) => !v),
                   activeClass:
-                    "bg-blue-500/15 border-blue-500/30 text-blue-500",
+                    "bg-blue-500/15 border-blue-500/20 text-blue-500",
                 },
                 {
                   key: "annotations",
@@ -1382,8 +1390,8 @@ export default function School2DViewer({
         maxWidth="max-w-md"
       >
         <div className="space-y-6 py-4">
-          <div className="p-6 rounded-4xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/5 space-y-4 text-center">
-            <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center mx-auto mb-2 border border-slate-200 dark:border-white/10">
+          <div className="p-6 rounded-4xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/4 space-y-4 text-center">
+            <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center mx-auto mb-2 border border-slate-200 dark:border-white/6">
               <MapIcon className="w-8 h-8 text-amber-500/40" />
             </div>
             <p className="text-xs font-bold text-slate-600 dark:text-white/60 leading-relaxed italic">

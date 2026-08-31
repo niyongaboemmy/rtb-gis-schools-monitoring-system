@@ -40,7 +40,7 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
       <div className={cn("relative group w-full", containerClassName)}>
         <div
           className={cn(
-            "relative flex items-center w-full transition-all duration-300 rounded-full border border-gray-300/60 dark:border-border bg-background/40 backdrop-blur-md overflow-hidden",
+            "relative flex items-center w-full transition-all duration-300 rounded-full border border-gray-300/45 dark:border-border bg-background/40 backdrop-blur-md overflow-hidden",
             isFocused
               ? "border-primary/40 ring-4 ring-primary/5 bg-background/60"
               : "hover:border-border/20",

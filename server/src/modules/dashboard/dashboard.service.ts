@@ -23,6 +23,12 @@ import {
   MonthStatusSnapshot,
 } from './dto/reporting-dashboard.dto';
 import { ReportStatus } from '../reports/entities/issue-report.entity';
+import {
+  CONDITION_SCORE_MAP,
+  NEUTRAL_SCORE,
+  ageToScore,
+  clamp0to100,
+} from '../analytics/scoring.constants';
 
 @Injectable()
 export class DashboardService {
@@ -49,19 +55,16 @@ export class DashboardService {
     const buildings: any[] = school.buildings || [];
     const now = new Date().getFullYear();
 
-    // Infrastructure health: map physical condition to numeric score and average
-    const conditionMap: Record<string, number> = {
-      [BuildingCondition.GOOD]: 100,
-      [BuildingCondition.FAIR]: 70,
-      [BuildingCondition.POOR]: 40,
-      [BuildingCondition.CRITICAL]: 10,
-    };
+    // Infrastructure health — identical model to analytics.service so the
+    // school dashboard's healthIndex always matches its infrastructureScore.
     const healthSum = buildings.reduce(
-      (acc, b) => acc + (conditionMap[b.condition as string] ?? 0),
+      (acc, b) => acc + (CONDITION_SCORE_MAP[b.condition as BuildingCondition] ?? NEUTRAL_SCORE),
       0,
     );
     const healthIndex =
-      buildings.length > 0 ? Math.round(healthSum / buildings.length) : 50;
+      buildings.length > 0
+        ? clamp0to100(Math.round(healthSum / buildings.length))
+        : NEUTRAL_SCORE;
 
     // Age score: based on average year built of buildings
     const ages = buildings
@@ -380,23 +383,21 @@ export class DashboardService {
     buildings: any[],
     establishedYear?: number,
   ): number {
-    if (!buildings.length) return 50;
-
     const currentYear = new Date().getFullYear();
     const buildingAges = buildings
       .filter((b) => b.yearBuilt)
       .map((b) => currentYear - Number(b.yearBuilt));
 
-    if (!buildingAges.length) return 50;
+    let avgAge: number;
+    if (buildingAges.length > 0) {
+      avgAge =
+        buildingAges.reduce((sum, age) => sum + age, 0) / buildingAges.length;
+    } else if (establishedYear) {
+      avgAge = currentYear - Number(establishedYear);
+    } else {
+      return NEUTRAL_SCORE;
+    }
 
-    const avgAge =
-      buildingAges.reduce((sum, age) => sum + age, 0) / buildingAges.length;
-
-    // Score based on average age: newer = better score
-    // 0-10 years = 90-100, 10-20 years = 70-90, 20-30 years = 50-70, 30+ years = 30-50
-    if (avgAge <= 10) return 95;
-    if (avgAge <= 20) return 80;
-    if (avgAge <= 30) return 60;
-    return 40;
+    return ageToScore(avgAge);
   }
 }

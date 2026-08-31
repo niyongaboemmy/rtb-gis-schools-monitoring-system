@@ -150,7 +150,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
   return (
     <div className="space-y-6">
       {/* Tab Navigation */}
-      <div className="flex gap-2 p-1 bg-slate-50 dark:bg-white/5 rounded-full border border-slate-200 dark:border-blue-500/20">
+      <div className="flex gap-2 p-1 bg-slate-50 dark:bg-white/5 rounded-full border border-slate-200 dark:border-blue-500/12">
         {[
           { id: "overview", label: "Overview", icon: BarChart3 },
           { id: "trends", label: "Trends", icon: TrendingUp },
@@ -253,7 +253,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
 
           {/* Priority Breakdown */}
           <Card className="border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/30 rounded-2xl overflow-hidden">
-            <CardHeader className="border-b border-slate-100 dark:border-blue-500/20">
+            <CardHeader className="border-b border-slate-100 dark:border-blue-500/12">
               <CardTitle className="text-base font-medium flex items-center gap-3">
                 <AlertTriangle className="w-5 h-5 text-primary" />
                 Status-based severity (from IssueReport.status)
@@ -314,7 +314,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
 
           {/* Avg Resolution Time */}
           <Card className="border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/30 rounded-2xl overflow-hidden">
-            <CardHeader className="border-b border-slate-100 dark:border-blue-500/20">
+            <CardHeader className="border-b border-slate-100 dark:border-blue-500/12">
               <CardTitle className="text-base font-medium flex items-center gap-3">
                 <Activity className="w-5 h-5 text-blue-500" />
                 Average Resolution Time
@@ -339,7 +339,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
 
       {activeSubTab === "trends" && (
         <Card className="border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/30 rounded-2xl overflow-hidden">
-          <CardHeader className="border-b border-slate-100 dark:border-blue-500/20">
+          <CardHeader className="border-b border-slate-100 dark:border-blue-500/12">
             <CardTitle className="text-base font-medium flex items-center gap-3">
               <TrendingUp className="w-5 h-5 text-primary" />
               Reporting Trends
@@ -348,7 +348,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
           <CardContent className="p-6">
             <div className="space-y-6">
               {loading ? (
-                <div className="h-64 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/20 flex items-center justify-center">
+                <div className="h-64 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/12 flex items-center justify-center">
                   <div className="text-center text-slate-500 dark:text-white/60">
                     <BarChart3 className="w-12 h-12 mb-2" />
                     Loading trends data...
@@ -357,7 +357,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
               ) : reportData?.trends?.monthly?.length &&
                 reportData?.trends?.monthly?.length > 0 ? (
                 <>
-                  <div className="h-64 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/20 flex items-center justify-center">
+                  <div className="h-64 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/12 flex items-center justify-center">
                     <div className="text-center text-slate-500 dark:text-white/60">
                       <BarChart3 className="w-12 h-12 mb-2" />
                       Displaying {reportData?.trends?.monthly?.length || 0}{" "}
@@ -391,7 +391,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
                       const peakMonthName = months[peakMonthIndex];
 
                       return (
-                        <div className="p-4 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/20">
+                        <div className="p-4 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/12">
                           <h4 className="text-sm font-medium text-slate-900 dark:text-white mb-2">
                             Peak Month
                           </h4>
@@ -405,7 +405,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
                       );
                     })()}
                     {/* Total reports in last 12 months */}
-                    <div className="p-4 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/20">
+                    <div className="p-4 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/12">
                       <h4 className="text-sm font-medium text-slate-900 dark:text-white mb-2">
                         12-Month Total
                       </h4>
@@ -422,7 +422,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
                   </div>
                 </>
               ) : (
-                <div className="h-64 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/20 flex items-center justify-center">
+                <div className="h-64 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/12 flex items-center justify-center">
                   <div className="text-center text-slate-500 dark:text-white/60">
                     <BarChart3 className="w-12 h-12 mb-2" />
                     No trends data available
@@ -436,7 +436,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
 
       {activeSubTab === "issues" && (
         <Card className="border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/30 rounded-2xl overflow-hidden">
-          <CardHeader className="border-b border-slate-100 dark:border-blue-500/20">
+          <CardHeader className="border-b border-slate-100 dark:border-blue-500/12">
             <CardTitle className="text-base font-medium flex items-center gap-3">
               <AlertTriangle className="w-5 h-5 text-red-500" />
               Recent Issues
@@ -478,7 +478,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
                   {[1, 2, 3, 4, 5].map((i) => (
                     <div
                       key={i}
-                      className="p-4 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/20 animate-pulse"
+                      className="p-4 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/12 animate-pulse"
                     >
                       <div className="h-4 bg-slate-200 dark:bg-white/10 rounded w-2/3 mb-2" />
                       <div className="h-3 bg-slate-100 dark:bg-white/5 rounded w-full" />
@@ -513,7 +513,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
                     return (
                       <div
                         key={issue.id}
-                        className="p-4 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/20"
+                        className="p-4 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/12"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
@@ -565,7 +565,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
         <div className="space-y-6">
           {/* Dynamic Performance Metrics */}
           <Card className="border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/30 rounded-2xl overflow-hidden">
-            <CardHeader className="border-b border-slate-100 dark:border-blue-500/20">
+            <CardHeader className="border-b border-slate-100 dark:border-blue-500/12">
               <CardTitle className="text-base font-medium flex items-center gap-3">
                 <Target className="w-5 h-5 text-purple-500" />
                 Resolution Performance
@@ -595,7 +595,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
                 </div>
 
                 {/* Response Time */}
-                <div className="text-center p-4 bg-blue-50 dark:bg-blue-500/10 rounded-xl border border-blue-200 dark:border-blue-500/20">
+                <div className="text-center p-4 bg-blue-50 dark:bg-blue-500/10 rounded-xl border border-blue-200 dark:border-blue-500/12">
                   <div className="text-3xl font-bold text-blue-600 dark:text-blue-400 mb-1">
                     {reportData?.avgResolutionTime?.toFixed(1) ?? "0.0"}
                   </div>
@@ -638,7 +638,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
 
           {/* Status Breakdown */}
           <Card className="border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/30 rounded-2xl overflow-hidden">
-            <CardHeader className="border-b border-slate-100 dark:border-blue-500/20">
+            <CardHeader className="border-b border-slate-100 dark:border-blue-500/12">
               <CardTitle className="text-base font-medium flex items-center gap-3">
                 <Activity className="w-5 h-5 text-blue-500" />
                 Complete Status Breakdown
@@ -685,7 +685,7 @@ export const ReportingTab = React.memo(({ schoolId }: ReportingTabProps) => {
                 ].map((item) => (
                   <div
                     key={item.label}
-                    className="text-center p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/20"
+                    className="text-center p-3 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-blue-500/12"
                   >
                     <div
                       className={`w-3 h-3 rounded-full ${item.color} mx-auto mb-2`}
