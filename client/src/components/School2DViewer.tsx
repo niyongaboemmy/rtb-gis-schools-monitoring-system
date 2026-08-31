@@ -507,11 +507,15 @@ export default function School2DViewer({
   );
 
   const handle3DView = useCallback(() => {
+    if (!school?.id) return;
     const params = new URLSearchParams();
-    if (school?.id) params.set("schoolId", school.id);
     if (school?.name) params.set("schoolName", school.name);
     if (activeBlock?.id) params.set("buildingId", activeBlock.id);
-    window.open(`http://localhost:5175?${params.toString()}`, "_blank");
+    const qs = params.toString();
+    window.open(
+      `/schools/${school.id}/3d-explorer${qs ? `?${qs}` : ""}`,
+      "_blank",
+    );
   }, [school, activeBlock]);
 
   const handleSaveBuilding = async (data: BuildingData) => {
@@ -1315,12 +1319,13 @@ export default function School2DViewer({
                 onAddAnnotation={() => setActiveTool("annotate_point")}
                 onUploadMedia={() => {}}
                 on3DView={() => {
+                  if (!school?.id) return;
                   const params = new URLSearchParams();
-                  if (school?.id) params.set("schoolId", school.id);
                   if (school?.name) params.set("schoolName", school.name);
                   if (activeBlock?.id) params.set("buildingId", activeBlock.id);
+                  const qs = params.toString();
                   window.open(
-                    `http://localhost:5175?${params.toString()}`,
+                    `/schools/${school.id}/3d-explorer${qs ? `?${qs}` : ""}`,
                     "_blank",
                   );
                 }}

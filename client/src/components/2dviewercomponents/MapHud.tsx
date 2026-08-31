@@ -141,10 +141,14 @@ export const MapHud: React.FC<MapHudProps> = ({
 
         <button
           onClick={() => {
+            if (!school?.id) return;
             const params = new URLSearchParams();
-            if (school?.id) params.set("schoolId", school.id);
             if (school?.name) params.set("schoolName", school.name);
-            window.open(`http://localhost:5175?${params.toString()}`, "_blank");
+            const qs = params.toString();
+            window.open(
+              `/schools/${school.id}/3d-explorer${qs ? `?${qs}` : ""}`,
+              "_blank",
+            );
           }}
           className="flex items-center gap-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-400/20 px-2.5 md:px-3 py-1.5 hover:bg-emerald-100 dark:hover:bg-emerald-500/30 transition-all text-emerald-700 dark:text-emerald-300 group"
           title="Switch to 3D Digital Twin"
