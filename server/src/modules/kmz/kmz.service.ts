@@ -20,6 +20,7 @@ import { SchoolBuilding } from '../schools/entities/school-building.entity';
 import { StorageService } from '../storage/storage.service';
 import { KMZ_QUEUE } from './kmz.constants';
 import type { GlbJobData, Kmz2dJobData } from './kmz.processor';
+import { optimizeGlbFile, isGlbOptimizerAvailable } from './glb-optimizer';
 import { Readable } from 'stream';
 import unzipper from 'unzipper';
 import * as path from 'path';
@@ -99,10 +100,30 @@ export class KmzService {
     try {
       const fileBuffer = fs.readFileSync(tempFilePath);
       const filePath = `schools/${schoolId}/3d/${originalName}`;
+
+      // 1. Serve the raw model straight away so the viewer works even if the
+      //    optimization step is slow or fails.
       const publicPath = await this.storageService.uploadFile(
         filePath,
         fileBuffer,
         mimetype,
+      );
+
+      // 2. Best-effort: replace it with an optimized build (mesh simplify +
+      //    Meshopt geometry compression + WebP textures). Raw photogrammetry
+      //    exports are ~30x heavier than the web needs. Any failure here leaves
+      //    the raw model in place.
+      await this.optimizeAndReplaceGlb(
+        schoolId,
+        tempFilePath,
+        originalName,
+        fileBuffer,
+        mimetype,
+        filePath,
+      ).catch((err: any) =>
+        this.logger.warn(
+          `GLB optimize skipped for school ${schoolId}: ${err?.message || err}`,
+        ),
       );
 
       await this.buildingRepository.delete({ schoolId });
@@ -134,6 +155,70 @@ export class KmzService {
         fs.unlinkSync(tempFilePath);
       } catch {
         /* already gone */
+      }
+    }
+  }
+
+  /**
+   * Runs the forked GLB optimizer and, on success, archives the original under
+   * `3d/_source/` and overwrites the served object with the optimized build.
+   * The served path (and therefore every stored `modelPath` / `kmzFilePath`)
+   * is unchanged, so no DB updates are needed.
+   */
+  private async optimizeAndReplaceGlb(
+    schoolId: string,
+    sourcePath: string,
+    originalName: string,
+    rawBuffer: Buffer,
+    mimetype: string,
+    servedObjectName: string,
+  ): Promise<void> {
+    if (!isGlbOptimizerAvailable()) {
+      this.logger.warn(
+        'glb-tools not installed (run "npm --prefix server/glb-tools install") — serving raw GLB',
+      );
+      return;
+    }
+
+    const workDir = path.join(KMZ_TMP_DIR, 'glb-opt');
+    fs.mkdirSync(workDir, { recursive: true });
+    const outPath = path.join(workDir, `${schoolId}-${Date.now()}.glb`);
+
+    try {
+      const r = await optimizeGlbFile(sourcePath, outPath, {
+        ratio: 0.1,
+        textureSize: 4096,
+      });
+
+      if (r.bytesOut >= r.bytesIn) {
+        this.logger.warn(
+          `GLB optimize produced no size gain for ${schoolId} — keeping raw`,
+        );
+        return;
+      }
+
+      const optimizedBuffer = fs.readFileSync(outPath);
+      await this.storageService.uploadFile(
+        `schools/${schoolId}/3d/_source/${originalName}`,
+        rawBuffer,
+        mimetype,
+      );
+      await this.storageService.uploadFile(
+        servedObjectName,
+        optimizedBuffer,
+        'model/gltf-binary',
+      );
+
+      this.logger.log(
+        `GLB optimized for ${schoolId}: ` +
+          `${(r.bytesIn / 1048576).toFixed(1)}MB -> ${(r.bytesOut / 1048576).toFixed(1)}MB ` +
+          `(${r.ratio}x, ${r.trisIn.toLocaleString()} -> ${r.trisOut.toLocaleString()} tris, ${(r.ms / 1000).toFixed(0)}s)`,
+      );
+    } finally {
+      try {
+        fs.unlinkSync(outPath);
+      } catch {
+        /* ignore */
       }
     }
   }

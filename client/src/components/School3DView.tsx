@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { api, FILE_SERVER_URL } from "../lib/api";
 
@@ -142,6 +143,15 @@ function getHomeKey(fileName: string) { return `glb_home_${fileName.replace(/[^a
 const sharedDracoLoader = new DRACOLoader();
 sharedDracoLoader.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.6/");
 sharedDracoLoader.preload();
+
+/** Wires DRACO + Meshopt decoders onto a GLTFLoader. Optimized school models
+ *  ship as EXT_meshopt_compression + KHR_mesh_quantization + EXT_texture_webp. */
+function makeGLTFLoader(): GLTFLoader {
+  const loader = new GLTFLoader();
+  loader.setDRACOLoader(sharedDracoLoader);
+  loader.setMeshoptDecoder(MeshoptDecoder);
+  return loader;
+}
 
 // ─── 3D label helpers (module-level so drawOverlay + sprite sync can share) ──
 
@@ -469,7 +479,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     try {
       const arrayBuffer = await file.arrayBuffer();
       setProgress(78); setProgressLabel("Parsing GLB…");
-      const loader = new GLTFLoader(); loader.setDRACOLoader(sharedDracoLoader);
+      const loader = makeGLTFLoader();
       const gltf = await new Promise<GLTF>((res, rej) => loader.parse(arrayBuffer, "", res, rej));
       await finalizeGLTF(gltf, file.name, file.size, startTime);
     } catch (err: any) { setError(err?.message || "Failed to load model"); setPhase("idle"); }
@@ -532,7 +542,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       }
 
       setProgress(80); setProgressLabel("Preparing 3D scene — almost there…");
-      const loader = new GLTFLoader(); loader.setDRACOLoader(sharedDracoLoader);
+      const loader = makeGLTFLoader();
       const gltf = await new Promise<GLTF>((res, rej) => loader.parse(arrayBuffer, "", res, rej));
       await finalizeGLTF(gltf, fileName, arrayBuffer.byteLength, startTime);
     } catch (err: any) { setError(err?.message || "Failed to fetch model"); setPhase("idle"); }
