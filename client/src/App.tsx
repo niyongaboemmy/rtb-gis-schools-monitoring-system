@@ -7,7 +7,6 @@ import SchoolsList from "./pages/SchoolsList";
 import AnalyticsDecisions from "./pages/AnalyticsDecisions";
 import KmzUpload from "./pages/KmzUpload";
 import PlacesOverlayUpload from "./pages/PlacesOverlayUpload";
-import SchoolDetail from "./pages/SchoolDetail";
 import PopulationAnalytics from "./pages/PopulationAnalytics";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
@@ -100,7 +99,10 @@ export default function App() {
               }
             >
               <Route path="/schools" element={<SchoolsList />} />
-              <Route path="/schools/:id" element={<SchoolDetail />} />
+              <Route
+                path="/schools/:id"
+                element={<Navigate to="decision" replace />}
+              />
             </Route>
 
             <Route
