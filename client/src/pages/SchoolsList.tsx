@@ -27,6 +27,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Radar,
+  Trash2,
 } from "lucide-react";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -397,6 +398,20 @@ export default function SchoolsList() {
       console.error("Export failed", err);
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleDeleteSchool = async (schoolId: string, schoolName: string) => {
+    if (!window.confirm(`Are you sure you want to delete "${schoolName}"? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await api.delete(`/schools/${schoolId}`);
+      invalidateAllSchools();
+      void fetchAllSchools();
+    } catch (err) {
+      console.error("Delete failed", err);
+      alert("Failed to delete school");
     }
   };
 
@@ -823,6 +838,17 @@ export default function SchoolsList() {
                                 title="Upload KMZ"
                               >
                                 <Upload className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-full hover:bg-destructive/10 hover:text-destructive"
+                                onClick={() =>
+                                  handleDeleteSchool(school.id, school.name)
+                                }
+                                title="Delete school"
+                              >
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
                           </TableCell>
