@@ -56,9 +56,9 @@ export async function createHandler(): Promise<express.Express> {
 
   if (process.env.SWAGGER_ENABLED !== 'false') {
     const config = new DocumentBuilder()
-      .setTitle('RTB GIS Schools Monitoring API')
+      .setTitle('TVET 3D GIS API')
       .setDescription(
-        'API for the Rwanda TVET Board GIS Schools Monitoring & Intelligence System',
+        'API for the TVET 3D GIS platform (Rwanda TVET Board)',
       )
       .setVersion('1.0')
       .addBearerAuth()

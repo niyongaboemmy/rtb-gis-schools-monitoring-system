@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-RTB GIS Schools Monitoring & Intelligence System — a geospatial platform for Rwanda's TVET Board to monitor and manage technical/vocational training schools. Core capabilities: school data management, KMZ/KML geospatial processing, 3D visualization (CesiumJS), facility surveys, population analytics, and decision-support scoring.
+TVET 3D GIS — a geospatial platform for Rwanda's TVET Board to monitor and manage technical/vocational training schools. Core capabilities: school data management, KMZ/KML geospatial processing, 3D visualization (CesiumJS), facility surveys, population analytics, and decision-support scoring.
 
 ## Development Commands
 

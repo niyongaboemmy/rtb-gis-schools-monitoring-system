@@ -189,7 +189,7 @@ export default function Profile() {
             )}
             <span className="text-sm text-muted-foreground/80 font-medium max-w-md pt-2 block normal-case tracking-normal">
               Manage your identity, security settings, and personal preference
-              for the RTB GIS Platform.
+              for the TVET 3D GIS platform.
             </span>
           </div>
         }

@@ -288,7 +288,7 @@ export function AppLayout() {
                 />
                 <div className="overflow-hidden">
                   <p className="text-sm font-semibold text-foreground whitespace-nowrap leading-none">
-                    RTB Monitoring
+                    TVET 3D GIS
                   </p>
                   <p className="text-[10px] text-muted-foreground whitespace-nowrap mt-0.5">
                     Control center
@@ -519,7 +519,7 @@ export function AppLayout() {
                     className="w-7 h-auto object-contain shrink-0"
                   />
                   <span className="text-sm font-semibold text-foreground whitespace-nowrap">
-                    RTB Monitoring Platform
+                    TVET 3D GIS
                   </span>
                 </motion.div>
               )}
@@ -527,7 +527,7 @@ export function AppLayout() {
 
             {/* Breadcrumb */}
             <div className="flex items-center gap-2 text-sm min-w-0">
-              <span className="text-muted-foreground shrink-0">GIS</span>
+              <span className="text-muted-foreground shrink-0">TVET 3D GIS</span>
               <span className="text-muted-foreground/40 shrink-0">/</span>
               <span className="font-semibold text-foreground capitalize truncate">
                 {currentSegment}

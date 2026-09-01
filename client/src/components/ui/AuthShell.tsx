@@ -42,7 +42,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
             transition={{ duration: 0.8, delay: 0.2 }}
           >
             <h1 className="text-7xl font-black tracking-tighter mb-10 leading-none text-transparent bg-clip-text bg-linear-to-br from-white via-white to-blue-300">
-              National GIS <br />
+              TVET 3D GIS <br />
               <span className="text-primary-foreground/90 font-bold italic text-5xl">
                 Infrastructure
               </span>
@@ -80,7 +80,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
 
           <div className="pt-6 border-t border-border/20 dark:border-blue-700/20 text-center">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Rwanda TVET Board Monitoring Platform &copy; 2026. <br />
+              TVET 3D GIS &mdash; Rwanda TVET Board &copy; 2026. <br />
               Authorized personnel only. Data usage is monitored.
             </p>
           </div>

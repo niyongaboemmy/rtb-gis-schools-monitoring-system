@@ -61,9 +61,9 @@ async function bootstrap() {
   // Swagger documentation
   if (process.env.SWAGGER_ENABLED !== 'false') {
     const config = new DocumentBuilder()
-      .setTitle('RTB GIS Schools Monitoring API')
+      .setTitle('TVET 3D GIS API')
       .setDescription(
-        'API for the Rwanda TVET Board GIS Schools Monitoring & Intelligence System',
+        'API for the TVET 3D GIS platform (Rwanda TVET Board)',
       )
       .setVersion('1.0')
       .addBearerAuth()
@@ -84,7 +84,7 @@ async function bootstrap() {
   const port = process.env.PORT ?? 3001;
   await app.listen(port);
 
-  console.log(`\n🚀 RTB GIS Server running at: http://localhost:${port}`);
+  console.log(`\n🚀 TVET 3D GIS Server running at: http://localhost:${port}`);
   console.log(`📚 API Docs: http://localhost:${port}/api/docs`);
 }
 
