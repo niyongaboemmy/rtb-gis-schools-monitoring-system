@@ -166,7 +166,7 @@ export default function Dashboard() {
           subtitle="Live infrastructure intelligence across Rwanda's TVET institutions"
           href="/map"
           hrefLabel="Open national map"
-          onSchoolClick={(s) => navigate(`/schools/${s.id}`)}
+          onSchoolClick={(s) => navigate(`/schools/${s.id}/decision`)}
           className="-mt-5 w-[calc(100vw-var(--app-shell-inset,0px))] ml-[calc((100%-100vw+var(--app-shell-inset,0px))/2)] transition-[width,margin] duration-200 md:-mt-7"
         />
 
@@ -486,7 +486,7 @@ function DirectorySection({
                 </TableCell>
                 <TableCell className="text-right pr-6">
                   <Link
-                    to={`/schools/${school.id}`}
+                    to={`/schools/${school.id}/decision`}
                     className="text-primary hover:text-primary transition-all"
                   >
                     <ArrowRight className="w-4 h-4 ml-auto" />
