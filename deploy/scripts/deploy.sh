@@ -37,6 +37,7 @@ cat > client/.env.production <<'CENV'
 VITE_APP_NAME="RTB GIS Schools Monitoring System"
 VITE_API_URL=/api/v1
 VITE_FILE_SERVER_URL=/files
+VITE_GOOGLE_CLIENT_ID=913204130540-5hrfp5ridotig5ebd7ar424vhecq8bab.apps.googleusercontent.com
 CENV
 npm --prefix client run build
 rsync -a --delete client/dist/ "$CLIENT_WEBROOT/"
