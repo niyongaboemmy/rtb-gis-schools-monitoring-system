@@ -185,6 +185,10 @@ export class School {
   @Column({ nullable: true })
   kmz2dFilePath: string;
 
+  // GeoTIFF raster overlay for the 2D viewer (School2DViewer reads this back)
+  @Column({ nullable: true })
+  tifFilePath: string;
+
   // Pre-processed manifest for the 2D viewer (extracted at upload time)
   @Column({ type: 'jsonb', nullable: true })
   kmz2dManifest: {

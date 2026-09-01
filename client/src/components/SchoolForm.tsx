@@ -362,6 +362,9 @@ export function SchoolForm({
         totalStudents: formData.totalStudents
           ? parseInt(formData.totalStudents)
           : null,
+        totalTeachers: formData.totalTeachers
+          ? parseInt(formData.totalTeachers)
+          : null,
         adminStaff: formData.adminStaff ? parseInt(formData.adminStaff) : null,
         maleAdminStaff: formData.maleAdminStaff
           ? parseInt(formData.maleAdminStaff)
@@ -440,7 +443,17 @@ export function SchoolForm({
       onClose();
     } catch (err) {
       console.error("Failed to save school", err);
-      alert("Failed to save school. Check console for details.");
+      // Surface the server's reason — validation errors arrive as a string[]
+      // and used to be swallowed behind a generic "check console" alert.
+      const axiosError = err as {
+        response?: { data?: { message?: string | string[] } };
+      };
+      const message = axiosError.response?.data?.message;
+      alert(
+        Array.isArray(message)
+          ? `Failed to save school:\n\n• ${message.join("\n• ")}`
+          : message || "Failed to save school. Check console for details.",
+      );
     } finally {
       setSubmitLoading(false);
     }

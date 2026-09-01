@@ -250,6 +250,20 @@ export class CreateSchoolDto {
   @IsOptional()
   buildings?: BuildingDto[];
 
+  // GIS source files — the form collects these on the Location step and the
+  // 2D viewer reads them back, so they must survive create/update.
+  @ApiPropertyOptional({
+    description: '2D KMZ/KML path for the OpenLayers viewer',
+  })
+  @IsString()
+  @IsOptional()
+  kmz2dFilePath?: string;
+
+  @ApiPropertyOptional({ description: 'GeoTIFF raster overlay path' })
+  @IsString()
+  @IsOptional()
+  tifFilePath?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   glb3dHomePosition?: any;
