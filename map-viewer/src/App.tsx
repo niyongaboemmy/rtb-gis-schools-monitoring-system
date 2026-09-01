@@ -840,10 +840,10 @@ export default function GLBViewer() {
         html,body,#root{width:100%;height:100%;overflow:hidden}
         body{background:#060b1a}
         .glb-root{width:100vw;height:100vh;background:#060b1a;display:flex;flex-direction:column;font-family:'Inter',sans-serif;color:#e8e8f0;overflow:hidden}
-        .header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid rgba(255,255,255,0.06);background:rgba(6,11,26,0.95);backdrop-filter:blur(12px);z-index:10;flex-shrink:0}
-        .logo{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:800;letter-spacing:-0.5px}
-        .logo-icon{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#3b82f6,#2563eb);display:flex;align-items:center;justify-content:center;font-size:14px}
-        .badge{font-family:'JetBrains Mono',monospace;font-size:10px;padding:3px 8px;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.35);border-radius:20px;color:#60a5fa;letter-spacing:0.5px}
+        .school-badge{position:absolute;top:20px;left:50%;transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:8px;background:rgba(6,11,26,0.65);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.1);border-radius:24px;padding:8px 16px;box-shadow:0 8px 32px rgba(0,0,0,0.4);white-space:nowrap}
+        .school-badge-icon{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#3b82f6,#2563eb);display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0}
+        .school-badge-name{font-size:13px;font-weight:700;letter-spacing:-0.3px;color:#fff}
+        .school-badge-sub{font-family:'JetBrains Mono',monospace;font-size:8px;color:rgba(232,232,240,0.35);letter-spacing:1px;text-transform:uppercase}
         .drop-zone{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;padding:40px;position:relative;overflow:hidden}
         .drop-zone::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 40% at 50% 50%,rgba(59,130,246,0.08) 0%,transparent 70%),radial-gradient(ellipse 40% 30% at 20% 80%,rgba(37,99,235,0.05) 0%,transparent 60%);pointer-events:none}
         .drop-target{width:100%;max-width:520px;aspect-ratio:4/3;border:2px dashed rgba(59,130,246,0.35);border-radius:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;cursor:pointer;transition:all .25s ease;background:rgba(59,130,246,0.03);position:relative;overflow:hidden}
@@ -872,10 +872,10 @@ export default function GLBViewer() {
         .viewer-canvas canvas{display:block}
         .overlay-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:5}
         .overlay-canvas.interactive{pointer-events:all;cursor:crosshair}
-        .toolbar{position:absolute;top:16px;left:16px;display:flex;flex-direction:column;gap:8px;z-index:20}
-        .tb-group{display:flex;flex-direction:column;gap:3px;background:rgba(6,11,26,0.88);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.09);border-radius:12px;padding:5px}
-        .tb-btn{width:36px;height:36px;border-radius:8px;border:none;background:transparent;color:rgba(232,232,240,0.6);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .18s ease;font-size:15px;position:relative;flex-shrink:0;user-select:none}
-        .tb-btn:hover{background:rgba(59,130,246,0.18);color:#93c5fd}
+        .toolbar{position:absolute;top:20px;left:20px;display:flex;flex-direction:column;gap:12px;z-index:20}
+        .tb-group{display:flex;flex-direction:column;gap:4px;background:rgba(6,11,26,0.65);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:6px;box-shadow:0 8px 32px rgba(0,0,0,0.4)}
+        .tb-btn{width:38px;height:38px;border-radius:10px;border:none;background:transparent;color:rgba(232,232,240,0.6);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s ease;font-size:16px;position:relative;flex-shrink:0;user-select:none}
+        .tb-btn:hover{background:rgba(255,255,255,0.06);color:#fff;transform:scale(1.05)}
         .tb-btn.active{background:rgba(59,130,246,0.3);color:#93c5fd}
         .tb-btn.flash{background:rgba(50,220,120,0.25);color:#60e8a0}
         .tb-btn.danger:hover{background:rgba(255,71,71,0.18);color:#ff9090}
@@ -883,26 +883,26 @@ export default function GLBViewer() {
         .tb-btn:disabled{opacity:0.25;cursor:default;transform:none}
         .tb-divider{height:1px;background:rgba(255,255,255,0.07);margin:2px 4px}
         .tb-btn[data-tip]:hover::after{content:attr(data-tip);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);white-space:nowrap;background:rgba(6,11,26,0.97);border:1px solid rgba(255,255,255,0.1);border-radius:7px;padding:5px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#e8e8f0;letter-spacing:0.3px;pointer-events:none;z-index:100}
-        .speed-group{display:flex;flex-direction:column;gap:0;background:rgba(6,11,26,0.88);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.09);border-radius:12px;padding:5px;align-items:center}
+        .speed-group{display:flex;flex-direction:column;gap:0;background:rgba(6,11,26,0.65);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:5px;align-items:center;box-shadow:0 8px 32px rgba(0,0,0,0.4)}
         .speed-label{font-family:'JetBrains Mono',monospace;font-size:9px;color:rgba(232,232,240,0.35);text-transform:uppercase;letter-spacing:0.8px;padding:2px 0 3px;text-align:center;width:100%}
         .speed-val{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:#60a5fa;padding:3px 0;text-align:center;min-width:36px;letter-spacing:-0.3px}
         .speed-track{width:26px;height:3px;background:rgba(255,255,255,0.07);border-radius:3px;overflow:hidden;margin:1px 0 3px}
         .speed-fill{height:100%;background:linear-gradient(90deg,#3b82f6,#2563eb);border-radius:3px;transition:width .15s ease}
-        .mode-panel{position:absolute;top:16px;right:16px;display:flex;flex-direction:column;gap:4px;z-index:20}
-        .mode-label-hdr{font-family:'JetBrains Mono',monospace;font-size:9px;color:rgba(232,232,240,0.3);text-transform:uppercase;letter-spacing:1px;padding:0 4px 2px;text-align:right}
-        .mode-btn{padding:7px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(6,11,26,0.88);backdrop-filter:blur(16px);color:rgba(232,232,240,0.45);font-family:'JetBrains Mono',monospace;font-size:10px;cursor:pointer;transition:all .18s ease;text-align:left;display:flex;align-items:center;gap:7px;white-space:nowrap}
-        .mode-btn:hover{background:rgba(59,130,246,0.12);color:#93c5fd;border-color:rgba(59,130,246,0.3)}
-        .mode-btn.active{background:rgba(59,130,246,0.2);color:#93c5fd;border-color:rgba(59,130,246,0.5)}
-        .mode-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,0.15);flex-shrink:0}
-        .mode-btn.active .mode-dot{background:#60a5fa}
-        .mode-tag{font-size:8px;padding:1px 5px;border-radius:4px;background:rgba(50,220,120,0.15);border:1px solid rgba(50,220,120,0.3);color:#60e8a0;margin-left:auto}
-        .stats-panel{position:absolute;bottom:16px;left:16px;background:rgba(6,11,26,0.88);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.09);border-radius:14px;padding:12px 16px;display:flex;gap:16px;align-items:center;z-index:20}
-        .stat-item{display:flex;flex-direction:column;gap:2px}
-        .stat-val{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;color:#60a5fa}
-        .stat-lbl{font-size:9px;color:rgba(232,232,240,0.35);text-transform:uppercase;letter-spacing:0.6px}
-        .stat-div{width:1px;height:26px;background:rgba(255,255,255,0.07);flex-shrink:0}
-        .home-toast{position:absolute;bottom:80px;left:16px;background:rgba(50,200,100,0.12);border:1px solid rgba(50,200,100,0.3);border-radius:8px;padding:7px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#60e8a0;z-index:30;pointer-events:none;animation:toastIn .2s ease,toastOut .3s ease .9s forwards}
-        .screenshot-toast{position:absolute;bottom:80px;right:16px;background:rgba(50,150,255,0.12);border:1px solid rgba(50,150,255,0.3);border-radius:8px;padding:7px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#70b8ff;z-index:30;pointer-events:none;animation:toastIn .2s ease,toastOut .3s ease 1.1s forwards}
+        .mode-panel{position:absolute;top:20px;right:20px;display:flex;flex-direction:column;gap:6px;z-index:20}
+        .mode-label-hdr{font-family:'Inter',sans-serif;font-size:10px;font-weight:700;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:1.5px;padding:0 8px 4px;text-align:right}
+        .mode-btn{padding:9px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(6,11,26,0.65);backdrop-filter:blur(24px);color:rgba(232,232,240,0.45);font-family:'JetBrains Mono',monospace;font-size:11px;cursor:pointer;transition:all .2s ease;text-align:left;display:flex;align-items:center;gap:10px;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,0.2)}
+        .mode-btn:hover{background:rgba(255,255,255,0.06);color:#fff;border-color:rgba(255,255,255,0.15)}
+        .mode-btn.active{background:rgba(59,130,246,0.15);color:#fff;border-color:rgba(59,130,246,0.4);font-weight:600}
+        .mode-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,0.1);flex-shrink:0}
+        .mode-btn.active .mode-dot{background:#3b82f6;box-shadow:0 0 10px rgba(59,130,246,0.8)}
+        .mode-tag{font-size:9px;padding:2px 7px;border-radius:6px;background:rgba(50,220,120,0.1);border:1px solid rgba(50,220,120,0.25);color:#60e8a0;margin-left:auto;font-weight:600}
+        .stats-panel{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(6,11,26,0.65);backdrop-filter:blur(24px);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:14px 20px;display:flex;gap:20px;align-items:center;z-index:20;box-shadow:0 8px 32px rgba(0,0,0,0.4)}
+        .stat-item{display:flex;flex-direction:column;gap:3px}
+        .stat-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#60a5fa;letter-spacing:-0.4px}
+        .stat-lbl{font-size:9px;font-weight:600;color:rgba(255,255,255,0.3);text-transform:uppercase;letter-spacing:1px}
+        .stat-div{width:1px;height:24px;background:rgba(255,255,255,0.08);flex-shrink:0}
+        .home-toast{position:absolute;bottom:130px;left:20px;background:rgba(50,200,100,0.12);border:1px solid rgba(50,200,100,0.3);border-radius:8px;padding:7px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#60e8a0;z-index:30;pointer-events:none;animation:toastIn .2s ease,toastOut .3s ease .9s forwards}
+        .screenshot-toast{position:absolute;bottom:130px;right:20px;background:rgba(50,150,255,0.12);border:1px solid rgba(50,150,255,0.3);border-radius:8px;padding:7px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#70b8ff;z-index:30;pointer-events:none;animation:toastIn .2s ease,toastOut .3s ease 1.1s forwards}
         @keyframes toastIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
         @keyframes toastOut{to{opacity:0;transform:translateY(-4px)}}
 
@@ -928,7 +928,7 @@ export default function GLBViewer() {
         .unit-opt .check{color:#60a5fa;font-size:12px}
 
         /* Measure panel (right drawer) */
-        .meas-panel{position:absolute;right:16px;top:80px;bottom:80px;width:280px;background:rgba(6,11,26,0.94);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.09);border-radius:16px;z-index:20;display:flex;flex-direction:column;overflow:hidden;animation:panelIn .2s ease}
+        .meas-panel{position:absolute;left:24px;top:80px;bottom:80px;width:280px;background:rgba(6,11,26,0.94);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.09);border-radius:16px;z-index:45;display:flex;flex-direction:column;overflow:hidden;animation:panelIn .2s ease}
         @keyframes panelIn{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:none}}
         .mp-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 12px;border-bottom:1px solid rgba(255,255,255,0.07);flex-shrink:0}
         .mp-title{font-size:12px;font-weight:700;letter-spacing:-0.2px;display:flex;align-items:center;gap:8px}
@@ -992,31 +992,8 @@ export default function GLBViewer() {
       <title>{schoolName ? `${schoolName} · 3D Viewer — RTB GIS` : "RTB GIS · 3D Viewer"}</title>
 
       <div className="glb-root">
-        <header className="header">
-          <div className="logo">
-            <div className="logo-icon">⬡</div>
-            <span style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-              <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-0.4px" }}>
-                {schoolName || "RTB GIS · 3D Viewer"}
-              </span>
-              {schoolName && (
-                <span style={{ fontSize: 9, fontWeight: 500, opacity: 0.4, letterSpacing: "1.2px", fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase" }}>
-                  Rwanda TVEt Board · 3D Photogrammetry Viewer
-                </span>
-              )}
-            </span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {stats && progress === 100 && (
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: "rgba(232,232,240,0.3)", letterSpacing: "0.3px" }}>
-                {stats.triangles.toLocaleString()}▲ · {stats.meshes}⬡ · {stats.textures}◈
-              </span>
-            )}
-            <span className="badge">Measure · Annotate · Screenshot</span>
-          </div>
-        </header>
 
-        {error && <div className="error-bar"><span>⚠</span> {error}</div>}
+        {error && <div className="error-bar" style={{ position: "absolute", top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 100, margin: 0, whiteSpace: "nowrap" }}><span>⚠</span> {error}</div>}
 
         {phase === "idle" && (
           <div className="drop-zone">
@@ -1057,6 +1034,15 @@ export default function GLBViewer() {
               </div>
             )}
 
+            {schoolName && (
+              <div className="school-badge">
+                <div className="school-badge-icon">⬡</div>
+                <div>
+                  <div className="school-badge-name">{schoolName}</div>
+                  <div className="school-badge-sub">RTB GIS · 3D Photogrammetry</div>
+                </div>
+              </div>
+            )}
             <div ref={mountRef} className="viewer-canvas" />
 
             <canvas ref={overlayRef} className={`overlay-canvas${measureMode ? "  interactive" : ""}`}
