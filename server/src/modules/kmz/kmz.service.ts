@@ -213,10 +213,10 @@ export class KmzService {
     const outPath = path.join(workDir, `${schoolId}-${Date.now()}.glb`);
 
     try {
-      const r = await optimizeGlbFile(sourcePath, outPath, {
-        ratio: 0.1,
-        textureSize: 4096,
-      });
+      // Defaults (ratio 0.15, up to 5M tris, WebP q95, atlas kept at source
+      // resolution) live in glb-optimizer.ts / optimize.mjs and are tunable via
+      // GLB_MAX_OUT_TRIS / GLB_TEXTURE_QUALITY / GLB_SIMPLIFY_ERROR env vars.
+      const r = await optimizeGlbFile(sourcePath, outPath);
 
       // Keep the raw model only when the optimizer neither shrank it nor had to
       // reproject it — a reprojected build must replace the raw one even when it

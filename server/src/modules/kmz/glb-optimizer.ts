@@ -25,7 +25,7 @@ export interface GlbOptimizeResult {
   trisOut: number;
   ratio: number;
   ms: number;
-  /** Decimation path taken: 'exact' | 'sloppy' | 'none'. */
+  /** Decimation path taken: 'exact' | 'tiled' | 'sloppy' | 'none'. */
   method?: string;
   /** True when the source held geographic vertex coordinates that were baked
    *  into a local metric frame. */
@@ -89,10 +89,10 @@ export function optimizeGlbFile(
   opts: GlbOptimizeOptions = {},
 ): Promise<GlbOptimizeResult> {
   const {
-    ratio = 0.1,
-    textureSize = 4096,
-    timeoutMs = 20 * 60_000,
-    heapMb = 4608,
+    ratio = 0.3,
+    textureSize = 8192, // upper bound only — a smaller source atlas is kept as-is
+    timeoutMs = 25 * 60_000,
+    heapMb = 8192,
   } = opts;
 
   return new Promise((resolve, reject) => {

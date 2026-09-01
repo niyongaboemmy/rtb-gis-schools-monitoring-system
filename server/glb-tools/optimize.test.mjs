@@ -87,7 +87,9 @@ function runOptimize(input, env = {}) {
   const stdout = execFileSync(
     process.execPath,
     ['--max-old-space-size=2048', SCRIPT, input, out, '0.5', '2048'],
-    { encoding: 'utf8', env: { ...process.env, ...env } },
+    // Pre-smoothing nudges vertices on a tiny synthetic grid enough to trip the
+    // tight geometry asserts; it has its own test. Disable it by default here.
+    { encoding: 'utf8', env: { GLB_NO_SMOOTH: '1', ...process.env, ...env } },
   );
   const report = JSON.parse(stdout.trim().split('\n').pop());
   return { out, report };
@@ -200,6 +202,43 @@ test('small mesh uses the exact simplifier, not the sloppy fallback', async () =
   const input = await buildGlb('small.glb', 12, (u, v) => [u * 50, 0, v * 50]);
   const { report } = runOptimize(input);
   assert.equal(report.method, 'exact');
+});
+
+test('pre-smoothing runs and still yields a valid, reprojected GLB', async () => {
+  const input = await buildGlb('smooth.glb', 40, (u, v) => [
+    LON0 - LON_SPAN / 2 + u * LON_SPAN,
+    LAT0 - LAT_SPAN / 2 + v * LAT_SPAN,
+    ALT_LO + v * ALT_SPAN + 4 * Math.sin(u * 30) * Math.cos(v * 24), // noise
+  ]);
+  const { out, report } = runOptimize(input, { GLB_NO_SMOOTH: '0', GLB_SMOOTH: '0.5' });
+  assert.equal(report.reprojected, true);
+  assert.ok(report.trisOut > 0);
+  const { span } = await boundsOf(out);
+  const r = Math.PI / 180;
+  const mLon = 111412.84 * Math.cos(LAT0 * r) - 93.5 * Math.cos(3 * LAT0 * r);
+  // Footprint unchanged; smoothing only relaxes the surface between the edges.
+  assert.ok(Math.abs(span[0] - LON_SPAN * mLon) / (LON_SPAN * mLon) < 0.05, `X span ${span[0]}`);
+});
+
+test('tiled exact path reprojects, decimates, and preserves attributes', async () => {
+  const input = await buildGlb('tiled.glb', 60, (u, v) => [
+    LON0 - LON_SPAN / 2 + u * LON_SPAN,
+    LAT0 - LAT_SPAN / 2 + v * LAT_SPAN,
+    ALT_LO + v * ALT_SPAN + 6 * Math.sin(u * 20) * Math.cos(v * 16),
+  ]);
+  const { out, report } = runOptimize(input, { GLB_FORCE_TILED: '1' });
+  assert.equal(report.method, 'tiled');
+  assert.equal(report.reprojected, true);
+  assert.ok(report.trisOut > 0 && report.trisOut < report.trisIn, `tris ${report.trisIn} -> ${report.trisOut}`);
+
+  const doc = await io.read(out);
+  await doc.transform(dequantize());
+  const prim = doc.getRoot().listMeshes()[0].listPrimitives()[0];
+  assert.ok(prim.getAttribute('TEXCOORD_0'), 'UVs survived tiling');
+  const { span } = await boundsOf(out);
+  const r = Math.PI / 180;
+  const mLon = 111412.84 * Math.cos(LAT0 * r) - 93.5 * Math.cos(3 * LAT0 * r);
+  assert.ok(Math.abs(span[0] - LON_SPAN * mLon) / (LON_SPAN * mLon) < 0.05, `X span ${span[0]}`);
 });
 
 test('sloppy fallback path still reprojects and produces a valid GLB', async () => {

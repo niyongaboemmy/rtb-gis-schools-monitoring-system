@@ -137,7 +137,17 @@ function calcDistance(pts: MeasurePoint[]): number {
 
 function loadJson<T>(key: string, def: T): T { try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : def; } catch { return def; } }
 function saveJson(key: string, val: unknown) { try { localStorage.setItem(key, JSON.stringify(val)); } catch { } }
-function getHomeKey(fileName: string) { return `glb_home_${fileName.replace(/[^a-zA-Z0-9]/g, "_")}`; }
+/**
+ * Per-model localStorage key for the saved camera home. The `sig` (rounded
+ * model dimensions) is part of the key so a home saved for a previous build of
+ * the same file — e.g. before the GLB was reprojected from lon/lat° to metres,
+ * or re-optimised at a different scale — is simply never read, and the viewer
+ * falls back to the computed default framing instead of opening flipped.
+ */
+function getHomeKey(fileName: string, sig = "") {
+  const base = `glb_home_${fileName.replace(/[^a-zA-Z0-9]/g, "_")}`;
+  return sig ? `${base}__${sig}` : base;
+}
 
 // ─── Shared DRACO loader (pre-warmed, reused across loads) ───────────────────
 const sharedDracoLoader = new DRACOLoader();
@@ -207,10 +217,17 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
-  const occlusionRaycasterRef = useRef<THREE.Raycaster>(new THREE.Raycaster());
+  const occlusionRaycasterRef = useRef<THREE.Raycaster>(
+    Object.assign(new THREE.Raycaster(), { firstHitOnly: true }),
+  );
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const animFrameRef = useRef<number>(0);
+  /** Wall-clock ms of the last rendered frame — a watchdog restarts the loop
+   *  if it ever stalls (e.g. a stray cancelAnimationFrame or a thrown frame). */
+  const lastFrameAtRef = useRef<number>(0);
+  const restartLoopRef = useRef<(() => void) | null>(null);
+  const keyLoopWatchdogRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const modelRef = useRef<THREE.Object3D | null>(null);
   /** True while the camera is moving — labels are hidden to prevent visual glitches */
   const interactingRef = useRef(false);
@@ -225,8 +242,19 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const loadedFileNameRef = useRef<string>("");
   const origMatsRef = useRef<Map<THREE.Mesh, THREE.Material | THREE.Material[]>>(new Map());
   const unlitMatsRef = useRef<Map<THREE.Mesh, THREE.MeshBasicMaterial>>(new Map());
-  const raycasterRef = useRef(new THREE.Raycaster());
+  const raycasterRef = useRef(
+    Object.assign(new THREE.Raycaster(), { firstHitOnly: true }),
+  );
   const modelRawCenterRef = useRef<{ x: number; z: number }>({ x: 0, z: 0 });
+  /** Rounded model dimensions "WxHxD" — namespaces the saved camera home so a
+   *  home from a previous build of the same file is never applied. */
+  const modelSigRef = useRef<string>("");
+  /** Model bounding box (world space), padded — the orbit pivot is clamped to
+   *  this so wheel-zoom-to-cursor can't drift the camera off into the void. */
+  const modelBoundsRef = useRef<THREE.Box3 | null>(null);
+  /** Closest allowed camera-to-target distance — also enforced on WASD/d-pad
+   *  fly movement, which bypasses OrbitControls' own minDistance. */
+  const minZoomRef = useRef<number>(0);
 
   const hoverPtRef = useRef<MeasurePoint | null>(null);
 
@@ -372,6 +400,11 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       const srcMat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
       const diffuseTex = (srcMat as any).map ?? null; if (diffuseTex) upgradeTex(diffuseTex);
       const unlitMat = new THREE.MeshBasicMaterial({ map: diffuseTex, vertexColors: (srcMat as any).vertexColors ?? false, side: (srcMat as any).side ?? THREE.FrontSide, transparent: (srcMat as any).transparent ?? false, opacity: (srcMat as any).opacity ?? 1, alphaTest: (srcMat as any).alphaTest ?? 0 });
+      // Web-decimated photogrammetry has thin near-coplanar folds along curbs /
+      // hedges / roof edges; polygon offset stops them shimmering (Z-fighting).
+      unlitMat.polygonOffset = true;
+      unlitMat.polygonOffsetFactor = 1;
+      unlitMat.polygonOffsetUnits = 1;
       unlitMatsRef.current.set(mesh, unlitMat);
       bvhMeshes.push(mesh);
     });
@@ -407,15 +440,33 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
     size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
-    const center = box.getCenter(new THREE.Vector3());
+    const boxCenter = box.getCenter(new THREE.Vector3());
+    // A hilly site has a tall bounding box, so its geometric centre floats in
+    // mid-air. Drop a ray straight down through it to land the orbit pivot on
+    // the actual ground/roofs — otherwise zooming in flies into empty sky.
+    const center = boxCenter.clone();
+    try {
+      raycasterRef.current.set(
+        new THREE.Vector3(boxCenter.x, box.max.y + maxDim, boxCenter.z),
+        new THREE.Vector3(0, -1, 0),
+      );
+      const groundHit = raycasterRef.current.intersectObject(model, true)[0];
+      if (groundHit) center.copy(groundHit.point);
+    } catch { /* fall back to box centre */ }
     const halfDiag = box.getBoundingSphere(new THREE.Sphere()).radius;
     const fovRad = camera.fov * (Math.PI / 180);
     const distance = (halfDiag / Math.tan(fovRad / 2)) * 1.1;
 
     camera.near = distance * 0.0001; camera.far = distance * 100; camera.updateProjectionMatrix();
 
+    // Signature ties a saved camera home to this exact build of the model.
+    const modelSig = `${Math.round(size.x)}x${Math.round(size.y)}x${Math.round(size.z)}`;
+    modelSigRef.current = modelSig;
+
     let savedHome: CameraHome | null = null;
-    try { const s = localStorage.getItem(getHomeKey(fileName)); if (s) savedHome = JSON.parse(s); } catch { }
+    try { const s = localStorage.getItem(getHomeKey(fileName, modelSig)); if (s) savedHome = JSON.parse(s); } catch { }
+    // One-time cleanup of any legacy un-versioned home for this file.
+    try { localStorage.removeItem(getHomeKey(fileName)); } catch { /* ignore */ }
 
     if (schoolId) {
       try {
@@ -430,14 +481,45 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       } catch { }
     }
 
+    // Reject a saved home that clearly belongs to an older version of this
+    // model (e.g. saved before the GLB was reprojected from lon/lat° to metres,
+    // or before it was re-optimised at a different scale). Otherwise the viewer
+    // opens pointing at empty space / from a flipped angle.
+    if (savedHome) {
+      const okNum = (v: { x: number; y: number; z: number }) =>
+        v && [v.x, v.y, v.z].every((n) => Number.isFinite(n));
+      const tgt = okNum(savedHome.target)
+        ? new THREE.Vector3(savedHome.target.x, savedHome.target.y, savedHome.target.z)
+        : null;
+      const pos = okNum(savedHome.position)
+        ? new THREE.Vector3(savedHome.position.x, savedHome.position.y, savedHome.position.z)
+        : null;
+      const stale =
+        !tgt || !pos ||
+        tgt.distanceTo(center) > halfDiag * 2.5 ||      // looking away from the model
+        pos.distanceTo(center) > distance * 12 ||       // parked absurdly far out
+        pos.distanceTo(center) < halfDiag * 0.02;       // clipped inside the mesh
+      if (stale) {
+        savedHome = null;
+        try { localStorage.removeItem(getHomeKey(fileName, modelSig)); } catch { /* ignore */ }
+      }
+    }
+
     if (savedHome) {
       camera.position.set(savedHome.position.x, savedHome.position.y, savedHome.position.z);
-      camera.near = savedHome.near; camera.far = savedHome.far; camera.updateProjectionMatrix();
+      // Always use freshly-computed clip planes — a stored near/far can be scaled
+      // to a previous (e.g. pre-reprojection) bounding box.
+      camera.near = distance * 0.0001; camera.far = distance * 100; camera.updateProjectionMatrix();
       controls.target.set(savedHome.target.x, savedHome.target.y, savedHome.target.z);
-      cameraHomeRef.current = savedHome;
+      cameraHomeRef.current = { ...savedHome, near: camera.near, far: camera.far };
     } else {
-      const hp = new THREE.Vector3(distance * 0.8, distance * 1.2, distance * 0.8);
-      const startPos = hp.clone().add(new THREE.Vector3(0, distance * 2, distance));
+      // Frame the site's footprint (it's a flat slab, so the bounding sphere
+      // over-zooms), viewed from a ~52° elevation 3/4 angle so roofs and walls
+      // both read.
+      const footprint = Math.max(size.x, size.z);
+      const framed = (footprint / 2 / Math.tan(fovRad / 2)) * 1.35;
+      const hp = new THREE.Vector3(0.62, 0.78, 0.62).normalize().multiplyScalar(framed).add(center);
+      const startPos = hp.clone().add(new THREE.Vector3(0, framed * 1.4, framed * 0.7));
       camera.position.copy(startPos);
       camera.lookAt(center);
       controls.target.copy(center);
@@ -454,7 +536,19 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       step();
     }
 
-    controls.minDistance = camera.near * 10; controls.maxDistance = camera.far; controls.update();
+    // Keep the orbit pivot on (or just around) the model so wheel zoom-to-cursor
+    // can't fling the camera into empty space.
+    modelBoundsRef.current = box.clone().expandByScalar(maxDim * 0.15);
+
+    // Clamp how close the orbit can dolly in. A web-decimated photogrammetry
+    // mesh (~1–3 % of the source triangles) plus a single site-wide texture
+    // atlas only holds up to roughly this range — closer just shows facet
+    // stepping and texel smear, so stop the zoom there.
+    const minZoom = Math.max(camera.near * 20, maxDim * 0.035);
+    controls.minDistance = minZoom;
+    controls.maxDistance = Math.min(camera.far, maxDim * 8);
+    minZoomRef.current = minZoom;
+    controls.update();
     const autoSpeed = Math.max(0.001, maxDim * 0.003); moveSpeedRef.current = autoSpeed; setSpeedIdx(nearestSpeedIdx(autoSpeed));
 
     const oldGrid = scene.children.find(c => c instanceof THREE.GridHelper); if (oldGrid) scene.remove(oldGrid);
@@ -492,7 +586,11 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     threeInitPromiseRef.current = new Promise<void>(resolve => { threeInitResolveRef.current = resolve; });
     const startTime = Date.now();
     try {
-      const resp = await fetch(url);
+      // `no-cache` = always revalidate with the file-server (cheap 304 via ETag
+      // when unchanged). The served model keeps the same filename across
+      // re-optimisations, and the file-server sends `max-age=604800`, so a plain
+      // GET would keep serving a week-old copy — e.g. the raw pre-optimised GLB.
+      const resp = await fetch(url, { cache: "no-cache" });
       if (!resp.ok) throw new Error(`Model download failed (HTTP ${resp.status})`);
 
       // Stream the body so the user sees real download progress. A large
@@ -571,9 +669,13 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       .then(res => res.ok ? res.json() : Promise.reject("Model not found"))
       .then(data => {
         if (data?.url) {
-          // The stored filename may contain spaces/unicode — encode each segment.
-          const safePath = String(data.url).split("/").map(encodeURIComponent).join("/");
-          loadGLBFromURL(`${FILE_SERVER_URL}${safePath}`, data.filename || "model.glb");
+          // The stored filename may contain spaces/unicode — encode each path
+          // segment, but keep any `?v=…` cache-busting query intact.
+          const [rawPath, query] = String(data.url).split("?");
+          const safePath = rawPath.split("/").map(encodeURIComponent).join("/");
+          const finalUrl =
+            `${FILE_SERVER_URL}${safePath}` + (query ? `?${query}` : "");
+          loadGLBFromURL(finalUrl, data.filename || "model.glb");
         } else {
           setError("3D model not found for this school.");
         }
@@ -881,7 +983,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     if (!mountRef.current) return;
     const w = mountRef.current.clientWidth, h = mountRef.current.clientHeight;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, precision: "highp", powerPreference: "high-performance", preserveDrawingBuffer: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, precision: "highp", powerPreference: "high-performance", preserveDrawingBuffer: true, logarithmicDepthBuffer: true });
     renderer.setSize(w, h); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     
@@ -902,13 +1004,25 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     (grid.material as THREE.Material).opacity = 0.4; (grid.material as THREE.Material).transparent = true; scene.add(grid);
 
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true; controls.dampingFactor = 0.06; controls.minDistance = 0.001; controls.maxDistance = 1_000_000;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.minDistance = 0.001;
+    controls.maxDistance = 1_000_000;
+    controls.rotateSpeed = 0.85;
+    controls.zoomSpeed = 1.1;
+    controls.panSpeed = 0.9;
+    controls.zoomToCursor = false;         // dolly toward the orbit pivot — predictable, never drifts off-model
+    controls.screenSpacePanning = true;    // right-drag pans parallel to the screen
+    controls.keyPanSpeed = 24;
+    controls.maxPolarAngle = Math.PI - 0.02; // don't let the orbit flip under the ground
+    renderer.domElement.style.touchAction = "none";
     controlsRef.current = controls;
 
     const _vDir = new THREE.Vector3(), _right = new THREE.Vector3(), _forward = new THREE.Vector3(), _wu = new THREE.Vector3(0, 1, 0);
 
     const animate = () => {
       animFrameRef.current = requestAnimationFrame(animate);
+      lastFrameAtRef.current = performance.now();
       const keys = keysRef.current;
 
       if (keys.size > 0 && !measureModeRef.current) {
@@ -917,7 +1031,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         _right.crossVectors(_forward, _wu).normalize();
         _vDir.set(0, 0, 0);
 
-        const sp = moveSpeedRef.current * 0.08;
+        const sp = moveSpeedRef.current * 0.08 * (isSprintingRef.current ? 2.5 : 1);
         if (keys.has("ArrowUp") || keys.has("w") || keys.has("W")) _vDir.addScaledVector(_forward, sp);
         if (keys.has("ArrowDown") || keys.has("s") || keys.has("S")) _vDir.addScaledVector(_forward, -sp);
         if (keys.has("ArrowLeft") || keys.has("a") || keys.has("A")) _vDir.addScaledVector(_right, -sp);
@@ -940,11 +1054,35 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
       controls.update();
 
+      // Keep the orbit pivot inside the padded model box — zoomToCursor can
+      // otherwise walk `controls.target` off the model until the view is empty.
+      const mb = modelBoundsRef.current;
+      if (mb && !measureModeRef.current) {
+        const tx = Math.min(Math.max(controls.target.x, mb.min.x), mb.max.x);
+        const ty = Math.min(Math.max(controls.target.y, mb.min.y), mb.max.y);
+        const tz = Math.min(Math.max(controls.target.z, mb.min.z), mb.max.z);
+        if (tx !== controls.target.x || ty !== controls.target.y || tz !== controls.target.z) {
+          camera.position.x += tx - controls.target.x;
+          camera.position.y += ty - controls.target.y;
+          camera.position.z += tz - controls.target.z;
+          controls.target.set(tx, ty, tz);
+        }
+      }
+
+      // Enforce the min-zoom on fly movement too (OrbitControls only clamps its
+      // own dolly). Push the camera back out along the view ray if it crept in.
+      const mz = minZoomRef.current;
+      if (mz > 0) {
+        const d = camera.position.distanceTo(controls.target);
+        if (d < mz && d > 1e-4) {
+          camera.position.sub(controls.target).multiplyScalar(mz / d).add(controls.target);
+        }
+      }
+
       if (camera.position.distanceToSquared(_prevCamPosRef.current) > 1e-14) {
         _prevCamPosRef.current.copy(camera.position);
-        if (!interactingRef.current) {
-          interactingRef.current = true;
-        }
+        interactingRef.current = true;
+        if (showLabelsTimerRef.current) clearTimeout(showLabelsTimerRef.current);
         showLabelsTimerRef.current = setTimeout(() => {
           interactingRef.current = false;
           showLabelsTimerRef.current = null;
@@ -954,7 +1092,25 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       renderer.render(scene, camera);
       if (overlayRef.current) drawOverlayRef.current();
     };
+
+    // Expose a safe restart so the watchdog (or a future teardown regression)
+    // can revive the loop instead of leaving a frozen viewer.
+    restartLoopRef.current = () => {
+      cancelAnimationFrame(animFrameRef.current);
+      animate();
+    };
     animate();
+
+    if (keyLoopWatchdogRef.current) clearInterval(keyLoopWatchdogRef.current);
+    keyLoopWatchdogRef.current = setInterval(() => {
+      if (
+        rendererRef.current &&
+        document.visibilityState === "visible" &&
+        performance.now() - lastFrameAtRef.current > 1500
+      ) {
+        restartLoopRef.current?.();
+      }
+    }, 2000);
 
     // Signal to finalizeGLTF that sceneRef / cameraRef / controlsRef are ready
     threeInitResolveRef.current?.();
@@ -963,11 +1119,19 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     const handleResize = () => {
       if (!mountRef.current) return;
       const nw = mountRef.current.clientWidth, nh = mountRef.current.clientHeight;
+      if (nw === 0 || nh === 0) return;
       camera.aspect = nw / nh; camera.updateProjectionMatrix(); renderer.setSize(nw, nh);
       if (overlayRef.current) { overlayRef.current.width = nw; overlayRef.current.height = nh; }
     };
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    // Also react to container-only size changes (side panels, inspector docks…).
+    const ro = new ResizeObserver(handleResize);
+    ro.observe(mountRef.current);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      ro.disconnect();
+      if (keyLoopWatchdogRef.current) clearInterval(keyLoopWatchdogRef.current);
+    };
   }, []);
 
   // ── Eagerly start Three.js as soon as the canvas div is in the DOM (loading phase).
@@ -982,12 +1146,64 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     threeResizeCleanupRef.current = initThree() ?? undefined;
   }, [phase, initThree]);
 
-  // Full Three.js teardown on component unmount only
+  // Full Three.js teardown — MUST be unmount-only. With deps here, adding a
+  // measurement or toggling visibility used to run this cleanup, which cancels
+  // the render loop; with damping on, the camera then never updates again and
+  // the whole viewer looks frozen (no orbit / zoom / pan).
   useEffect(() => () => {
     threeResizeCleanupRef.current?.();
     cancelAnimationFrame(animFrameRef.current);
-    // Dispose all measurement dot geometry + materials
-  }, [measures, visibility]);
+    if (keyLoopWatchdogRef.current) clearInterval(keyLoopWatchdogRef.current);
+  }, []);
+
+  // Keyboard fly-navigation (WASD / arrows to move, Q·E to drop/rise, Shift to
+  // sprint). Without this the keys were read by the render loop but nothing
+  // ever populated the set, so only the on-screen d-pad worked.
+  useEffect(() => {
+    if (phase === "idle") return;
+    // Keys the render loop understands (it matches raw e.key: "w", "ArrowUp", " ", …).
+    const NAV_KEYS = new Set([
+      "w", "a", "s", "d", "q", "e", "f", " ",
+      "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+    ]);
+    const keyOf = (e: KeyboardEvent) =>
+      e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const isTyping = (el: EventTarget | null) => {
+      const n = el as HTMLElement | null;
+      if (!n) return false;
+      return (
+        n.tagName === "INPUT" ||
+        n.tagName === "TEXTAREA" ||
+        n.tagName === "SELECT" ||
+        n.isContentEditable
+      );
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isTyping(e.target)) return;
+      if (e.key === "Shift") setIsSprinting(true);
+      const k = keyOf(e);
+      if (!NAV_KEYS.has(k)) return;
+      e.preventDefault();
+      keysRef.current.add(k);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Shift") setIsSprinting(false);
+      keysRef.current.delete(keyOf(e));
+    };
+    const clearAll = () => {
+      keysRef.current.clear();
+      setIsSprinting(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", clearAll);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", clearAll);
+      clearAll();
+    };
+  }, [phase, setIsSprinting]);
 
   // Overlay canvas sizing — runs whenever the canvas becomes visible
   useEffect(() => {
@@ -1118,8 +1334,31 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     else if (measureMode) { setMeasureMode(null); setPendingPts([]); hoverPtRef.current = null; setAnnotPendingPt(null); }
   };
 
-  const handleOverlayDoubleClick = () => {
-    if (measureMode && (measureMode as string) !== "annotate" && pendingPts.length >= 2) finalizeMeasure();
+  const handleOverlayDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (measureMode) {
+      if ((measureMode as string) !== "annotate" && pendingPts.length >= 2) finalizeMeasure();
+      return;
+    }
+    // Not measuring → "focus here": smoothly recentre the orbit pivot on the
+    // double-clicked surface point and dolly ~35% closer. Standard 3D/GIS UX.
+    const pt = getAccurateRaycastPt(e);
+    const cam = cameraRef.current, ctrl = controlsRef.current;
+    if (!pt || !cam || !ctrl) return;
+    const endTarget = new THREE.Vector3(pt.x, pt.y, pt.z);
+    const startTarget = ctrl.target.clone();
+    const startPos = cam.position.clone();
+    const endPos = startPos.clone().lerp(endTarget, 0.35);
+    velocityRef.current.set(0, 0, 0);
+    const t0 = performance.now();
+    const step = () => {
+      const t = Math.min(1, (performance.now() - t0) / 450);
+      const k = 1 - Math.pow(1 - t, 3);
+      ctrl.target.lerpVectors(startTarget, endTarget, k);
+      cam.position.lerpVectors(startPos, endPos, k);
+      ctrl.update();
+      if (t < 1) requestAnimationFrame(step);
+    };
+    step();
   };
 
   // ── Camera Actions ──────────────────────────────────────────────────────────
@@ -1127,7 +1366,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     const cam = cameraRef.current, ctrl = controlsRef.current; if (!cam || !ctrl) return;
     let home = cameraHomeRef.current;
     if (loadedFileNameRef.current) {
-      try { const s = localStorage.getItem(getHomeKey(loadedFileNameRef.current)); if (s) home = JSON.parse(s); } catch { }
+      try { const s = localStorage.getItem(getHomeKey(loadedFileNameRef.current, modelSigRef.current)); if (s) home = JSON.parse(s); } catch { }
     }
     if (!home) return;
     cam.position.copy(new THREE.Vector3(home.position.x, home.position.y, home.position.z));
@@ -1140,7 +1379,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     const cam = cameraRef.current, ctrl = controlsRef.current; if (!cam || !ctrl) return;
     const home: CameraHome = { position: { ...cam.position }, target: { ...ctrl.target }, near: cam.near, far: cam.far };
     cameraHomeRef.current = home; saveJson(LS_HOME_KEY, home);
-    if (loadedFileNameRef.current) saveJson(getHomeKey(loadedFileNameRef.current), home);
+    if (loadedFileNameRef.current) saveJson(getHomeKey(loadedFileNameRef.current, modelSigRef.current), home);
     scheduleSave(); setSaveFlash(true); setTimeout(() => setSaveFlash(false), 1200);
   }, [scheduleSave]);
 

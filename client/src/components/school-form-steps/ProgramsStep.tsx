@@ -11,16 +11,17 @@ export interface EducationProgram {
 }
 
 interface ProgramsStepProps {
-  educationPrograms: EducationProgram[];
+  educationPrograms: EducationProgram[] | null | undefined;
   onEducationProgramsChange: (programs: EducationProgram[]) => void;
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 
 export function ProgramsStep({
-  educationPrograms,
+  educationPrograms: educationProgramsProp,
   onEducationProgramsChange,
 }: ProgramsStepProps) {
+  const educationPrograms = educationProgramsProp ?? [];
   return (
     <div className="space-y-8">
       {/* trades (TVET Trades) */}
