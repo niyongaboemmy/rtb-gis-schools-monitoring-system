@@ -60,6 +60,23 @@ export class User {
   @Column({ type: 'varchar', nullable: true, select: false })
   refreshToken: string | null;
 
+  /** Google's stable subject id, set once an account is linked to Google.
+   * Matching is done on verified email; this records the link. */
+  @Column({ type: 'varchar', nullable: true })
+  googleId: string | null;
+
+  /** SHA-256 hash of the emailed verification code — the code itself only
+   * ever lives in the email, never in the database. */
+  @Column({ type: 'varchar', nullable: true, select: false })
+  passwordResetToken: string | null;
+
+  @Column({ type: 'timestamp', nullable: true, select: false })
+  passwordResetExpiresAt: Date | null;
+
+  /** Wrong guesses against the current code; caps brute-force on 6 digits. */
+  @Column({ type: 'int', default: 0, select: false })
+  passwordResetAttempts: number;
+
   @BeforeInsert()
   @BeforeUpdate()
   async hashPassword() {

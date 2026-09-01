@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuthStore } from "../store/authStore";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuthStore, type User } from "../store/authStore";
 import { api } from "../lib/api";
 import { Mail, Loader2, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
 import { PasswordInput } from "../components/ui/password-input";
 import { ImigongoPattern } from "../components/ui/ImigongoPattern";
+import { GoogleSignInButton } from "../components/ui/GoogleSignInButton";
 
 export default function Login() {
   const [email, setEmail] = useState("admin@rtb.gov.rw");
@@ -15,6 +16,16 @@ export default function Login() {
   const { setAuth } = useAuthStore();
   const navigate = useNavigate();
 
+  /** Shared by password and Google sign-in — both return the same payload. */
+  const completeLogin = (data: {
+    accessToken: string;
+    refreshToken: string;
+    user: User;
+  }) => {
+    setAuth(data.accessToken, data.refreshToken, data.user);
+    navigate(data.user.location?.schoolId ? "/school-dashboard" : "/welcome");
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -22,23 +33,30 @@ export default function Login() {
 
     try {
       const response = await api.post("/auth/login", { email, password });
-      const user = response.data.user;
-      setAuth(
-        response.data.accessToken,
-        response.data.refreshToken,
-        user,
-      );
-      
-      if (user.location?.schoolId) {
-        navigate("/school-dashboard");
-      } else {
-        navigate("/welcome");
-      }
-    } catch (err: any) {
+      completeLogin(response.data);
+    } catch (err) {
       const axiosError = err as { response?: { data?: { message?: string } } };
       setError(
         axiosError.response?.data?.message ||
           "Login failed. Please verify credentials.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleCredential = async (idToken: string) => {
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const response = await api.post("/auth/google", { idToken });
+      completeLogin(response.data);
+    } catch (err) {
+      const axiosError = err as { response?: { data?: { message?: string } } };
+      setError(
+        axiosError.response?.data?.message ||
+          "Google sign-in failed. Please try again.",
       );
     } finally {
       setIsLoading(false);
@@ -211,12 +229,12 @@ export default function Login() {
                   <label className="text-sm font-bold text-foreground/80">
                     Password
                   </label>
-                  <a
-                    href="#"
+                  <Link
+                    to="/forgot-password"
                     className="text-[11px] text-primary font-black uppercase tracking-wider hover:text-primary/70 transition-colors"
                   >
                     Forgot Password?
-                  </a>
+                  </Link>
                 </div>
                 <PasswordInput
                   value={password}
@@ -247,6 +265,12 @@ export default function Login() {
               )}
             </motion.button>
           </form>
+
+          <GoogleSignInButton
+            onCredential={(idToken) => void handleGoogleCredential(idToken)}
+            onError={setError}
+            disabled={isLoading}
+          />
 
           <div className="pt-6 border-t border-border/20 dark:border-blue-700/20 text-center">
             <p className="text-xs text-muted-foreground leading-relaxed">
