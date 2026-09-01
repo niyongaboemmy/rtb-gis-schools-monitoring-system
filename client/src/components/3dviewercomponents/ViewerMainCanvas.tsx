@@ -7,7 +7,7 @@ interface ViewerMainCanvasProps {
   isPinMode?: boolean;
   handleOverlayMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void;
   handleOverlayClick: (e: React.MouseEvent<HTMLDivElement>) => void;
-  handleOverlayDoubleClick: () => void;
+  handleOverlayDoubleClick: (e: React.MouseEvent<HTMLDivElement>) => void;
   handleOverlayContextMenu: (e: React.MouseEvent<HTMLDivElement>) => void;
   onMouseDown?: (e: React.MouseEvent<HTMLDivElement>) => void;
 }
