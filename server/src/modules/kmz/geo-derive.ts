@@ -67,8 +67,8 @@ export function pickKmlCoordinate(sources: {
     }
   }
 
-  const pts = (points || []).filter(
-    ([lng, lat]) => isPlausibleLatLng(lat, lng),
+  const pts = (points || []).filter(([lng, lat]) =>
+    isPlausibleLatLng(lat, lng),
   );
   if (pts.length) {
     const lng = pts.reduce((s, p) => s + p[0], 0) / pts.length;
@@ -115,7 +115,8 @@ export function deriveCoordinateFromGlb(
   buffer: Buffer,
 ): DerivedCoordinate | null {
   try {
-    if (buffer.length < 20 || buffer.readUInt32LE(0) !== 0x46546c67) return null; // "glTF"
+    if (buffer.length < 20 || buffer.readUInt32LE(0) !== 0x46546c67)
+      return null; // "glTF"
     const jsonLen = buffer.readUInt32LE(12);
     if (jsonLen <= 0 || jsonLen + 20 > buffer.length) return null;
     const json = JSON.parse(buffer.toString('utf8', 20, 20 + jsonLen));
@@ -141,8 +142,69 @@ export function deriveCoordinateFromGlb(
       const viaNode = fromEcef(node.translation, 'glb:node-translation');
       if (viaNode) return viaNode;
     }
+
+    // Agisoft Metashape can export a GLB whose POSITION accessor holds raw
+    // WGS84 (longitude°, latitude°, altitude m) instead of local metres. Read
+    // the accessor bounds (no geometry decode) and, if they look geographic,
+    // take the centroid.
+    const viaVertices = deriveFromGlbPositionBounds(json);
+    if (viaVertices) return viaVertices;
+
     return null;
   } catch {
     return null;
   }
+}
+
+/**
+ * Inspect POSITION accessor min/max in an already-parsed glTF JSON chunk.
+ * Returns the WGS84 centroid when the bounds look like degrees (a Metashape
+ * "export in project CRS" GLB), else null. Mirrors the detection in
+ * `server/glb-tools/optimize.mjs`.
+ */
+function deriveFromGlbPositionBounds(json: any): DerivedCoordinate | null {
+  const accessors: any[] = Array.isArray(json.accessors) ? json.accessors : [];
+  const meshes: any[] = Array.isArray(json.meshes) ? json.meshes : [];
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let seen = false;
+
+  for (const mesh of meshes) {
+    for (const prim of mesh?.primitives || []) {
+      const idx = prim?.attributes?.POSITION;
+      const acc = typeof idx === 'number' ? accessors[idx] : null;
+      if (!acc || !Array.isArray(acc.min) || !Array.isArray(acc.max)) continue;
+      const [nx, ny] = acc.min.map(Number);
+      const [xx, xy] = acc.max.map(Number);
+      if (![nx, ny, xx, xy].every(Number.isFinite)) continue;
+      minX = Math.min(minX, nx);
+      minY = Math.min(minY, ny);
+      maxX = Math.max(maxX, xx);
+      maxY = Math.max(maxY, xy);
+      seen = true;
+    }
+  }
+  if (!seen) return null;
+
+  const spanX = maxX - minX;
+  const spanY = maxY - minY;
+  const looksGeographic =
+    Math.abs(minX) <= 180 &&
+    Math.abs(maxX) <= 180 &&
+    Math.abs(minY) <= 90 &&
+    Math.abs(maxY) <= 90 &&
+    spanX > 1e-9 &&
+    spanY > 1e-9 &&
+    spanX < 1 &&
+    spanY < 1 &&
+    (Math.abs(minX) > 0.01 || Math.abs(minY) > 0.01);
+  if (!looksGeographic) return null;
+
+  const lng = (minX + maxX) / 2;
+  const lat = (minY + maxY) / 2;
+  if (!isPlausibleLatLng(lat, lng)) return null;
+  return { lat, lng, source: 'glb:geo-vertices' };
 }

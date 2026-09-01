@@ -20,7 +20,11 @@ import { SchoolBuilding } from '../schools/entities/school-building.entity';
 import { StorageService } from '../storage/storage.service';
 import { KMZ_QUEUE } from './kmz.constants';
 import type { GlbJobData, Kmz2dJobData } from './kmz.processor';
-import { optimizeGlbFile, ensureGlbTools } from './glb-optimizer';
+import {
+  optimizeGlbFile,
+  ensureGlbTools,
+  type GlbOptimizeResult,
+} from './glb-optimizer';
 import {
   pickKmlCoordinate,
   deriveCoordinateFromGlb,
@@ -118,29 +122,37 @@ export class KmzService {
         mimetype,
       );
 
-      // 2. Best-effort: replace it with an optimized build (mesh simplify +
-      //    Meshopt geometry compression + WebP textures). Raw photogrammetry
-      //    exports are ~30x heavier than the web needs. Any failure here leaves
-      //    the raw model in place.
-      await this.optimizeAndReplaceGlb(
-        schoolId,
-        tempFilePath,
-        originalName,
-        fileBuffer,
-        mimetype,
-        filePath,
-      ).catch((err: any) =>
-        this.logger.warn(
-          `GLB optimize skipped for school ${schoolId}: ${err?.message || err}`,
-        ),
-      );
+      // 2. Best-effort: replace it with an optimized build (reproject geographic
+      //    vertices to local metres, mesh simplify, Meshopt geometry
+      //    compression, WebP textures). Raw photogrammetry exports are ~30x
+      //    heavier than the web needs. Any failure here leaves the raw model in
+      //    place.
+      const optResult: GlbOptimizeResult | null =
+        await this.optimizeAndReplaceGlb(
+          schoolId,
+          tempFilePath,
+          originalName,
+          fileBuffer,
+          mimetype,
+          filePath,
+        ).catch((err: any) => {
+          this.logger.warn(
+            `GLB optimize skipped for school ${schoolId}: ${err?.message || err}`,
+          );
+          return null;
+        });
 
-      // 3. If the GLB is georeferenced (CESIUM_RTC / ECEF root node), sync the
-      //    school's coordinates to it.
-      await this.syncSchoolCoordinate(
-        schoolId,
-        deriveCoordinateFromGlb(fileBuffer),
-      ).catch(() => {});
+      // 3. Sync the school's coordinates to whatever the model says. Preferred
+      //    source is the optimizer's reprojection centroid (it decoded the
+      //    geometry); otherwise fall back to a JSON-chunk read (CESIUM_RTC /
+      //    ECEF node / geographic POSITION bounds).
+      const derivedCoord: DerivedCoordinate | null =
+        optResult?.reprojected &&
+        optResult.lat != null &&
+        optResult.lng != null
+          ? { lat: optResult.lat, lng: optResult.lng, source: 'glb:reprojected' }
+          : deriveCoordinateFromGlb(fileBuffer);
+      await this.syncSchoolCoordinate(schoolId, derivedCoord).catch(() => {});
 
       await this.buildingRepository.delete({ schoolId });
       const building = this.buildingRepository.create({
@@ -188,12 +200,12 @@ export class KmzService {
     rawBuffer: Buffer,
     mimetype: string,
     servedObjectName: string,
-  ): Promise<void> {
+  ): Promise<GlbOptimizeResult | null> {
     if (!(await ensureGlbTools())) {
       this.logger.warn(
         'glb-tools unavailable (install failed or script missing) — serving raw GLB',
       );
-      return;
+      return null;
     }
 
     const workDir = path.join(KMZ_TMP_DIR, 'glb-opt');
@@ -206,11 +218,14 @@ export class KmzService {
         textureSize: 4096,
       });
 
-      if (r.bytesOut >= r.bytesIn) {
+      // Keep the raw model only when the optimizer neither shrank it nor had to
+      // reproject it — a reprojected build must replace the raw one even when it
+      // is not smaller, because the raw geometry renders as an invisible sliver.
+      if (r.bytesOut >= r.bytesIn && !r.reprojected) {
         this.logger.warn(
           `GLB optimize produced no size gain for ${schoolId} — keeping raw`,
         );
-        return;
+        return r;
       }
 
       const optimizedBuffer = fs.readFileSync(outPath);
@@ -228,8 +243,11 @@ export class KmzService {
       this.logger.log(
         `GLB optimized for ${schoolId}: ` +
           `${(r.bytesIn / 1048576).toFixed(1)}MB -> ${(r.bytesOut / 1048576).toFixed(1)}MB ` +
-          `(${r.ratio}x, ${r.trisIn.toLocaleString()} -> ${r.trisOut.toLocaleString()} tris, ${(r.ms / 1000).toFixed(0)}s)`,
+          `(${r.ratio}x, ${r.trisIn.toLocaleString()} -> ${r.trisOut.toLocaleString()} tris, ` +
+          `${(r.ms / 1000).toFixed(0)}s, ${r.method ?? 'exact'}` +
+          `${r.reprojected ? `, reprojected @ ${r.lat},${r.lng}` : ''})`,
       );
+      return r;
     } finally {
       try {
         fs.unlinkSync(outPath);

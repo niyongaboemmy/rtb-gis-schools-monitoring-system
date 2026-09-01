@@ -25,6 +25,15 @@ export interface GlbOptimizeResult {
   trisOut: number;
   ratio: number;
   ms: number;
+  /** Decimation path taken: 'exact' | 'sloppy' | 'none'. */
+  method?: string;
+  /** True when the source held geographic vertex coordinates that were baked
+   *  into a local metric frame. */
+  reprojected?: boolean;
+  /** WGS84 centroid of the model when it was geographically referenced, so the
+   *  school's location can be synced to it. Null otherwise. */
+  lat?: number | null;
+  lng?: number | null;
 }
 
 export interface GlbOptimizeOptions {
