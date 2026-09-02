@@ -51,6 +51,11 @@ import { useMapInteractions } from "./2dviewercomponents/hooks/useMapInteraction
 import { useSpatialDataSync } from "./2dviewercomponents/hooks/useSpatialDataSync";
 import { useMapMethods } from "./2dviewercomponents/hooks/useMapMethods";
 import { useReportIndicators } from "./2dviewercomponents/hooks/useReportIndicators";
+import { useSchoolLocationEditor } from "./2dviewercomponents/hooks/useSchoolLocationEditor";
+import { SchoolLocationEditorPanel } from "./2dviewercomponents/SchoolLocationEditorPanel";
+import { useToast } from "./ui/toast";
+import { useAuthorization } from "../hooks/useAuthorization";
+import { Permission } from "../lib/permissions";
 
 // Utils
 import type { School2DViewerProps } from "./2dviewercomponents/MapUtils";
@@ -211,6 +216,25 @@ export default function School2DViewer({
   const [hiddenAnnotationGroups, setHiddenAnnotationGroups] = useState<
     Set<string>
   >(new Set());
+
+  // ── School location editor (drag-a-pin to update lat/lng) ─────────────────
+  const notify = useToast();
+  const { isAuthorized } = useAuthorization();
+  const canSetLocation =
+    isAuthorized(Permission.EDIT_SCHOOL_LOCATION) ||
+    isAuthorized(Permission.MANAGE_SCHOOLS);
+  const locationEditActive = activeTool === "set_location";
+  const originalLonLat = useMemo<[number, number] | null>(
+    () =>
+      Number(school.latitude) && Number(school.longitude)
+        ? [Number(school.longitude), Number(school.latitude)]
+        : null,
+    [school.latitude, school.longitude],
+  );
+  const [locationDraft, setLocationDraft] = useState<[number, number] | null>(
+    null,
+  );
+  const [savingLocation, setSavingLocation] = useState(false);
 
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = useCallback(
@@ -477,6 +501,64 @@ export default function School2DViewer({
       [schoolBuildings],
     ),
   });
+
+  useSchoolLocationEditor({
+    mapRef,
+    mapReady,
+    active: locationEditActive && canSetLocation,
+    initialLonLat: originalLonLat,
+    onChange: setLocationDraft,
+    isDrawingRef,
+  });
+
+  // Reset the draft whenever the tool is closed.
+  useEffect(() => {
+    if (!locationEditActive) {
+      setLocationDraft(null);
+      setSavingLocation(false);
+    }
+  }, [locationEditActive]);
+
+  // Block non-permitted users from entering the tool at all.
+  useEffect(() => {
+    if (locationEditActive && !canSetLocation) {
+      setActiveTool("none");
+      notify.error("You don't have permission to change the school location.");
+    }
+  }, [locationEditActive, canSetLocation, notify]);
+
+  const handleSaveLocation = useCallback(async () => {
+    if (!locationDraft) return;
+    const [lng, lat] = locationDraft;
+    setSavingLocation(true);
+    try {
+      const round = (n: number) => Number(n.toFixed(7));
+      await api.patch(`/schools/${school.id}`, {
+        latitude: round(lat),
+        longitude: round(lng),
+      });
+      onUpdateSchool?.({ latitude: round(lat), longitude: round(lng) });
+      notify.success("School location updated.");
+      setActiveTool("none");
+      mapRef.current?.getView().animate({
+        center: fromLonLat([lng, lat]),
+        duration: 500,
+      });
+    } catch (err) {
+      console.error("Failed to update school location", err);
+      const message = (
+        err as { response?: { data?: { message?: string | string[] } } }
+      ).response?.data?.message;
+      notify.error(
+        Array.isArray(message)
+          ? message.join("\n")
+          : message || "Please try again.",
+        { title: "Failed to update location" },
+      );
+    } finally {
+      setSavingLocation(false);
+    }
+  }, [locationDraft, school.id, onUpdateSchool, notify, mapRef]);
 
   // ── Callbacks ─────────────────────────────────────────────────────────────
   const switchBasemap = useCallback(
@@ -1129,6 +1211,7 @@ export default function School2DViewer({
         clearMeasurements={() => measureSourceRef.current.clear()}
         activeTool={activeTool}
         setActiveTool={setActiveTool}
+        canSetLocation={canSetLocation}
         onZoomIn={() =>
           mapRef.current
             ?.getView()
@@ -1162,6 +1245,16 @@ export default function School2DViewer({
         showPlacesOverlay={showPlacesOverlay}
         setShowPlacesOverlay={setShowPlacesOverlay}
       />
+
+      {locationEditActive && canSetLocation && (
+        <SchoolLocationEditorPanel
+          draft={locationDraft}
+          original={originalLonLat}
+          saving={savingLocation}
+          onSave={handleSaveLocation}
+          onCancel={() => setActiveTool("none")}
+        />
+      )}
 
       <MapHud
         school={school}

@@ -434,13 +434,24 @@ export class KmzService {
             kmzProcessedAt: new Date(),
           });
 
-          // Final safety coordinate sync from initialView if still offset
-          if (initialView && initialView.latitude && initialView.longitude) {
-            await this.schoolRepository.update(schoolId, {
-              latitude: Number(initialView.latitude),
-              longitude: Number(initialView.longitude),
-            });
-          }
+          // Keep the school's coordinates in sync with the uploaded KMZ
+          // (authored view, ground-overlay bounds, or placemark centroid).
+          await this.syncSchoolCoordinate(
+            schoolId,
+            pickKmlCoordinate({
+              initialView,
+              groundOverlays: overlaysMetadata as any,
+              points: geojsonFeatures
+                .filter((f) => f?.geometry?.type === 'Point')
+                .map(
+                  (f) =>
+                    [
+                      Number(f.geometry.coordinates?.[0]),
+                      Number(f.geometry.coordinates?.[1]),
+                    ] as [number, number],
+                ),
+            }),
+          ).catch(() => {});
         } catch (zipError: any) {
           this.logger.warn(
             `JSZip failed: ${zipError.message}, trying unzipper`,

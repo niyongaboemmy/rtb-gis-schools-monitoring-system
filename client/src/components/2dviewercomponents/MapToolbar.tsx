@@ -24,6 +24,7 @@ import {
   PenTool,
   Box,
   MapPin,
+  MapPinned,
   Building2,
 } from "lucide-react";
 import { Button } from "../ui/button";
@@ -51,6 +52,8 @@ interface MapToolbarProps {
   clearMeasurements: () => void;
   activeTool: string;
   setActiveTool: React.Dispatch<React.SetStateAction<any>>;
+  /** Show the "set school location" pin tool (permission-gated by the parent). */
+  canSetLocation?: boolean;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onHome: () => void;
@@ -88,6 +91,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
   clearMeasurements,
   activeTool,
   setActiveTool,
+  canSetLocation,
   onZoomIn,
   onZoomOut,
   onHome,
@@ -366,6 +370,31 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                   Design New Block
                 </TooltipContent>
               </Tooltip>
+
+              {canSetLocation && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={
+                        activeTool === "set_location" ? "default" : "ghost"
+                      }
+                      size="icon"
+                      className={cn(
+                        "h-9 w-9 md:h-10 md:w-10 rounded-2xl transition-all",
+                        activeTool === "set_location"
+                          ? "bg-rose-500/20 text-rose-600 dark:text-rose-400"
+                          : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-rose-600 dark:hover:text-rose-400",
+                      )}
+                      onClick={() => handleToolClick("set_location")}
+                    >
+                      <MapPinned className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
+                    Set School Location
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
 
             <div className="hidden md:block h-px w-6 bg-white/10 shrink-0" />

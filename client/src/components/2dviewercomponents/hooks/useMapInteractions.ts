@@ -82,7 +82,8 @@ export function useMapInteractions({
     const isAnnotation =
       activeTool !== "none" &&
       activeTool !== "select" &&
-      activeTool !== "create_block";
+      activeTool !== "create_block" &&
+      activeTool !== "set_location";
     const isCreatingBlock = activeTool === "create_block";
 
     if (!isMeasurement && !isAnnotation && !isCreatingBlock) return;
