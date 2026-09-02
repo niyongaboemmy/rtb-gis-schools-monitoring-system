@@ -813,7 +813,8 @@ export default function School2DViewer({
     }
   }, [initialBuildingId, schoolBuildings, mapReady]);
 
-  // Animated zoom-in on first reveal of the map tab
+  // Animated fly-to on first reveal of the map tab: recenter on the school's
+  // current coordinate (falls back to the existing view centre when unset).
   useEffect(() => {
     if (activeTab !== "map" || !mapReady) return;
     if (mapTabAnimatedRef.current) return;
@@ -822,15 +823,24 @@ export default function School2DViewer({
     const view = mapRef.current?.getView();
     if (!view) return;
 
+    // When a KMZ/GeoTIFF overlay is present the loader fits the view to its
+    // extent (which frames the school) — don't fight that. Otherwise recenter
+    // on the school's own coordinate.
+    const target =
+      originalLonLat && !overlayExtentRef.current
+        ? fromLonLat(originalLonLat)
+        : view.getCenter();
+
     view.setZoom(15);
     setTimeout(() => {
       view.animate({
+        ...(target ? { center: target } : {}),
         zoom: 19,
         duration: 1000,
         easing: (t: number) => 1 - Math.pow(1 - t, 3),
       });
     }, 80);
-  }, [activeTab, mapReady]);
+  }, [activeTab, mapReady, originalLonLat]);
 
   const renderToast = () => (
     <AnimatePresence>

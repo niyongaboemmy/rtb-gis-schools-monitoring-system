@@ -31,7 +31,7 @@ export const SchoolLocationEditorPanel: React.FC<Props> = ({
   const hasChange = moved(draft, original);
 
   return (
-    <div className="fixed inset-x-4 bottom-24 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:bottom-8 z-40 flex justify-center pointer-events-none">
+    <div className="fixed inset-x-4 bottom-28 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:bottom-28 z-60 flex justify-center pointer-events-none">
       <Card className="pointer-events-auto w-full max-w-md bg-white/95 dark:bg-card/95 backdrop-blur-2xl border border-slate-200 dark:border-white/10 rounded-2xl p-4 shadow-2xl">
         <div className="flex items-start gap-3">
           <span className="mt-0.5 shrink-0 rounded-xl bg-rose-500/15 p-2 text-rose-500">
@@ -76,7 +76,7 @@ export const SchoolLocationEditorPanel: React.FC<Props> = ({
             size="sm"
             onClick={onSave}
             disabled={saving || !hasChange || !draft}
-            className="gap-1.5 min-w-[120px]"
+            className="gap-1.5 min-w-30"
           >
             {saving ? (
               <>
