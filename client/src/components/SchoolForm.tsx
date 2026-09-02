@@ -367,7 +367,9 @@ export function SchoolForm({
       buildingRoofCondition: str(b.roofCondition) || "good",
       buildingStructuralScore: str(b.structuralScore),
       buildingNotes: str(b.notes),
-      facilities: Array.isArray(b.facilities) ? (b.facilities as string[]) : [],
+      facilities: (Array.isArray(b.facilities)
+        ? b.facilities
+        : []) as BuildingData["facilities"],
       geolocation: {
         latitude: (b.centroidLat as number | null) ?? null,
         longitude: (b.centroidLng as number | null) ?? null,
