@@ -14,6 +14,7 @@ import Settings from "./pages/Settings";
 import Welcome from "./pages/Welcome";
 import { Permission } from "./lib/permissions";
 import { TooltipProvider } from "./components/ui/tooltip";
+import { ToastProvider } from "./components/ui/toast";
 import Profile from "./pages/Profile";
 import SchoolDecisionDashboard from "./pages/SchoolDecisionDashboard";
 import School3DViewPage from "./pages/School3DViewPage";
@@ -25,6 +26,7 @@ import School3DView from "./components/School3DView";
 export default function App() {
   return (
     <TooltipProvider>
+      <ToastProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
@@ -226,6 +228,7 @@ export default function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      </ToastProvider>
     </TooltipProvider>
   );
 }

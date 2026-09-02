@@ -27,6 +27,129 @@ import {
 } from "./school-form-steps";
 import { useAuthorization } from "../hooks/useAuthorization";
 import { Permission, type PermissionType } from "../lib/permissions";
+import { useToast } from "./ui/toast";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const URL_RE = /^https?:\/\/.+/i;
+
+/**
+ * Every scalar field the form binds to a text/select input. The API returns
+ * these as numbers or `null`; the inputs (and `validateStep`) expect strings.
+ * Used by `normalizeInitialData` so create and edit start from the same shape.
+ */
+const SCALAR_STRING_FIELDS: (keyof SchoolFormData)[] = [
+  "code", "name", "type", "status", "description", "establishedYear",
+  "province", "district", "sector", "cell", "village", "latitude", "longitude",
+  "elevation", "address", "phone", "email", "website", "headTeacher",
+  "buildingName", "buildingCode", "buildingFunction", "buildingFloors",
+  "buildingArea", "buildingYearBuilt", "buildingCondition",
+  "buildingRoofCondition", "buildingStructuralScore", "buildingNotes",
+  "maleTeachers", "femaleTeachers", "maleStudents", "femaleStudents",
+  "adminStaff", "maleAdminStaff", "femaleAdminStaff", "supportStaff",
+  "maleSupportStaff", "femaleSupportStaff", "totalTeachers", "totalStudents",
+  "numberOfAccessRoads", "roadState", "roadStatusPercentage", "usedLandArea",
+  "unusedLandArea", "kmz2dFilePath", "tifFilePath",
+];
+
+/**
+ * Coerce an API school payload into the form's shape: scalar fields become
+ * strings (`null`/`undefined` → ""), and the array fields are guaranteed to be
+ * arrays with string-typed numeric entries. Runs for both create (no-op on the
+ * empty case) and edit.
+ */
+function normalizeInitialData(
+  data?: Partial<SchoolFormData> | null,
+): Partial<SchoolFormData> {
+  if (!data) return {};
+  const out: Record<string, unknown> = { ...data };
+
+  for (const field of SCALAR_STRING_FIELDS) {
+    const value = (data as Record<string, unknown>)[field];
+    if (value === null || value === undefined) {
+      if (field in data) out[field] = "";
+    } else if (typeof value === "number") {
+      out[field] = String(value);
+    }
+  }
+
+  out.educationPrograms = (
+    Array.isArray(data.educationPrograms) ? data.educationPrograms : []
+  ).map((p) => ({
+    id: p.id || Math.random().toString(36).substring(2, 11),
+    code: p.code ?? "",
+    name: p.name ?? "",
+    totalStudents: p.totalStudents != null ? String(p.totalStudents) : "",
+    capacity: p.capacity != null ? String(p.capacity) : "",
+  }));
+
+  if (Array.isArray(data.buildings)) out.buildings = data.buildings;
+
+  return out as Partial<SchoolFormData>;
+}
+
+/**
+ * Per-step required-field / sanity validation. Returns a human-readable list of
+ * problems for the given step id; an empty array means the step is valid.
+ * Step ids match the `steps` array above.
+ */
+function validateStep(stepId: number, data: SchoolFormData): string[] {
+  const errors: string[] = [];
+  const currentYear = new Date().getFullYear();
+
+  switch (stepId) {
+    case 1: // Basic Info
+      if (!data.code.trim()) errors.push("School code is required");
+      if (!data.name.trim()) errors.push("School name is required");
+      if (!data.type) errors.push("School type is required");
+      if (!data.status) errors.push("Status is required");
+      if (data.establishedYear) {
+        const year = Number(data.establishedYear);
+        if (!Number.isInteger(year) || year < 1900 || year > currentYear)
+          errors.push(
+            `Established year must be a valid year between 1900 and ${currentYear}`,
+          );
+      }
+      break;
+
+    case 2: // Location
+      if (!data.latitude || !data.longitude)
+        errors.push("Pick the school location on the map");
+      if (!data.province.trim()) errors.push("Province is required");
+      if (!data.district.trim()) errors.push("District is required");
+      if (!data.sector.trim()) errors.push("Sector is required");
+      break;
+
+    case 3: // Contact
+      if (data.email.trim() && !EMAIL_RE.test(data.email.trim()))
+        errors.push("Email address is not valid");
+      if (data.website.trim() && !URL_RE.test(data.website.trim()))
+        errors.push("Website must start with http:// or https://");
+      break;
+
+    case 4: // Trades
+      (data.educationPrograms || []).forEach((p, i) => {
+        const hasData =
+          p.code?.trim() || p.totalStudents?.trim() || p.capacity?.trim();
+        if (!p.name.trim() && hasData)
+          errors.push(`Trade #${i + 1}: name is required`);
+      });
+      break;
+
+    case 7: // Buildings
+      (data.buildings || []).forEach((b, i) => {
+        const hasData =
+          b.buildingCode?.trim() ||
+          b.buildingFloors?.trim() ||
+          b.buildingArea?.trim() ||
+          b.buildingFunction?.trim();
+        if (!b.buildingName.trim() && hasData)
+          errors.push(`Building #${i + 1}: name is required`);
+      });
+      break;
+  }
+
+  return errors;
+}
 
 export interface SchoolFormData {
   code: string;
@@ -212,6 +335,7 @@ export function SchoolForm({
   schoolId,
 }: SchoolFormProps) {
   const { isAuthorized } = useAuthorization();
+  const toast = useToast();
   const [currentStep, setCurrentStep] = useState(1);
 
   // Filter steps based on permissions
@@ -224,28 +348,29 @@ export function SchoolForm({
 
   const [formData, setFormData] = useState<SchoolFormData>(() => ({
     ...defaultFormData,
-    ...(initialData as Partial<SchoolFormData>),
+    ...normalizeInitialData(initialData as Partial<SchoolFormData>),
   }));
 
   // Transform API building response to frontend format
-  const transformBuildingsFromApi = (buildings: any[]): BuildingData[] => {
-    if (!buildings || !Array.isArray(buildings)) return [];
-    return buildings.map((b) => ({
-      id: b.id || "",
-      buildingName: b.name || "",
-      buildingCode: b.buildingCode || "",
-      buildingFunction: b.function || "",
-      buildingFloors: b.floors?.toString() || "",
-      buildingArea: b.areaSquareMeters?.toString() || "",
-      buildingYearBuilt: b.yearBuilt?.toString() || "",
-      buildingCondition: b.condition || "good",
-      buildingRoofCondition: b.roofCondition || "good",
-      buildingStructuralScore: b.structuralScore?.toString() || "",
-      buildingNotes: b.notes || "",
-      facilities: Array.isArray(b.facilities) ? b.facilities : [],
+  const transformBuildingsFromApi = (buildings: unknown): BuildingData[] => {
+    if (!Array.isArray(buildings)) return [];
+    const str = (v: unknown) => (v == null ? "" : String(v));
+    return (buildings as Record<string, unknown>[]).map((b) => ({
+      id: str(b.id),
+      buildingName: str(b.name),
+      buildingCode: str(b.buildingCode),
+      buildingFunction: str(b.function),
+      buildingFloors: str(b.floors),
+      buildingArea: str(b.areaSquareMeters),
+      buildingYearBuilt: str(b.yearBuilt),
+      buildingCondition: str(b.condition) || "good",
+      buildingRoofCondition: str(b.roofCondition) || "good",
+      buildingStructuralScore: str(b.structuralScore),
+      buildingNotes: str(b.notes),
+      facilities: Array.isArray(b.facilities) ? (b.facilities as string[]) : [],
       geolocation: {
-        latitude: b.centroidLat ?? null,
-        longitude: b.centroidLng ?? null,
+        latitude: (b.centroidLat as number | null) ?? null,
+        longitude: (b.centroidLng as number | null) ?? null,
       },
     }));
   };
@@ -282,7 +407,7 @@ export function SchoolForm({
 
       setFormData((prev) => ({
         ...prev,
-        ...initialData,
+        ...normalizeInitialData(initialData),
         ...transformedBooleanFields,
         buildings: transformedBuildings,
       }));
@@ -297,7 +422,28 @@ export function SchoolForm({
     }));
   };
 
+  /** Validate every visible step; returns the first step id that has errors. */
+  const validateAllSteps = (): { firstBadStep: number | null; errors: string[] } => {
+    for (const step of visibleSteps) {
+      const stepErrors = validateStep(step.id, formData);
+      if (stepErrors.length > 0) {
+        return {
+          firstBadStep: step.id,
+          errors: stepErrors.map((e) => `${step.title}: ${e}`),
+        };
+      }
+    }
+    return { firstBadStep: null, errors: [] };
+  };
+
   const nextStep = () => {
+    const stepErrors = validateStep(currentStep, formData);
+    if (stepErrors.length > 0) {
+      toast.warning(stepErrors.join("\n"), {
+        title: "Please complete this step",
+      });
+      return;
+    }
     const currentIndex = visibleSteps.findIndex((s) => s.id === currentStep);
     if (currentIndex < visibleSteps.length - 1) {
       setCurrentStep(visibleSteps[currentIndex + 1].id);
@@ -313,15 +459,18 @@ export function SchoolForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitLoading(true);
 
-    // Validate required fields
-    if (!formData.latitude || !formData.longitude) {
-      alert("Please select a location on the map");
-      setSubmitLoading(false);
+    // Validate every step before hitting the API
+    const { firstBadStep, errors } = validateAllSteps();
+    if (firstBadStep !== null) {
+      setCurrentStep(firstBadStep);
+      toast.error(errors.join("\n"), {
+        title: "Some details need your attention",
+      });
       return;
     }
 
+    setSubmitLoading(true);
     try {
       // Send all fields that the server accepts
       const payload: Record<string, unknown> = {
@@ -397,7 +546,7 @@ export function SchoolForm({
           ? parseFloat(formData.unusedLandArea)
           : null,
         // trades (TVET Trades)
-        educationPrograms: formData.educationPrograms
+        educationPrograms: (formData.educationPrograms || [])
           .filter((p) => p.name.trim() !== "")
           .map((p) => ({
             code: p.code || null,
@@ -406,7 +555,7 @@ export function SchoolForm({
             capacity: p.capacity ? parseInt(p.capacity) : null,
           })),
         // Buildings
-        buildings: formData.buildings
+        buildings: (formData.buildings || [])
           .filter((b) => b.buildingName.trim() !== "")
           .map((b) => ({
             name: b.buildingName,
@@ -439,6 +588,11 @@ export function SchoolForm({
 
       setFormData(defaultFormData);
       setCurrentStep(1);
+      toast.success(
+        mode === "edit"
+          ? `${formData.name || "School"} updated successfully`
+          : `${formData.name || "School"} created successfully`,
+      );
       onSuccess();
       onClose();
     } catch (err) {
@@ -449,10 +603,11 @@ export function SchoolForm({
         response?: { data?: { message?: string | string[] } };
       };
       const message = axiosError.response?.data?.message;
-      alert(
+      toast.error(
         Array.isArray(message)
-          ? `Failed to save school:\n\n• ${message.join("\n• ")}`
-          : message || "Failed to save school. Check console for details.",
+          ? message.join("\n")
+          : message || "Please check your connection and try again.",
+        { title: "Failed to save school" },
       );
     } finally {
       setSubmitLoading(false);
@@ -461,7 +616,10 @@ export function SchoolForm({
 
   const handleCancel = () => {
     if (initialData) {
-      setFormData({ ...defaultFormData, ...initialData } as SchoolFormData);
+      setFormData({
+        ...defaultFormData,
+        ...normalizeInitialData(initialData),
+      } as SchoolFormData);
     } else {
       setFormData(defaultFormData);
     }

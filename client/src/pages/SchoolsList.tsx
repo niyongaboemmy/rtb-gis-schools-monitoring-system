@@ -44,6 +44,7 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { SchoolForm } from "../components/SchoolForm";
+import { useToast } from "../components/ui/toast";
 import { ImigongoPattern } from "../components/ui/ImigongoPattern";
 import {
   resolveDistrictName,
@@ -133,6 +134,7 @@ const SORT_DEFAULT_DIR: Record<SortKey, SortDir> = {
 
 export default function SchoolsList() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [params, setParams] = useSearchParams();
   const {
     allSchools,
@@ -409,9 +411,18 @@ export default function SchoolsList() {
       await api.delete(`/schools/${schoolId}`);
       invalidateAllSchools();
       void fetchAllSchools();
+      toast.success(`"${schoolName}" deleted`);
     } catch (err) {
       console.error("Delete failed", err);
-      alert("Failed to delete school");
+      const message = (
+        err as { response?: { data?: { message?: string | string[] } } }
+      ).response?.data?.message;
+      toast.error(
+        Array.isArray(message)
+          ? message.join("\n")
+          : message || "Please try again.",
+        { title: "Failed to delete school" },
+      );
     }
   };
 
