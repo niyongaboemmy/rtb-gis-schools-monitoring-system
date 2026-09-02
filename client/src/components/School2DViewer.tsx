@@ -14,6 +14,7 @@ import {
   Map as MapIcon,
   FileText,
   AlertTriangle,
+  Box,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useGoBack } from "../hooks/useGoBack";
@@ -906,7 +907,7 @@ export default function School2DViewer({
                 { id: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
                 { id: "details", icon: FileText, label: "Details" },
                 { id: "map", icon: MapIcon, label: "2D Map" },
-                // { id: "3d", icon: Box, label: "3D Map" },
+                { id: "3d", icon: Box, label: "3D Map" },
               ] as const
             ).map(({ id, icon: Icon, label }) => (
               <button
