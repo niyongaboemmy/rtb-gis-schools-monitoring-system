@@ -168,26 +168,40 @@ function SubScore({
 }) {
   const v = int(value);
   const tone = scoreTone(v);
+  // Points this factor adds to the 0–100 overall index = score × weight.
+  const contribution = (v * weight) / 100;
   return (
     <div className="p-3 rounded-2xl border border-border/20 bg-background/40">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 gap-2">
         <div className="flex items-center gap-1.5 text-muted-foreground min-w-0">
           <Icon className="w-3.5 h-3.5 shrink-0" />
           <span className="text-[10px] font-black uppercase tracking-wide truncate">{label}</span>
         </div>
-        <span className="text-[8px] font-black text-muted-foreground/60 tabular-nums">{weight}%</span>
+        <span className="text-[8px] font-black text-muted-foreground/50 tabular-nums uppercase tracking-wider shrink-0">
+          weight {weight}%
+        </span>
       </div>
       <div className="flex items-center gap-2">
         <div className="flex-1 h-1.5 rounded-full bg-muted/50 overflow-hidden">
           <div className={cn("h-full rounded-full transition-all", tone.bar)} style={{ width: `${Math.min(v, 100)}%` }} />
         </div>
-        <span className={cn("text-xs font-black font-mono w-7 text-right tabular-nums", tone.text)}>{v}</span>
-      </div>
-      {gap && (
-        <span className="mt-1.5 inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
-          <TriangleAlert className="w-2.5 h-2.5" /> Data gap
+        <span className={cn("text-xs font-black font-mono text-right tabular-nums", tone.text)}>
+          {v}
+          <span className="text-muted-foreground/40 font-bold text-[9px]">/100</span>
         </span>
-      )}
+      </div>
+      <div className="mt-1.5 flex items-center justify-between gap-2">
+        {gap ? (
+          <span className="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+            <TriangleAlert className="w-2.5 h-2.5" /> Data gap
+          </span>
+        ) : (
+          <span />
+        )}
+        <span className="text-[8px] font-bold tabular-nums text-muted-foreground/50">
+          adds {contribution.toFixed(1)} to overall
+        </span>
+      </div>
     </div>
   );
 }
@@ -387,11 +401,17 @@ export default function AnalyticsDecisions() {
                 ))}
               </div>
               <p className="mt-2 text-[10px] font-medium text-muted-foreground leading-relaxed">
-                A single 0–100 index. Higher = healthier school = lower intervention priority.
+                A single 0–100 index. Each factor is scored 0–100, then multiplied
+                by its weight below; the weighted parts sum to the overall score.
+                Higher = healthier school = lower intervention priority.
               </p>
             </div>
 
             <div className="space-y-3">
+              <div className="flex items-center gap-2.5 pb-1 border-b border-border/20">
+                <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 flex-1">Factor</span>
+                <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60">Weight</span>
+              </div>
               {WEIGHTS.map((w) => (
                 <div key={w.key} className="flex items-center gap-2.5">
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: w.color }} />
@@ -400,6 +420,10 @@ export default function AnalyticsDecisions() {
                   <span className="text-[11px] font-black font-mono tabular-nums text-muted-foreground">{w.value}%</span>
                 </div>
               ))}
+              <div className="flex items-center gap-2.5 pt-1 border-t border-border/20">
+                <span className="text-[10px] font-black uppercase tracking-wider flex-1">Total</span>
+                <span className="text-[11px] font-black font-mono tabular-nums">100%</span>
+              </div>
             </div>
 
             {/* Priority bands */}

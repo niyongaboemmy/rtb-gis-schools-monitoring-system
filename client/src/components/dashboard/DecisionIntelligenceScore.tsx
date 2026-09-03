@@ -266,9 +266,10 @@ export const DecisionIntelligenceScore = React.memo(
                         <div className="w-10 h-10 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20 flex items-center justify-center text-blue-500 dark:text-blue-500 group-hover/metric:text-primary transition-colors">
                           <metric.icon className="w-5 h-5" />
                         </div>
-                        {/* Score value */}
-                        <span className="text-lg font-medium text-slate-900 dark:text-white/80">
-                          {hasScore ? `${metric.score}%` : "—"}
+                        {/* Score value — 0–100 factor score, not a share of the total */}
+                        <span className="text-lg font-medium text-slate-900 dark:text-white/80 tabular-nums">
+                          {hasScore ? metric.score : "—"}
+                          <span className="text-[11px] text-slate-400 dark:text-white/30">/100</span>
                         </span>
                       </div>
 
@@ -279,7 +280,7 @@ export const DecisionIntelligenceScore = React.memo(
                             {metric.label}
                           </p>
                           <span className="shrink-0 text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-white/30 border border-slate-200 dark:border-white/6">
-                            {metric.weight}
+                            weight {metric.weight}
                           </span>
                         </div>
 
@@ -292,6 +293,13 @@ export const DecisionIntelligenceScore = React.memo(
                             className={cn("h-full rounded-full transition-all duration-1000", barColor(metric.score))}
                           />
                         </div>
+
+                        {/* How this factor feeds the overall index */}
+                        {hasScore && (
+                          <p className="text-[10px] tabular-nums text-slate-400 dark:text-white/30">
+                            {metric.score} × {metric.weight} = {((metric.score * parseFloat(metric.weight)) / 100).toFixed(1)} pts of the overall
+                          </p>
+                        )}
                       </div>
                     </motion.div>
                   );
