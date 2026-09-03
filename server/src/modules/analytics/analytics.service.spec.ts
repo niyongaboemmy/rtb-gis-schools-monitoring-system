@@ -375,6 +375,24 @@ describe('calculatePopulationScore', () => {
     const res = await service.calculateSchoolScore(school);
     expect(Number(res.populationPressureScore)).toBe(100);
   });
+
+  it('loads population by schoolId when the ORM relation is empty (school_id FK is NULL)', async () => {
+    const population = makeRepo({
+      findOne: jest
+        .fn()
+        .mockResolvedValue({ schoolAgePopulation2km: 1500 } as PopulationData),
+    });
+    const { service } = await makeService({ population });
+    // relation deliberately empty; repo returns demand 1500 / default cap 300 = 5 → 10
+    const school = buildSchool({ populationData: [] });
+    const res = await service.calculateSchoolScore(school);
+    expect(population.findOne).toHaveBeenCalledWith({
+      where: { schoolId: 'school-1' },
+      order: { syncedAt: 'DESC' },
+    });
+    expect(Number(res.populationPressureScore)).toBe(10);
+    expect(res.hasPopDataGap).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

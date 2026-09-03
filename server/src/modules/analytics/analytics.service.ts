@@ -878,34 +878,42 @@ export class AnalyticsService {
 
     // ── Parallel peer-benchmarking queries ────────────────────────────────────
     // Exclude the current school from both averages so it doesn't skew its own peer group.
-    const [districtAvgRow, provinceAvgRow, allReports] = await Promise.all([
-      whereActiveSchool(
-        this.schoolRepository
-          .createQueryBuilder('s')
-          .select('ROUND(AVG(s.overallScore)::numeric, 1)', 'avg')
-          .where('s.district = :d', { d: school.district })
-          .andWhere('s.id != :id', { id: school.id })
-          .andWhere('s.overallScore IS NOT NULL'),
-        's',
-      ).getRawOne(),
+    const [districtAvgRow, provinceAvgRow, allReports, populationRow] =
+      await Promise.all([
+        whereActiveSchool(
+          this.schoolRepository
+            .createQueryBuilder('s')
+            .select('ROUND(AVG(s.overallScore)::numeric, 1)', 'avg')
+            .where('s.district = :d', { d: school.district })
+            .andWhere('s.id != :id', { id: school.id })
+            .andWhere('s.overallScore IS NOT NULL'),
+          's',
+        ).getRawOne(),
 
-      whereActiveSchool(
-        this.schoolRepository
-          .createQueryBuilder('s')
-          .select('ROUND(AVG(s.overallScore)::numeric, 1)', 'avg')
-          .where('s.province = :p', { p: school.province })
-          .andWhere('s.id != :id', { id: school.id })
-          .andWhere('s.overallScore IS NOT NULL'),
-        's',
-      ).getRawOne(),
+        whereActiveSchool(
+          this.schoolRepository
+            .createQueryBuilder('s')
+            .select('ROUND(AVG(s.overallScore)::numeric, 1)', 'avg')
+            .where('s.province = :p', { p: school.province })
+            .andWhere('s.id != :id', { id: school.id })
+            .andWhere('s.overallScore IS NOT NULL'),
+          's',
+        ).getRawOne(),
 
-      // Reports fetch moved here to run in parallel
-      this.issueReportRepository.find({
-        where: { schoolId },
-        order: { createdAt: 'DESC' },
-        take: 2000,
-      }),
-    ]);
+        // Reports fetch moved here to run in parallel
+        this.issueReportRepository.find({
+          where: { schoolId },
+          order: { createdAt: 'DESC' },
+          take: 2000,
+        }),
+
+        // Population data — queried by the `schoolId` varchar column, not the
+        // (always-empty) `populationData` relation. See calculateSchoolScore.
+        this.populationRepository.findOne({
+          where: { schoolId },
+          order: { syncedAt: 'DESC' },
+        }),
+      ]);
 
     // Parse AVG results — pg driver returns numeric as string
     const districtAvg =
@@ -938,7 +946,7 @@ export class AnalyticsService {
       school.roadStatusPercentage != null, // accessibility data
       establishedYearParsed != null, // school age data
       latestSurvey != null, // facility survey done
-      (school.populationData?.length ?? 0) > 0, // population data
+      populationRow != null, // population data
       school.kmzStatus === KmzProcessingStatus.COMPLETED, // GIS mapping completed
     ];
     const filledCount = completenessChecks.filter(Boolean).length;
@@ -1112,7 +1120,18 @@ export class AnalyticsService {
 
   async calculateSchoolScore(school: School): Promise<DecisionAssessment> {
     const buildings = school.buildings || [];
-    const population = school.populationData?.[0];
+    // Load population data by the `schoolId` varchar column rather than the
+    // `school.populationData` relation: the relation joins on the `school_id`
+    // FK column, which the ArcGIS sync never populates (it writes `schoolId`),
+    // so the relation is always empty and every school falls back to a neutral
+    // capacity-resilience score with a spurious data-gap flag.
+    const population =
+      school.populationData?.[0] ??
+      (await this.populationRepository.findOne({
+        where: { schoolId: school.id },
+        order: { syncedAt: 'DESC' },
+      })) ??
+      undefined;
 
     // Facility survey compliance score (15% weight)
     const facilityScore = await this.calculateFacilityComplianceScore(
