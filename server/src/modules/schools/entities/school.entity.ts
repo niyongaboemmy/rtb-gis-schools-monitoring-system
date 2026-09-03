@@ -230,7 +230,9 @@ export class School {
   @Column({ type: 'text', nullable: true })
   modelOptimizeError: string | null;
 
-  @Column({ nullable: true })
+  // Explicit type: a `Date | null` union erases to `Object` under
+  // reflect-metadata, which TypeORM cannot map to a Postgres column.
+  @Column({ type: 'timestamp', nullable: true })
   modelOptimizedAt: Date | null;
 
   // Site-wide annotations for 2D map (measurements, labels)
