@@ -196,10 +196,29 @@ export class KmzService implements OnModuleInit {
       });
       const optResult = opt.result;
 
+      // A failed re-optimize must not downgrade a school that already serves a
+      // good optimized build (a previous run, or one produced off-box). Only
+      // report failure when what's actually served is still the heavy raw file.
+      let effective = opt;
+      if (!opt.optimized && isRestore) {
+        const servedBytes = this.servedFileBytes(filePath);
+        if (servedBytes != null && servedBytes < fileBuffer.byteLength * 0.5) {
+          this.logger.log(
+            `Re-optimize failed for ${schoolId} but a ${(
+              servedBytes / 1048576
+            ).toFixed(1)} MB optimized build is already served — keeping it`,
+          );
+          effective = { result: null, optimized: true, error: null };
+        }
+      }
+
       await this.writeModelTelemetry(schoolId, {
-        optimized: opt.optimized,
-        bytes: opt.result?.bytesOut ?? fileBuffer.byteLength,
-        error: opt.error,
+        optimized: effective.optimized,
+        bytes:
+          effective.result?.bytesOut ??
+          this.servedFileBytes(filePath) ??
+          fileBuffer.byteLength,
+        error: effective.error,
       });
 
       // 3. Sync the school's coordinates to whatever the model says. Preferred
@@ -248,6 +267,20 @@ export class KmzService implements OnModuleInit {
           /* already gone */
         }
       }
+    }
+  }
+
+  /**
+   * Byte size of the object currently served at `objectName`, from the local
+   * storage root. null for the MinIO backend or when the file is absent.
+   */
+  private servedFileBytes(objectName: string): number | null {
+    const root = this.storageService.getLocalRoot();
+    if (!root) return null;
+    try {
+      return fs.statSync(path.join(root, objectName)).size;
+    } catch {
+      return null;
     }
   }
 
