@@ -349,9 +349,13 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const hoverPtRef = useRef<MeasurePoint | null>(null);
 
   const [phase, setPhase] = useState<"idle" | "loading" | "viewing">("idle");
-  // True while we're still asking the file-server whether this school has a GLB,
-  // so the "no model" drop-zone doesn't flash before loading actually starts.
-  const [discovering, setDiscovering] = useState(false);
+  // True from the moment the 3D tab opens until we've *decided* what to show
+  // (viewer, "preparing on server", or the upload drop-zone). Guards against the
+  // upload form flashing in the gap between discovery and the first byte.
+  const [discovering, setDiscovering] = useState(true);
+  // Only true once discovery has confirmed this school has NO model at all —
+  // the only case where the upload drop-zone should appear.
+  const [noModel, setNoModel] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -845,6 +849,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     }
 
     setModelPrep(null);
+    setDiscovering(false);
     loadGLBFromURL(finalUrl, fileName);
   }, [schoolId, loadGLBFromURL, loadGLBFromBuffer]);
 
@@ -879,6 +884,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     if (discoveryForRef.current === schoolId) return;
     discoveryForRef.current = schoolId;
     setDiscovering(true);
+    setNoModel(false);
     fetch(`${FILE_SERVER_URL}/schools/${schoolId}/3d`)
       .then(res => res.ok ? res.json() : Promise.reject("Model not found"))
       .then(data => {
@@ -889,16 +895,20 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
           const safePath = rawPath.split("/").map(encodeURIComponent).join("/");
           const finalUrl =
             `${FILE_SERVER_URL}${safePath}` + (query ? `?${query}` : "");
+          // maybeLoad owns `discovering` from here — it clears it once it has
+          // decided (cache hit → load, server still optimising → prep gate,
+          // ready → download). Until then the loading indicator stays up.
           void maybeLoad(finalUrl, data.filename || "model.glb");
         } else {
-          setError("3D model not found for this school.");
+          setDiscovering(false);
+          setNoModel(true);
         }
       })
       .catch(e => {
         console.error("Discovery failed", e);
-        setError("3D model not found for this school.");
-      })
-      .finally(() => setDiscovering(false));
+        setDiscovering(false);
+        setNoModel(true);
+      });
   }, [schoolId, phase, maybeLoad]);
 
   useEffect(() => {
@@ -1719,13 +1729,13 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
           Saving Changes...
         </div>
       )}
-      {phase === "idle" && discovering && (
+      {phase === "idle" && discovering && !modelPrep && (
         <div className="loading-overlay">
           <div className="spinner-ring" />
-          <div className="progress-label">Checking for 3D model…</div>
+          <div className="progress-label">Loading 3D model…</div>
         </div>
       )}
-      {phase === "idle" && !discovering && modelPrep && (
+      {phase === "idle" && modelPrep && (
         <div className="loading-overlay">
           <div className="spinner-ring" />
           <div className="progress-label">Preparing an optimized 3D model on the server…</div>
@@ -1742,7 +1752,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
           </button>
         </div>
       )}
-      {phase === "idle" && !discovering && !modelPrep && (
+      {phase === "idle" && noModel && !discovering && !modelPrep && (
         <ViewerLoadingScreens phase={phase} progress={progress} progressLabel={progressLabel} isDragging={isDragging} schoolName={schoolName} setIsDragging={setIsDragging} handleDrop={handleDrop} handleInputChange={handleInputChange} />
       )}
       {phase !== "idle" && (

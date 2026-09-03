@@ -37,6 +37,17 @@ const TOOLS_NODE_MODULES = path.join(
   'node_modules',
   '@gltf-transform',
 );
+// A nested second `sharp` (pulled by ndarray-pixels) means two libvips builds
+// load into one process — the WebP texture encoder then fails mid-run with
+// `webpsave: unable to encode`. package.json pins sharp to match, so its
+// presence just signals the install predates that pin and needs a redo.
+const DUP_SHARP = path.join(
+  TOOLS_DIR,
+  'node_modules',
+  'ndarray-pixels',
+  'node_modules',
+  'sharp',
+);
 
 export interface GlbOptimizeResult {
   bytesIn: number;
@@ -82,8 +93,14 @@ export function ensureGlbTools(): Promise<boolean> {
   if (ensurePromise) return ensurePromise;
   ensurePromise = (async () => {
     if (!fs.existsSync(SCRIPT_PATH)) return false;
-    if (fs.existsSync(TOOLS_NODE_MODULES)) return true;
-    logger.log('glb-tools deps missing — running one-time npm install…');
+    const haveDeps = fs.existsSync(TOOLS_NODE_MODULES);
+    const dupSharp = fs.existsSync(DUP_SHARP);
+    if (haveDeps && !dupSharp) return true;
+    logger.log(
+      haveDeps
+        ? 'glb-tools: duplicate sharp/libvips detected — reinstalling to dedupe…'
+        : 'glb-tools deps missing — running one-time npm install…',
+    );
     return await new Promise<boolean>((resolve) => {
       const npm = spawn(
         'npm',
@@ -99,6 +116,11 @@ export function ensureGlbTools(): Promise<boolean> {
       });
       npm.on('exit', (code) => {
         const ok = code === 0 && fs.existsSync(TOOLS_NODE_MODULES);
+        if (ok && fs.existsSync(DUP_SHARP)) {
+          logger.warn(
+            'glb-tools: sharp is still duplicated after reinstall — WebP texture encode may fail on large models',
+          );
+        }
         logger[ok ? 'log' : 'error'](
           `glb-tools npm install exited ${code}${ok ? ' — optimizer ready' : ''}`,
         );
