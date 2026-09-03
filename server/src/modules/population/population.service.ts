@@ -8,6 +8,10 @@ import { firstValueFrom, timeout } from 'rxjs';
 import { PopulationData } from './entities/population-data.entity';
 import { School } from '../schools/entities/school.entity';
 import { AccessScope, applySchoolScope } from '../../common/scope/access-scope';
+import {
+  ACTIVE_SCHOOL_STATUS,
+  whereActiveSchool,
+} from '../../common/school/active-school';
 
 interface ArcGISFeature {
   attributes: {
@@ -48,7 +52,9 @@ export class PopulationService {
   ): Promise<{ synced: number; errors: string[] }> {
     const schools = schoolId
       ? await this.schoolRepository.find({ where: { id: schoolId } })
-      : await this.schoolRepository.find();
+      : await this.schoolRepository.find({
+          where: { status: ACTIVE_SCHOOL_STATUS as any },
+        });
 
     let synced = 0;
     const errors: string[] = [];
@@ -110,7 +116,8 @@ export class PopulationService {
   async getAllPopulation(scope?: AccessScope): Promise<PopulationData[]> {
     const qb = this.populationRepository
       .createQueryBuilder('pop')
-      .leftJoinAndSelect('pop.school', 'school');
+      .innerJoinAndSelect('pop.school', 'school');
+    whereActiveSchool(qb, 'school');
     if (scope) applySchoolScope(qb, scope, 'school');
     return qb.getMany();
   }

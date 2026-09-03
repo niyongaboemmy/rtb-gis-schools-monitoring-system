@@ -85,7 +85,14 @@ export default function NationalMap() {
     patch({ priority: null, province: null, school: null });
 
   /* ── derived data ── */
-  const mappable = useMemo(() => allSchools.filter(hasCoords), [allSchools]);
+  const mappable = useMemo(
+    // Operating network only — inactive / under-renovation schools are hidden.
+    () =>
+      allSchools.filter(
+        (s) => hasCoords(s) && (s.status ?? "active") === "active",
+      ),
+    [allSchools],
+  );
   const provinces = useMemo(
     () =>
       [...new Set(mappable.map((s) => s.province).filter(Boolean))].sort(),
@@ -129,9 +136,11 @@ export default function NationalMap() {
   }, [bounds, filtered]);
 
   const avgScore = useMemo(() => {
-    if (!filtered.length) return 0;
+    // Average over assessed schools only — unscored schools would drag it to 0.
+    const scored = filtered.filter((s) => s.overallScore != null);
+    if (!scored.length) return 0;
     return Math.round(
-      filtered.reduce((sum, s) => sum + calculatedScore(s), 0) / filtered.length,
+      scored.reduce((sum, s) => sum + calculatedScore(s), 0) / scored.length,
     );
   }, [filtered]);
 

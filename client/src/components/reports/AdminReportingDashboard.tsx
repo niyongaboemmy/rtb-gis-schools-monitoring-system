@@ -300,6 +300,12 @@ export function AdminReportingDashboard() {
     () => new Map(allSchools.map((s) => [s.id, s])),
     [allSchools],
   );
+  // Operating-network size — denominator for "% of schools" KPIs.
+  const activeSchoolCount = useMemo(
+    () =>
+      allSchools.filter((s) => (s.status ?? "active") === "active").length,
+    [allSchools],
+  );
   const provinceOf = useCallback(
     (r: Report) =>
       schoolMap.get(r.schoolId)?.province ?? r.school?.province ?? "Unknown",
@@ -873,7 +879,7 @@ export function AdminReportingDashboard() {
                 icon={SchoolIcon}
                 label="Schools Affected"
                 value={kpi.schoolsAffected}
-                hint={allSchools.length ? `${Math.round((kpi.schoolsAffected / allSchools.length) * 100)}% of ${allSchools.length}` : undefined}
+                hint={activeSchoolCount ? `${Math.round((kpi.schoolsAffected / activeSchoolCount) * 100)}% of ${activeSchoolCount}` : undefined}
                 delta={kpi.d.schoolsAffected}
                 tone="text-violet-500"
                 toneBg="bg-violet-500/12"

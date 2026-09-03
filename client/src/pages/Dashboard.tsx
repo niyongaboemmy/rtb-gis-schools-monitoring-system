@@ -121,6 +121,9 @@ export default function Dashboard() {
   const schools = useMemo(
     () =>
       allSchools
+        // Analytics reflect the operating network only — drop inactive /
+        // under-renovation schools (server does the same for every aggregate).
+        .filter((s) => (s.status ?? "active") === "active")
         .map((s) => ({ ...s, calculatedScore: calculatedScore(s) }))
         .sort((a, b) => b.calculatedScore - a.calculatedScore),
     [allSchools],
@@ -159,7 +162,7 @@ export default function Dashboard() {
       <div className="relative z-10 space-y-8">
         {/* ── Cover map — full-bleed NASA-style locator hero ── */}
         <SchoolCoverMap
-          schools={allSchools}
+          schools={schools}
           variant="hero"
           interactive
           title="National School Network"

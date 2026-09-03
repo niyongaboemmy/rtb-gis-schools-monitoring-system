@@ -30,6 +30,10 @@ import {
 } from '../reports/entities/issue-report.entity';
 import { AccessScope, applySchoolScope } from '../../common/scope/access-scope';
 import {
+  ACTIVE_SCHOOL_STATUS,
+  whereActiveSchool,
+} from '../../common/school/active-school';
+import {
   NEUTRAL_SCORE,
   CONDITION_SCORE_MAP,
   COMPLIANCE_SCORE_MAP,
@@ -91,6 +95,21 @@ export class AnalyticsService {
     ): T =>
       scopeIds ? qb.andWhere(`${col} IN (:...scopeIds)`, { scopeIds }) : qb;
 
+    // Constrain to operating schools only. `statusAlias` is the School alias in
+    // the query ('s' everywhere here); every aggregate must exclude `inactive`
+    // and `under_renovation` rows so national KPIs reflect the live network.
+    const activeInScope = <T extends { andWhere: (...a: any[]) => T }>(
+      qb: T,
+      col: string,
+      statusAlias = 's',
+    ): T =>
+      inScope(
+        qb.andWhere(`${statusAlias}.status = :activeStatus`, {
+          activeStatus: ACTIVE_SCHOOL_STATUS,
+        }),
+        col,
+      );
+
     // Run all aggregate queries in parallel — each raw result is parsed immediately
     // after the Promise.all because the pg driver returns numeric columns as strings.
     const [
@@ -108,16 +127,14 @@ export class AnalyticsService {
       provinceStatsRaw,
       capacityRows,
     ] = await Promise.all([
-      // 1. total school count
-      scopeIds
-        ? inScope(
-            this.schoolRepository.createQueryBuilder('s'),
-            's.id',
-          ).getCount()
-        : this.schoolRepository.count(),
+      // 1. total active school count
+      activeInScope(
+        this.schoolRepository.createQueryBuilder('s'),
+        's.id',
+      ).getCount(),
 
       // 2. counts per priority band
-      inScope(
+      activeInScope(
         this.schoolRepository
           .createQueryBuilder('s')
           .select('s.priorityLevel', 'priority')
@@ -128,7 +145,7 @@ export class AnalyticsService {
         .getRawMany(),
 
       // 3. critical schools spotlight (top 5)
-      inScope(
+      activeInScope(
         this.schoolRepository
           .createQueryBuilder('s')
           .where('s.priorityLevel = :crit', { crit: PriorityLevel.CRITICAL }),
@@ -138,11 +155,12 @@ export class AnalyticsService {
         .take(5)
         .getMany(),
 
-      // 4. recent assessments feed — join on schoolId varchar (school_id FK is NULL)
-      inScope(
+      // 4. recent assessments feed — inner-join on schoolId varchar (school_id FK
+      //    is NULL); the join + active filter drop orphaned / non-active rows.
+      activeInScope(
         this.assessmentRepository
           .createQueryBuilder('da')
-          .leftJoinAndMapOne(
+          .innerJoinAndMapOne(
             'da.school',
             'School',
             's',
@@ -157,9 +175,10 @@ export class AnalyticsService {
       // 5. national score sub-dimension averages — queried directly from
       //    assessmentRepository to avoid the broken dual-FK situation on
       //    decision_assessments (school_id FK is NULL; schoolId varchar has data).
-      inScope(
+      activeInScope(
         this.assessmentRepository
           .createQueryBuilder('da')
+          .innerJoin('School', 's', 'CAST(s.id AS text) = da.schoolId')
           .select('ROUND(AVG(da.overallScore)::numeric, 1)', 'nationalAvgScore')
           .addSelect('COUNT(da.id)', 'scoredCount'),
         'da.schoolId',
@@ -187,7 +206,7 @@ export class AnalyticsService {
         .getRawOne(),
 
       // 6. total enrolled students (school-level roll-up)
-      inScope(
+      activeInScope(
         this.schoolRepository
           .createQueryBuilder('s')
           .select('COALESCE(SUM(s.totalStudents), 0)', 'totalStudents'),
@@ -196,7 +215,7 @@ export class AnalyticsService {
 
       // 7. total teaching staff — prefer gender breakdown when populated,
       //    fall back to s.totalTeachers (seed data only populates totalTeachers).
-      inScope(
+      activeInScope(
         this.schoolRepository.createQueryBuilder('s').select(
           `COALESCE(SUM(CASE
             WHEN s.maleTeachers IS NOT NULL OR s.femaleTeachers IS NOT NULL
@@ -209,7 +228,7 @@ export class AnalyticsService {
       ).getRawOne(),
 
       // 8. KMZ coverage — only COMPLETED uploads count as "mapped"
-      inScope(
+      activeInScope(
         this.schoolRepository
           .createQueryBuilder('s')
           .select('COUNT(*)', 'withKmz')
@@ -219,33 +238,36 @@ export class AnalyticsService {
         's.id',
       ).getRawOne(),
 
-      // 9. survey coverage — distinct schools with ≥1 facility survey record
-      inScope(
+      // 9. survey coverage — distinct active schools with ≥1 facility survey record
+      activeInScope(
         this.surveyRepository
           .createQueryBuilder('sv')
+          .innerJoin('School', 's', 'CAST(s.id AS text) = sv.schoolId')
           .select('COUNT(DISTINCT sv.schoolId)', 'withSurvey'),
         'sv.schoolId',
       ).getRawOne(),
 
       // 10. total estimated rehabilitation budget
-      inScope(
+      activeInScope(
         this.assessmentRepository
           .createQueryBuilder('da')
+          .innerJoin('School', 's', 'CAST(s.id AS text) = da.schoolId')
           .select('COALESCE(SUM(da.estimatedBudgetRwf), 0)', 'totalBudget')
           .where('da.estimatedBudgetRwf IS NOT NULL'),
         'da.schoolId',
       ).getRawOne(),
 
       // 11. last recalculation timestamp (most recent assessment write)
-      inScope(
+      activeInScope(
         this.assessmentRepository
           .createQueryBuilder('da')
+          .innerJoin('School', 's', 'CAST(s.id AS text) = da.schoolId')
           .select('MAX(da.updatedAt)', 'lastCalculatedAt'),
         'da.schoolId',
       ).getRawOne(),
 
       // 12. province stats — all four priority bands + avg/min/max scores
-      inScope(
+      activeInScope(
         this.schoolRepository
           .createQueryBuilder('s')
           .select('s.province', 'province')
@@ -277,16 +299,12 @@ export class AnalyticsService {
 
       // 13. capacity-utilisation inputs — program-level roll-up done in JS
       //     (educationPrograms is a jsonb array; SQL aggregation is brittle).
-      scopeIds
-        ? inScope(
-            this.schoolRepository
-              .createQueryBuilder('s')
-              .select(['s.id', 's.totalStudents', 's.educationPrograms']),
-            's.id',
-          ).getMany()
-        : this.schoolRepository.find({
-            select: ['id', 'totalStudents', 'educationPrograms'],
-          }),
+      activeInScope(
+        this.schoolRepository
+          .createQueryBuilder('s')
+          .select(['s.id', 's.totalStudents', 's.educationPrograms']),
+        's.id',
+      ).getMany(),
     ]);
 
     // National capacity utilisation = Σ enrolled ÷ Σ programme capacity (0–100+).
@@ -408,9 +426,13 @@ export class AnalyticsService {
     // Cannot use relations: ['school'] — the school_id FK column is NULL in existing
     // records (data is stored in the schoolId varchar column instead).
     // Fetch schools separately and build a lookup map.
+    // Only active schools are exported; the `schoolMap.has` filter below then
+    // also drops assessments whose school was deleted or deactivated.
     const [assessments, schools] = await Promise.all([
       this.assessmentRepository.find({ order: { overallScore: 'ASC' } }),
-      this.schoolRepository.find(),
+      this.schoolRepository.find({
+        where: { status: ACTIVE_SCHOOL_STATUS as any },
+      }),
     ]);
     const schoolMap = new Map(schools.map((s) => [s.id, s]));
 
@@ -431,26 +453,29 @@ export class AnalyticsService {
       'Last Calculated',
     ].join(',');
 
-    const rows = assessments.map((a) => {
-      const s = schoolMap.get(a.schoolId);
-      const safeName = `"${(s?.name ?? '').replace(/"/g, '""')}"`;
-      return [
-        safeName,
-        s?.code ?? '',
-        s?.province ?? '',
-        s?.district ?? '',
-        parseFloat(String(a.overallScore)).toFixed(0),
-        a.priorityLevel ?? '',
-        parseFloat(String(a.infrastructureScore)).toFixed(0),
-        parseFloat(String(a.buildingAgeScore)).toFixed(0),
-        parseFloat(String(a.accessibilityScore)).toFixed(0),
-        parseFloat(String(a.facilityComplianceScore ?? 0)).toFixed(0),
-        parseInt(String(s?.totalStudents ?? 0), 10),
-        a.urgencyMonths ?? '',
-        parseFloat(String(a.estimatedBudgetRwf ?? 0)).toFixed(0),
-        a.updatedAt?.toISOString() ?? '',
-      ].join(',');
-    });
+    const rows = assessments
+      // Skip assessments whose school no longer exists (hard-deleted).
+      .filter((a) => schoolMap.has(a.schoolId))
+      .map((a) => {
+        const s = schoolMap.get(a.schoolId);
+        const safeName = `"${(s?.name ?? '').replace(/"/g, '""')}"`;
+        return [
+          safeName,
+          s?.code ?? '',
+          s?.province ?? '',
+          s?.district ?? '',
+          parseFloat(String(a.overallScore)).toFixed(0),
+          a.priorityLevel ?? '',
+          parseFloat(String(a.infrastructureScore)).toFixed(0),
+          parseFloat(String(a.buildingAgeScore)).toFixed(0),
+          parseFloat(String(a.accessibilityScore)).toFixed(0),
+          parseFloat(String(a.facilityComplianceScore ?? 0)).toFixed(0),
+          parseInt(String(s?.totalStudents ?? 0), 10),
+          a.urgencyMonths ?? '',
+          parseFloat(String(a.estimatedBudgetRwf ?? 0)).toFixed(0),
+          a.updatedAt?.toISOString() ?? '',
+        ].join(',');
+      });
 
     return [header, ...rows].join('\n');
   }
@@ -476,8 +501,10 @@ export class AnalyticsService {
     district?: string,
     scope?: AccessScope,
   ) {
-    const scoped = <T extends { andWhere: (...a: any[]) => T }>(qb: T) =>
-      scope ? applySchoolScope(qb, scope, 's') : qb;
+    const scoped = <T extends { andWhere: (...a: any[]) => T }>(qb: T) => {
+      whereActiveSchool(qb, 's');
+      return scope ? applySchoolScope(qb, scope, 's') : qb;
+    };
     // Parse every raw numeric field — pg driver returns counts/averages as strings.
     const parseRow = (r: any, labelKey: string) => ({
       label: r[labelKey] as string,
@@ -642,7 +669,7 @@ export class AnalyticsService {
     // Join schools on schoolId (varchar) rather than the broken school_id FK column
     const qb = this.assessmentRepository
       .createQueryBuilder('da')
-      .leftJoinAndMapOne(
+      .innerJoinAndMapOne(
         'da.school',
         'School',
         's',
@@ -651,6 +678,9 @@ export class AnalyticsService {
       // Intervention queue → most urgent (lowest score) first.
       .orderBy('da.overallScore', 'ASC')
       .addOrderBy('da.urgencyMonths', 'ASC');
+
+    // Operating schools only — no orphaned, inactive or under-renovation rows.
+    whereActiveSchool(qb, 's');
 
     if (query?.province)
       qb.andWhere('s.province = :province', { province: query.province });
@@ -666,6 +696,7 @@ export class AnalyticsService {
     actor?: AuditActor,
   ): Promise<{ processed: number }> {
     const schools = await this.schoolRepository.find({
+      where: { status: ACTIVE_SCHOOL_STATUS as any },
       relations: ['buildings', 'populationData'],
     });
 
@@ -708,6 +739,30 @@ export class AnalyticsService {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(
         `Background recalculation failed for school ${event.schoolId}: ${message}`,
+      );
+    }
+  }
+
+  /**
+   * A school row was hard-deleted. The assessment / history / action tables key
+   * off the `schoolId` varchar column and have no working FK cascade, so clean
+   * them up here — otherwise the orphaned rows keep feeding national averages,
+   * budget totals, the recent-assessments feed and the decision queue.
+   */
+  @OnEvent('school.deleted')
+  async handleSchoolDeleted(event: { schoolId: string }): Promise<void> {
+    const { schoolId } = event;
+    try {
+      await Promise.all([
+        this.assessmentRepository.delete({ schoolId }),
+        this.scoreHistoryRepository.delete({ schoolId }),
+        this.actionRepository.delete({ schoolId }),
+      ]);
+      this.logger.debug(`Purged analytics rows for deleted school ${schoolId}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to purge analytics rows for deleted school ${schoolId}: ${message}`,
       );
     }
   }
@@ -824,21 +879,25 @@ export class AnalyticsService {
     // ── Parallel peer-benchmarking queries ────────────────────────────────────
     // Exclude the current school from both averages so it doesn't skew its own peer group.
     const [districtAvgRow, provinceAvgRow, allReports] = await Promise.all([
-      this.schoolRepository
-        .createQueryBuilder('s')
-        .select('ROUND(AVG(s.overallScore)::numeric, 1)', 'avg')
-        .where('s.district = :d', { d: school.district })
-        .andWhere('s.id != :id', { id: school.id })
-        .andWhere('s.overallScore IS NOT NULL')
-        .getRawOne(),
+      whereActiveSchool(
+        this.schoolRepository
+          .createQueryBuilder('s')
+          .select('ROUND(AVG(s.overallScore)::numeric, 1)', 'avg')
+          .where('s.district = :d', { d: school.district })
+          .andWhere('s.id != :id', { id: school.id })
+          .andWhere('s.overallScore IS NOT NULL'),
+        's',
+      ).getRawOne(),
 
-      this.schoolRepository
-        .createQueryBuilder('s')
-        .select('ROUND(AVG(s.overallScore)::numeric, 1)', 'avg')
-        .where('s.province = :p', { p: school.province })
-        .andWhere('s.id != :id', { id: school.id })
-        .andWhere('s.overallScore IS NOT NULL')
-        .getRawOne(),
+      whereActiveSchool(
+        this.schoolRepository
+          .createQueryBuilder('s')
+          .select('ROUND(AVG(s.overallScore)::numeric, 1)', 'avg')
+          .where('s.province = :p', { p: school.province })
+          .andWhere('s.id != :id', { id: school.id })
+          .andWhere('s.overallScore IS NOT NULL'),
+        's',
+      ).getRawOne(),
 
       // Reports fetch moved here to run in parallel
       this.issueReportRepository.find({
@@ -1163,7 +1222,7 @@ export class AnalyticsService {
 
     // Update school priority and overall score
     await this.schoolRepository.update(school.id, {
-      priorityLevel: priorityLevel as any,
+      priorityLevel: priorityLevel,
       overallScore,
     });
 

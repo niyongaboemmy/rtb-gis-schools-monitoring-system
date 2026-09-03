@@ -24,6 +24,10 @@ import {
 import { StorageService } from '../storage/storage.service';
 import { AuditService, AuditActor } from '../audit/audit.service';
 import {
+  whereActiveSchool,
+  isActiveSchool,
+} from '../../common/school/active-school';
+import {
   AccessScope,
   applySchoolScope,
   schoolMatchesScope,
@@ -83,8 +87,8 @@ export class SchoolsService {
           schoolId: savedSchool.id,
           buildingCode: code,
           areaSquareMeters: area,
-          condition: (condition as BuildingCondition) || BuildingCondition.FAIR,
-          roofCondition: (roofCondition as RoofCondition) || RoofCondition.GOOD,
+          condition: condition || BuildingCondition.FAIR,
+          roofCondition: roofCondition || RoofCondition.GOOD,
           centroidLat: latitude ?? null,
           centroidLng: longitude ?? null,
           annotations: annotations || [],
@@ -236,10 +240,8 @@ export class SchoolsService {
             schoolId: id,
             buildingCode: code,
             areaSquareMeters: area,
-            condition:
-              (condition as BuildingCondition) || BuildingCondition.FAIR,
-            roofCondition:
-              (roofCondition as RoofCondition) || RoofCondition.GOOD,
+            condition: condition || BuildingCondition.FAIR,
+            roofCondition: roofCondition || RoofCondition.GOOD,
             centroidLat: latitude ?? null,
             centroidLng: longitude ?? null,
             annotations: annotations || [],
@@ -277,13 +279,19 @@ export class SchoolsService {
       name: school.name,
       code: school.code,
     });
+    // Purge analytics rows keyed off the `schoolId` varchar column — those tables
+    // (decision_assessments, score_history, recommendation_action) have no working
+    // FK cascade, so without this they linger and keep skewing national analytics.
+    this.eventEmitter.emit('school.deleted', { schoolId: id });
   }
 
   async getGeoJson(scope?: AccessScope): Promise<object> {
     const all = await this.schoolRepository.find();
+    // National map is an operating-network view — hide inactive/under-renovation.
+    const active = all.filter(isActiveSchool);
     const schools = scope
-      ? all.filter((s) => schoolMatchesScope(s, scope))
-      : all;
+      ? active.filter((s) => schoolMatchesScope(s, scope))
+      : active;
     return {
       type: 'FeatureCollection',
       features: schools.map((school) => ({
@@ -325,6 +333,7 @@ export class SchoolsService {
   async getStats(scope?: AccessScope): Promise<object> {
     const scoped = () => {
       const qb = this.schoolRepository.createQueryBuilder('school');
+      whereActiveSchool(qb, 'school');
       if (scope) applySchoolScope(qb, scope, 'school');
       return qb;
     };
@@ -378,8 +387,8 @@ export class SchoolsService {
       schoolId,
       buildingCode: code,
       areaSquareMeters: area,
-      condition: (condition as BuildingCondition) || BuildingCondition.FAIR,
-      roofCondition: (roofCondition as RoofCondition) || RoofCondition.GOOD,
+      condition: condition || BuildingCondition.FAIR,
+      roofCondition: roofCondition || RoofCondition.GOOD,
       centroidLat: latitude ?? null,
       centroidLng: longitude ?? null,
       // Safety net: filter out any remaining nulls/nested arrays from the DTO transform
