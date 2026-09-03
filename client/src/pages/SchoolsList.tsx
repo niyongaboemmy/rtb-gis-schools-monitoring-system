@@ -297,13 +297,15 @@ export default function SchoolsList() {
 
   const stats = useMemo(() => {
     const total = allSchools.length;
-    const critical = allSchools.filter(
+    // KPI cards summarise the operating network, not decommissioned rows.
+    const active = allSchools.filter((s) => (s.status ?? "active") === "active");
+    const critical = active.filter(
       (s) => (s.priorityLevel ?? "").toLowerCase() === "critical",
     ).length;
-    const gisDone = allSchools.filter(
+    const gisDone = active.filter(
       (s) => (s.kmzStatus ?? "").toLowerCase() === "completed",
     ).length;
-    const scored = allSchools.filter((s) => s.overallScore != null);
+    const scored = active.filter((s) => s.overallScore != null);
     const avg = scored.length
       ? Math.round(
           scored.reduce((sum, s) => sum + calculatedScore(s), 0) / scored.length,
@@ -312,7 +314,9 @@ export default function SchoolsList() {
     return {
       total,
       critical,
-      gisPct: total ? Math.round((gisDone / total) * 100) : 0,
+      gisPct: active.length
+        ? Math.round((gisDone / active.length) * 100)
+        : 0,
       avg,
     };
   }, [allSchools]);

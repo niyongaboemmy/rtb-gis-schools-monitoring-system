@@ -38,7 +38,9 @@ const qb = () => ({
   addOrderBy: jest.fn().mockReturnThis(),
   take: jest.fn().mockReturnThis(),
   leftJoinAndMapOne: jest.fn().mockReturnThis(),
+  innerJoinAndMapOne: jest.fn().mockReturnThis(),
   leftJoinAndSelect: jest.fn().mockReturnThis(),
+  innerJoinAndSelect: jest.fn().mockReturnThis(),
   innerJoin: jest.fn().mockReturnThis(),
   getRawOne: jest.fn().mockResolvedValue({}),
   getRawMany: jest.fn().mockResolvedValue([]),
@@ -524,20 +526,21 @@ describe('calculateFacilityComplianceScore', () => {
 
 describe('getOverview', () => {
   it('returns the aggregate shape incl. nationalCapacityUtilisation', async () => {
+    const capacitySchools = [
+      {
+        id: '1',
+        totalStudents: 100,
+        educationPrograms: [{ totalStudents: 100, capacity: 200 }],
+      },
+      {
+        id: '2',
+        totalStudents: 300,
+        educationPrograms: [{ totalStudents: 300, capacity: 300 }],
+      },
+    ];
     const school = makeRepo({
       count: jest.fn().mockResolvedValue(3),
-      find: jest.fn().mockResolvedValue([
-        {
-          id: '1',
-          totalStudents: 100,
-          educationPrograms: [{ totalStudents: 100, capacity: 200 }],
-        },
-        {
-          id: '2',
-          totalStudents: 300,
-          educationPrograms: [{ totalStudents: 300, capacity: 300 }],
-        },
-      ]),
+      find: jest.fn().mockResolvedValue(capacitySchools),
       createQueryBuilder: jest.fn(() => {
         const q = qb();
         q.getRawMany = jest
@@ -555,6 +558,9 @@ describe('getOverview', () => {
             },
           ]);
         q.getRawOne = jest.fn().mockResolvedValue({ nationalAvgScore: '60' });
+        // query 1 = active school count; query 13 = capacity-utilisation rows
+        q.getCount = jest.fn().mockResolvedValue(3);
+        q.getMany = jest.fn().mockResolvedValue(capacitySchools);
         return q;
       }),
     });
