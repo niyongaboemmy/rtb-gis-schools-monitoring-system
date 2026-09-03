@@ -318,14 +318,23 @@ export function useKmzLoader({
 
       const overlayExt = (grounds && grounds.length > 0) ? await loadGroundOverlays(grounds, blobs) : null;
       const sourceExt = source.getExtent();
-      const validSourceExt = (sourceExt && sourceExt[0] !== Infinity) ? (sourceExt as [number, number, number, number]) : null;
-      const fitExt = overlayExt || validSourceExt;
+      const hasArea = (e: [number, number, number, number] | null) =>
+        !!e && e[0] !== Infinity && e[2] > e[0] && e[3] > e[1];
+      const validSourceExt = hasArea(sourceExt as [number, number, number, number])
+        ? (sourceExt as [number, number, number, number])
+        : null;
 
-      if (fitExt && !overlayExtentRef.current) {
+      // Frame the view on where the KML is actually mapped (the school boundary
+      // / buildings) so the school sits centred rather than off-screen when the
+      // drone imagery covers a larger area. Fall back to the imagery extent when
+      // the KML carries no polygons/lines (e.g. a single marker point).
+      const fitExt = validSourceExt || overlayExt;
+
+      if (fitExt) {
         overlayExtentRef.current = fitExt;
         const view = map.getView();
         if (!ignore && view) {
-          view.fit(fitExt, { padding: [60, 60, 60, 60], duration: 600 });
+          view.fit(fitExt, { padding: [80, 80, 120, 80], duration: 600, maxZoom: 20 });
         }
       }
       if (!ignore) {

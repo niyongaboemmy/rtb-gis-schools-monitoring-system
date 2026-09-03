@@ -824,13 +824,20 @@ export default function School2DViewer({
     const view = mapRef.current?.getView();
     if (!view) return;
 
-    // When a KMZ/GeoTIFF overlay is present the loader fits the view to its
-    // extent (which frames the school) — don't fight that. Otherwise recenter
-    // on the school's own coordinate.
-    const target =
-      originalLonLat && !overlayExtentRef.current
-        ? fromLonLat(originalLonLat)
-        : view.getCenter();
+    // When a KMZ/GeoTIFF/KML overlay is present the loader has already fitted
+    // the view to where the map is actually drawn — re-fit to that same extent
+    // so the school stays centred regardless of any in-flight animation.
+    if (overlayExtentRef.current) {
+      view.fit(overlayExtentRef.current, {
+        padding: [80, 80, 120, 80],
+        duration: 800,
+        maxZoom: 20,
+      });
+      return;
+    }
+
+    // Otherwise recenter on the school's own coordinate.
+    const target = originalLonLat ? fromLonLat(originalLonLat) : view.getCenter();
 
     view.setZoom(15);
     setTimeout(() => {
