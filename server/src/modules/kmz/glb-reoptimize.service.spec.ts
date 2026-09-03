@@ -11,6 +11,7 @@ describe('GlbReoptimizeService.enqueueUnoptimized', () => {
   let root: string;
   let queue: { add: jest.Mock };
   let storage: { getLocalRoot: jest.Mock };
+  let schoolRepo: { find: jest.Mock };
   let service: GlbReoptimizeService;
 
   const writeGlb = (schoolId: string, name: string, archived = false) => {
@@ -27,7 +28,12 @@ describe('GlbReoptimizeService.enqueueUnoptimized', () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'glb-sweep-'));
     queue = { add: jest.fn().mockResolvedValue({ id: 'job-1' }) };
     storage = { getLocalRoot: jest.fn().mockReturnValue(root) };
-    service = new GlbReoptimizeService(queue as any, storage as any);
+    schoolRepo = { find: jest.fn().mockResolvedValue([]) };
+    service = new GlbReoptimizeService(
+      queue as any,
+      storage as any,
+      schoolRepo as any,
+    );
   });
 
   afterEach(() => {
@@ -64,6 +70,18 @@ describe('GlbReoptimizeService.enqueueUnoptimized', () => {
     const { enqueued } = await service.enqueueUnoptimized({ force: true });
 
     expect(enqueued).toHaveLength(1);
+  });
+
+  it('skips a school the optimizer already failed on (unless forced)', async () => {
+    writeGlb('school-d', 'model.glb');
+    schoolRepo.find.mockResolvedValue([{ id: 'school-d' }]);
+
+    const { enqueued, skipped } = await service.enqueueUnoptimized();
+    expect(enqueued).toHaveLength(0);
+    expect(skipped).toBe(1);
+
+    const forced = await service.enqueueUnoptimized({ force: true });
+    expect(forced.enqueued).toHaveLength(1);
   });
 
   it('no-ops for a non-local storage backend', async () => {

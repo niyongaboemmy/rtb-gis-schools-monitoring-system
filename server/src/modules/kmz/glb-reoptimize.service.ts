@@ -1,9 +1,12 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
+import { InjectRepository } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue } from 'bullmq';
+import { Not, IsNull, Repository } from 'typeorm';
 import * as fs from 'fs';
 import * as path from 'path';
+import { School } from '../schools/entities/school.entity';
 import { StorageService } from '../storage/storage.service';
 import { KMZ_QUEUE, GLB_JOB_OPTIONS } from './kmz.constants';
 import type { GlbJobData } from './kmz.processor';
@@ -29,6 +32,8 @@ export class GlbReoptimizeService implements OnModuleInit {
   constructor(
     @InjectQueue(KMZ_QUEUE) private readonly queue: Queue,
     private readonly storage: StorageService,
+    @InjectRepository(School)
+    private readonly schoolRepo: Repository<School>,
   ) {}
 
   onModuleInit(): void {
@@ -79,11 +84,27 @@ export class GlbReoptimizeService implements OnModuleInit {
     const schoolsDir = path.join(root, 'schools');
     if (!fs.existsSync(schoolsDir)) return { enqueued: [], skipped: 0 };
 
+    // Schools the optimizer already tried and failed on (OOM, timeout, …). Don't
+    // re-hammer them on every boot/nightly sweep — they need a code fix or an
+    // explicit `force`. A later success clears modelOptimizeError.
+    const failed = new Set<string>();
+    if (!opts.force) {
+      const rows = await this.schoolRepo.find({
+        where: { modelOptimizeError: Not(IsNull()), modelOptimized: false },
+        select: ['id'],
+      });
+      for (const r of rows) failed.add(r.id);
+    }
+
     const enqueued: string[] = [];
     let skipped = 0;
 
     for (const schoolId of fs.readdirSync(schoolsDir)) {
       if (opts.onlySchoolId && schoolId !== opts.onlySchoolId) continue;
+      if (failed.has(schoolId)) {
+        skipped++;
+        continue;
+      }
 
       const dir = path.join(schoolsDir, schoolId, '3d');
       let entries: string[];

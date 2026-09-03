@@ -138,16 +138,34 @@ export function optimizeGlbFile(
 ): Promise<GlbOptimizeResult> {
   const envTimeout = Number(process.env.GLB_OPT_TIMEOUT_MS);
   const {
-    textureSize = 8192, // upper bound only — a smaller source atlas is kept as-is
     timeoutMs = Number.isFinite(envTimeout) && envTimeout > 0
       ? envTimeout
       : 40 * 60_000,
     heapMb = resolveHeapMb(),
   } = opts;
-  // On a memory-constrained host, keep fewer triangles so the Meshopt WASM heap
-  // and the child V8 heap both stay well clear of the ceiling.
-  const lowMem = heapMb < 3072;
-  const { ratio = lowMem ? 0.1 : 0.3 } = opts;
+  // "Memory-tight" isn't just a small heap ceiling — a huge input on a normal
+  // box is the real killer: a 2 GB / ~80 M-tri photogrammetry export needs the
+  // exact simplifier's WASM heap + a multi-GB gltf-transform document + the
+  // WebP encoder's native buffer all at once, and OOM-kills an 8 GB box even
+  // with swap. When either signal fires, take the low-memory path: single-pass
+  // sloppy decimation, a hard triangle cap, and a 2K texture (its WebP encode
+  // buffer is ¼ the size of a 4K one — the step that was failing last).
+  let inputBytes = 0;
+  try {
+    inputBytes = fs.statSync(inputPath).size;
+  } catch {
+    /* ignore */
+  }
+  const lowMem = heapMb < 3072 || inputBytes > os.totalmem() * 0.15;
+  const { ratio = lowMem ? 0.08 : 0.3 } = opts;
+  const textureSize = opts.textureSize ?? (lowMem ? 2048 : 8192);
+  if (lowMem) {
+    logger.warn(
+      `optimize: low-memory profile (heap ${heapMb}MB, input ${(
+        inputBytes / 1048576
+      ).toFixed(0)}MB) — sloppy decimation, ≤1.5M tris, 2K texture`,
+    );
+  }
 
   return new Promise((resolve, reject) => {
     if (!fs.existsSync(SCRIPT_PATH)) {
@@ -171,8 +189,10 @@ export function optimizeGlbFile(
           ...process.env,
           ...(lowMem
             ? {
+                GLB_FORCE_SLOPPY: process.env.GLB_FORCE_SLOPPY || '1',
                 GLB_MAX_OUT_TRIS:
-                  process.env.GLB_MAX_OUT_TRIS || String(2_000_000),
+                  process.env.GLB_MAX_OUT_TRIS || String(1_500_000),
+                GLB_TEXTURE_QUALITY: process.env.GLB_TEXTURE_QUALITY || '82',
               }
             : {}),
         },
