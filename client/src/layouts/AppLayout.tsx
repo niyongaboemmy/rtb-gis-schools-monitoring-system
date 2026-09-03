@@ -145,6 +145,7 @@ export function AppLayout() {
       path: "/school-dashboard",
       icon: GraduationCap,
       requiredPermission: Permission.SCHOOL_LEVEL_DASHBOARD,
+      schoolLevelOnly: true,
     },
     {
       name: "National Map",
@@ -197,17 +198,20 @@ export function AppLayout() {
     icon: typeof LayoutDashboard;
     requiredPermission?: PermissionType;
     requiredAnyPermission?: PermissionType[];
+    schoolLevelOnly?: boolean;
   }[];
 
+  const scope = useScope();
+  const isSchoolLevel = scope.tier === "school";
+
   const navItems = allNavItems.filter((item) => {
+    if (item.schoolLevelOnly && !isSchoolLevel) return false;
     if (item.requiredPermission && !isAuthorized(item.requiredPermission))
       return false;
     if (item.requiredAnyPermission && !isAnyAuthorized(item.requiredAnyPermission))
       return false;
     return true;
   });
-
-  const scope = useScope();
   const initials = `${user?.firstName?.charAt(0) ?? ""}${user?.lastName?.charAt(0) ?? ""}`;
   const roleName = (
     typeof user?.role === "object" ? user.role.name || "" : user?.role || ""

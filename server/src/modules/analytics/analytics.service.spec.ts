@@ -274,7 +274,7 @@ describe('calculateInfrastructureScore', () => {
   it('unknown condition falls back to neutral 50 in the average', () => {
     expect(
       (service as any).calculateInfrastructureScore([
-        { condition: 'nope' } as unknown as SchoolBuilding,
+        { condition: 'nope' },
         buildBuilding(BuildingCondition.GOOD),
       ]),
     ).toBe(75);
@@ -357,11 +357,23 @@ describe('calculatePopulationScore', () => {
     );
   });
 
-  it('no currentStudents → default catchment capacity 300', () => {
+  it('no capacity → default catchment capacity 300', () => {
     const pop = { schoolAgePopulation2km: 1800 } as PopulationData;
     expect(
       (service as any).calculatePopulationScore(pop, undefined).score,
     ).toBe(10); // 1800/300 = 6
+  });
+
+  it('uses programme seat capacity (not enrolment) as the denominator', async () => {
+    const { service } = await makeService();
+    // 800 school-age kids nearby; 1000 seats, 950 already enrolled.
+    // demand/capacity = 800/1000 = 0.8 → ample headroom → 100
+    const school = buildSchool({
+      populationData: [{ schoolAgePopulation2km: 800 } as PopulationData],
+      educationPrograms: [{ totalStudents: 950, capacity: 1000 }] as any,
+    });
+    const res = await service.calculateSchoolScore(school);
+    expect(Number(res.populationPressureScore)).toBe(100);
   });
 });
 
@@ -697,7 +709,7 @@ describe('getSchoolMetrics', () => {
             { totalStudents: 100, capacity: 200 },
             { totalStudents: 150, capacity: 200 },
           ] as any,
-          totalStudents: 999 as any,
+          totalStudents: 999,
         }),
       ),
     });

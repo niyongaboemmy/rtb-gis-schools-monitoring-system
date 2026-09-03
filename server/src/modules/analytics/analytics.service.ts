@@ -1157,11 +1157,21 @@ export class AnalyticsService {
       studentsFromPrograms > 0
         ? studentsFromPrograms
         : parseFloat(String(school.totalStudents)) || 0;
+    const seatCapacityFromPrograms = programs.reduce(
+      (sum, p) => sum + (parseFloat(String(p.capacity)) || 0),
+      0,
+    );
+    // Denominator for demographic pressure is the school's *seat capacity*, not
+    // its current enrolment — a school that already enrols more students has
+    // less headroom, not more. Fall back to enrolment, then a default catchment,
+    // when no programme capacity is on file.
+    const catchmentCapacity =
+      seatCapacityFromPrograms > 0 ? seatCapacityFromPrograms : totalStudents;
 
     // Population / capacity resilience score (10%) — more headroom = higher score
     const { score: popScore, hasPopDataGap } = this.calculatePopulationScore(
       population,
-      totalStudents,
+      catchmentCapacity,
     );
 
     // Weighted composite — the one formula (see scoring.constants.ts)
@@ -1287,12 +1297,12 @@ export class AnalyticsService {
 
   private calculatePopulationScore(
     population?: PopulationData,
-    currentStudents?: number,
+    schoolCapacity?: number,
   ): { score: number; hasPopDataGap: boolean } {
     if (!population) return { score: NEUTRAL_SCORE, hasPopDataGap: true };
     const capacity = Math.max(
       1,
-      parseFloat(String(currentStudents)) || DEFAULT_CATCHMENT_CAPACITY,
+      parseFloat(String(schoolCapacity)) || DEFAULT_CATCHMENT_CAPACITY,
     );
     const demand = parseFloat(String(population.schoolAgePopulation2km)) || 0;
     // Higher score = more capacity headroom = better (label: "Capacity Resilience")
