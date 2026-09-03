@@ -28,36 +28,90 @@ import ViewerMainCanvas from "./3dviewercomponents/ViewerMainCanvas";
 import "./School3DView.css";
 
 // ─── GLB browser cache ──────────────────────────────────────────────────────
-// The Cache API keeps a downloaded optimized GLB across tab reloads so the 3D
-// tab re-opens instantly. Entirely best-effort: private windows, quota limits,
-// or a browser with the API disabled all just fall through to the network.
-const GLB_CACHE = "glb-models-v1";
-const GLB_CACHE_MAX_BYTES = 200 * 1_048_576; // never cache a raw export
+// The Cache API keeps a downloaded optimized GLB across tab reloads / sessions
+// so re-opening the 3D tab is instant with zero network. Keyed by
+// schoolId + a server version tag (`modelOptimizedAt` from the kmz/status
+// endpoint) — NOT the file-server URL, which never changes across
+// re-optimisations (server.js is root-owned, can't add a `?v=`). So a
+// re-optimise on the server produces a new tag → cache miss → fresh download,
+// and the stale entry is evicted.
+//
+// Entirely best-effort: non-secure context, private windows, quota limits, or a
+// browser with the API disabled all just fall through to the network.
+const GLB_CACHE = "glb-models-v2";
+const GLB_CACHE_MAX_BYTES = 600 * 1_048_576; // don't cache a giant raw export
+const GLB_CACHE_MAX_ENTRIES = 5; // LRU — keep the 5 most-recently-viewed schools
 
-async function readGlbCache(url: string): Promise<ArrayBuffer | null> {
+// Ask the browser to keep this origin's storage across disk-pressure evictions.
+try {
+  void navigator.storage?.persist?.();
+} catch {
+  /* not supported — ignore */
+}
+
+const glbCacheKey = (schoolId: string, versionTag: string) =>
+  `https://glb-cache.local/${encodeURIComponent(schoolId)}?v=${encodeURIComponent(
+    versionTag,
+  )}`;
+
+async function readGlbCache(
+  schoolId: string,
+  versionTag: string,
+): Promise<ArrayBuffer | null> {
   try {
     if (typeof caches === "undefined") return null;
     const cache = await caches.open(GLB_CACHE);
-    const hit = await cache.match(url);
+    const hit = await cache.match(glbCacheKey(schoolId, versionTag));
     return hit ? await hit.arrayBuffer() : null;
   } catch {
     return null;
   }
 }
 
-async function writeGlbCache(url: string, buf: ArrayBuffer): Promise<void> {
+async function writeGlbCache(
+  schoolId: string,
+  versionTag: string,
+  buf: ArrayBuffer,
+): Promise<void> {
   try {
-    if (typeof caches === "undefined" || buf.byteLength > GLB_CACHE_MAX_BYTES) return;
-    const cache = await caches.open(GLB_CACHE);
-    // Evict older builds of the same model (path without the ?v= bust).
-    const base = url.split("?")[0];
-    for (const req of await cache.keys()) {
-      if (req.url.split("?")[0] === base && req.url !== url) await cache.delete(req);
+    if (typeof caches === "undefined" || buf.byteLength > GLB_CACHE_MAX_BYTES) {
+      return;
     }
+    // One-time migration off the old (broken, URL-keyed) cache.
+    void caches.delete("glb-models-v1");
+
+    const cache = await caches.open(GLB_CACHE);
+    const key = glbCacheKey(schoolId, versionTag);
+    const schoolPath = `/${encodeURIComponent(schoolId)}`;
+
     await cache.put(
-      url,
-      new Response(buf, { headers: { "Content-Type": "model/gltf-binary" } }),
+      key,
+      new Response(buf, {
+        headers: {
+          "Content-Type": "model/gltf-binary",
+          "X-Cached-At": String(Date.now()),
+        },
+      }),
     );
+
+    // Drop any older version of *this* school, then LRU-trim the whole store.
+    const entries: { url: string; at: number }[] = [];
+    for (const req of await cache.keys()) {
+      const u = new URL(req.url);
+      if (u.pathname === schoolPath && req.url !== key) {
+        await cache.delete(req);
+        continue;
+      }
+      const res = await cache.match(req);
+      entries.push({
+        url: req.url,
+        at: Number(res?.headers.get("X-Cached-At")) || 0,
+      });
+    }
+    entries.sort((a, b) => a.at - b.at); // oldest first
+    for (const e of entries.slice(0, Math.max(0, entries.length - GLB_CACHE_MAX_ENTRIES))) {
+      await cache.delete(e.url);
+    }
   } catch {
     /* quota / unsupported — ignore */
   }
@@ -310,6 +364,12 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const loadAnywayRef = useRef(false);
   const pendingModelRef = useRef<{ url: string; fileName: string } | null>(null);
   const prepPollRef = useRef<number | null>(null);
+  // Set from GET /kmz/status — drives the persistent model cache key.
+  const cacheMetaRef = useRef<{
+    schoolId: string;
+    versionTag: string;
+    optimized: boolean | null;
+  } | null>(null);
   const [stats, setStats] = useState<LoadStats | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [availableFacilities, setAvailableFacilities] = useState<AvailableFacility[]>([]);
@@ -631,18 +691,6 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     threeInitPromiseRef.current = new Promise<void>(resolve => { threeInitResolveRef.current = resolve; });
     const startTime = Date.now();
     try {
-      // Fast path: a previously-downloaded copy of this exact URL (the served
-      // filename gains a `?v=` bust whenever the server re-optimises, so a hit
-      // is always the current build). Survives tab reloads; best-effort only.
-      const cached = await readGlbCache(url);
-      if (cached) {
-        setProgress(80); setProgressLabel("Preparing 3D scene — almost there…");
-        const loaderC = makeGLTFLoader();
-        const gltfC = await new Promise<GLTF>((res, rej) => loaderC.parse(cached, "", res, rej));
-        await finalizeGLTF(gltfC, fileName, cached.byteLength, startTime);
-        return;
-      }
-
       // `no-cache` = always revalidate with the file-server (cheap 304 via ETag
       // when unchanged). The served model keeps the same filename across
       // re-optimisations, and the file-server sends `max-age=604800`, so a plain
@@ -699,50 +747,106 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         arrayBuffer = await resp.arrayBuffer();
       }
 
-      // Cache the web-sized build for instant re-opens. Never cache a raw
-      // multi-GB export — it would blow the origin's storage quota.
-      void writeGlbCache(url, arrayBuffer);
-
       setProgress(80); setProgressLabel("Preparing 3D scene — almost there…");
       const loader = makeGLTFLoader();
       const gltf = await new Promise<GLTF>((res, rej) => loader.parse(arrayBuffer, "", res, rej));
       await finalizeGLTF(gltf, fileName, arrayBuffer.byteLength, startTime);
+
+      // Persist the web-sized build for instant re-opens — but only a real
+      // optimized model, never a raw multi-GB export the user force-loaded.
+      const meta = cacheMetaRef.current;
+      if (meta && meta.optimized !== false) {
+        void writeGlbCache(meta.schoolId, meta.versionTag, arrayBuffer);
+      }
     } catch (err: any) { setError(err?.message || "Failed to fetch model"); setPhase("idle"); }
   }, [finalizeGLTF]);
 
-  // Gate the download: if the server is still producing the optimized GLB, show
-  // a "preparing" state and poll every 15 s instead of pulling the raw
-  // multi-GB export (which times out and crashes the tab). `Load anyway` and a
-  // status endpoint that's unreachable both fall through to a normal load.
+  // Parse a GLB we already have in memory (a cache hit) — no network, no
+  // download progress. Mirrors loadGLB's File path.
+  const loadGLBFromBuffer = useCallback(async (buf: ArrayBuffer, fileName: string) => {
+    setError(null); setPhase("loading"); setProgress(0); setProgressLabel("Loading saved model…");
+    origMatsRef.current.clear(); unlitMatsRef.current.clear();
+    loadedFileNameRef.current = fileName;
+    threeInitPromiseRef.current = new Promise<void>(resolve => { threeInitResolveRef.current = resolve; });
+    const startTime = Date.now();
+    try {
+      setProgress(78); setProgressLabel("Parsing GLB…");
+      const loader = makeGLTFLoader();
+      const gltf = await new Promise<GLTF>((res, rej) => loader.parse(buf, "", res, rej));
+      await finalizeGLTF(gltf, fileName, buf.byteLength, startTime);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load saved model");
+      setPhase("idle");
+    }
+  }, [finalizeGLTF]);
+
+  // Gate the download: serve from the persistent cache when we have this exact
+  // build; else, if the server is still producing the optimized GLB, show a
+  // "preparing" state and poll every 15 s instead of pulling the raw multi-GB
+  // export (which times out and crashes the tab). `Load anyway` and an
+  // unreachable status endpoint both fall through to a normal network load.
   const maybeLoad = useCallback(async (finalUrl: string, fileName: string) => {
     pendingModelRef.current = { url: finalUrl, fileName };
-    if (!loadAnywayRef.current) {
-      try {
-        const { data: st } = await api.get(`/schools/${schoolId}/kmz/status`);
-        if (st && st.modelOptimized === false) {
-          setModelPrep({ bytes: st.modelBytes ?? null, error: st.modelOptimizeError ?? null });
-          setDiscovering(false);
-          if (prepPollRef.current == null) {
-            prepPollRef.current = window.setInterval(async () => {
-              try {
-                const { data: s2 } = await api.get(`/schools/${schoolId}/kmz/status`);
-                if (!s2 || s2.modelOptimized !== false) {
-                  if (prepPollRef.current != null) { clearInterval(prepPollRef.current); prepPollRef.current = null; }
-                  setModelPrep(null);
-                  loadGLBFromURL(finalUrl, fileName);
-                } else {
-                  setModelPrep({ bytes: s2.modelBytes ?? null, error: s2.modelOptimizeError ?? null });
-                }
-              } catch { /* keep polling */ }
-            }, 15_000);
-          }
-          return;
-        }
-      } catch { /* status unavailable — just load */ }
+
+    let st: {
+      modelOptimized?: boolean | null;
+      modelBytes?: number | null;
+      modelOptimizeError?: string | null;
+      modelOptimizedAt?: string | null;
+    } | null = null;
+    try {
+      st = (await api.get(`/schools/${schoolId}/kmz/status`)).data;
+    } catch { /* status unavailable — proceed without cache/gate */ }
+
+    const versionTag =
+      st?.modelOptimizedAt ||
+      (st?.modelBytes != null ? String(st.modelBytes) : "") ||
+      "unversioned";
+    cacheMetaRef.current = {
+      schoolId: schoolId as string,
+      versionTag,
+      optimized: st?.modelOptimized ?? null,
+    };
+
+    // Cache-first: a hit is this exact build (version tag matched) — use it even
+    // while the server reports the served file is still raw, since we already
+    // have a good optimized copy from a previous visit.
+    const cached = await readGlbCache(schoolId as string, versionTag);
+    if (cached) {
+      setModelPrep(null);
+      setDiscovering(false);
+      void loadGLBFromBuffer(cached, fileName);
+      return;
     }
+
+    if (!loadAnywayRef.current && st && st.modelOptimized === false) {
+      setModelPrep({ bytes: st.modelBytes ?? null, error: st.modelOptimizeError ?? null });
+      setDiscovering(false);
+      if (prepPollRef.current == null) {
+        prepPollRef.current = window.setInterval(async () => {
+          try {
+            const { data: s2 } = await api.get(`/schools/${schoolId}/kmz/status`);
+            if (!s2 || s2.modelOptimized !== false) {
+              if (prepPollRef.current != null) { clearInterval(prepPollRef.current); prepPollRef.current = null; }
+              setModelPrep(null);
+              cacheMetaRef.current = {
+                schoolId: schoolId as string,
+                versionTag: s2?.modelOptimizedAt || (s2?.modelBytes != null ? String(s2.modelBytes) : "") || "unversioned",
+                optimized: s2?.modelOptimized ?? null,
+              };
+              loadGLBFromURL(finalUrl, fileName);
+            } else {
+              setModelPrep({ bytes: s2.modelBytes ?? null, error: s2.modelOptimizeError ?? null });
+            }
+          } catch { /* keep polling */ }
+        }, 15_000);
+      }
+      return;
+    }
+
     setModelPrep(null);
     loadGLBFromURL(finalUrl, fileName);
-  }, [schoolId, loadGLBFromURL]);
+  }, [schoolId, loadGLBFromURL, loadGLBFromBuffer]);
 
   const loadModelAnyway = useCallback(() => {
     loadAnywayRef.current = true;
