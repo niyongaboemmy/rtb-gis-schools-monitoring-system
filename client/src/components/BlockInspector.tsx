@@ -4,14 +4,12 @@ import {
   Maximize2,
   Pencil,
   X,
-  Shield,
   Layers,
   Square,
   Calendar,
   Home,
 } from "lucide-react";
 import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
 import { cn } from "../lib/utils";
 import type { BuildingData } from "./school-form-steps/BuildingsStep";
 import { BuildingMediaTab } from "./2dviewercomponents/BuildingMediaTab";
@@ -30,6 +28,43 @@ interface BlockInspectorProps {
   onReportStatusChange?: () => void;
 }
 
+const CONDITION_TONE: Record<
+  string,
+  { text: string; ring: string; chip: string; dot: string }
+> = {
+  good: {
+    text: "text-emerald-600 dark:text-emerald-400",
+    ring: "stroke-emerald-500",
+    chip: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    dot: "bg-emerald-500",
+  },
+  fair: {
+    text: "text-blue-600 dark:text-blue-400",
+    ring: "stroke-blue-500",
+    chip: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+    dot: "bg-blue-500",
+  },
+  poor: {
+    text: "text-amber-600 dark:text-amber-400",
+    ring: "stroke-amber-500",
+    chip: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    dot: "bg-amber-500",
+  },
+  critical: {
+    text: "text-red-600 dark:text-red-400",
+    ring: "stroke-red-500",
+    chip: "bg-red-500/10 text-red-600 dark:text-red-400",
+    dot: "bg-red-500",
+  },
+};
+
+const STATUS_VALUE: Record<string, number> = {
+  good: 4,
+  fair: 3,
+  poor: 2,
+  critical: 1,
+};
+
 export function BlockInspector({
   building,
   schoolId,
@@ -47,20 +82,6 @@ export function BlockInspector({
     setActiveTab(initialTab ?? "details");
   }, [building.id, initialTab]);
 
-  const conditionColors: Record<string, string> = {
-    good: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-    fair: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/12",
-    poor: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-    critical: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20",
-  };
-
-  const statusValues: Record<string, number> = {
-    good: 4,
-    fair: 3,
-    poor: 2,
-    critical: 1,
-  };
-
   const buildingStatus = (
     building.buildingCondition ||
     building.condition ||
@@ -72,228 +93,234 @@ export function BlockInspector({
     "fair"
   ).toLowerCase();
 
-  const avgVal = (statusValues[buildingStatus] + statusValues[roofStatus]) / 2;
+  const avgVal =
+    ((STATUS_VALUE[buildingStatus] ?? 3) + (STATUS_VALUE[roofStatus] ?? 3)) / 2;
+  const avgLabel =
+    avgVal >= 3.5
+      ? "Good"
+      : avgVal >= 2.5
+        ? "Fair"
+        : avgVal >= 1.5
+          ? "Poor"
+          : "Critical";
+  const tone = CONDITION_TONE[avgLabel.toLowerCase()] ?? CONDITION_TONE.fair;
+  const pct = Math.round((avgVal / 4) * 100);
 
-  const getAvgLabel = (val: number) => {
-    if (val >= 3.5) return "Good";
-    if (val >= 2.5) return "Fair";
-    if (val >= 1.5) return "Poor";
-    return "Critical";
-  };
+  // Progress ring geometry
+  const R = 26;
+  const C = 2 * Math.PI * R;
 
-  const avgLabel = getAvgLabel(avgVal);
-  const avgColorClass =
-    conditionColors[avgLabel.toLowerCase()] ||
-    "bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white";
+  const name =
+    building.buildingName ||
+    building.name ||
+    building.buildingCode ||
+    building.code ||
+    "Building Asset";
+  const code = building.buildingCode || building.code || "NO-ID";
+
+  const areaRaw =
+    building.buildingArea || building.area || building.areaSquareMeters;
+  const area =
+    areaRaw && Number(areaRaw) > 0 ? `${Number(areaRaw).toFixed(0)} m²` : "N/A";
+
+  const specs = [
+    {
+      label: "Function",
+      value: building.buildingFunction || building.function || "N/A",
+      icon: Layers,
+    },
+    {
+      label: "Floors",
+      value: `${building.buildingFloors || building.floors || "1"}`,
+      icon: Maximize2,
+    },
+    {
+      label: "Area",
+      value: area,
+      icon: Square,
+    },
+    {
+      label: "Year built",
+      value:
+        building.buildingYearBuilt || building.yearBuilt || "Unknown",
+      icon: Calendar,
+    },
+  ];
+
+  const tabs = [
+    { id: "details", label: "Details" },
+    { id: "media", label: "Media" },
+    { id: "reporting", label: "Reports" },
+  ] as const;
 
   return (
     <div
       className={cn(
-        "w-full md:w-[360px] bg-white/95 dark:bg-[#0f1117]/95 backdrop-blur-3xl border-t md:border-t-0 md:border-r border-slate-200 dark:border-white/6 flex flex-col h-full overflow-y-auto transition-all duration-500",
-        "rounded-t-[32px] md:rounded-none z-60",
+        "w-full md:w-90 flex flex-col h-full overflow-hidden",
+        "bg-white/85 dark:bg-[#0d0f14]/85 backdrop-blur-2xl",
+        "border-t md:border-t-0 md:border-l border-slate-200/70 dark:border-white/8",
+        "rounded-t-[28px] md:rounded-none shadow-[0_-8px_40px_-12px_rgba(0,0,0,0.25)] md:shadow-[-8px_0_40px_-12px_rgba(0,0,0,0.25)]",
+        "z-70",
       )}
     >
-      {/* Mobile Handle */}
-      <div className="flex md:hidden justify-center py-2 shrink-0">
-        <div className="w-10 h-1.5 rounded-full bg-slate-200 dark:bg-white/10 active:bg-slate-300 dark:active:bg-white/20 transition-colors cursor-grab active:cursor-grabbing" />
+      {/* Mobile grab handle */}
+      <div className="flex md:hidden justify-center pt-2.5 pb-1 shrink-0">
+        <div className="w-9 h-1.5 rounded-full bg-slate-300/70 dark:bg-white/15" />
       </div>
 
       {/* Header */}
-      <div className="px-5 pt-3 pb-4 flex items-center justify-between shrink-0 bg-linear-to-b from-slate-50 dark:from-white/3 to-transparent border-b border-slate-100 dark:border-white/2">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="p-2.5 rounded-2xl bg-primary text-white shrink-0 group hover:scale-105 transition-transform">
-            <Building2 className="w-4.5 h-4.5 group-hover:rotate-6 transition-transform" />
-          </div>
-          <div className="min-w-0">
-            <h3 className="font-black text-base text-slate-900 dark:text-white leading-tight truncate tracking-tight">
-              {building.buildingName ||
-                building.name ||
-                building.buildingCode ||
-                building.code ||
-                "Building Asset"}
-            </h3>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-[9px] font-mono text-slate-400 dark:text-white/30 uppercase tracking-[0.2em] leading-none">
-                {building.buildingCode || building.code || "ID-NONE"}
-              </span>
+      <div className="relative px-5 pt-4 pb-4 shrink-0">
+        <div
+          className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/40 to-transparent"
+          aria-hidden
+        />
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="grid place-items-center w-11 h-11 rounded-2xl bg-linear-to-br from-primary to-primary/70 text-white shrink-0 shadow-lg shadow-primary/20">
+              <Building2 className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="font-bold text-[17px] leading-tight text-slate-900 dark:text-white truncate tracking-tight">
+                {name}
+              </h3>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-white/8 px-1.5 py-0.5 text-[10px] font-mono font-medium text-slate-500 dark:text-white/45 tracking-wide">
+                  {code}
+                </span>
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 text-[10px] font-semibold",
+                    tone.text,
+                  )}
+                >
+                  <span className={cn("w-1.5 h-1.5 rounded-full", tone.dot)} />
+                  {avgLabel}
+                </span>
+              </div>
             </div>
           </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="p-1.5 rounded-xl text-slate-400 dark:text-white/40 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors active:scale-95"
+          >
+            <X className="w-4.5 h-4.5" />
+          </button>
         </div>
-        <button
-          onClick={onClose}
-          className="p-2 rounded-xl text-slate-300 dark:text-white/20 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-all active:scale-95 group"
-        >
-          <X className="w-4.5 h-4.5 group-hover:rotate-90 transition-transform duration-300" />
-        </button>
       </div>
 
-      {/* Tab Switcher */}
-      <div className="px-5 py-2.5 shrink-0 bg-slate-50/50 dark:bg-[#0f1117]/50">
-        <div className="flex gap-1 p-1 rounded-full bg-white dark:bg-card/95 border border-slate-200 dark:border-white/6">
-          {["details", "media", "reporting"].map((tab) => (
+      {/* Segmented tabs */}
+      <div className="px-5 pb-3 shrink-0">
+        <div className="flex gap-1 p-1 rounded-xl bg-slate-100/80 dark:bg-white/5">
+          {tabs.map((tab) => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab as any)}
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "flex-1 py-1.5 rounded-full text-[13px] transition-all relative overflow-hidden group",
-                activeTab === tab
-                  ? "font-black bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white border border-slate-200 dark:border-white/4"
-                  : "text-slate-400 dark:text-white hover:text-slate-900 dark:hover:text-white/40 hover:bg-slate-50 dark:hover:bg-white/2",
+                "flex-1 py-1.5 rounded-lg text-[12px] font-semibold transition-all",
+                activeTab === tab.id
+                  ? "bg-white dark:bg-white/12 text-slate-900 dark:text-white shadow-sm"
+                  : "text-slate-500 dark:text-white/45 hover:text-slate-700 dark:hover:text-white/70",
               )}
             >
-              {tab === "reporting" ? "Reports" : tab}
-              {activeTab === tab && (
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-0.5 bg-primary rounded-full animate-pulse" />
-              )}
+              {tab.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto px-5 py-2 custom-scrollbar min-h-0">
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-5 pb-4 custom-scrollbar min-h-0">
         {activeTab === "details" && (
-          <div className="space-y-6 py-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
-            {/* Status Section */}
-            <div className="space-y-3.5">
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-card/30 border border-slate-200 dark:border-white/6 relative overflow-hidden group hover:border-slate-300 dark:hover:border-white/12 transition-all">
-                <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
-                  <Shield className="w-20 h-20 -mr-6 -mt-4 rotate-12" />
-                </div>
-                <div className="relative z-10 flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="text-[9px] font-black text-slate-400 dark:text-white/30 uppercase tracking-[0.2em] font-mono flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                      Scorecard
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xl font-black text-slate-900 dark:text-white tracking-tighter">
-                        {avgLabel}
-                      </span>
-                      <Badge
-                        className={cn(
-                          "px-2 py-0.5 rounded-lg border-slate-200 dark:border-white/6 font-bold text-[9px] uppercase",
-                          avgColorClass,
-                        )}
-                      >
-                        {((avgVal / 4) * 100).toFixed(0)}% Condition
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="w-12 h-12 flex items-center justify-center relative">
-                    <div className="absolute inset-0 rounded-full border-2 border-slate-200 dark:border-white/4" />
-                    <div className="absolute inset-0 rounded-full border-2 border-primary border-t-transparent animate-[spin_4s_linear_infinite]" />
-                    <Shield className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
-                  </div>
+          <div className="space-y-5 py-1 animate-in fade-in slide-in-from-bottom-1 duration-300">
+            {/* Condition hero */}
+            <div className="flex items-center gap-4 p-4 rounded-2xl border border-slate-200/70 dark:border-white/8 bg-slate-50/60 dark:bg-white/4">
+              <div className="relative shrink-0 w-17 h-17">
+                <svg viewBox="0 0 64 64" className="w-full h-full -rotate-90">
+                  <circle
+                    cx="32"
+                    cy="32"
+                    r={R}
+                    fill="none"
+                    strokeWidth="6"
+                    className="stroke-slate-200 dark:stroke-white/10"
+                  />
+                  <circle
+                    cx="32"
+                    cy="32"
+                    r={R}
+                    fill="none"
+                    strokeWidth="6"
+                    strokeLinecap="round"
+                    className={cn("transition-all duration-700", tone.ring)}
+                    strokeDasharray={C}
+                    strokeDashoffset={C - (pct / 100) * C}
+                  />
+                </svg>
+                <div className="absolute inset-0 grid place-items-center">
+                  <span className="text-[15px] font-bold text-slate-900 dark:text-white tabular-nums">
+                    {pct}
+                    <span className="text-[9px] font-semibold text-slate-400 dark:text-white/40">
+                      %
+                    </span>
+                  </span>
                 </div>
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  {
-                    label: "Structure",
-                    status: buildingStatus,
-                    color: conditionColors[buildingStatus],
-                    icon: Building2,
-                  },
-                  {
-                    label: "Roofing",
-                    status: roofStatus,
-                    color: conditionColors[roofStatus],
-                    icon: Home,
-                  },
-                ].map((item, i) => (
-                  <div
-                    key={i}
-                    className="p-2 px-3 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/4 hover:bg-slate-100 dark:hover:bg-white/10 transition-all group"
-                  >
-                    <div className="flex items-center gap-2">
-                      <item.icon className="w-3 h-3 text-slate-300 dark:text-white/20 group-hover:text-primary" />
-                      <span className="text-[8px] font-black text-slate-400 dark:text-white/50 uppercase tracking-widest font-mono">
-                        {item.label}
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-white/40">
+                  Overall condition
+                </p>
+                <p
+                  className={cn(
+                    "text-lg font-bold tracking-tight leading-tight",
+                    tone.text,
+                  )}
+                >
+                  {avgLabel}
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {[
+                    { label: "Structure", status: buildingStatus },
+                    { label: "Roof", status: roofStatus },
+                  ].map((it) => {
+                    const t =
+                      CONDITION_TONE[it.status] ?? CONDITION_TONE.fair;
+                    return (
+                      <span
+                        key={it.label}
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold capitalize",
+                          t.chip,
+                        )}
+                      >
+                        {it.label}: {it.status}
                       </span>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-[9px] font-black uppercase px-2.5 py-0 border-none",
-                        item.color || "bg-white/10 text-white",
-                      )}
-                    >
-                      {item.status}
-                    </Badge>
-                  </div>
-                ))}
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
-            {/* Specifications */}
-            <div className="space-y-2.5">
-              <p className="text-[9px] font-black text-slate-400 dark:text-white/20 uppercase tracking-[0.2em] pl-1 font-mono">
-                Technical Specs
+            {/* Specs grid */}
+            <div>
+              <p className="mb-2 pl-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-white/35">
+                Specifications
               </p>
-              <div className="rounded-2xl border border-slate-200 dark:border-white/6 bg-slate-50 dark:bg-white/5 overflow-hidden backdrop-blur-3xl">
-                {[
-                  {
-                    label: "Function",
-                    value:
-                      building.buildingFunction || building.function || "N/A",
-                    icon: Layers,
-                    color: "text-blue-500 dark:text-blue-400",
-                  },
-                  {
-                    label: "Floors",
-                    value:
-                      (building.buildingFloors || building.floors || "1") +
-                      " Floor(s)",
-                    icon: Maximize2,
-                    color: "text-purple-500 dark:text-purple-400",
-                  },
-                  {
-                    label: "Area",
-                    value:
-                      (building.buildingArea ||
-                        building.area ||
-                        building.areaSquareMeters) &&
-                      Number(
-                        building.buildingArea ||
-                          building.area ||
-                          building.areaSquareMeters,
-                      ) > 0
-                        ? `${Number(building.buildingArea || building.area || building.areaSquareMeters).toFixed(0)}m²`
-                        : "N/A",
-                    icon: Square,
-                    color: "text-emerald-500 dark:text-emerald-400",
-                  },
-                  {
-                    label: "Year Built",
-                    value:
-                      building.buildingYearBuilt ||
-                      building.yearBuilt ||
-                      "Historic",
-                    icon: Calendar,
-                    color: "text-amber-500 dark:text-amber-400",
-                  },
-                ].map((item, i) => (
+              <div className="grid grid-cols-2 gap-2">
+                {specs.map((s) => (
                   <div
-                    key={i}
-                    className={cn(
-                      "flex items-center justify-between p-3.5 hover:bg-slate-100 dark:hover:bg-white/3 transition-all group cursor-default",
-                      i !== 3 &&
-                        "border-b border-slate-100 dark:border-white/3",
-                    )}
+                    key={s.label}
+                    className="rounded-xl border border-slate-200/70 dark:border-white/8 bg-white/60 dark:bg-white/4 p-3"
                   >
-                    <div className="flex items-center gap-3 group-hover:translate-x-1 transition-transform">
-                      <item.icon
-                        className={cn("w-3.5 h-3.5 transition-all", item.color)}
-                      />
-                      <span className="text-[10px] font-normal text-slate-500 dark:text-white/60 uppercase tracking-wider">
-                        {item.label}
+                    <div className="flex items-center gap-1.5 text-slate-400 dark:text-white/35">
+                      <s.icon className="w-3.5 h-3.5" />
+                      <span className="text-[10px] font-semibold uppercase tracking-wider">
+                        {s.label}
                       </span>
                     </div>
-                    <span className="text-[10px] font-black text-slate-700 dark:text-white/70 group-hover:text-slate-900 dark:hover:text-white transition-colors tabular-nums">
-                      {item.value}
-                    </span>
+                    <p className="mt-1.5 text-[13px] font-bold text-slate-800 dark:text-white/90 truncate capitalize">
+                      {s.value}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -301,39 +328,30 @@ export function BlockInspector({
 
             {/* Facilities */}
             {building.facilities && building.facilities.length > 0 && (
-              <div className="space-y-3.5">
-                <div className="flex justify-between items-center px-1">
-                  <p className="text-[9px] font-black text-slate-400 dark:text-white/20 uppercase tracking-[0.2em] font-mono">
+              <div>
+                <div className="mb-2 flex items-center justify-between px-0.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-white/35">
                     Facilities
                   </p>
-                  <Badge
-                    variant="secondary"
-                    className="bg-primary/10 text-primary text-[8px] font-black border-none rounded-full px-2.5 h-5"
-                  >
-                    {building.facilities.length} Rooms
-                  </Badge>
+                  <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-bold">
+                    {building.facilities.length}
+                  </span>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {building.facilities.map((f: any, idx: number) => (
                     <div
                       key={idx}
-                      className="flex justify-between items-center p-3.5 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/6 hover:bg-slate-100 dark:hover:bg-white/10 transition-all group overflow-hidden relative"
+                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 dark:border-white/8 bg-white/60 dark:bg-white/4 px-3 py-2.5"
                     >
-                      <div className="absolute inset-y-0 left-0 w-0.5 bg-primary transform scale-y-0 group-hover:scale-y-100 transition-transform duration-300" />
-                      <div className="flex items-center gap-3.5 min-w-0">
-                        <Home className="w-4 h-4 text-slate-200 dark:text-white/10 group-hover:text-primary transition-all" />
-                        <div className="min-w-0">
-                          <p className="text-[13px] font-bold text-slate-600 dark:text-white/60 group-hover:text-slate-900 dark:hover:text-white truncate transition-colors tracking-tight">
-                            {f.facility_name || f.name || "Facility"}
-                          </p>
-                        </div>
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Home className="w-4 h-4 text-slate-300 dark:text-white/25 shrink-0" />
+                        <p className="text-[13px] font-semibold text-slate-700 dark:text-white/80 truncate">
+                          {f.facility_name || f.name || "Facility"}
+                        </p>
                       </div>
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] font-black border-slate-200 dark:border-white/4 bg-blue-50 dark:bg-blue-800/20 text-blue-600 dark:text-primary px-2 py-0.5 rounded-full group-hover:border-primary/20"
-                      >
-                        {f.number_of_rooms || f.count || 1} Rooms
-                      </Badge>
+                      <span className="shrink-0 rounded-md bg-slate-100 dark:bg-white/8 px-1.5 py-0.5 text-[10px] font-bold text-slate-500 dark:text-white/50 tabular-nums">
+                        {f.number_of_rooms || f.count || 1} rooms
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -343,7 +361,7 @@ export function BlockInspector({
         )}
 
         {activeTab === "media" && (
-          <div className="flex-1 flex flex-col min-h-0 py-4 animate-in fade-in slide-in-from-right-4 duration-500 overflow-hidden">
+          <div className="flex-1 flex flex-col min-h-0 py-3 animate-in fade-in slide-in-from-right-2 duration-300 overflow-hidden">
             <BuildingMediaTab
               building={building}
               schoolId={schoolId}
@@ -353,7 +371,7 @@ export function BlockInspector({
         )}
 
         {activeTab === "reporting" && (
-          <div className="flex-1 flex flex-col min-h-0 py-4 animate-in fade-in slide-in-from-right-4 duration-500 overflow-hidden">
+          <div className="flex-1 flex flex-col min-h-0 py-3 animate-in fade-in slide-in-from-right-2 duration-300 overflow-hidden">
             <BuildingReportingTab
               buildingId={building.id}
               schoolId={schoolId}
@@ -365,14 +383,13 @@ export function BlockInspector({
 
       {/* Footer */}
       {activeTab === "details" && (
-        <div className="p-5 pt-3 shrink-0 border-t border-slate-100 dark:border-white/6 bg-white/80 dark:bg-[#0f1117]/80 backdrop-blur-md">
+        <div className="p-4 shrink-0 border-t border-slate-200/70 dark:border-white/8 bg-white/70 dark:bg-[#0d0f14]/70 backdrop-blur-md">
           <Button
-            variant="outline"
-            className="w-full h-12 text-[10px] font-black uppercase tracking-[0.25em] rounded-2xl border-slate-200 dark:border-white/6 bg-slate-50 dark:bg-white/2 hover:bg-primary hover:border-primary hover:text-white transition-all duration-300 active:scale-[0.97] group"
+            className="w-full h-11 rounded-xl text-[12px] font-bold tracking-wide bg-primary hover:bg-primary/90 text-white transition-all active:scale-[0.98]"
             onClick={() => onEdit(building)}
           >
-            <Pencil className="w-3.5 h-3.5 mr-2 group-hover:scale-110 transition-transform" />
-            Edit Parameters
+            <Pencil className="w-3.5 h-3.5 mr-2" />
+            Edit building
           </Button>
         </div>
       )}

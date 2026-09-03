@@ -1351,8 +1351,8 @@ export default function School2DViewer({
       {!pickerMode && (
         <div
           className={cn(
-            "fixed inset-x-0 bottom-0 z-50 transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] pointer-events-none", // Mobile bottom sheet
-            "md:absolute md:inset-y-0 md:right-0 md:bottom-auto md:w-125 md:z-40", // Desktop sidebar (Right side)
+            "fixed inset-x-0 bottom-0 z-70 transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] pointer-events-none", // Mobile bottom sheet
+            "md:absolute md:inset-y-0 md:right-0 md:bottom-auto md:w-125 md:z-70", // Desktop sidebar (Right side)
             isBlockInspectorOpen
               ? "translate-y-0 md:translate-x-0 opacity-100"
               : "translate-y-full md:translate-x-full opacity-0",
