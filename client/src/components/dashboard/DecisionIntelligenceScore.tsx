@@ -252,6 +252,7 @@ export const DecisionIntelligenceScore = React.memo(
               <div className="grid grid-cols-2 gap-4">
                 {metrics.map((metric, index) => {
                   const hasScore = metric.score != null;
+                  const scoreValue = metric.score ?? 0;
 
                   return (
                     <motion.div
@@ -297,7 +298,7 @@ export const DecisionIntelligenceScore = React.memo(
                         {/* How this factor feeds the overall index */}
                         {hasScore && (
                           <p className="text-[10px] tabular-nums text-slate-400 dark:text-white/30">
-                            {metric.score} × {metric.weight} = {((metric.score * parseFloat(metric.weight)) / 100).toFixed(1)} pts of the overall
+                            {scoreValue} × {metric.weight} = {((scoreValue * parseFloat(metric.weight)) / 100).toFixed(1)} pts of the overall
                           </p>
                         )}
                       </div>
