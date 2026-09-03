@@ -9,6 +9,14 @@ export interface GlbJobData {
   tempFilePath: string;
   originalName: string;
   mimetype: string;
+  /**
+   * 'upload'  — a fresh multipart upload; tempFilePath is a throwaway staged
+   *             file that must be uploaded as the served object and unlinked.
+   * 'restore' — a re-optimize sweep; tempFilePath points at a file already in
+   *             storage (the served GLB or its archived `_source/` original)
+   *             that must NOT be unlinked, and is already the served object.
+   */
+  source?: 'upload' | 'restore';
 }
 
 export interface Kmz2dJobData {
@@ -27,7 +35,9 @@ export class KmzProcessor extends WorkerHost {
   }
 
   async process(job: Job<GlbJobData | Kmz2dJobData>): Promise<unknown> {
-    this.logger.log(`Processing job ${job.id} [${job.name}] for school ${job.data.schoolId}`);
+    this.logger.log(
+      `Processing job ${job.id} [${job.name}] for school ${job.data.schoolId}`,
+    );
 
     switch (job.name) {
       case 'process-glb':

@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -18,11 +19,12 @@ import {
 } from '../schools/entities/school-boundary.entity';
 import { SchoolBuilding } from '../schools/entities/school-building.entity';
 import { StorageService } from '../storage/storage.service';
-import { KMZ_QUEUE } from './kmz.constants';
+import { KMZ_QUEUE, GLB_JOB_OPTIONS } from './kmz.constants';
 import type { GlbJobData, Kmz2dJobData } from './kmz.processor';
 import {
   optimizeGlbFile,
   ensureGlbTools,
+  isGlbOptimizerAvailable,
   type GlbOptimizeResult,
 } from './glb-optimizer';
 import {
@@ -55,8 +57,18 @@ export const KMZ_TMP_DIR: string = (() => {
   return dir;
 })();
 
+/** Outcome of the best-effort GLB optimize step. */
+interface OptimizeOutcome {
+  /** Optimizer metrics when it actually ran (null when it never started). */
+  result: GlbOptimizeResult | null;
+  /** True iff the served object is now the optimized build. */
+  optimized: boolean;
+  /** Why the served object is still raw (null when optimized). */
+  error: string | null;
+}
+
 @Injectable()
-export class KmzService {
+export class KmzService implements OnModuleInit {
   private readonly logger = new Logger(KmzService.name);
   constructor(
     @InjectRepository(School)
@@ -70,6 +82,30 @@ export class KmzService {
   ) {
     // Warm the GLB optimizer (installs its deps once if the deploy didn't).
     void ensureGlbTools();
+  }
+
+  /**
+   * One clear startup line so a prod `pm2 logs rtb-api | grep "GLB optimizer"`
+   * immediately answers "is the optimizer alive" — the difference between a
+   * served 20 MB model and a served 1.9 GB one.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      const ready = await ensureGlbTools();
+      if (ready) {
+        this.logger.log('GLB optimizer: READY');
+      } else {
+        this.logger.warn(
+          `GLB optimizer: UNAVAILABLE (${
+            isGlbOptimizerAvailable()
+              ? 'script present but deps failed to install'
+              : 'glb-tools/optimize.mjs or its node_modules missing'
+          }) — raw GLBs will be served until fixed`,
+        );
+      }
+    } catch (err: any) {
+      this.logger.warn(`GLB optimizer: UNAVAILABLE (${err?.message || err})`);
+    }
   }
 
   async uploadGlbModel(schoolId: string, file: Express.Multer.File) {
@@ -89,12 +125,17 @@ export class KmzService {
       kmzStatus: KmzProcessingStatus.PROCESSING,
     });
 
-    const job = await this.kmzQueue.add('process-glb', {
-      schoolId,
-      tempFilePath: file.path,
-      originalName: file.originalname,
-      mimetype: file.mimetype,
-    } satisfies GlbJobData);
+    const job = await this.kmzQueue.add(
+      'process-glb',
+      {
+        schoolId,
+        tempFilePath: file.path,
+        originalName: file.originalname,
+        mimetype: file.mimetype,
+        source: 'upload',
+      } satisfies GlbJobData,
+      GLB_JOB_OPTIONS,
+    );
 
     this.logger.log(
       `Enqueued process-glb job ${job.id} for school ${schoolId}`,
@@ -110,37 +151,56 @@ export class KmzService {
 
   async processGlbJob(data: GlbJobData): Promise<void> {
     const { schoolId, tempFilePath, originalName, mimetype } = data;
+    const isRestore = data.source === 'restore';
     try {
       const fileBuffer = fs.readFileSync(tempFilePath);
       const filePath = `schools/${schoolId}/3d/${originalName}`;
 
       // 1. Serve the raw model straight away so the viewer works even if the
-      //    optimization step is slow or fails.
-      const publicPath = await this.storageService.uploadFile(
-        filePath,
-        fileBuffer,
-        mimetype,
-      );
+      //    optimization step is slow or fails. On a re-optimize sweep the file
+      //    is already the served object, so this upload is skipped.
+      let publicPath: string | null;
+      if (isRestore) {
+        publicPath =
+          (await this.storageService.getFileUrl(filePath)) ??
+          `/files/${filePath}`;
+      } else {
+        publicPath = await this.storageService.uploadFile(
+          filePath,
+          fileBuffer,
+          mimetype,
+        );
+      }
 
       // 2. Best-effort: replace it with an optimized build (reproject geographic
       //    vertices to local metres, mesh simplify, Meshopt geometry
       //    compression, WebP textures). Raw photogrammetry exports are ~30x
       //    heavier than the web needs. Any failure here leaves the raw model in
       //    place.
-      const optResult: GlbOptimizeResult | null =
-        await this.optimizeAndReplaceGlb(
-          schoolId,
-          tempFilePath,
-          originalName,
-          fileBuffer,
-          mimetype,
-          filePath,
-        ).catch((err: any) => {
-          this.logger.warn(
-            `GLB optimize skipped for school ${schoolId}: ${err?.message || err}`,
-          );
-          return null;
-        });
+      const opt = await this.optimizeAndReplaceGlb(
+        schoolId,
+        tempFilePath,
+        originalName,
+        fileBuffer,
+        mimetype,
+        filePath,
+      ).catch((err: any) => {
+        const msg = String(err?.message || err);
+        this.logger.warn(`GLB optimize skipped for school ${schoolId}: ${msg}`);
+        const outcome: OptimizeOutcome = {
+          result: null,
+          optimized: false,
+          error: msg,
+        };
+        return outcome;
+      });
+      const optResult = opt.result;
+
+      await this.writeModelTelemetry(schoolId, {
+        optimized: opt.optimized,
+        bytes: opt.result?.bytesOut ?? fileBuffer.byteLength,
+        error: opt.error,
+      });
 
       // 3. Sync the school's coordinates to whatever the model says. Preferred
       //    source is the optimizer's reprojection centroid (it decoded the
@@ -179,11 +239,38 @@ export class KmzService {
       });
       throw err;
     } finally {
-      try {
-        fs.unlinkSync(tempFilePath);
-      } catch {
-        /* already gone */
+      // A 'restore' job's tempFilePath is a real file inside storage — never
+      // delete it. Only a fresh upload's staged temp file is disposable.
+      if (!isRestore) {
+        try {
+          fs.unlinkSync(tempFilePath);
+        } catch {
+          /* already gone */
+        }
       }
+    }
+  }
+
+  /**
+   * Persist the outcome of the optimize step so the API and the 3D viewer can
+   * tell an optimized build from a raw multi-GB one, and surface the reason it
+   * failed. Best-effort — never throws into the job.
+   */
+  private async writeModelTelemetry(
+    schoolId: string,
+    o: { optimized: boolean; bytes: number; error: string | null },
+  ): Promise<void> {
+    try {
+      await this.schoolRepository.update(schoolId, {
+        modelOptimized: o.optimized,
+        modelBytes: Math.round(o.bytes),
+        modelOptimizeError: o.optimized ? null : o.error,
+        modelOptimizedAt: o.optimized ? new Date() : undefined,
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `Failed to write model telemetry for ${schoolId}: ${err?.message || err}`,
+      );
     }
   }
 
@@ -192,6 +279,9 @@ export class KmzService {
    * `3d/_source/` and overwrites the served object with the optimized build.
    * The served path (and therefore every stored `modelPath` / `kmzFilePath`)
    * is unchanged, so no DB updates are needed.
+   *
+   * Returns an outcome describing whether the served object is now the
+   * optimized build and, if not, why not.
    */
   private async optimizeAndReplaceGlb(
     schoolId: string,
@@ -200,12 +290,16 @@ export class KmzService {
     rawBuffer: Buffer,
     mimetype: string,
     servedObjectName: string,
-  ): Promise<GlbOptimizeResult | null> {
+  ): Promise<OptimizeOutcome> {
     if (!(await ensureGlbTools())) {
       this.logger.warn(
         'glb-tools unavailable (install failed or script missing) — serving raw GLB',
       );
-      return null;
+      return {
+        result: null,
+        optimized: false,
+        error: 'glb-tools unavailable (optimizer not installed on this host)',
+      };
     }
 
     const workDir = path.join(KMZ_TMP_DIR, 'glb-opt');
@@ -213,9 +307,10 @@ export class KmzService {
     const outPath = path.join(workDir, `${schoolId}-${Date.now()}.glb`);
 
     try {
-      // Defaults (ratio 0.15, up to 5M tris, WebP q95, atlas kept at source
-      // resolution) live in glb-optimizer.ts / optimize.mjs and are tunable via
-      // GLB_MAX_OUT_TRIS / GLB_TEXTURE_QUALITY / GLB_SIMPLIFY_ERROR env vars.
+      // Tunables (ratio, max tris, WebP quality, heap, timeout) live in
+      // glb-optimizer.ts / optimize.mjs and honour GLB_OPT_HEAP_MB /
+      // GLB_OPT_TIMEOUT_MS / GLB_MAX_OUT_TRIS / GLB_TEXTURE_QUALITY /
+      // GLB_SIMPLIFY_ERROR.
       const r = await optimizeGlbFile(sourcePath, outPath);
 
       // Keep the raw model only when the optimizer neither shrank it nor had to
@@ -225,7 +320,11 @@ export class KmzService {
         this.logger.warn(
           `GLB optimize produced no size gain for ${schoolId} — keeping raw`,
         );
-        return r;
+        return {
+          result: r,
+          optimized: false,
+          error: 'optimizer produced no size gain',
+        };
       }
 
       const optimizedBuffer = fs.readFileSync(outPath);
@@ -247,7 +346,7 @@ export class KmzService {
           `${(r.ms / 1000).toFixed(0)}s, ${r.method ?? 'exact'}` +
           `${r.reprojected ? `, reprojected @ ${r.lat},${r.lng}` : ''})`,
       );
-      return r;
+      return { result: r, optimized: true, error: null };
     } finally {
       try {
         fs.unlinkSync(outPath);
@@ -767,6 +866,12 @@ export class KmzService {
       kmzFilePath: school.kmzFilePath ?? null,
       kmz2dFilePath: school.kmz2dFilePath ?? null,
       processedAt: school.kmzProcessedAt ?? null,
+      // 3D-model optimize telemetry — lets the viewer avoid auto-downloading a
+      // raw multi-GB GLB and show a "preparing on server" state instead.
+      modelOptimized: school.modelOptimized ?? null,
+      modelBytes: school.modelBytes == null ? null : Number(school.modelBytes),
+      modelOptimizeError: school.modelOptimizeError ?? null,
+      modelOptimizedAt: school.modelOptimizedAt ?? null,
     };
   }
 

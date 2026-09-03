@@ -27,6 +27,42 @@ import ViewerMainCanvas from "./3dviewercomponents/ViewerMainCanvas";
 // Styles
 import "./School3DView.css";
 
+// ─── GLB browser cache ──────────────────────────────────────────────────────
+// The Cache API keeps a downloaded optimized GLB across tab reloads so the 3D
+// tab re-opens instantly. Entirely best-effort: private windows, quota limits,
+// or a browser with the API disabled all just fall through to the network.
+const GLB_CACHE = "glb-models-v1";
+const GLB_CACHE_MAX_BYTES = 200 * 1_048_576; // never cache a raw export
+
+async function readGlbCache(url: string): Promise<ArrayBuffer | null> {
+  try {
+    if (typeof caches === "undefined") return null;
+    const cache = await caches.open(GLB_CACHE);
+    const hit = await cache.match(url);
+    return hit ? await hit.arrayBuffer() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeGlbCache(url: string, buf: ArrayBuffer): Promise<void> {
+  try {
+    if (typeof caches === "undefined" || buf.byteLength > GLB_CACHE_MAX_BYTES) return;
+    const cache = await caches.open(GLB_CACHE);
+    // Evict older builds of the same model (path without the ?v= bust).
+    const base = url.split("?")[0];
+    for (const req of await cache.keys()) {
+      if (req.url.split("?")[0] === base && req.url !== url) await cache.delete(req);
+    }
+    await cache.put(
+      url,
+      new Response(buf, { headers: { "Content-Type": "model/gltf-binary" } }),
+    );
+  } catch {
+    /* quota / unsupported — ignore */
+  }
+}
+
 // ─── Setup BVH ──────────────────────────────────────────────────────────────
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
@@ -265,6 +301,15 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Non-null while the server is still producing the optimized (web-sized) GLB
+  // for this school — we hold off auto-downloading the raw multi-GB export
+  // (which times out and crashes the tab) and poll until it's ready.
+  const [modelPrep, setModelPrep] = useState<
+    null | { bytes: number | null; error: string | null }
+  >(null);
+  const loadAnywayRef = useRef(false);
+  const pendingModelRef = useRef<{ url: string; fileName: string } | null>(null);
+  const prepPollRef = useRef<number | null>(null);
   const [stats, setStats] = useState<LoadStats | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [availableFacilities, setAvailableFacilities] = useState<AvailableFacility[]>([]);
@@ -586,6 +631,18 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     threeInitPromiseRef.current = new Promise<void>(resolve => { threeInitResolveRef.current = resolve; });
     const startTime = Date.now();
     try {
+      // Fast path: a previously-downloaded copy of this exact URL (the served
+      // filename gains a `?v=` bust whenever the server re-optimises, so a hit
+      // is always the current build). Survives tab reloads; best-effort only.
+      const cached = await readGlbCache(url);
+      if (cached) {
+        setProgress(80); setProgressLabel("Preparing 3D scene — almost there…");
+        const loaderC = makeGLTFLoader();
+        const gltfC = await new Promise<GLTF>((res, rej) => loaderC.parse(cached, "", res, rej));
+        await finalizeGLTF(gltfC, fileName, cached.byteLength, startTime);
+        return;
+      }
+
       // `no-cache` = always revalidate with the file-server (cheap 304 via ETag
       // when unchanged). The served model keeps the same filename across
       // re-optimisations, and the file-server sends `max-age=604800`, so a plain
@@ -606,15 +663,21 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       let arrayBuffer: ArrayBuffer;
 
       if (resp.body && total > 0) {
+        // Write each chunk straight into one pre-allocated buffer. Keeping a
+        // chunks[] array *and* building a second merged copy doubled peak RAM —
+        // enough to OOM-crash the tab ("Aw, Snap!") on a large model.
+        const merged = new Uint8Array(total);
         const reader = resp.body.getReader();
-        const chunks: Uint8Array[] = [];
         let received = 0;
         let lastPaint = 0;
         const dlStart = Date.now();
         for (; ;) {
           const { done, value } = await reader.read();
           if (done) break;
-          chunks.push(value);
+          if (received + value.length > total) {
+            throw new Error("Model stream is larger than declared — aborting");
+          }
+          merged.set(value, received);
           received += value.length;
           const now = Date.now();
           if (now - lastPaint > 150) {
@@ -630,14 +693,15 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
             );
           }
         }
-        const merged = new Uint8Array(received);
-        let offset = 0;
-        for (const c of chunks) { merged.set(c, offset); offset += c.length; }
-        arrayBuffer = merged.buffer;
+        arrayBuffer = received === total ? merged.buffer : merged.buffer.slice(0, received);
       } else {
         setProgressLabel("Downloading model…");
         arrayBuffer = await resp.arrayBuffer();
       }
+
+      // Cache the web-sized build for instant re-opens. Never cache a raw
+      // multi-GB export — it would blow the origin's storage quota.
+      void writeGlbCache(url, arrayBuffer);
 
       setProgress(80); setProgressLabel("Preparing 3D scene — almost there…");
       const loader = makeGLTFLoader();
@@ -645,6 +709,52 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       await finalizeGLTF(gltf, fileName, arrayBuffer.byteLength, startTime);
     } catch (err: any) { setError(err?.message || "Failed to fetch model"); setPhase("idle"); }
   }, [finalizeGLTF]);
+
+  // Gate the download: if the server is still producing the optimized GLB, show
+  // a "preparing" state and poll every 15 s instead of pulling the raw
+  // multi-GB export (which times out and crashes the tab). `Load anyway` and a
+  // status endpoint that's unreachable both fall through to a normal load.
+  const maybeLoad = useCallback(async (finalUrl: string, fileName: string) => {
+    pendingModelRef.current = { url: finalUrl, fileName };
+    if (!loadAnywayRef.current) {
+      try {
+        const { data: st } = await api.get(`/schools/${schoolId}/kmz/status`);
+        if (st && st.modelOptimized === false) {
+          setModelPrep({ bytes: st.modelBytes ?? null, error: st.modelOptimizeError ?? null });
+          setDiscovering(false);
+          if (prepPollRef.current == null) {
+            prepPollRef.current = window.setInterval(async () => {
+              try {
+                const { data: s2 } = await api.get(`/schools/${schoolId}/kmz/status`);
+                if (!s2 || s2.modelOptimized !== false) {
+                  if (prepPollRef.current != null) { clearInterval(prepPollRef.current); prepPollRef.current = null; }
+                  setModelPrep(null);
+                  loadGLBFromURL(finalUrl, fileName);
+                } else {
+                  setModelPrep({ bytes: s2.modelBytes ?? null, error: s2.modelOptimizeError ?? null });
+                }
+              } catch { /* keep polling */ }
+            }, 15_000);
+          }
+          return;
+        }
+      } catch { /* status unavailable — just load */ }
+    }
+    setModelPrep(null);
+    loadGLBFromURL(finalUrl, fileName);
+  }, [schoolId, loadGLBFromURL]);
+
+  const loadModelAnyway = useCallback(() => {
+    loadAnywayRef.current = true;
+    if (prepPollRef.current != null) { clearInterval(prepPollRef.current); prepPollRef.current = null; }
+    setModelPrep(null);
+    const p = pendingModelRef.current;
+    if (p) loadGLBFromURL(p.url, p.fileName);
+  }, [loadGLBFromURL]);
+
+  useEffect(() => () => {
+    if (prepPollRef.current != null) clearInterval(prepPollRef.current);
+  }, []);
 
   useEffect(() => {
     if (!schoolId) return;
@@ -675,7 +785,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
           const safePath = rawPath.split("/").map(encodeURIComponent).join("/");
           const finalUrl =
             `${FILE_SERVER_URL}${safePath}` + (query ? `?${query}` : "");
-          loadGLBFromURL(finalUrl, data.filename || "model.glb");
+          void maybeLoad(finalUrl, data.filename || "model.glb");
         } else {
           setError("3D model not found for this school.");
         }
@@ -685,7 +795,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         setError("3D model not found for this school.");
       })
       .finally(() => setDiscovering(false));
-  }, [schoolId, phase, loadGLBFromURL]);
+  }, [schoolId, phase, maybeLoad]);
 
   useEffect(() => {
     const model = modelRef.current;
@@ -1511,7 +1621,24 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
           <div className="progress-label">Checking for 3D model…</div>
         </div>
       )}
-      {phase === "idle" && !discovering && (
+      {phase === "idle" && !discovering && modelPrep && (
+        <div className="loading-overlay">
+          <div className="spinner-ring" />
+          <div className="progress-label">Preparing an optimized 3D model on the server…</div>
+          <div style={{ opacity: 0.7, fontSize: 12, marginTop: 10, maxWidth: 440, textAlign: "center", lineHeight: 1.6 }}>
+            This runs in the background — you can leave this page and come back.
+            {modelPrep.bytes ? ` The raw model is ${(modelPrep.bytes / 1_048_576).toFixed(0)} MB.` : ""}
+            {modelPrep.error ? ` Last attempt: ${modelPrep.error}.` : ""}
+          </div>
+          <button
+            onClick={loadModelAnyway}
+            style={{ marginTop: 16, padding: "8px 16px", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 999, border: "1px solid rgba(255,255,255,0.25)", background: "transparent", color: "inherit" }}
+          >
+            Load raw model anyway (large, may be slow)
+          </button>
+        </div>
+      )}
+      {phase === "idle" && !discovering && !modelPrep && (
         <ViewerLoadingScreens phase={phase} progress={progress} progressLabel={progressLabel} isDragging={isDragging} schoolName={schoolName} setIsDragging={setIsDragging} handleDrop={handleDrop} handleInputChange={handleInputChange} />
       )}
       {phase !== "idle" && (

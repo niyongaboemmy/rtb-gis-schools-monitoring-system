@@ -75,7 +75,10 @@ class LocalFsBackend implements IStorageBackend {
 
   async deleteDirectory(dirPath: string): Promise<void> {
     try {
-      await fs.rm(join(this.uploadDir, dirPath), { recursive: true, force: true });
+      await fs.rm(join(this.uploadDir, dirPath), {
+        recursive: true,
+        force: true,
+      });
       this.logger.log(`[local] directory deleted: ${dirPath}`);
     } catch (err) {
       this.logger.error(`[local] directory delete failed: ${dirPath}`, err);
@@ -101,7 +104,13 @@ class MinioBackend implements IStorageBackend {
     secretKey: string,
     bucket: string,
   ) {
-    this.client = new Minio.Client({ endPoint: endpoint, port, useSSL, accessKey, secretKey });
+    this.client = new Minio.Client({
+      endPoint: endpoint,
+      port,
+      useSSL,
+      accessKey,
+      secretKey,
+    });
     this.bucket = bucket;
     const scheme = useSSL ? 'https' : 'http';
     this.baseUrl = `${scheme}://${endpoint}:${port}/${bucket}`;
@@ -125,9 +134,15 @@ class MinioBackend implements IStorageBackend {
     contentType: string,
   ): Promise<string | null> {
     try {
-      await this.client.putObject(this.bucket, objectName, buffer, buffer.length, {
-        'Content-Type': contentType,
-      });
+      await this.client.putObject(
+        this.bucket,
+        objectName,
+        buffer,
+        buffer.length,
+        {
+          'Content-Type': contentType,
+        },
+      );
       this.logger.log(`[minio] uploaded: ${objectName}`);
       return `${this.baseUrl}/${objectName}`;
     } catch (err) {
@@ -138,7 +153,11 @@ class MinioBackend implements IStorageBackend {
 
   async getUrl(objectName: string, expiry = 3600): Promise<string | null> {
     try {
-      return await this.client.presignedGetObject(this.bucket, objectName, expiry);
+      return await this.client.presignedGetObject(
+        this.bucket,
+        objectName,
+        expiry,
+      );
     } catch (err) {
       this.logger.error(`[minio] presign failed: ${objectName}`, err);
       return null;
@@ -160,7 +179,9 @@ class MinioBackend implements IStorageBackend {
       const objectNames: string[] = await new Promise((resolve, reject) => {
         const names: string[] = [];
         const stream = this.client.listObjects(this.bucket, prefix, true);
-        stream.on('data', (obj) => { if (obj.name) names.push(obj.name); });
+        stream.on('data', (obj) => {
+          if (obj.name) names.push(obj.name);
+        });
         stream.on('end', () => resolve(names));
         stream.on('error', reject);
       });
@@ -171,7 +192,9 @@ class MinioBackend implements IStorageBackend {
         this.bucket,
         objectNames.map((name) => ({ name })),
       );
-      this.logger.log(`[minio] deleted ${objectNames.length} objects under: ${dirPath}`);
+      this.logger.log(
+        `[minio] deleted ${objectNames.length} objects under: ${dirPath}`,
+      );
     } catch (err) {
       this.logger.error(`[minio] directory delete failed: ${dirPath}`, err);
     }
@@ -186,16 +209,28 @@ class MinioBackend implements IStorageBackend {
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private readonly backend: IStorageBackend;
+  /** Absolute path of the local storage root, or null for the MinIO backend. */
+  private readonly localRoot: string | null = null;
 
   constructor(private readonly configService: ConfigService) {
     const backendType = configService.get<string>('STORAGE_BACKEND', 'local');
 
     if (backendType === 'minio') {
       const endpoint = configService.get<string>('MINIO_ENDPOINT', 'localhost');
-      const port = parseInt(configService.get<string>('MINIO_PORT', '9000'), 10);
-      const useSSL = configService.get<string>('MINIO_USE_SSL', 'false') === 'true';
-      const accessKey = configService.get<string>('MINIO_ACCESS_KEY', 'minioadmin');
-      const secretKey = configService.get<string>('MINIO_SECRET_KEY', 'minioadmin');
+      const port = parseInt(
+        configService.get<string>('MINIO_PORT', '9000'),
+        10,
+      );
+      const useSSL =
+        configService.get<string>('MINIO_USE_SSL', 'false') === 'true';
+      const accessKey = configService.get<string>(
+        'MINIO_ACCESS_KEY',
+        'minioadmin',
+      );
+      const secretKey = configService.get<string>(
+        'MINIO_SECRET_KEY',
+        'minioadmin',
+      );
       const bucket = configService.get<string>('MINIO_BUCKET', 'rtb-gis-files');
 
       const minio = new MinioBackend(
@@ -221,8 +256,18 @@ export class StorageService {
         : join(process.cwd(), '..', 'file-server', 'storage');
 
       this.backend = new LocalFsBackend(uploadDir, this.logger);
+      this.localRoot = uploadDir;
       this.logger.log(`Storage backend: local filesystem (${uploadDir})`);
     }
+  }
+
+  /**
+   * Absolute path of the local filesystem storage root (where `schools/<id>/…`
+   * objects live on disk), or null when the backend is MinIO. Used by the GLB
+   * re-optimize sweep to walk already-uploaded models.
+   */
+  getLocalRoot(): string | null {
+    return this.localRoot;
   }
 
   async uploadFile(

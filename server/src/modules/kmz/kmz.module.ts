@@ -4,6 +4,8 @@ import { BullModule } from '@nestjs/bullmq';
 import { KmzController } from './kmz.controller';
 import { KmzService, KMZ_TMP_DIR } from './kmz.service';
 import { KmzProcessor } from './kmz.processor';
+import { GlbReoptimizeService } from './glb-reoptimize.service';
+import { GlbAdminController } from './glb-admin.controller';
 import { School } from '../schools/entities/school.entity';
 import { SchoolBoundary } from '../schools/entities/school-boundary.entity';
 import { SchoolBuilding } from '../schools/entities/school-building.entity';
@@ -40,8 +42,8 @@ mkdirSync(KMZ_UPLOAD_DIR, { recursive: true });
     StorageModule,
     BullModule.registerQueue({ name: KMZ_QUEUE }),
   ],
-  controllers: [KmzController],
-  providers: [KmzService, KmzProcessor],
+  controllers: [KmzController, GlbAdminController],
+  providers: [KmzService, KmzProcessor, GlbReoptimizeService],
   exports: [KmzService],
 })
 export class KmzModule {}
