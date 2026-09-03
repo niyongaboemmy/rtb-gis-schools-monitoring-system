@@ -282,6 +282,55 @@ describe('calculateInfrastructureScore', () => {
 });
 
 // ---------------------------------------------------------------------------
+// assessedBuildings — model-file placeholders are not structural evidence
+// ---------------------------------------------------------------------------
+
+describe('assessedBuildings', () => {
+  let service: AnalyticsService;
+  beforeEach(async () => ({ service } = await makeService()));
+
+  const placeholder = {
+    condition: BuildingCondition.FAIR,
+    modelName: 'nyamirama tss-3d model.glb',
+    modelPath: '/files/schools/x/3d/model.glb',
+  } as unknown as SchoolBuilding;
+
+  it('drops a bare GLB-model placeholder row', () => {
+    expect((service as any).assessedBuildings([placeholder])).toEqual([]);
+  });
+
+  it('keeps a placeholder once any inventory field is filled', () => {
+    const real = { ...placeholder, yearBuilt: 2010 };
+    expect((service as any).assessedBuildings([real])).toHaveLength(1);
+  });
+
+  it('keeps hand-entered buildings that carry no model reference', () => {
+    expect(
+      (service as any).assessedBuildings([
+        buildBuilding(BuildingCondition.POOR),
+      ]),
+    ).toHaveLength(1);
+  });
+
+  it('calculateSchoolScore: a school whose only building is a GLB placeholder scores as infra data-gap', async () => {
+    const { service: svc } = await makeService();
+    const res = await svc.calculateSchoolScore(
+      buildSchool({
+        establishedYear: CY - 24,
+        roadStatusPercentage: 70,
+        buildings: [placeholder],
+      }),
+    );
+    expect(Number(res.infrastructureScore)).toBe(50);
+    expect(res.hasInfraDataGap).toBe(true);
+    // age still falls back to establishedYear (24y → 60)
+    expect(Number(res.buildingAgeScore)).toBe(60);
+    // 50*.35 + 60*.25 + 50*.15 + 50*.10 + 70*.10 + 50*.05 = 54.5 → 55
+    expect(Number(res.overallScore)).toBe(55);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // calculateAgeScore
 // ---------------------------------------------------------------------------
 

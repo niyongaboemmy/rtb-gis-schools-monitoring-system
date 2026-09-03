@@ -17,7 +17,10 @@ import {
   SchoolBoundary,
   BoundaryType,
 } from '../schools/entities/school-boundary.entity';
-import { SchoolBuilding } from '../schools/entities/school-building.entity';
+import {
+  SchoolBuilding,
+  BuildingCondition,
+} from '../schools/entities/school-building.entity';
 import { StorageService } from '../storage/storage.service';
 import { KMZ_QUEUE, GLB_JOB_OPTIONS } from './kmz.constants';
 import type { GlbJobData, Kmz2dJobData } from './kmz.processor';
@@ -233,14 +236,32 @@ export class KmzService implements OnModuleInit {
           : deriveCoordinateFromGlb(fileBuffer);
       await this.syncSchoolCoordinate(schoolId, derivedCoord).catch(() => {});
 
-      await this.buildingRepository.delete({ schoolId });
-      const building = this.buildingRepository.create({
-        schoolId,
-        name: originalName,
-        modelPath: publicPath || filePath,
-        modelName: originalName,
-      });
-      await this.buildingRepository.save(building);
+      // A bare GLB upload no longer creates a `school_buildings` row. The 3D
+      // viewer resolves the model from the file server + `kmzFilePath`, not from
+      // a building record. Buildings are structural-inventory data and must be
+      // entered manually with a real assessed condition so they can legitimately
+      // feed the infrastructure score. On a genuine upload also purge any stub
+      // rows a previous version auto-created for the model file: `condition`
+      // still at the enum default and every inventory field empty.
+      if (!isRestore) {
+        await this.buildingRepository
+          .createQueryBuilder()
+          .delete()
+          .where('school_id = :schoolId', { schoolId })
+          .andWhere('condition = :defaultCondition', {
+            defaultCondition: BuildingCondition.FAIR,
+          })
+          .andWhere(`("roofCondition" IS NULL OR "roofCondition" = 'good')`)
+          .andWhere('"yearBuilt" IS NULL')
+          .andWhere('"structuralScore" IS NULL')
+          .andWhere('"areaSquareMeters" IS NULL')
+          .andWhere('floors IS NULL')
+          .andWhere('"buildingCode" IS NULL')
+          .andWhere('notes IS NULL')
+          .andWhere('"footprintGeojson" IS NULL')
+          .andWhere('"lastInspectionDate" IS NULL')
+          .execute();
+      }
 
       await this.schoolRepository.update(schoolId, {
         kmzStatus: KmzProcessingStatus.COMPLETED,

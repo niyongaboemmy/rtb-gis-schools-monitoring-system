@@ -20,6 +20,7 @@ import { School, KmzProcessingStatus } from '../schools/entities/school.entity';
 import {
   SchoolBuilding,
   BuildingCondition,
+  RoofCondition,
 } from '../schools/entities/school-building.entity';
 import { PopulationData } from '../population/entities/population-data.entity';
 import { SchoolFacilitySurvey } from '../schools/entities/school-facility-survey.entity';
@@ -1150,13 +1151,17 @@ export class AnalyticsService {
         ? Math.min(100, Math.round((resolvedReports / totalReports) * 100))
         : 50; // no reports = neutral (school not penalised for clean record)
 
-    // Infrastructure score (35%) — based on building conditions
-    const infraScore = this.calculateInfrastructureScore(buildings);
-    const hasInfraDataGap = buildings.length === 0;
+    // Infrastructure score (35%) — based on building conditions. Only buildings
+    // that carry a real structural assessment count; model-only placeholder
+    // rows (auto-created by an old GLB-upload path, `condition` = enum default
+    // 'fair', no inventory fields) are NOT evidence and must not lift the score.
+    const assessed = this.assessedBuildings(buildings);
+    const infraScore = this.calculateInfrastructureScore(assessed);
+    const hasInfraDataGap = assessed.length === 0;
 
     // Building age score (25%) — newer average age = higher score
     const ageScore = this.calculateAgeScore(
-      buildings,
+      assessed,
       school.establishedYear != null
         ? Number(school.establishedYear)
         : undefined,
@@ -1278,6 +1283,36 @@ export class AnalyticsService {
     });
 
     return saved;
+  }
+
+  /**
+   * Buildings that carry a real structural assessment rather than a bare stub.
+   *
+   * A GLB/KMZ import (and a hand-save that only fills the name) leaves a row
+   * with `condition` at the enum default ('fair') and every inventory field
+   * null. That is not an inspection result and must not lift the infrastructure
+   * score — the school should read as an infra DATA GAP until it is surveyed.
+   *
+   * A row counts as assessed when the surveyor left any positive signal:
+   * a deliberately non-default condition/roof, a build year, a structural
+   * score, floor/area figures, a footprint, an inspection date, a code, or
+   * notes.
+   */
+  private assessedBuildings(buildings: SchoolBuilding[]): SchoolBuilding[] {
+    if (!buildings?.length) return [];
+    return buildings.filter(
+      (b) =>
+        (b.condition != null && b.condition !== BuildingCondition.FAIR) ||
+        (b.roofCondition != null && b.roofCondition !== RoofCondition.GOOD) ||
+        b.yearBuilt != null ||
+        b.structuralScore != null ||
+        b.areaSquareMeters != null ||
+        b.floors != null ||
+        b.buildingCode != null ||
+        !!b.notes ||
+        b.footprintGeojson != null ||
+        b.lastInspectionDate != null,
+    );
   }
 
   private calculateInfrastructureScore(buildings: SchoolBuilding[]): number {
