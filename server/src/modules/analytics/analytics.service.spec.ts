@@ -378,9 +378,7 @@ describe('calculatePopulationScore', () => {
 
   it('loads population by schoolId when the ORM relation is empty (school_id FK is NULL)', async () => {
     const population = makeRepo({
-      findOne: jest
-        .fn()
-        .mockResolvedValue({ schoolAgePopulation2km: 1500 } as PopulationData),
+      findOne: jest.fn().mockResolvedValue({ schoolAgePopulation2km: 1500 }),
     });
     const { service } = await makeService({ population });
     // relation deliberately empty; repo returns demand 1500 / default cap 300 = 5 → 10
@@ -392,6 +390,51 @@ describe('calculatePopulationScore', () => {
     });
     expect(Number(res.populationPressureScore)).toBe(10);
     expect(res.hasPopDataGap).toBe(false);
+  });
+
+  // Real production record: NYAMIRAMA TSS (code 540912). No building rows, no
+  // population data, programmes carry no capacity, established 1984, earth road
+  // at 70%. Exercises every fallback path at once.
+  it('NYAMIRAMA TSS real payload → infra/pop/fac/res neutral, age from 1984, access 70', async () => {
+    const { service } = await makeService();
+    const school = buildSchool({
+      id: 'nyamirama',
+      establishedYear: 1984,
+      roadStatusPercentage: 70,
+      totalStudents: null as any,
+      buildings: [],
+      populationData: [],
+      educationPrograms: [
+        { name: 'Electrical Technology', capacity: null, totalStudents: 101 },
+        { name: 'Fashion Design', capacity: null, totalStudents: 84 },
+        { name: 'Plumbing Construction', capacity: null, totalStudents: 134 },
+        { name: 'Building Technology', capacity: null, totalStudents: 134 },
+        { name: 'Manufacturing Technology', capacity: null, totalStudents: 64 },
+      ] as any,
+    });
+    const res = await service.calculateSchoolScore(school);
+    const CUR = new Date().getFullYear();
+    // age: (CUR-1984) years → ageToScore. 2026 → 42y → 30.
+    const expectedAge = CUR - 1984 <= 40 ? 45 : CUR - 1984 <= 50 ? 30 : 20;
+    expect(Number(res.infrastructureScore)).toBe(50); // no buildings
+    expect(res.hasInfraDataGap).toBe(true);
+    expect(Number(res.buildingAgeScore)).toBe(expectedAge);
+    expect(Number(res.accessibilityScore)).toBe(70);
+    expect(Number(res.populationPressureScore)).toBe(50); // no population data
+    expect(res.hasPopDataGap).toBe(true);
+    expect(Number(res.facilityComplianceScore)).toBe(50); // no surveys
+    expect(Number(res.resolutionRateScore)).toBe(50); // no reports
+    // 50*.35 + 30*.25 + 50*.15 + 50*.10 + 70*.10 + 50*.05 = 47
+    const expectedOverall = Math.round(
+      50 * 0.35 +
+        expectedAge * 0.25 +
+        50 * 0.15 +
+        50 * 0.1 +
+        70 * 0.1 +
+        50 * 0.05,
+    );
+    expect(Number(res.overallScore)).toBe(expectedOverall);
+    expect(res.priorityLevel).toBe(PriorityLevel.HIGH);
   });
 });
 
