@@ -23,6 +23,7 @@ import {
   ApiBody,
 } from '@nestjs/swagger';
 import { KmzService } from './kmz.service';
+import { GlbReoptimizeService } from './glb-reoptimize.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import {
@@ -44,7 +45,29 @@ import { ScopedResource } from '../../common/scope/scope.decorator';
   Permission.VIEW_MAP,
 )
 export class KmzController {
-  constructor(private readonly kmzService: KmzService) {}
+  constructor(
+    private readonly kmzService: KmzService,
+    private readonly glbReoptimize: GlbReoptimizeService,
+  ) {}
+
+  @Post('reoptimize')
+  @RequirePermissions(Permission.UPLOAD_KMZ)
+  @HttpCode(202)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      "Re-run the server-side 3D optimizer for this school's GLB (background)",
+  })
+  reoptimizeGlb(
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @Body() body: { force?: boolean } = {},
+  ) {
+    return this.glbReoptimize.enqueueUnoptimized({
+      onlySchoolId: schoolId,
+      force: body?.force === true,
+    });
+  }
 
   @Post()
   @RequirePermissions(Permission.UPLOAD_KMZ)

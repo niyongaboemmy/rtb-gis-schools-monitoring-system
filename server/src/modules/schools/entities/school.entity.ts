@@ -214,6 +214,25 @@ export class School {
   @Column({ nullable: true })
   kmzProcessedAt: Date;
 
+  // --- 3D model (GLB) optimization telemetry -------------------------------
+  // Whether the served GLB has been through the server-side optimizer
+  // (mesh-simplify + Meshopt + WebP). null = not yet attempted.
+  @Column({ type: 'boolean', nullable: true })
+  modelOptimized: boolean | null;
+
+  // Size in bytes of the currently-served GLB (optimized build when
+  // modelOptimized is true, otherwise the raw upload).
+  @Column({ type: 'bigint', nullable: true })
+  modelBytes: number | null;
+
+  // Last optimizer failure reason (OOM, timeout, glb-tools unavailable, …).
+  // Cleared to null on a successful optimize.
+  @Column({ type: 'text', nullable: true })
+  modelOptimizeError: string | null;
+
+  @Column({ nullable: true })
+  modelOptimizedAt: Date | null;
+
   // Site-wide annotations for 2D map (measurements, labels)
   @Column({ type: 'jsonb', nullable: true })
   siteAnnotations: {

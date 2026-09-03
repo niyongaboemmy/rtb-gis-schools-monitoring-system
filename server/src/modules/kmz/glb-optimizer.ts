@@ -1,7 +1,23 @@
 import { fork, spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { Logger } from '@nestjs/common';
+
+/**
+ * V8 old-space ceiling for the optimizer child, in MB.
+ *
+ * A dense photogrammetry GLB briefly needs a lot of heap, but a fixed 8 GB
+ * ceiling gets the child OOM-killed instantly on a 2–4 GB box (exit code 137 /
+ * null) — and then the raw model is served forever. Size it to the host: 70% of
+ * total RAM, clamped to [1536, 8192]. Override with GLB_OPT_HEAP_MB.
+ */
+export function resolveHeapMb(): number {
+  const env = Number(process.env.GLB_OPT_HEAP_MB);
+  if (Number.isFinite(env) && env >= 512) return Math.floor(env);
+  const totalMb = os.totalmem() / 1024 / 1024;
+  return Math.max(1536, Math.min(8192, Math.floor(totalMb * 0.7)));
+}
 
 /**
  * Bridge to the standalone `server/glb-tools/optimize.mjs` pipeline.
@@ -16,7 +32,11 @@ const logger = new Logger('GlbOptimizer');
 // pm2 runs rtb-api with cwd = <repo>/server; `nest start` in dev is the same.
 const TOOLS_DIR = path.join(process.cwd(), 'glb-tools');
 const SCRIPT_PATH = path.join(TOOLS_DIR, 'optimize.mjs');
-const TOOLS_NODE_MODULES = path.join(TOOLS_DIR, 'node_modules', '@gltf-transform');
+const TOOLS_NODE_MODULES = path.join(
+  TOOLS_DIR,
+  'node_modules',
+  '@gltf-transform',
+);
 
 export interface GlbOptimizeResult {
   bytesIn: number;
@@ -65,17 +85,23 @@ export function ensureGlbTools(): Promise<boolean> {
     if (fs.existsSync(TOOLS_NODE_MODULES)) return true;
     logger.log('glb-tools deps missing — running one-time npm install…');
     return await new Promise<boolean>((resolve) => {
-      const npm = spawn('npm', ['install', '--omit=dev', '--no-audit', '--no-fund'], {
-        cwd: TOOLS_DIR,
-        stdio: 'ignore',
-      });
+      const npm = spawn(
+        'npm',
+        ['install', '--omit=dev', '--no-audit', '--no-fund'],
+        {
+          cwd: TOOLS_DIR,
+          stdio: 'ignore',
+        },
+      );
       npm.on('error', (e) => {
         logger.error(`glb-tools npm install failed to start: ${e.message}`);
         resolve(false);
       });
       npm.on('exit', (code) => {
         const ok = code === 0 && fs.existsSync(TOOLS_NODE_MODULES);
-        logger[ok ? 'log' : 'error'](`glb-tools npm install exited ${code}${ok ? ' — optimizer ready' : ''}`);
+        logger[ok ? 'log' : 'error'](
+          `glb-tools npm install exited ${code}${ok ? ' — optimizer ready' : ''}`,
+        );
         resolve(ok);
       });
     });
@@ -88,16 +114,26 @@ export function optimizeGlbFile(
   outputPath: string,
   opts: GlbOptimizeOptions = {},
 ): Promise<GlbOptimizeResult> {
+  const envTimeout = Number(process.env.GLB_OPT_TIMEOUT_MS);
   const {
-    ratio = 0.3,
     textureSize = 8192, // upper bound only — a smaller source atlas is kept as-is
-    timeoutMs = 25 * 60_000,
-    heapMb = 8192,
+    timeoutMs = Number.isFinite(envTimeout) && envTimeout > 0
+      ? envTimeout
+      : 40 * 60_000,
+    heapMb = resolveHeapMb(),
   } = opts;
+  // On a memory-constrained host, keep fewer triangles so the Meshopt WASM heap
+  // and the child V8 heap both stay well clear of the ceiling.
+  const lowMem = heapMb < 3072;
+  const { ratio = lowMem ? 0.1 : 0.3 } = opts;
 
   return new Promise((resolve, reject) => {
     if (!fs.existsSync(SCRIPT_PATH)) {
-      reject(new Error(`optimize.mjs not found at ${SCRIPT_PATH} — run "npm --prefix server/glb-tools install"`));
+      reject(
+        new Error(
+          `optimize.mjs not found at ${SCRIPT_PATH} — run "npm --prefix server/glb-tools install"`,
+        ),
+      );
       return;
     }
 
@@ -109,7 +145,21 @@ export function optimizeGlbFile(
       {
         execArgv: [`--max-old-space-size=${heapMb}`],
         stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+        env: {
+          ...process.env,
+          ...(lowMem
+            ? {
+                GLB_MAX_OUT_TRIS:
+                  process.env.GLB_MAX_OUT_TRIS || String(2_000_000),
+              }
+            : {}),
+        },
       },
+    );
+    logger.log(
+      `optimize: heap=${heapMb}MB ratio=${ratio} timeout=${Math.round(
+        timeoutMs / 60_000,
+      )}min${lowMem ? ' (low-mem profile)' : ''}`,
     );
 
     let stdout = '';
@@ -127,12 +177,18 @@ export function optimizeGlbFile(
       reject(err);
     });
 
-    child.on('exit', (code) => {
+    child.on('exit', (code, signal) => {
       clearTimeout(timer);
       if (code !== 0) {
+        const oom =
+          signal === 'SIGKILL' || code === 137 || code === null
+            ? ` — likely OOM-killed (heap ${heapMb}MB); lower GLB_OPT_HEAP_MB / GLB_MAX_OUT_TRIS or add swap`
+            : '';
         reject(
           new Error(
-            `optimize.mjs exited ${code}: ${(stderr.trim() || stdout.trim()).slice(-500)}`,
+            `optimize.mjs exited ${code}${signal ? `/${signal}` : ''}${oom}: ${(
+              stderr.trim() || stdout.trim()
+            ).slice(-500)}`,
           ),
         );
         return;
@@ -141,7 +197,11 @@ export function optimizeGlbFile(
         const lastLine = stdout.trim().split('\n').pop() as string;
         resolve(JSON.parse(lastLine) as GlbOptimizeResult);
       } catch {
-        reject(new Error(`optimize.mjs succeeded but output was unparseable: ${stdout.slice(0, 500)}`));
+        reject(
+          new Error(
+            `optimize.mjs succeeded but output was unparseable: ${stdout.slice(0, 500)}`,
+          ),
+        );
       }
     });
   });
