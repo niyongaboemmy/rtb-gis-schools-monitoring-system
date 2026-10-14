@@ -9,6 +9,7 @@ import { FacilityEntity } from './entities/facility.entity';
 import { SchoolFacilitySurvey } from './entities/school-facility-survey.entity';
 import { StorageModule } from '../storage/storage.module';
 import { AuditModule } from '../audit/audit.module';
+import { ReportsModule } from '../reports/reports.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { AuditModule } from '../audit/audit.module';
     ]),
     StorageModule,
     AuditModule,
+    ReportsModule,
   ],
   controllers: [SchoolsController],
   providers: [SchoolsService],

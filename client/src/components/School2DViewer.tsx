@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import "ol/ol.css";
 import Overlay from "ol/Overlay";
 import VectorSource from "ol/source/Vector";
-import { fromLonLat, toLonLat } from "ol/proj";
+import { fromLonLat } from "ol/proj";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CheckCircle2,
@@ -57,6 +57,55 @@ import { SchoolLocationEditorPanel } from "./2dviewercomponents/SchoolLocationEd
 import { useToast } from "./ui/toast";
 import { useAuthorization } from "../hooks/useAuthorization";
 import { Permission } from "../lib/permissions";
+import { useSiteFeatures } from "../lib/measure/useSiteFeatures";
+import {
+  KIND_LABELS,
+  downloadSiteFeaturesCsv,
+  featureCentroid,
+  featureTo2dAnnotation,
+  formatFeatureValue,
+  geometryFromShape,
+  isMeasureKind,
+  type SiteFeatureKind,
+} from "../lib/measure/site-features";
+import {
+  accuracyLabel,
+  broadcastSelection,
+  canUseTool,
+  formatMeasureArea,
+  formatMeasureLength,
+  isTypingTarget,
+  loadDisplayUnit,
+  onSelection,
+  readViewerDeepLink,
+  saveDisplayUnit,
+  toolForKey,
+  viewerLink,
+  type DisplayUnit,
+  type ViewerToolId,
+} from "../lib/viewer-tools";
+import MeasurementListPanel, {
+  type MeasurementRow,
+} from "./3dviewercomponents/MeasurementListPanel";
+import ActiveToolBanner from "./3dviewercomponents/ActiveToolBanner";
+import ViewerHelpModal from "./3dviewercomponents/ViewerHelpModal";
+
+/** A measurement made by a user who can't save — local, marked "Not saved". */
+interface TempMeasurement {
+  id: string;
+  kind: SiteFeatureKind;
+  type: "line" | "polygon";
+  coordinates: number[];
+  value: number;
+  title: string;
+  createdAt: string;
+}
+
+const MODE_TOOL_2D = {
+  distance: "measure_distance",
+  area: "measure_area",
+  perimeter: "measure_perimeter",
+} as const;
 
 // Utils
 import type { School2DViewerProps } from "./2dviewercomponents/MapUtils";
@@ -142,14 +191,27 @@ export default function School2DViewer({
   const isDrawingRef = useRef<boolean>(false);
   const mapTabAnimatedRef = useRef(false);
 
+  // Deep link from the 3D viewer: ?view=map&building=<id>&lat=&lng= (WS5.6).
+  const deepLink = useMemo(
+    () => readViewerDeepLink(window.location.search),
+    [],
+  );
+  const initialBuilding = initialBuildingId ?? deepLink.buildingId ?? undefined;
+
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("Initialising map…");
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [isTileLoading, setIsTileLoading] = useState(false);
   const [decodingCount, setDecodingCount] = useState(0);
   const [measurementMode, setMeasurementMode] = useState<
-    "none" | "distance" | "area"
+    "none" | "distance" | "area" | "perimeter"
   >("none");
+  const [sketchPoints, setSketchPoints] = useState(0);
+  const [showMeasureList, setShowMeasureList] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [tempMeasurements, setTempMeasurements] = useState<TempMeasurement[]>(
+    [],
+  );
   const [measureResult, setMeasureResult] = useState<string | null>(null);
   const [showPlacesOverlay, setShowPlacesOverlay] = useState(false);
   const [showBuildingsList, setShowBuildingsList] = useState(false);
@@ -184,9 +246,8 @@ export default function School2DViewer({
   const [facilitiesLoading, setFacilitiesLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [siteAnnotations, setSiteAnnotations] = useState<any[]>(
-    school.siteAnnotations || [],
-  );
+  // Site features (WS5.2): measurements / notes from BOTH viewers, live.
+  const siteFeatures = useSiteFeatures(school.id);
   const [pendingAnnotation, setPendingAnnotation] = useState<any>(null);
   const [annotationTooltip, setAnnotationTooltip] = useState<{
     ann: any;
@@ -202,7 +263,7 @@ export default function School2DViewer({
   const [pickerSelected, setPickerSelected] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<
     "dashboard" | "map" | "3d" | "details"
-  >("dashboard");
+  >(() => (deepLink.view === "map" || deepLink.buildingId ? "map" : "dashboard"));
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSurveyModalOpen, setIsSurveyModalOpen] = useState(false);
@@ -220,10 +281,55 @@ export default function School2DViewer({
 
   // ── School location editor (drag-a-pin to update lat/lng) ─────────────────
   const notify = useToast();
-  const { isAuthorized } = useAuthorization();
+  const { isAuthorized, hasPermission, user } = useAuthorization();
   const canSetLocation =
     isAuthorized(Permission.EDIT_SCHOOL_LOCATION) ||
     isAuthorized(Permission.MANAGE_SCHOOLS);
+  const canMeasure = hasPermission(Permission.USE_MEASURE_TOOLS);
+  const canSaveFeatures = hasPermission(Permission.SAVE_SITE_FEATURES);
+  const canEditAnyFeature = hasPermission(Permission.EDIT_SITE_ANNOTATIONS);
+  const canExport = hasPermission(Permission.EXPORT_VIEWER_DATA);
+  const canCreateBlock =
+    hasPermission(Permission.EDIT_SCHOOL_BUILDINGS) ||
+    hasPermission(Permission.MANAGE_SCHOOLS);
+  const [unit, setUnitState] = useState<DisplayUnit>(() =>
+    loadDisplayUnit(user?.id),
+  );
+  const setUnit = useCallback(
+    (u: DisplayUnit) => {
+      setUnitState(u);
+      saveDisplayUnit(user?.id, u);
+    },
+    [user?.id],
+  );
+
+  // What the map layer renders: saved features (2D + 3D, already WGS84) and
+  // this session's unsaved measurements.
+  const siteAnnotations = useMemo(
+    () => [
+      ...siteFeatures.features.map(featureTo2dAnnotation),
+      ...tempMeasurements.map((t) => ({
+        id: t.id,
+        type: t.type,
+        coordinates: t.coordinates,
+        label: `${t.title} (not saved)`,
+        title: t.title,
+        icon: "measure",
+        iconType: "measure",
+        style: { color: "#f59e0b", iconType: "measure" },
+        areaSquareMeters: t.kind === "measure_area" ? t.value : undefined,
+        lengthMeters: t.kind !== "measure_area" ? t.value : undefined,
+        createdAt: t.createdAt,
+      })),
+    ],
+    [siteFeatures.features, tempMeasurements],
+  );
+  const canChangeFeature = useCallback(
+    (createdBy: string | null) =>
+      canSaveFeatures &&
+      (canEditAnyFeature || (!!user?.id && createdBy === user.id)),
+    [canSaveFeatures, canEditAnyFeature, user?.id],
+  );
   const locationEditActive = activeTool === "set_location";
   const originalLonLat = useMemo<[number, number] | null>(
     () =>
@@ -365,62 +471,114 @@ export default function School2DViewer({
     }
   }, [showPlacesOverlay]);
 
+  /** Saves a 2D note or measurement as a site feature (both viewers see it). */
   const handleSaveSiteAnnotation = useCallback(
     async (payload: any) => {
+      const kind: SiteFeatureKind = payload.measureKind || "note";
+      const geometry = geometryFromShape(
+        payload.type,
+        (payload.coordinates || []).map(Number),
+      );
+      if (!geometry) {
+        notify.error("That shape has no usable coordinates.");
+        return;
+      }
+      const value =
+        kind === "measure_area"
+          ? payload.areaSquareMeters
+          : kind === "measure_perimeter"
+            ? payload.perimeterMeters
+            : kind === "measure_distance"
+              ? payload.lengthMeters
+              : null;
+      const color =
+        typeof payload.style?.color === "string" &&
+        /^#[0-9a-f]{3,8}$/i.test(payload.style.color)
+          ? payload.style.color
+          : null;
       setIsSaving(true);
       try {
-        // Ensure we hit the backend with the correct prefix and authorized instance
-        const res = await api.post(
-          `/schools/${school.id}/kmz/2d/site-annotations`,
-          payload,
+        await siteFeatures.create({
+          kind,
+          source: "2d",
+          geometry,
+          value: Number.isFinite(value) ? Number(value.toFixed(2)) : null,
+          unit: isMeasureKind(kind) ? (kind === "measure_area" ? "m2" : "m") : null,
+          label: (payload.title || payload.label || "").slice(0, 200) || null,
+          description: payload.description?.slice(0, 2000) || null,
+          color,
+          properties: {
+            icon: payload.icon || payload.iconType || undefined,
+          },
+        });
+        showToast(
+          isMeasureKind(kind) ? "Measurement saved." : "Annotation added.",
+          "success",
         );
-        if (res.data) {
-          setSiteAnnotations((prev) => {
-            const next = [...prev, res.data];
-            if (onUpdateSchool) onUpdateSchool({ siteAnnotations: next });
-            return next;
-          });
-          showToast("Annotation added successfully.", "success");
-        }
       } catch (err: any) {
-        console.error("Failed to add site annotation", err);
-        if (err.response?.status === 401) {
-          showToast(
-            "Your session has expired. Please refresh the page.",
-            "warning",
-          );
-        } else {
-          showToast("Failed to add site annotation.", "warning");
-        }
+        console.error("Failed to save site feature", err);
+        showToast(
+          err.response?.status === 401
+            ? "Your session has expired. Please refresh the page."
+            : "Failed to save.",
+          "warning",
+        );
       } finally {
         setIsSaving(false);
       }
     },
-    [school.id, onUpdateSchool, showToast],
+    [siteFeatures, showToast, notify],
   );
 
   const handleDeleteAnnotation = useCallback(
     async (annId: string) => {
-      if (!confirm("Are you sure you want to delete this annotation?")) return;
+      if (tempMeasurements.some((t) => t.id === annId)) {
+        setTempMeasurements((prev) => prev.filter((t) => t.id !== annId));
+        return;
+      }
+      if (!confirm("Delete this item for everyone?")) return;
       try {
-        await api.delete(
-          `/schools/${school.id}/kmz/2d/site-annotations/${annId}`,
-        );
-        setSiteAnnotations((prev) => {
-          const next = prev.filter((a) => a.id !== annId);
-          if (onUpdateSchool) onUpdateSchool({ siteAnnotations: next });
-          return next;
-        });
-        showToast("Annotation removed.", "success");
+        await siteFeatures.remove(annId);
+        showToast("Removed.", "success");
       } catch (err) {
-        console.error("Failed to delete annotation", err);
-        showToast("Failed to delete annotation.", "warning");
+        console.error("Failed to delete site feature", err);
+        showToast("You can only delete items you created.", "warning");
       }
     },
-    [school.id, onUpdateSchool, showToast],
+    [siteFeatures, showToast, tempMeasurements],
   );
 
-  useMapInteractions({
+  /** Measurement finished on the map: name it and save, or keep it local. */
+  const handleAnnotationReady = useCallback(
+    (pending: any) => {
+      if (pending.warning) notify.warning(pending.warning);
+      if (pending.measureKind && !canSaveFeatures) {
+        const value =
+          pending.measureKind === "measure_area"
+            ? pending.areaSquareMeters
+            : pending.lengthMeters;
+        setTempMeasurements((prev) => [
+          ...prev,
+          {
+            id: `tmp-${Date.now()}`,
+            kind: pending.measureKind,
+            type: pending.type,
+            coordinates: pending.coordinates,
+            value,
+            title: pending.title,
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+        measureSourceRef.current.clear();
+        setShowMeasureList(true);
+        return;
+      }
+      setPendingAnnotation(pending);
+    },
+    [canSaveFeatures, notify],
+  );
+
+  const drawing = useMapInteractions({
     mapRef,
     mapReady,
     activeTool,
@@ -433,7 +591,8 @@ export default function School2DViewer({
     activeBlock,
     handleSaveBuilding: async (d) => handleSaveBuilding(d),
     handleSaveSiteAnnotation,
-    onAnnotationReady: (pending) => setPendingAnnotation(pending),
+    onAnnotationReady: handleAnnotationReady,
+    onSketchPoints: setSketchPoints,
     setDrawerBuilding,
     setDrawerOpen,
     hoverLayerRef,
@@ -591,12 +750,15 @@ export default function School2DViewer({
 
   const handle3DView = useCallback(() => {
     if (!school?.id) return;
-    const params = new URLSearchParams();
-    if (school?.name) params.set("schoolName", school.name);
-    if (activeBlock?.id) params.set("buildingId", activeBlock.id);
-    const qs = params.toString();
+    const lat = Number(activeBlock?.geolocation?.latitude);
+    const lng = Number(activeBlock?.geolocation?.longitude);
     window.open(
-      `/schools/${school.id}/3d-explorer${qs ? `?${qs}` : ""}`,
+      viewerLink("3d", school.id, {
+        schoolName: school?.name,
+        buildingId: activeBlock?.id ?? null,
+        lat: Number.isFinite(lat) && lat ? lat : null,
+        lng: Number.isFinite(lng) && lng ? lng : null,
+      }),
       "_blank",
     );
   }, [school, activeBlock]);
@@ -719,57 +881,6 @@ export default function School2DViewer({
     }
   };
 
-  const handleSaveMeasurement = async () => {
-    if (!measureResult) return;
-    try {
-      const features = measureSourceRef.current.getFeatures();
-      if (features.length === 0) return;
-
-      const feat = features[0];
-      const geom = feat.getGeometry();
-      if (!geom) return;
-
-      const typeMap: any = {
-        LineString: "line",
-        Polygon: "polygon",
-        Point: "point",
-      };
-      const type = typeMap[geom.getType()] || "point";
-
-      let coords = (geom as any).getCoordinates();
-      if (type === "point") coords = toLonLat(coords);
-      else if (type === "line") coords = coords.map((c: any) => toLonLat(c));
-      else if (type === "polygon")
-        coords = coords[0].map((c: any) => toLonLat(c));
-
-      const payload = {
-        id: `meas-${Date.now()}`,
-        type,
-        label: measureResult,
-        coordinates: coords,
-        areaSquareMeters: pendingAnnotation?.areaSquareMeters,
-        lengthMeters: pendingAnnotation?.lengthMeters,
-        style: { color: measurementMode === "area" ? "#fbbf24" : "#10b981" },
-      };
-
-      const res = await api.post(
-        `/schools/${school.id}/kmz/2d/site-annotations`,
-        payload,
-      );
-      if (res.data) {
-        setSiteAnnotations((prev: any[]) => [...prev, res.data]);
-        showToast("Measurement saved to map!", "success");
-      }
-
-      measureSourceRef.current.clear();
-      setMeasureResult(null);
-      setMeasurementMode("none");
-    } catch (err) {
-      console.error("Failed to save measurement", err);
-      showToast("Failed to save measurement.", "warning");
-    }
-  };
-
   // ── Overlay (runs once map is ready) ─────────────────────────────────────
   useEffect(() => {
     if (!mapReady) return;
@@ -796,8 +907,8 @@ export default function School2DViewer({
   }, [mapReady]);
 
   useEffect(() => {
-    if (!initialBuildingId || schoolBuildings.length === 0 || !mapReady) return;
-    const b = schoolBuildings.find((sb) => sb.id === initialBuildingId);
+    if (!initialBuilding || schoolBuildings.length === 0 || !mapReady) return;
+    const b = schoolBuildings.find((sb) => sb.id === initialBuilding);
     if (b && b.geolocation?.latitude && b.geolocation?.longitude) {
       setTimeout(() => {
         setActiveBlock(b);
@@ -812,7 +923,224 @@ export default function School2DViewer({
           .animate({ center: coord, zoom: 21, duration: 800 });
       }, 1000);
     }
-  }, [initialBuildingId, schoolBuildings, mapReady]);
+  }, [initialBuilding, schoolBuildings, mapReady]);
+
+  // Deep link with only a coordinate (e.g. the 3D camera target).
+  useEffect(() => {
+    if (!mapReady || initialBuilding || deepLink.lat == null || deepLink.lng == null) return;
+    const t = setTimeout(() => {
+      mapRef.current?.getView().animate({
+        center: fromLonLat([deepLink.lng as number, deepLink.lat as number]),
+        zoom: 20,
+        duration: 800,
+      });
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [mapReady, initialBuilding, deepLink, mapRef]);
+
+  // ── Selection sync with an open 3D viewer tab (WS5.6) ────────────────────
+  const remoteSelectionRef = useRef(false);
+  const firstSelectionRef = useRef(true);
+  useEffect(() => {
+    if (firstSelectionRef.current) {
+      firstSelectionRef.current = false;
+      return;
+    }
+    if (remoteSelectionRef.current) {
+      remoteSelectionRef.current = false;
+      return;
+    }
+    broadcastSelection({
+      schoolId: school.id,
+      buildingId: activeBlock?.id ?? null,
+      from: "2d",
+    });
+  }, [activeBlock?.id, school.id]);
+  const schoolBuildingsRef = useRef(schoolBuildings);
+  useEffect(() => {
+    schoolBuildingsRef.current = schoolBuildings;
+  }, [schoolBuildings]);
+  useEffect(
+    () =>
+      onSelection(school.id, "2d", (buildingId) => {
+        const b = buildingId
+          ? schoolBuildingsRef.current.find((x) => x.id === buildingId)
+          : null;
+        if (!b && buildingId) return;
+        remoteSelectionRef.current = true;
+        setActiveBlock(b ?? null);
+        setIsBlockInspectorOpen(!!b);
+        if (b?.geolocation?.latitude && b?.geolocation?.longitude) {
+          const coord = fromLonLat([
+            Number(b.geolocation.longitude),
+            Number(b.geolocation.latitude),
+          ]);
+          blockOverlayRef.current?.setPosition(coord);
+          mapRef.current
+            ?.getView()
+            .animate({ center: coord, zoom: 21, duration: 600 });
+        }
+      }),
+    [school.id, mapRef],
+  );
+
+  // ── Measuring: shortcuts + list (WS4) ───────────────────────────────────
+  const selectTool2D = useCallback(
+    (id: ViewerToolId) => {
+      if (!canUseTool(id, hasPermission)) return;
+      if (id === "navigate") {
+        setMeasurementMode("none");
+        setActiveTool("none");
+        measureSourceRef.current.clear();
+        return;
+      }
+      if (id === "annotate") {
+        setMeasurementMode("none");
+        setActiveTool("annotate_point");
+        return;
+      }
+      const mode = (
+        { measure_distance: "distance", measure_area: "area", measure_perimeter: "perimeter" } as const
+      )[id as "measure_distance" | "measure_area" | "measure_perimeter"];
+      if (!mode) return;
+      setActiveTool("none");
+      measureSourceRef.current.clear();
+      setMeasurementMode((prev) => (prev === mode ? "none" : mode));
+    },
+    [hasPermission],
+  );
+
+  useEffect(() => {
+    if (activeTab !== "map" || pickerMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target) || pendingAnnotation || drawerOpen) return;
+      if (e.key === "?") {
+        setShowHelp((v) => !v);
+        return;
+      }
+      const tool = toolForKey(e, "2d");
+      if (tool) {
+        e.preventDefault();
+        selectTool2D(tool);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeTab, pickerMode, pendingAnnotation, drawerOpen, selectTool2D]);
+
+  const measureRows = useMemo<MeasurementRow[]>(
+    () => [
+      ...siteFeatures.features.map((f): MeasurementRow => {
+        const can = canChangeFeature(f.createdBy);
+        return {
+          id: f.id,
+          name: f.label || KIND_LABELS[f.kind],
+          kind: f.kind,
+          value: formatFeatureValue(f, unit),
+          secondary:
+            f.kind === "measure_area" &&
+            typeof f.properties?.surfaceArea === "number"
+              ? `Surface (sloped, 3D): ${formatMeasureArea(f.properties.surfaceArea, "3d", unit)}`
+              : null,
+          source: f.source,
+          createdByName: f.createdByName,
+          createdAt: f.createdAt,
+          saved: true,
+          canEdit: can,
+          canDelete: can,
+          color: f.color,
+        };
+      }),
+      ...tempMeasurements.map(
+        (t): MeasurementRow => ({
+          id: t.id,
+          name: t.title,
+          kind: t.kind,
+          value:
+            t.kind === "measure_area"
+              ? formatMeasureArea(t.value, "2d", unit)
+              : formatMeasureLength(t.value, "2d", unit),
+          source: "2d",
+          createdAt: t.createdAt,
+          saved: false,
+          canEdit: true,
+          canDelete: true,
+          color: "#f59e0b",
+        }),
+      ),
+    ],
+    [siteFeatures.features, tempMeasurements, unit, canChangeFeature],
+  );
+
+  const flyToFeatureId = useCallback(
+    (id: string) => {
+      const f = siteFeatures.features.find((x) => x.id === id);
+      let c: [number, number] | null = f ? featureCentroid(f) : null;
+      if (!c) {
+        const t = tempMeasurements.find((x) => x.id === id);
+        if (t && t.coordinates.length >= 2) c = [t.coordinates[0], t.coordinates[1]];
+      }
+      if (!c) return;
+      setActiveTab("map");
+      mapRef.current
+        ?.getView()
+        .animate({ center: fromLonLat(c), zoom: 20, duration: 800 });
+    },
+    [siteFeatures.features, tempMeasurements, mapRef],
+  );
+
+  const renameFeature = useCallback(
+    async (id: string, name: string) => {
+      if (tempMeasurements.some((t) => t.id === id)) {
+        setTempMeasurements((prev) =>
+          prev.map((t) => (t.id === id ? { ...t, title: name } : t)),
+        );
+        return;
+      }
+      try {
+        await siteFeatures.update(id, { label: name });
+      } catch {
+        notify.error("Could not rename it.");
+      }
+    },
+    [siteFeatures, tempMeasurements, notify],
+  );
+
+  const deleteFeatureNoConfirm = useCallback(
+    async (id: string) => {
+      if (tempMeasurements.some((t) => t.id === id)) {
+        setTempMeasurements((prev) => prev.filter((t) => t.id !== id));
+        return;
+      }
+      try {
+        await siteFeatures.remove(id);
+      } catch {
+        notify.error("You can only delete items you created.");
+      }
+    },
+    [siteFeatures, tempMeasurements, notify],
+  );
+
+  const clearAllFeatures = useCallback(async () => {
+    setTempMeasurements([]);
+    const deletable = siteFeatures.features.filter((f) =>
+      canChangeFeature(f.createdBy),
+    );
+    const res = await Promise.allSettled(
+      deletable.map((f) => siteFeatures.remove(f.id)),
+    );
+    const failed = res.filter((r) => r.status === "rejected").length;
+    if (failed) notify.error(`${failed} item(s) could not be deleted.`);
+  }, [siteFeatures, canChangeFeature, notify]);
+
+  const exportFeaturesCsv = useCallback(async () => {
+    try {
+      const slug = (school.name || school.id).replace(/[^a-zA-Z0-9]+/g, "_");
+      await downloadSiteFeaturesCsv(school.id, `${slug}_site_features.csv`);
+    } catch {
+      notify.error("Export failed. Please try again.");
+    }
+  }, [school.id, school.name, notify]);
 
   // Animated fly-to on first reveal of the map tab: recenter on the school's
   // current coordinate (falls back to the existing view centre when unset).
@@ -1230,6 +1558,13 @@ export default function School2DViewer({
         activeTool={activeTool}
         setActiveTool={setActiveTool}
         canSetLocation={canSetLocation}
+        canMeasure={canMeasure}
+        canAnnotate={canSaveFeatures}
+        canCreateBlock={canCreateBlock}
+        showMeasureList={showMeasureList}
+        setShowMeasureList={setShowMeasureList}
+        measureCount={measureRows.length}
+        onHelp={() => setShowHelp(true)}
         onZoomIn={() =>
           mapRef.current
             ?.getView()
@@ -1282,12 +1617,40 @@ export default function School2DViewer({
         isLoading={isLoading}
         currentLat={currentLat}
         currentLng={currentLng}
-        measurementMode={measurementMode}
-        measureResult={measureResult}
         infoFeature={infoFeature}
         onCloseInfo={() => setInfoFeature(null)}
-        onSaveMeasurement={handleSaveMeasurement}
+        selectedBuilding={activeBlock}
       />
+
+      {activeTab === "map" && measurementMode !== "none" && (
+        <ActiveToolBanner
+          tool={MODE_TOOL_2D[measurementMode]}
+          liveValue={measureResult}
+          accuracy={accuracyLabel("2d")}
+          notSaved={!canSaveFeatures}
+          pointCount={sketchPoints}
+          onUndo={drawing.undoLastPoint}
+          onFinish={drawing.finishDrawing}
+          onCancel={drawing.cancelDrawing}
+        />
+      )}
+
+      {showMeasureList && activeTab === "map" && (
+        <MeasurementListPanel
+          rows={measureRows}
+          unit={unit}
+          onUnitChange={setUnit}
+          onFlyTo={flyToFeatureId}
+          onRename={renameFeature}
+          onDelete={deleteFeatureNoConfirm}
+          onClearAll={clearAllFeatures}
+          onExport={canExport ? exportFeaturesCsv : undefined}
+          onClose={() => setShowMeasureList(false)}
+          footnote={`2D accuracy ${accuracyLabel("2d")} · areas are plan (flat) area on the WGS84 ellipsoid.`}
+        />
+      )}
+
+      {showHelp && <ViewerHelpModal setShowHelp={setShowHelp} viewer="2d" />}
 
       {showNavigator && (
         <LayerManager
@@ -1429,17 +1792,7 @@ export default function School2DViewer({
                 onReportStatusChange={() => setReportRefreshKey((k) => k + 1)}
                 onAddAnnotation={() => setActiveTool("annotate_point")}
                 onUploadMedia={() => {}}
-                on3DView={() => {
-                  if (!school?.id) return;
-                  const params = new URLSearchParams();
-                  if (school?.name) params.set("schoolName", school.name);
-                  if (activeBlock?.id) params.set("buildingId", activeBlock.id);
-                  const qs = params.toString();
-                  window.open(
-                    `/schools/${school.id}/3d-explorer${qs ? `?${qs}` : ""}`,
-                    "_blank",
-                  );
-                }}
+                on3DView={handle3DView}
               />
             </div>
           )}

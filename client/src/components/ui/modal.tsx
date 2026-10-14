@@ -1,4 +1,5 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useId, useRef } from "react";
+import { useFocusTrap } from "../layout/useFocusTrap";
 import { X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../../lib/utils";
@@ -15,6 +16,9 @@ export interface ModalProps {
   hideCloseButton?: boolean;
 }
 
+/** Ids of currently open modals, innermost last. */
+const openStack: string[] = [];
+
 export function Modal({
   isOpen,
   onClose,
@@ -26,16 +30,33 @@ export function Modal({
   className,
   hideCloseButton = false,
 }: ModalProps) {
-  // Handle Escape key
+  const titleId = useId();
+  const descId = useId();
+  const containerRef = useRef<HTMLDivElement>(null);
+  // Keep Tab inside the dialog and restore focus on close (WCAG 2.4.3).
+  // Escape is handled below, so no onEscape here.
+  useFocusTrap(containerRef, isOpen);
+
+  // Track open modals so Escape / focus handling only applies to the top one.
+  useEffect(() => {
+    if (!isOpen) return;
+    openStack.push(titleId);
+    return () => {
+      const i = openStack.lastIndexOf(titleId);
+      if (i >= 0) openStack.splice(i, 1);
+    };
+  }, [isOpen, titleId]);
+
+  // Handle Escape key (topmost modal only)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
+      if (e.key === "Escape" && isOpen && openStack[openStack.length - 1] === titleId) {
         onClose();
       }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, titleId]);
 
   // Prevent background scrolling
   useEffect(() => {
@@ -81,10 +102,12 @@ export function Modal({
               maxWidth,
               className,
             )}
+            ref={containerRef}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-labelledby={title ? "modal-title" : undefined}
+            aria-labelledby={title ? titleId : undefined}
+            aria-describedby={description ? descId : undefined}
           >
             {/* Header — fixed */}
             {(title || description || !hideCloseButton) && (
@@ -92,7 +115,7 @@ export function Modal({
                 <div className="flex items-start justify-between gap-4">
                   {title && (
                     <h2
-                      id="modal-title"
+                      id={titleId}
                       className="text-lg font-semibold leading-none tracking-tight"
                     >
                       {title}
@@ -100,8 +123,9 @@ export function Modal({
                   )}
                   {!hideCloseButton && (
                     <button
+                      type="button"
                       onClick={onClose}
-                      className="-mt-1 -mr-1 flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+                      className="-mt-1 -mr-1 flex h-8 w-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
                       aria-label="Close"
                     >
                       <X className="h-4 w-4" />
@@ -109,7 +133,7 @@ export function Modal({
                   )}
                 </div>
                 {description && (
-                  <p className="text-sm text-muted-foreground">{description}</p>
+                  <p id={descId} className="text-sm text-muted-foreground">{description}</p>
                 )}
               </div>
             )}

@@ -1,5 +1,6 @@
 import { useAuthorization } from "../hooks/useAuthorization";
-import { useScope } from "../hooks/useScope";
+import { useScope, isSchoolLevelUser } from "../hooks/useScope";
+import { EmptyState } from "../components/ui/empty-state";
 import { Permission } from "../lib/permissions";
 import { Link } from "react-router-dom";
 import {
@@ -14,20 +15,22 @@ import {
   Shield,
   Layers,
   MapPin,
+  GraduationCap,
+  LayoutDashboard,
+  ClipboardList,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { ImigongoPattern } from "../components/ui/ImigongoPattern";
+import { titleCase } from "../lib/labels";
 
 export default function Welcome() {
   const { user, isAuthorized } = useAuthorization();
   const scope = useScope();
 
   const firstName = user?.firstName || "User";
-  const roleName = (
-    typeof user?.role === "object" ? user.role?.name || "" : user?.role || ""
-  )
-    .replace(/_/g, " ")
-    .toLowerCase();
+  const roleName = titleCase(
+    typeof user?.role === "object" ? user.role?.name || "" : user?.role || "",
+  );
 
   const accessLevelName =
     typeof user?.role === "object"
@@ -39,8 +42,34 @@ export default function Welcome() {
   const greeting =
     hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
-  // Quick links based on user permissions
+  const schoolLevel = isSchoolLevelUser(user);
+  // Quick links based on user permissions (school leaders first see their school)
   const quickLinks = [
+    {
+      title: "My School Dashboard",
+      description: "Your school's condition score, buildings and open issues at a glance.",
+      icon: GraduationCap,
+      path: "/school-dashboard",
+      color: "from-sky-500 to-blue-400",
+      permission: Permission.SCHOOL_LEVEL_DASHBOARD,
+      show: schoolLevel,
+    },
+    {
+      title: "National Dashboard",
+      description: "Key figures and priorities for every school in your access area.",
+      icon: LayoutDashboard,
+      path: "/",
+      color: "from-blue-600 to-indigo-400",
+      permission: Permission.VIEW_DASHBOARD,
+    },
+    {
+      title: "Report an Issue",
+      description: "Tell RTB about a broken facility and follow its status until it is fixed.",
+      icon: ClipboardList,
+      path: "/reporting",
+      color: "from-rose-500 to-orange-400",
+      permission: Permission.CREATE_REPORT,
+    },
     {
       title: "Interactive Map",
       description:
@@ -90,7 +119,7 @@ export default function Welcome() {
       shadow: "shadow-slate-500/30",
       permission: Permission.MANAGE_USERS,
     },
-  ].filter((link) => isAuthorized(link.permission));
+  ].filter((link) => link.show !== false && isAuthorized(link.permission));
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -232,7 +261,10 @@ export default function Welcome() {
             >
               {quickLinks.map((link) => (
                 <motion.div key={link.title} variants={itemVariants}>
-                  <Link to={link.path} className="block group h-full">
+                  <Link
+                    to={link.path}
+                    className="block group h-full rounded-3xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
                     <div className="h-full p-6 rounded-3xl bg-card/40 backdrop-blur-sm border border-border/40 hover:bg-card/80 transition-all duration-300 hover:border-primary/30 hover:-translate-y-1 overflow-hidden relative">
                       {/* Hover Gradient Overlay */}
                       <div
@@ -243,7 +275,7 @@ export default function Welcome() {
                         <div
                           className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-linear-to-br ${link.color} flex items-center justify-center text-white mb-4 sm:mb-6 border border-white/12 shrink-0`}
                         >
-                          <link.icon className="w-5 h-5 sm:w-6 sm:h-6" />
+                          <link.icon className="w-5 h-5 sm:w-6 sm:h-6" aria-hidden="true" />
                         </div>
                         <h3 className="text-lg sm:text-xl font-bold text-foreground mb-2 sm:mb-3 group-hover:text-primary transition-colors">
                           {link.title}
@@ -251,8 +283,8 @@ export default function Welcome() {
                         <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed flex-1">
                           {link.description}
                         </p>
-                        <div className="flex items-center gap-2 mt-6 text-sm font-bold text-primary opacity-0 -translate-x-4 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
-                          Launch Module <ArrowRight className="w-4 h-4" />
+                        <div className="flex items-center gap-2 mt-6 text-sm font-bold text-primary lg:opacity-0 lg:-translate-x-4 lg:group-hover:opacity-100 lg:group-hover:translate-x-0 lg:group-focus-visible:opacity-100 lg:group-focus-visible:translate-x-0 transition-all duration-300 motion-reduce:transition-none">
+                          Open <ArrowRight className="w-4 h-4" aria-hidden="true" />
                         </div>
                       </div>
                     </div>
@@ -261,27 +293,12 @@ export default function Welcome() {
               ))}
             </motion.div>
           ) : (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="p-8 rounded-3xl bg-amber-500/10 border border-amber-500/20 backdrop-blur-md max-w-2xl"
-            >
-              <div className="flex items-start gap-4">
-                <div className="p-3 rounded-full bg-amber-500/20 text-amber-600">
-                  <Shield className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-amber-700 dark:text-amber-500 mb-2">
-                    Restricted Permissions
-                  </h3>
-                  <p className="text-sm text-amber-700/80 dark:text-amber-500/80 leading-relaxed">
-                    It appears your account does not have authorization to
-                    access any active modules. Please contact your system
-                    administrator to update your profile privileges.
-                  </p>
-                </div>
-              </div>
-            </motion.div>
+            <EmptyState
+              icon={Shield}
+              className="max-w-2xl"
+              title="No modules available yet"
+              description="Your account does not have access to any section of the platform. Ask your system administrator to assign you a role."
+            />
           )}
         </div>
 

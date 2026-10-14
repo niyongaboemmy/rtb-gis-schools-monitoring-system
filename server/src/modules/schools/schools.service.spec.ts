@@ -34,7 +34,9 @@ function buildSchool(overrides: Partial<School> = {}): School {
   } as unknown as School;
 }
 
-function buildBuilding(overrides: Partial<SchoolBuilding> = {}): SchoolBuilding {
+function buildBuilding(
+  overrides: Partial<SchoolBuilding> = {},
+): SchoolBuilding {
   return {
     id: 'building-uuid-1',
     schoolId: 'school-uuid-1',
@@ -59,7 +61,9 @@ function makeQb(result: any = { data: [], count: 0 }) {
     select: jest.fn().mockReturnThis(),
     addSelect: jest.fn().mockReturnThis(),
     groupBy: jest.fn().mockReturnThis(),
-    getManyAndCount: jest.fn().mockResolvedValue([result.data ?? [], result.count ?? 0]),
+    getManyAndCount: jest
+      .fn()
+      .mockResolvedValue([result.data ?? [], result.count ?? 0]),
     getRawMany: jest.fn().mockResolvedValue([]),
   };
   return qb;
@@ -79,12 +83,16 @@ interface Repos {
   auditService: Record<string, jest.Mock>;
 }
 
-async function makeService(overrides: Partial<Repos> = {}): Promise<{ service: SchoolsService } & Repos> {
+async function makeService(
+  overrides: Partial<Repos> = {},
+): Promise<{ service: SchoolsService } & Repos> {
   const schoolRepo = {
     findOne: jest.fn(),
     find: jest.fn().mockResolvedValue([]),
     create: jest.fn((v) => ({ ...v })),
-    save: jest.fn((v) => Promise.resolve(Array.isArray(v) ? v : { ...v, id: 'school-uuid-1' })),
+    save: jest.fn((v) =>
+      Promise.resolve(Array.isArray(v) ? v : { ...v, id: 'school-uuid-1' }),
+    ),
     remove: jest.fn().mockResolvedValue(undefined),
     count: jest.fn().mockResolvedValue(0),
     createQueryBuilder: jest.fn().mockReturnValue(makeQb()),
@@ -93,6 +101,8 @@ async function makeService(overrides: Partial<Repos> = {}): Promise<{ service: S
 
   const buildingRepo = {
     findOne: jest.fn(),
+    find: jest.fn().mockResolvedValue([]),
+    merge: jest.fn((target, patch) => Object.assign(target, patch)),
     create: jest.fn((v) => ({ ...v, id: 'building-uuid-new' })),
     save: jest.fn((v) =>
       Promise.resolve(
@@ -149,7 +159,10 @@ async function makeService(overrides: Partial<Repos> = {}): Promise<{ service: S
       { provide: getRepositoryToken(School), useValue: schoolRepo },
       { provide: getRepositoryToken(SchoolBuilding), useValue: buildingRepo },
       { provide: getRepositoryToken(FacilityEntity), useValue: facilityRepo },
-      { provide: getRepositoryToken(SchoolFacilitySurvey), useValue: surveyRepo },
+      {
+        provide: getRepositoryToken(SchoolFacilitySurvey),
+        useValue: surveyRepo,
+      },
       { provide: StorageService, useValue: storageService },
       { provide: EventEmitter2, useValue: eventEmitter },
       { provide: AuditService, useValue: auditService },
@@ -254,7 +267,7 @@ describe('SchoolsService.create – unique code', () => {
     schoolRepo.findOne.mockResolvedValueOnce(null);
     schoolRepo.findOne.mockResolvedValueOnce(fullSchool);
 
-    await service.create({ ...createDto, buildings: [] } as any);
+    await service.create({ ...createDto, buildings: [] });
 
     expect(buildingRepo.create).not.toHaveBeenCalled();
     expect(buildingRepo.save).not.toHaveBeenCalled();
@@ -317,88 +330,94 @@ describe('SchoolsService.create – duplicate code', () => {
 });
 
 // ---------------------------------------------------------------------------
-// §3: update — buildings provided → delete-then-recreate
+// §3: update — buildings provided → sync in place by id
 // ---------------------------------------------------------------------------
 
 describe('SchoolsService.update – buildings array provided', () => {
-  const updateDto = {
-    name: 'Updated School',
-    buildings: [
-      {
-        name: 'New Block',
-        code: 'B02',
-        area: 300,
-        condition: BuildingCondition.FAIR,
-        roofCondition: RoofCondition.FAIR,
-        annotations: [],
-        media: [],
-      },
-    ],
-  } as any;
+  const newBlock = {
+    name: 'New Block',
+    code: 'B02',
+    area: 300,
+    condition: BuildingCondition.FAIR,
+    roofCondition: RoofCondition.FAIR,
+  };
 
-  it('deletes existing buildings for the school before creating new ones', async () => {
-    const school = buildSchool();
-    const updatedSchool = buildSchool({ name: 'Updated School', buildings: [buildBuilding()] });
-    const { service, schoolRepo, buildingRepo } = await makeService();
+  async function run(buildings: any[], existing: SchoolBuilding[] = []) {
+    const ctx = await makeService();
+    ctx.buildingRepo.find.mockResolvedValueOnce(existing);
+    ctx.schoolRepo.findOne.mockResolvedValueOnce(buildSchool());
+    ctx.schoolRepo.findOne.mockResolvedValueOnce(
+      buildSchool({ name: 'Updated School' }),
+    );
+    const result = await ctx.service.update('school-uuid-1', {
+      name: 'Updated School',
+      buildings,
+    } as any);
+    return { ...ctx, result };
+  }
 
-    // this.findOne at start of update
-    schoolRepo.findOne.mockResolvedValueOnce(school);
-    // this.findOne at end of update
-    schoolRepo.findOne.mockResolvedValueOnce(updatedSchool);
-
-    await service.update('school-uuid-1', updateDto);
-
-    expect(buildingRepo.delete).toHaveBeenCalledWith({ schoolId: 'school-uuid-1' });
+  it("never bulk-deletes the school's buildings", async () => {
+    const { buildingRepo } = await run([newBlock], [buildBuilding()]);
+    expect(buildingRepo.delete).not.toHaveBeenCalled();
   });
 
-  it('creates and persists each new building after deletion', async () => {
-    const school = buildSchool();
-    const updatedSchool = buildSchool({ buildings: [buildBuilding()] });
-    const { service, schoolRepo, buildingRepo } = await makeService();
-
-    schoolRepo.findOne.mockResolvedValueOnce(school);
-    schoolRepo.findOne.mockResolvedValueOnce(updatedSchool);
-
-    await service.update('school-uuid-1', updateDto);
-
+  it('creates entries without a known id', async () => {
+    const { buildingRepo } = await run([newBlock]);
     expect(buildingRepo.create).toHaveBeenCalledTimes(1);
-
-    const buildingArg = buildingRepo.create.mock.calls[0][0];
-    expect(buildingArg.buildingCode).toBe('B02');
-    expect(buildingArg.areaSquareMeters).toBe(300);
-    expect(buildingArg.condition).toBe(BuildingCondition.FAIR);
-    expect(buildingArg.schoolId).toBe('school-uuid-1');
-
+    const arg = buildingRepo.create.mock.calls[0][0];
+    expect(arg.buildingCode).toBe('B02');
+    expect(arg.areaSquareMeters).toBe(300);
+    expect(arg.condition).toBe(BuildingCondition.FAIR);
+    expect(arg.schoolId).toBe('school-uuid-1');
+    expect(arg.annotations).toEqual([]);
     expect(buildingRepo.save).toHaveBeenCalledTimes(1);
   });
 
-  it('returns the school fetched by the second findOne call', async () => {
-    const school = buildSchool();
-    const updatedSchool = buildSchool({ name: 'Updated School' });
-    const { service, schoolRepo } = await makeService();
-
-    schoolRepo.findOne.mockResolvedValueOnce(school);
-    schoolRepo.findOne.mockResolvedValueOnce(updatedSchool);
-
-    const result = await service.update('school-uuid-1', updateDto);
-
-    expect(result).toBe(updatedSchool);
+  it('updates an existing building in place and keeps fields the form never sends', async () => {
+    const footprint = { type: 'Polygon', coordinates: [] };
+    const media = [
+      { path: '/files/x.jpg', type: 'image', title: 't', createdAt: 'now' },
+    ];
+    const existing = buildBuilding({
+      id: 'b1',
+      footprintGeojson: footprint,
+      modelPath: 'schools/s/3d/a.glb',
+      media,
+    } as any);
+    const { buildingRepo } = await run(
+      [{ id: 'b1', name: 'Renamed', code: 'B01', area: 120 }],
+      [existing],
+    );
+    expect(buildingRepo.create).not.toHaveBeenCalled();
+    expect(buildingRepo.remove).not.toHaveBeenCalled();
+    const saved = buildingRepo.save.mock.calls[0][0][0];
+    expect(saved.id).toBe('b1');
+    expect(saved.name).toBe('Renamed');
+    expect(saved.footprintGeojson).toBe(footprint);
+    expect(saved.modelPath).toBe('schools/s/3d/a.glb');
+    expect(saved.media).toBe(media);
   });
 
-  it('deletes buildings then skips save when buildings array is empty ([])', async () => {
-    const school = buildSchool();
-    const updatedSchool = buildSchool({ buildings: [] });
-    const { service, schoolRepo, buildingRepo } = await makeService();
+  it('removes only the buildings missing from the list', async () => {
+    const keep = buildBuilding({ id: 'b1' });
+    const drop = buildBuilding({ id: 'b2', name: 'Old Block' });
+    const { buildingRepo } = await run(
+      [{ id: 'b1', name: 'Main Block' }],
+      [keep, drop],
+    );
+    expect(buildingRepo.remove).toHaveBeenCalledWith([drop]);
+  });
 
-    schoolRepo.findOne.mockResolvedValueOnce(school);
-    schoolRepo.findOne.mockResolvedValueOnce(updatedSchool);
-
-    await service.update('school-uuid-1', { buildings: [] } as any);
-
-    // delete IS called (buildings key was present, even though empty)
-    expect(buildingRepo.delete).toHaveBeenCalledWith({ schoolId: 'school-uuid-1' });
-    // save is NOT called because the new array is empty
+  it('removes all buildings and saves nothing for an empty list', async () => {
+    const existing = [buildBuilding({ id: 'b1' })];
+    const { buildingRepo } = await run([], existing);
+    expect(buildingRepo.remove).toHaveBeenCalledWith(existing);
     expect(buildingRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('returns the school fetched by the second findOne call', async () => {
+    const { result } = await run([newBlock]);
+    expect(result.name).toBe('Updated School');
   });
 });
 
@@ -450,7 +469,12 @@ describe('SchoolsService.addBuilding – annotation filter (no nested arrays →
     const dto: BuildingDto = {
       name: 'Block C',
       annotations: [
-        { id: 'a1', type: 'text', content: 'valid annotation', createdAt: '2024-01-01' },
+        {
+          id: 'a1',
+          type: 'text',
+          content: 'valid annotation',
+          createdAt: '2024-01-01',
+        },
         null,
         null,
       ] as any,
@@ -470,8 +494,20 @@ describe('SchoolsService.addBuilding – annotation filter (no nested arrays →
       name: 'Block D',
       annotations: [
         { id: 'a1', type: 'point', content: 'valid', createdAt: '2024-01-01' },
-        [{ id: 'nested', type: 'text', content: 'wrapped in array', createdAt: '2024-01-01' }],
-        { id: 'a2', type: 'text', content: 'also valid', createdAt: '2024-01-01' },
+        [
+          {
+            id: 'nested',
+            type: 'text',
+            content: 'wrapped in array',
+            createdAt: '2024-01-01',
+          },
+        ],
+        {
+          id: 'a2',
+          type: 'text',
+          content: 'also valid',
+          createdAt: '2024-01-01',
+        },
       ] as any,
     } as any;
 
@@ -482,7 +518,9 @@ describe('SchoolsService.addBuilding – annotation filter (no nested arrays →
     expect(createArg.annotations).toHaveLength(2);
     expect(createArg.annotations.map((a: any) => a.id)).toEqual(['a1', 'a2']);
     // Confirm no entry is itself an array
-    createArg.annotations.forEach((a: any) => expect(Array.isArray(a)).toBe(false));
+    createArg.annotations.forEach((a: any) =>
+      expect(Array.isArray(a)).toBe(false),
+    );
   });
 
   it('strips mixed nulls + nested arrays, preserving only plain objects', async () => {
@@ -496,7 +534,12 @@ describe('SchoolsService.addBuilding – annotation filter (no nested arrays →
         { id: 'valid-1', type: 'text', content: 'x', createdAt: '2024-01-01' },
         undefined,
         [{ id: 'nested-2' }],
-        { id: 'valid-2', type: 'polygon', content: 'y', createdAt: '2024-01-01' },
+        {
+          id: 'valid-2',
+          type: 'polygon',
+          content: 'y',
+          createdAt: '2024-01-01',
+        },
       ] as any,
     } as any;
 
@@ -525,10 +568,22 @@ describe('SchoolsService.addBuilding – annotation filter (no nested arrays →
     const dto: BuildingDto = {
       name: 'Block G',
       media: [
-        { id: 'm1', path: '/img/1.jpg', type: 'image', title: 'Front', createdAt: '2024-01-01' },
+        {
+          id: 'm1',
+          path: '/img/1.jpg',
+          type: 'image',
+          title: 'Front',
+          createdAt: '2024-01-01',
+        },
         null,
         [{ id: 'nested-media' }],
-        { id: 'm2', path: '/img/2.jpg', type: 'image', title: 'Back', createdAt: '2024-01-01' },
+        {
+          id: 'm2',
+          path: '/img/2.jpg',
+          type: 'image',
+          title: 'Back',
+          createdAt: '2024-01-01',
+        },
       ] as any,
     } as any;
 
@@ -578,7 +633,9 @@ describe('SchoolsService.remove', () => {
 
     await service.remove('school-uuid-42');
 
-    expect(storageService.deleteDirectory).toHaveBeenCalledWith('schools/school-uuid-42');
+    expect(storageService.deleteDirectory).toHaveBeenCalledWith(
+      'schools/school-uuid-42',
+    );
   });
 
   it('calls schoolRepository.remove with the found school after storage cleanup', async () => {
@@ -598,10 +655,10 @@ describe('SchoolsService.remove', () => {
     const { service, schoolRepo, storageService } = await makeService();
 
     schoolRepo.findOne.mockResolvedValueOnce(school);
-    (storageService.deleteDirectory as jest.Mock).mockImplementation(async () => {
+    storageService.deleteDirectory.mockImplementation(async () => {
       callOrder.push('deleteDirectory');
     });
-    (schoolRepo.remove as jest.Mock).mockImplementation(async () => {
+    schoolRepo.remove.mockImplementation(async () => {
       callOrder.push('remove');
     });
 
@@ -615,7 +672,9 @@ describe('SchoolsService.remove', () => {
 
     schoolRepo.findOne.mockResolvedValue(null);
 
-    await expect(service.remove('missing-id')).rejects.toThrow(NotFoundException);
+    await expect(service.remove('missing-id')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('throws with the correct not-found message', async () => {
@@ -639,7 +698,11 @@ describe('SchoolsService.remove', () => {
   });
 
   it('calls auditService.log with school.delete action after successful removal', async () => {
-    const school = buildSchool({ id: 'school-uuid-42', name: 'Kigali TSS', code: 'KGL-001' });
+    const school = buildSchool({
+      id: 'school-uuid-42',
+      name: 'Kigali TSS',
+      code: 'KGL-001',
+    });
     const { service, schoolRepo, auditService } = await makeService();
     const actor = { id: 'user-1', email: 'admin@rtb.gov.rw' };
 
@@ -707,7 +770,9 @@ describe('SchoolsService.findOne', () => {
 
     schoolRepo.findOne.mockResolvedValue(null);
 
-    await expect(service.findOne('nonexistent-id')).rejects.toThrow(NotFoundException);
+    await expect(service.findOne('nonexistent-id')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('throws with the correct not-found message', async () => {

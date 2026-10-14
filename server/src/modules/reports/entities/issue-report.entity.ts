@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { School } from '../../schools/entities/school.entity';
 import { SchoolBuilding } from '../../schools/entities/school-building.entity';
@@ -16,6 +17,24 @@ export enum ReportStatus {
   SOLVED = 'SOLVED',
   NEED_INTERVENTION = 'NEED_INTERVENTION',
   FAILED = 'FAILED',
+}
+
+/** What kind of report this is (WS7.7). */
+export enum ReportType {
+  /** A facility / infrastructure issue filed from the school. */
+  ISSUE = 'issue',
+  /** A request to change a locked school field (location, buildings, …). */
+  DATA_CHANGE_REQUEST = 'data_change_request',
+}
+
+/** Payload of a data change request. */
+export interface ChangeRequestPayload {
+  fields: {
+    field: string;
+    currentValue: unknown;
+    proposedValue: unknown;
+  }[];
+  reason: string;
 }
 
 @Entity('issue_reports')
@@ -65,6 +84,22 @@ export class IssueReport {
 
   @Column({ type: 'jsonb', nullable: true })
   attachments: string[]; // URLs to images
+
+  @Index('IDX_issue_reports_type')
+  @Column({
+    type: 'varchar',
+    length: 40,
+    default: ReportType.ISSUE,
+  })
+  type: ReportType;
+
+  /** Field changes requested (only for DATA_CHANGE_REQUEST reports). */
+  @Column({ type: 'jsonb', nullable: true })
+  changeRequest: ChangeRequestPayload | null;
+
+  /** Role expected to act on the report, e.g. `gis_analyst`. */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  assignedRole: string | null;
 
   @Column({ nullable: true })
   resolvedAt: Date;

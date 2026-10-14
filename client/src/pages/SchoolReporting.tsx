@@ -52,6 +52,11 @@ import { ReportDetailsModal } from "../components/reports/ReportDetailsModal";
 import { DeleteConfirmationModal } from "../components/ui/delete-confirmation-modal";
 import { RichDropdown } from "../components/ui/rich-dropdown";
 import { Input } from "../components/ui/input";
+import { EmptyState } from "../components/ui/empty-state";
+import { ErrorState } from "../components/ui/error-state";
+import { errorMessage } from "../components/ui/error-message";
+import { useSearchParams } from "react-router-dom";
+import { label } from "../lib/labels";
 
 interface Facility {
   facilityId: string;
@@ -166,6 +171,10 @@ export default function SchoolReporting({
   // History state
   const [history, setHistory] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const canTriage = hasPermission(user, Permission.MANAGE_REPORTS);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkReportId = searchParams.get("report");
   const [selectedGalleryImages, setSelectedGalleryImages] = useState<
     string[] | null
   >(null);
@@ -186,6 +195,28 @@ export default function SchoolReporting({
     "success" | "error" | null
   >(null);
   const [selectedReport, setSelectedReport] = useState<any | null>(null);
+
+  // Deep link from notifications: /reporting?report=<id> opens that report.
+  useEffect(() => {
+    if (!deepLinkReportId || mode === "modal") return;
+    let cancelled = false;
+    api
+      .get(`/reports/${deepLinkReportId}`)
+      .then((res) => !cancelled && setSelectedReport(res.data))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [deepLinkReportId, mode]);
+
+  const closeSelectedReport = () => {
+    setSelectedReport(null);
+    if (deepLinkReportId && mode !== "modal") {
+      const next = new URLSearchParams(searchParams);
+      next.delete("report");
+      setSearchParams(next, { replace: true });
+    }
+  };
 
   // School list pagination & search (delegated to store)
   const [schoolsPage, setSchoolsPage] = useState(1);
@@ -332,6 +363,7 @@ export default function SchoolReporting({
     historyAbortRef.current = controller;
 
     setHistoryLoading(true);
+    setHistoryError(null);
     try {
       const params: any = {
         page: historyPage,
@@ -366,6 +398,7 @@ export default function SchoolReporting({
     } catch (err: any) {
       if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") return;
       console.error("Failed to load history", err);
+      setHistoryError(errorMessage(err, "Your report history could not be loaded."));
     } finally {
       setHistoryLoading(false);
     }
@@ -1077,8 +1110,8 @@ export default function SchoolReporting({
         {selectedReport && (
           <ReportDetailsModal
             report={selectedReport}
-            onClose={() => setSelectedReport(null)}
-            onUpdateStatus={handleUpdateReportStatus}
+            onClose={closeSelectedReport}
+            onUpdateStatus={canTriage ? handleUpdateReportStatus : undefined}
             isUpdating={isStatusUpdating}
           />
         )}
@@ -1096,10 +1129,16 @@ export default function SchoolReporting({
           description="Monitor and report facility maintenance issues across campus."
           icon={ClipboardList}
           actions={
-            <div className="bg-muted/50 backdrop-blur-md p-1 rounded-full border border-border/5 flex gap-1">
+            <div
+              role="group"
+              aria-label="Reporting sections"
+              className="bg-muted/50 backdrop-blur-md p-1 rounded-3xl sm:rounded-full border border-border/5 flex flex-wrap gap-1 max-w-full"
+            >
               {/* Admin-only overview tab */}
               {isAdmin && (
                 <button
+                  type="button"
+                  aria-pressed={activeTab === "overview"}
                   onClick={() => setActiveTab("overview")}
                   className={cn(
                     "px-4 py-1.5 rounded-full text-[13px] font-black uppercase tracking-widest transition-all",
@@ -1119,6 +1158,8 @@ export default function SchoolReporting({
                 ].map((tab) => (
                   <button
                     key={tab.id}
+                    type="button"
+                    aria-pressed={activeTab === tab.id}
                     onClick={() => setActiveTab(tab.id as any)}
                     className={cn(
                       "px-4 py-1.5 rounded-full text-[13px] font-black uppercase tracking-widest transition-all",
@@ -1300,8 +1341,7 @@ export default function SchoolReporting({
                                         : "border-border/30 text-muted-foreground",
                                   )}
                                 >
-                                  {s.status?.toLowerCase().replace(/_/g, " ") ||
-                                    "—"}
+                                  {label("schoolStatus", s.status)}
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-right pr-4">
@@ -1912,11 +1952,11 @@ export default function SchoolReporting({
                 </label>
                 <RichDropdown
                   options={[
-                    { label: "ALL REPORTS", value: "ALL" },
-                    { label: "PENDING REVIEW", value: "PENDING" },
-                    { label: "SOLVED / CLOSED", value: "SOLVED" },
-                    { label: "CRITICAL PRIORITY", value: "NEED_INTERVENTION" },
-                    { label: "FAILED / INVALID", value: "FAILED" },
+                    { label: "All Reports", value: "ALL" },
+                    { label: "Pending Review", value: "PENDING" },
+                    { label: "Resolved", value: "SOLVED" },
+                    { label: "Needs Intervention", value: "NEED_INTERVENTION" },
+                    { label: "Failed / Invalid", value: "FAILED" },
                   ]}
                   value={statusFilter}
                   onChange={(val) => {
@@ -2017,22 +2057,23 @@ export default function SchoolReporting({
                   </Card>
                 ))}
               </div>
+            ) : historyError ? (
+              <ErrorState message={historyError} onRetry={fetchHistory} />
             ) : filteredHistory.length === 0 ? (
-              <Card className="bg-card p-20 rounded-2xl text-center border-dashed border-2 border-border/20">
-                <ClipboardList className="w-16 h-16 text-muted-foreground/30 mx-auto mb-6" />
-                <h3 className="text-base font-bold uppercase tracking-tighter mb-2">
-                  No Reports Yet
-                </h3>
-                <p className="text-muted-foreground font-medium mb-8">
-                  You haven't submitted any facility reports yet.
-                </p>
-                <Button
-                  onClick={() => setActiveTab("report")}
-                  className="rounded-full px-8 h-12 font-black uppercase text-xs"
-                >
-                  Start Reporting
-                </Button>
-              </Card>
+              <EmptyState
+                icon={ClipboardList}
+                title={statusFilter !== "ALL" ? "No reports with this status" : "No reports yet"}
+                description={
+                  statusFilter !== "ALL"
+                    ? "Try another status or period."
+                    : "Reports you file for this school will appear here, with their status as RTB follows up."
+                }
+                action={
+                  hasPermission(user, Permission.CREATE_REPORT)
+                    ? { label: "Report an issue", onClick: () => setActiveTab("report"), icon: Plus }
+                    : undefined
+                }
+              />
             ) : (
               <div className="space-y-6">
                 {/* Desktop Table View */}
@@ -2110,7 +2151,7 @@ export default function SchoolReporting({
                                 getStatusColor(record.status),
                               )}
                             >
-                              {record.status.toLowerCase().replace("_", " ")}
+                              {label("reportStatus", record.status)}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
@@ -2194,7 +2235,7 @@ export default function SchoolReporting({
                             getStatusColor(record.status),
                           )}
                         >
-                          {record.status?.toLowerCase().replace(/_/g, " ")}
+                          {label("reportStatus", record.status)}
                         </Badge>
                       </div>
 
@@ -2274,7 +2315,7 @@ export default function SchoolReporting({
             loading={analyticsLoading}
             range={analyticsRange}
             onRangeChange={setAnalyticsRange}
-            onUpdateStatus={handleUpdateReportStatus}
+            onUpdateStatus={canTriage ? handleUpdateReportStatus : undefined}
           />
         ) : null}
       </div>

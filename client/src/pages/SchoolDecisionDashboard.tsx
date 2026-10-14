@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { io, Socket } from "socket.io-client";
+import type { Socket } from "socket.io-client";
+import { connectSocket } from "../lib/socket";
 import { useParams, Link } from "react-router-dom";
 import { useGoBack } from "../hooks/useGoBack";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { useAuthStore } from "../store/authStore";
 import {
   Activity,
@@ -19,12 +20,23 @@ import { Modal } from "../components/ui/modal";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { cn } from "../lib/utils";
+import { formatDate, formatNumber, formatPercent } from "../lib/format";
+import { label } from "../lib/labels";
+import { useToast } from "../components/ui/toast";
+import { MetricInfo } from "../components/metric-help/MetricInfo";
+import {
+  DashboardError,
+  DashboardSkeleton,
+} from "../components/dashboard/DashboardStates";
 import {
   buildBuildingsAttention,
   rollupIssueReports,
   formatTrendPct,
   formatDaysAgo,
+  type IssueReportLike,
 } from "../lib/issueReportMetrics";
+import type { SchoolMetrics } from "../components/dashboard/types";
+import type { FacilityBuilding } from "../components/dashboard/FacilityBreakdownSection";
 
 // Dashboard Components
 import { DecisionIntelligenceScore } from "../components/dashboard/DecisionIntelligenceScore";
@@ -34,11 +46,35 @@ import { ReportingTab } from "../components/dashboard/ReportingTab";
 import { RiskAssessment } from "../components/dashboard/RiskAssessment";
 import SchoolMap from "../components/SchoolMap";
 
+/** The school record as returned by GET /schools/:id (only fields used here are typed). */
+interface SchoolRecord {
+  id: string;
+  name?: string;
+  code?: string;
+  buildings?: FacilityBuilding[];
+  [key: string]: unknown;
+}
+
+interface RecommendationActionRow {
+  id: string;
+  recommendation: string;
+  status: "open" | "in_progress" | "done";
+}
+
+interface ScoresUpdatedEvent {
+  overallScore: number;
+  infrastructureScore: number;
+  buildingAgeScore: number;
+  accessibilityScore: number;
+  populationPressureScore: number;
+  priorityLevel: SchoolMetrics["priorityLevel"];
+}
+
 interface SchoolDecisionDashboardProps {
   id?: string;
   standalone?: boolean;
-  onUpdateSchool?: (update: any) => void;
-  onBuildingClick?: (building: any) => void;
+  onUpdateSchool?: (update: Partial<SchoolRecord>) => void;
+  onBuildingClick?: (building: FacilityBuilding) => void;
 }
 
 export default function SchoolDecisionDashboard({
@@ -52,98 +88,30 @@ export default function SchoolDecisionDashboard({
   const { user } = useAuthStore();
   const id = propId || paramId || user?.location?.schoolId;
 
-  const [school, setSchool] = useState<any>(null);
+  const toast = useToast();
+  const [school, setSchool] = useState<SchoolRecord | null>(null);
+  /** Server metrics — GET /analytics/schools/:id/metrics (single source, WS1.4). */
+  const [metrics, setMetrics] = useState<SchoolMetrics | null>(null);
   const [loading, setLoading] = useState(true);
+  /** HTTP status of a failed load (0 = network/other), or null when loaded. */
+  const [loadError, setLoadError] = useState<number | null>(null);
   const [isBuildingModalOpen, setIsBuildingModalOpen] = useState(false);
-  const [reportingData, setReportingData] = useState<any>(null);
+  const [reportingData, setReportingData] = useState<{
+    rawReports: IssueReportLike[];
+    monthComparison: ReturnType<typeof rollupIssueReports>["monthComparison"] | null;
+  } | null>(null);
   const [activeTab, setActiveTab] = useState<"main" | "reporting">("main");
-  const [scoreToast, setScoreToast] = useState(false);
-  const [actions, setActions] = useState<any[]>([]);
+  const [actions, setActions] = useState<RecommendationActionRow[]>([]);
 
   const lastFetchedId = useRef<string | null>(null);
-  const scoreToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 1. Calculations & Derived State
   const schoolData = school;
-  const buildings = schoolData?.buildings || [];
-  const totalStudents = schoolData?.calculatedAssessment?.totalStudents || 0;
-  const totalCapacity = schoolData?.calculatedAssessment?.totalCapacity || 0;
-  const totalStaff = schoolData?.calculatedAssessment?.totalStaff || 0;
-  const maleTeachers = parseFloat(String(schoolData?.maleTeachers)) || 0;
-  const femaleTeachers = parseFloat(String(schoolData?.femaleTeachers)) || 0;
-  const totalTeachers = maleTeachers + femaleTeachers;
-  const avgBuildingYear = schoolData?.calculatedAssessment?.averageBuildingAge
-    ? new Date().getFullYear() -
-      schoolData.calculatedAssessment.averageBuildingAge
-    : 0;
+  const buildings = useMemo(() => schoolData?.buildings || [], [schoolData]);
+  const reportSummary = metrics?.reportSummary ?? null;
 
-  const formatNumber = (num: number | undefined | null) => {
-    if (num === undefined || num === null) return "--";
-    return new Intl.NumberFormat("en-US").format(num);
-  };
-
-  const calculateDecisionIntelligenceScore = useCallback(() => {
-    const raw = schoolData?.calculatedAssessment?.overallScore ?? school?.overallScore ?? 0;
-    return Math.min(100, Math.max(0, Math.round(Number(raw))));
-  }, [schoolData, school]);
-
-  const getAssessment = useCallback(() => {
-    if (!schoolData?.calculatedAssessment)
-      return { priorityLevel: "medium", recommendations: [], resolutionRate: null };
-
-    const overallScore = calculateDecisionIntelligenceScore();
-    // null-safe parse: a missing sub-score must NOT read as 0 (which would
-    // silently trip every "score is low" recommendation below).
-    const sub = (v: unknown): number | null => {
-      const n = parseFloat(String(v));
-      return Number.isFinite(n) ? n : null;
-    };
-    const infrastructureScore = sub(
-      schoolData.calculatedAssessment.infrastructureScore,
-    );
-    const populationPressureScore = sub(
-      schoolData.calculatedAssessment.populationPressureScore,
-    );
-    const buildingAgeScore = sub(schoolData.calculatedAssessment.buildingAgeScore);
-
-    // Derive resolution rate from the already-fetched reportingData
-    const resolutionRate =
-      (reportingData?.totalReports ?? 0) > 0
-        ? Math.round(
-            ((reportingData?.resolvedIssues ?? 0) / reportingData.totalReports) * 100,
-          )
-        : null;
-
-    return {
-      ...schoolData.calculatedAssessment,
-      overallScore,
-      resolutionRate,
-      priorityLevel:
-        overallScore < 35
-          ? "critical"
-          : overallScore < 55
-            ? "high"
-            : overallScore < 75
-              ? "medium"
-              : "low",
-      recommendations: [
-        infrastructureScore != null && infrastructureScore < 50
-          ? "Infrastructure health is low — schedule building condition assessments"
-          : null,
-        populationPressureScore != null && populationPressureScore < 45
-          ? "Elevated demographic pressure in catchment — review capacity planning"
-          : null,
-        buildingAgeScore != null && buildingAgeScore < 40
-          ? "Asset portfolio skews older — prioritize condition surveys and renewal"
-          : null,
-        (reportingData?.statusCounts?.needIntervention ?? 0) > 5
-          ? "High number of reports flagged NEED_INTERVENTION — prioritize escalation"
-          : null,
-      ].filter(Boolean),
-    };
-  }, [schoolData, calculateDecisionIntelligenceScore, reportingData]);
-
-  const assessment = getAssessment();
+  // Everything shown below comes from the server metrics payload. The client
+  // no longer recomputes scores, priority, recommendations, totals or ratios.
+  const assessment: Partial<SchoolMetrics> = metrics ?? {};
 
   const buildingsAttention = useMemo(
     () =>
@@ -162,54 +130,15 @@ export default function SchoolDecisionDashboard({
       const reports = response.data?.data ?? [];
       const rollup = rollupIssueReports(reports);
 
+      // Counts and rates come from the server reportSummary; the browser only
+      // keeps the raw list (for the building ranking) and the month comparison.
       setReportingData({
         rawReports: reports,
-        totalReports: rollup.totalReports,
-        openIssues: rollup.activeIssues,
-        activeIssues: rollup.activeIssues,
-        resolvedIssues: rollup.resolvedIssues,
-        criticalIssues: rollup.needIntervention,
-        resolutionRate: rollup.resolutionRate,
-        statusCounts: rollup.statusCounts,
         monthComparison: rollup.monthComparison,
-        avgResolutionTime: rollup.avgResolutionDays,
       });
     } catch (error) {
       console.error("Failed to fetch reporting data:", error);
-      setReportingData({
-        rawReports: [],
-        totalReports: 0,
-        openIssues: 0,
-        activeIssues: 0,
-        resolvedIssues: 0,
-        criticalIssues: 0,
-        resolutionRate: 100,
-        statusCounts: {
-          pending: 0,
-          needIntervention: 0,
-          solved: 0,
-          failed: 0,
-        },
-        monthComparison: {
-          current: {
-            pending: 0,
-            needIntervention: 0,
-            solved: 0,
-            failed: 0,
-            activeCreated: 0,
-          },
-          previous: {
-            pending: 0,
-            needIntervention: 0,
-            solved: 0,
-            failed: 0,
-            activeCreated: 0,
-          },
-          activeChangePct: null,
-          solvedChangePct: null,
-        },
-        avgResolutionTime: 0,
-      });
+      setReportingData({ rawReports: [], monthComparison: null });
     }
   }, [id]);
 
@@ -248,10 +177,10 @@ export default function SchoolDecisionDashboard({
           );
         }
       } catch {
-        // silent — user can retry
+        toast.error("Could not update this recommendation. Please try again.");
       }
     },
-    [id, actions],
+    [id, actions, toast],
   );
 
   // 2. Data Fetching
@@ -259,103 +188,20 @@ export default function SchoolDecisionDashboard({
     async (silent = false) => {
       if (!id) return;
       if (!silent) setLoading(true);
+      setLoadError(null);
       try {
         const [schoolRes, metricsRes] = await Promise.all([
           api.get(`/schools/${id}`),
           api.get(`/analytics/schools/${id}/metrics`).catch(() => null),
         ]);
-        const sData = schoolRes.data;
-        const metrics = metricsRes?.data;
-
-        const currentYear = new Date().getFullYear();
-        let avgAge = 0;
-        if (sData.buildings?.length > 0) {
-          const ages = sData.buildings
-            .filter((b: any) => b.yearBuilt)
-            .map((b: any) => currentYear - parseFloat(String(b.yearBuilt)));
-          avgAge =
-            ages.length > 0
-              ? Math.round(
-                  ages.reduce((a: number, b: number) => a + b, 0) / ages.length,
-                )
-              : 0;
-        }
-
-        const tStudents =
-          sData.educationPrograms?.reduce(
-            (sum: number, p: any) =>
-              sum + (parseFloat(String(p.totalStudents)) || 0),
-            0,
-          ) || 0;
-        const tStaff =
-          (parseFloat(String(sData.maleTeachers)) || 0) +
-          (parseFloat(String(sData.femaleTeachers)) || 0) +
-          (parseFloat(String(sData.maleAdminStaff)) || 0) +
-          (parseFloat(String(sData.femaleAdminStaff)) || 0) +
-          (parseFloat(String(sData.maleSupportStaff)) || 0) +
-          (parseFloat(String(sData.femaleSupportStaff)) || 0);
-
-        if (metrics) {
-          sData.calculatedAssessment = {
-            ...sData.calculatedAssessment,
-            infrastructureScore: metrics.infrastructureScore,
-            buildingAgeScore: metrics.buildingAgeScore,
-            populationPressureScore: metrics.populationPressureScore,
-            accessibilityScore: metrics.accessibilityScore,
-            facilityComplianceScore: metrics.facilityComplianceScore,
-            overallScore: metrics.overallScore,
-            depreciation: metrics.depreciation,
-            averageBuildingAge: metrics.avgBuildingAge ?? avgAge,
-            totalStudents: metrics.totalStudents ?? tStudents,
-            totalCapacity: metrics.totalCapacity ?? 0,
-            totalStaff: metrics.totalStaff ?? tStaff,
-            urgencyMonths: metrics.urgencyMonths,
-            recommendations:
-              metrics.recommendations?.length > 0
-                ? metrics.recommendations
-                : sData.calculatedAssessment?.recommendations,
-            // Phase 3: completeness, timestamp, peer delta
-            dataCompletenessScore: metrics.dataCompletenessScore,
-            calculatedAt: metrics.calculatedAt,
-            scoreDeltaFromDistrict: metrics.scoreDeltaFromDistrict,
-            // Phase 4.5: server-computed risk matrix inputs
-            riskImpactScore: metrics.riskImpactScore,
-            riskProbabilityScore: metrics.riskProbabilityScore,
-          };
-        } else {
-          // Metrics endpoint unavailable — surface only values we can derive
-          // locally. Never fabricate scores: leave them null so the UI renders
-          // "—" rather than a misleading magic number.
-          const num = (v: unknown): number | null => {
-            const n = parseFloat(String(v));
-            return Number.isFinite(n) ? n : null;
-          };
-          const prev = sData.calculatedAssessment ?? {};
-          sData.calculatedAssessment = {
-            ...prev,
-            averageBuildingAge: avgAge,
-            totalStudents: tStudents,
-            totalCapacity:
-              sData.educationPrograms?.reduce(
-                (sum: number, p: any) =>
-                  sum + (parseFloat(String(p.capacity)) || 0),
-                0,
-              ) || 0,
-            totalStaff: tStaff,
-            infrastructureScore: num(prev.infrastructureScore),
-            buildingAgeScore: num(prev.buildingAgeScore),
-            populationPressureScore: num(prev.populationPressureScore),
-            accessibilityScore: num(prev.accessibilityScore),
-            facilityComplianceScore: num(prev.facilityComplianceScore),
-            overallScore: num(prev.overallScore),
-            depreciation: num(prev.depreciation),
-          };
-        }
-
-        setSchool(sData);
+        setSchool(schoolRes.data);
+        setMetrics(metricsRes?.data ?? null);
         await Promise.all([fetchReportingData(), fetchActions()]);
       } catch (error) {
         console.error("Failed to fetch school", error);
+        setLoadError(
+          (error as { response?: { status?: number } })?.response?.status ?? 0,
+        );
       } finally {
         setLoading(false);
       }
@@ -371,10 +217,8 @@ export default function SchoolDecisionDashboard({
   }, [id, fetchSchool]);
 
   const showScoreToast = useCallback(() => {
-    if (scoreToastTimerRef.current) clearTimeout(scoreToastTimerRef.current);
-    setScoreToast(true);
-    scoreToastTimerRef.current = setTimeout(() => setScoreToast(false), 3000);
-  }, []);
+    toast.success("Scores updated");
+  }, [toast]);
 
   const recalculateScores = useCallback(async () => {
     if (!id) return;
@@ -383,13 +227,13 @@ export default function SchoolDecisionDashboard({
       await fetchSchool(true);
       showScoreToast();
     } catch {
-      // recalculate is best-effort; silent failure keeps the UX clean
+      toast.error("Scores could not be recalculated. They will update on the next change.");
     }
-  }, [id, fetchSchool, showScoreToast]);
+  }, [id, fetchSchool, showScoreToast, toast]);
 
   const handleUpdateSchool = useCallback(
-    (update: any) => {
-      setSchool((prev: any) => (prev ? { ...prev, ...update } : prev));
+    (update: Partial<SchoolRecord>) => {
+      setSchool((prev) => (prev ? { ...prev, ...update } : prev));
       recalculateScores();
       if (propOnUpdateSchool) propOnUpdateSchool(update);
     },
@@ -399,30 +243,28 @@ export default function SchoolDecisionDashboard({
   useEffect(() => {
     if (!id) return;
 
-    const socket: Socket = io(window.location.origin, { withCredentials: true });
+    const socket: Socket = connectSocket();
 
     // Join on every (re)connect so the room survives network drops.
     const schoolRoom = `school:${id}`;
     socket.on("connect", () => socket.emit("join", schoolRoom));
 
-    socket.on("scores:updated", (assessment: any) => {
-      setSchool((prev: any) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          overallScore: assessment.overallScore,
-          priorityLevel: assessment.priorityLevel,
-          calculatedAssessment: {
-            ...prev.calculatedAssessment,
-            overallScore: assessment.overallScore,
-            infrastructureScore: assessment.infrastructureScore,
-            buildingAgeScore: assessment.buildingAgeScore,
-            accessibilityScore: assessment.accessibilityScore,
-            populationPressureScore: assessment.populationPressureScore,
-            priorityLevel: assessment.priorityLevel,
-          },
-        };
-      });
+    socket.on("scores:updated", (update: ScoresUpdatedEvent) => {
+      // Patch the server-computed scores in place; the full metrics payload
+      // (gaps, risk, totals) refreshes on the next fetch.
+      setMetrics((prev) =>
+        prev
+          ? {
+              ...prev,
+              overallScore: update.overallScore,
+              infrastructureScore: update.infrastructureScore,
+              buildingAgeScore: update.buildingAgeScore,
+              accessibilityScore: update.accessibilityScore,
+              populationPressureScore: update.populationPressureScore,
+              priorityLevel: update.priorityLevel,
+            }
+          : prev,
+      );
       showScoreToast();
     });
 
@@ -434,13 +276,30 @@ export default function SchoolDecisionDashboard({
 
   // 3. Render Logic
   if (loading) {
+    return <DashboardSkeleton cards={4} label="Loading school dashboard…" className="p-4 md:p-8" />;
+  }
+
+  if (loadError !== null) {
+    // Access and missing-record errors won't fix themselves on retry.
+    if (loadError === 403 || loadError === 404) {
+      return (
+        <DashboardError
+          className="m-4 md:m-8"
+          title={loadError === 403 ? "This school is outside your access area" : "School not found"}
+          message={
+            loadError === 403
+              ? "Your account can only open schools in its assigned area. Ask an administrator if you need wider access."
+              : "It may have been removed. Go back to the schools directory to pick another one."
+          }
+        />
+      );
+    }
     return (
-      <div className="p-8 flex flex-col items-center justify-center min-h-[400px] space-y-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-b border-primary/30"></div>
-        <p className="text-[11px] font-medium tracking-wide animate-pulse text-slate-400 dark:text-white/20">
-          Synchronizing analytics...
-        </p>
-      </div>
+      <DashboardError
+        className="m-4 md:m-8"
+        title="We couldn't load this school"
+        onRetry={() => fetchSchool()}
+      />
     );
   }
 
@@ -452,18 +311,14 @@ export default function SchoolDecisionDashboard({
         </div>
         <div>
           <h2 className="text-2xl font-medium tracking-tight text-slate-800 dark:text-white/90">
-            Institution not found
+            School not found
           </h2>
-          <p className="text-sm font-normal text-slate-500 dark:text-white/30 mt-2">
-            The requested school registry could not be located
+          <p className="text-sm font-normal text-slate-500 dark:text-white/50 mt-2">
+            It may have been removed, or it is outside your access level.
           </p>
         </div>
-        <Button
-          asChild
-          variant="outline"
-          className="rounded-full mt-2 font-medium text-[11px] px-6 border-blue-500/20 hover:bg-white/5"
-        >
-          <Link to="/schools">Return to registry</Link>
+        <Button asChild variant="outline" className="rounded-full mt-2 font-medium text-[12px] px-6">
+          <Link to="/schools">Back to schools</Link>
         </Button>
       </div>
     );
@@ -490,18 +345,20 @@ export default function SchoolDecisionDashboard({
       className="container mx-auto space-y-8 pb-12 px-2 md:px-6 pt-8 md:pt-16 bg-transparent"
     >
       {/* Tab Navigation */}
-      <div className="flex gap-2 p-1 bg-slate-50 dark:bg-white/5 rounded-full border border-slate-200 dark:border-blue-500/12 mb-8">
+      <div role="tablist" aria-label="School dashboard sections" className="flex gap-2 p-1 bg-slate-50 dark:bg-white/5 rounded-full border border-slate-200 dark:border-blue-500/12 mb-8 overflow-x-auto">
         {[
-          { id: "main", label: "Main Dashboard", icon: Activity },
-          { id: "reporting", label: "Reporting & Analytics", icon: FileText },
+          { id: "main", label: "Overview", icon: Activity },
+          { id: "reporting", label: "Issue Reports", icon: FileText },
         ].map((tab) => {
           const Icon = tab.icon;
           return (
             <button
               key={tab.id}
+              role="tab"
+              aria-selected={activeTab === tab.id}
               onClick={() => setActiveTab(tab.id as "main" | "reporting")}
               className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all",
+                "flex shrink-0 items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all",
                 activeTab === tab.id
                   ? "bg-primary text-white shadow-sm"
                   : "text-slate-600 dark:text-white/60 hover:bg-slate-100 dark:hover:bg-white/10",
@@ -524,66 +381,59 @@ export default function SchoolDecisionDashboard({
 
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 relative z-10 border-b border-slate-200 dark:border-blue-500/12 pb-10">
                 <div>
-                  <h2 className="text-3xl md:text-4xl font-medium text-slate-800 dark:text-white tracking-tight">
-                    Strategic <span className="text-primary">Intelligence</span>{" "}
-                    Dashboard
+                  <h2 className="text-2xl sm:text-3xl md:text-4xl font-medium text-slate-800 dark:text-white tracking-tight break-words">
+                    {schoolData.name || "School"}
                   </h2>
-                  <div className="flex items-center gap-4 mt-4">
-                    <p className="text-[11px] font-normal text-slate-500 dark:text-white/60 tracking-wide">
-                      Instance: {schoolData.name || "Unidentified asset"}
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-4">
+                    <p className="text-[12px] font-normal text-slate-600 dark:text-white/60 tracking-wide">
+                      School dashboard
                     </p>
-                    <div className="h-1 w-1 rounded-full bg-slate-200 dark:bg-white/10" />
-                    <p className="text-[11px] font-medium text-primary/60 dark:text-primary/60 tracking-wide">
-                      Registry ID: {id?.slice(0, 8).toUpperCase()}
-                    </p>
+                    {schoolData.code && (
+                      <>
+                        <div className="h-1 w-1 rounded-full bg-slate-300 dark:bg-white/10" />
+                        <p className="text-[12px] font-medium text-primary tracking-wide">
+                          Code {schoolData.code}
+                        </p>
+                      </>
+                    )}
                   </div>
                 </div>
 
                 <div className="flex flex-col items-start md:items-end gap-3">
-                  <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-white/40 pr-2">
-                    SCORES AS OF{" "}
-                    {schoolData?.calculatedAssessment?.calculatedAt
-                      ? new Date(
-                          schoolData.calculatedAssessment.calculatedAt,
-                        ).toLocaleDateString("en-RW", { dateStyle: "medium" })
-                      : new Date().toLocaleDateString("en-RW", {
-                          dateStyle: "medium",
-                        })}
+                  <div className="text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-white/50 pr-2">
+                    Scores as of {metrics?.calculatedAt ? formatDate(metrics.calculatedAt) : "—"}
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
+          {!metrics && (
+            <div role="status" className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-300 font-medium flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
+              Scores are not available right now. School details are shown; try again later for scores.
+            </div>
+          )}
           {/* Data completeness warning — shown when fewer than 60 % of key fields are populated */}
-          {(schoolData?.calculatedAssessment?.dataCompletenessScore ?? 100) < 60 && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-700 dark:text-amber-400 font-medium flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              Data completeness:{" "}
-              <strong>
-                {schoolData.calculatedAssessment.dataCompletenessScore}%
-              </strong>{" "}
-              — displayed scores may not reflect actual conditions. Complete the
-              school profile to improve accuracy.
+          {(metrics?.dataCompletenessScore ?? 100) < 60 && (
+            <div role="status" className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-300 font-medium flex flex-wrap items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
+              <span>
+                Data completeness: <strong>{formatPercent(metrics?.dataCompletenessScore ?? null)}</strong>. Some
+                scores are estimated. Complete the school profile to improve accuracy.
+              </span>
+              <MetricInfo id="school.dataCompleteness" size="xs" />
             </div>
           )}
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-            <div className="xl:col-span-2 space-y-8">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 md:gap-8">
+            <div className="xl:col-span-2 space-y-8 min-w-0">
               <DecisionIntelligenceScore assessment={assessment} />
               <FacilityBreakdownSection buildings={buildings} />
-              <RiskAssessment
-                assessment={assessment}
-                reportingData={{
-                  ...reportingData,
-                  critical: reportingData?.statusCounts?.needIntervention,
-                  totalReports: reportingData?.totalReports,
-                  avgResolutionTime: reportingData?.avgResolutionTime,
-                }}
-              />
+              <RiskAssessment risk={metrics?.riskAssessment} />
             </div>
 
-            <div className="space-y-8">
+            <div className="space-y-8 min-w-0">
               {/* Resolution Rate Card */}
               <div className="relative rounded-[32px] overflow-hidden group">
                 <div className="absolute inset-0 bg-linear-to-b from-emerald-500/30 to-emerald-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
@@ -596,29 +446,34 @@ export default function SchoolDecisionDashboard({
                         <CheckCircle className="w-4 h-4 opacity-70" />
                       </div>
                       Resolution Rate
+                      <MetricInfo id="reports.resolutionRate" size="xs" />
                     </h3>
-                    <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5">
-                      Impacts Decision Score
+                    <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5">
+                      5% of the score
                     </span>
                   </div>
-                  <div className="flex items-end gap-4">
-                    <div className="text-5xl font-bold text-emerald-600 dark:text-emerald-400 leading-none">
-                      {reportingData?.resolutionRate ?? 0}
-                      <span className="text-2xl font-medium">%</span>
-                    </div>
-                    <div className="flex-1 pb-1">
-                      <div className="text-[10px] text-slate-500 dark:text-white/50 mb-1.5">
-                        {reportingData?.resolvedIssues ?? 0} of{" "}
-                        {reportingData?.totalReports ?? 0} reports closed (SOLVED)
+                  {reportSummary?.resolutionRate == null ? (
+                    <p className="text-sm text-slate-600 dark:text-white/60">
+                      No Issue Reports yet. The score uses a neutral 50 for this part until reports exist.
+                    </p>
+                  ) : (
+                    <div className="flex items-end gap-4">
+                      <div className="text-5xl font-bold text-emerald-600 dark:text-emerald-400 leading-none tabular-nums">
+                        {formatPercent(reportSummary.resolutionRate)}
                       </div>
-                      <div className="h-2 bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-emerald-500 rounded-full transition-all duration-700"
-                          style={{ width: `${reportingData?.resolutionRate ?? 0}%` }}
-                        />
+                      <div className="flex-1 pb-1">
+                        <div className="text-[11px] text-slate-600 dark:text-white/60 mb-1.5">
+                          {formatNumber(reportSummary.resolved)} of {formatNumber(reportSummary.total)} reports Resolved
+                        </div>
+                        <div className="h-2 bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-emerald-500 rounded-full transition-all duration-700"
+                            style={{ width: `${reportSummary.resolutionRate}%` }}
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
@@ -629,24 +484,25 @@ export default function SchoolDecisionDashboard({
                   <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
                 </div>
 
-                <div className="relative z-10 p-8">
+                <div className="relative z-10 p-5 sm:p-8">
                   <h3 className="text-sm font-medium text-primary/70 dark:text-blue-500 mb-6 flex items-center gap-3">
                     <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/12">
                       <FileText className="w-4 h-4 opacity-60" />
                     </div>
-                    Reporting Summary
+                    Issue Reports summary
                   </h3>
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-4">
                       <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs text-slate-500 dark:text-white/60">
-                            Active issues
+                          <span className="text-xs text-slate-600 dark:text-white/60 flex items-center gap-1">
+                            Open issues
+                            <MetricInfo id="reports.openIssues" size="xs" />
                           </span>
                           <AlertTriangle className="w-3 h-3 text-amber-500" />
                         </div>
                         <div className="text-xl font-bold text-slate-900 dark:text-white">
-                          {reportingData?.activeIssues ?? reportingData?.openIssues ?? 0}
+                          {formatNumber(reportSummary?.active ?? 0)}
                         </div>
                         <div
                           className={cn(
@@ -656,7 +512,7 @@ export default function SchoolDecisionDashboard({
                               : "text-emerald-600",
                           )}
                         >
-                          Active created (MTD vs last month):{" "}
+                          New this month:{" "}
                           {formatTrendPct(
                             reportingData?.monthComparison?.activeChangePct,
                           )}
@@ -664,48 +520,50 @@ export default function SchoolDecisionDashboard({
                       </div>
                       <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs text-slate-500 dark:text-white/60">
-                            Resolved (SOLVED)
+                          <span className="text-xs text-slate-600 dark:text-white/60 flex items-center gap-1">
+                            Resolved
+                            <MetricInfo id="reports.resolved" size="xs" />
                           </span>
                           <CheckCircle className="w-3 h-3 text-emerald-500" />
                         </div>
                         <div className="text-xl font-bold text-slate-900 dark:text-white">
-                          {reportingData?.resolvedIssues ?? 0}
+                          {formatNumber(reportSummary?.resolved ?? 0)}
                         </div>
-                        <div className="text-xs text-slate-500 dark:text-white/50">
+                        <div className="text-xs text-slate-600 dark:text-white/50 flex items-center gap-1">
                           {formatTrendPct(
                             reportingData?.monthComparison?.solvedChangePct,
-                          )}{" "}
-                          (reports created this month vs last)
+                          )}
+                          <MetricInfo id="reports.monthComparison" size="xs" />
                         </div>
                       </div>
                     </div>
                     <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-slate-500 dark:text-white/60">
-                          NEED_INTERVENTION
+                        <span className="text-xs text-slate-600 dark:text-white/60 flex items-center gap-1">
+                          {label("reportStatus", "NEED_INTERVENTION")}
+                          <MetricInfo id="reports.needsIntervention" size="xs" />
                         </span>
                         <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                       </div>
                       <div className="flex items-center gap-4">
                         <div className="text-xl font-bold text-red-600 dark:text-red-400">
-                          {reportingData?.statusCounts?.needIntervention ?? 0}
+                          {formatNumber(reportSummary?.critical ?? 0)}
                         </div>
                         <div className="flex-1">
                           <div className="text-xs text-slate-500 dark:text-white/60 mb-1">
-                            Resolution rate (SOLVED / all)
+                            Resolution rate
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="flex-1 bg-slate-100 dark:bg-white/5 rounded-full h-1.5">
                               <div
                                 className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500"
                                 style={{
-                                  width: `${reportingData?.resolutionRate ?? 0}%`,
+                                  width: `${reportSummary?.resolutionRate ?? 0}%`,
                                 }}
                               />
                             </div>
-                            <span className="text-xs font-medium text-slate-900 dark:text-white">
-                              {reportingData?.resolutionRate ?? 0}%
+                            <span className="text-xs font-medium text-slate-900 dark:text-white tabular-nums">
+                              {formatPercent(reportSummary?.resolutionRate ?? null)}
                             </span>
                           </div>
                         </div>
@@ -727,12 +585,13 @@ export default function SchoolDecisionDashboard({
                     <div className="p-2 rounded-xl bg-red-100 dark:bg-white/5 border border-red-500/20">
                       <AlertTriangle className="w-4 h-4 opacity-60" />
                     </div>
-                    Buildings Requiring Attention
+                    Buildings needing attention
+                    <MetricInfo id="reports.buildingsAttention" size="xs" />
                   </h3>
                   <div className="space-y-3">
                     {buildingsAttention.length === 0 ? (
                       <p className="text-xs text-slate-500 dark:text-white/50 px-1">
-                        No building-linked issues or poor-condition blocks detected.
+                        No buildings need attention: no open Issue Reports are linked to a building and none is in poor or critical condition.
                       </p>
                     ) : (
                       buildingsAttention.map((row, index) => (
@@ -743,9 +602,17 @@ export default function SchoolDecisionDashboard({
                           transition={{ delay: index * 0.1 }}
                           onClick={() => {
                             const b = buildings.find(
-                              (x: any) => x.id === row.buildingId,
+                              (x) => x.id === row.buildingId,
                             );
                             if (b) onBuildingClick?.(b);
+                          }}
+                          role={onBuildingClick ? "button" : undefined}
+                          tabIndex={onBuildingClick ? 0 : undefined}
+                          onKeyDown={(e) => {
+                            if (!onBuildingClick || (e.key !== "Enter" && e.key !== " ")) return;
+                            e.preventDefault();
+                            const b = buildings.find((x) => x.id === row.buildingId);
+                            if (b) onBuildingClick(b);
                           }}
                           className={`p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12 hover:bg-slate-100 dark:hover:bg-white/10 transition-all ${onBuildingClick ? "cursor-pointer" : ""}`}
                         >
@@ -768,14 +635,14 @@ export default function SchoolDecisionDashboard({
                             <Badge
                               className={cn(
                                 "text-xs font-medium",
-                                row.severityLabel === "CRITICAL"
+                                row.severityLabel === "critical"
                                   ? "bg-red-500/10 text-red-600 border-red-500/20"
-                                  : row.severityLabel === "HIGH"
+                                  : row.severityLabel === "high"
                                     ? "bg-orange-500/10 text-orange-600 border-orange-500/20"
                                     : "bg-amber-500/10 text-amber-600 border-amber-500/20",
                               )}
                             >
-                              {row.severityLabel}
+                              {label("priority", row.severityLabel)}
                             </Badge>
                           </div>
 
@@ -790,7 +657,7 @@ export default function SchoolDecisionDashboard({
                             </div>
                             <div>
                               <p className="text-slate-500 dark:text-white/60 mb-1">
-                                Intervention
+                                Needs Intervention
                               </p>
                               <p className="font-medium text-red-600 dark:text-red-400">
                                 {row.intervention}
@@ -814,17 +681,7 @@ export default function SchoolDecisionDashboard({
                 </div>
               </div>
 
-              <SchoolStatsCards
-                schoolData={schoolData}
-                totalStudents={totalStudents}
-                totalCapacity={totalCapacity}
-                totalStaff={totalStaff}
-                totalTeachers={totalTeachers}
-                maleTeachers={maleTeachers}
-                buildings={buildings}
-                avgBuildingYear={avgBuildingYear}
-                formatNumber={formatNumber}
-              />
+              <SchoolStatsCards metrics={metrics} />
             </div>
           </div>
         </div>
@@ -843,7 +700,7 @@ export default function SchoolDecisionDashboard({
               <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/12">
                 <ClipboardCheck className="w-4 h-4 opacity-60" />
               </div>
-              Strategic recommendations
+              Recommendations
             </h3>
             <div className="space-y-3">
               {assessment.recommendations?.map((rec: string, i: number) => {
@@ -874,6 +731,7 @@ export default function SchoolDecisionDashboard({
                       <button
                         onClick={() => toggleAction(rec)}
                         title={`Status: ${statusLabel[status]} — click to advance`}
+                        aria-label={`Recommendation status: ${statusLabel[status]}. Activate to move to the next status.`}
                         className={cn(
                           "shrink-0 mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-all",
                           statusColors[status],
@@ -911,7 +769,7 @@ export default function SchoolDecisionDashboard({
               {(!assessment.recommendations ||
                 assessment.recommendations.length === 0) && (
                 <p className="text-xs text-slate-400 dark:text-white/70 italic text-center py-6">
-                  No critical interventions recommended at this time.
+                  No recommendations at this time.
                 </p>
               )}
             </div>
@@ -956,21 +814,6 @@ export default function SchoolDecisionDashboard({
           </div>
         </Modal>
 
-      {/* Scores-updated toast */}
-      <AnimatePresence>
-        {scoreToast && (
-          <motion.div
-            initial={{ opacity: 0, y: 16, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 16, scale: 0.95 }}
-            transition={{ duration: 0.22 }}
-            className="fixed bottom-6 right-6 z-200 flex items-center gap-3 px-5 py-3 rounded-2xl bg-emerald-600 text-white shadow-xl shadow-emerald-900/30 pointer-events-none"
-          >
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span className="text-[13px] font-medium">Scores updated</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 }

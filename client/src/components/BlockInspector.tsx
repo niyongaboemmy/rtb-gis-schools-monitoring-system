@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
+import { label } from "../lib/labels";
 import type { BuildingData } from "./school-form-steps/BuildingsStep";
 import { BuildingMediaTab } from "./2dviewercomponents/BuildingMediaTab";
 import { BuildingReportingTab } from "./2dviewercomponents/BuildingReportingTab";
@@ -280,8 +281,8 @@ export function BlockInspector({
                 </p>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {[
-                    { label: "Structure", status: buildingStatus },
-                    { label: "Roof", status: roofStatus },
+                    { label: "Structure", status: buildingStatus, kind: "buildingCondition" as const },
+                    { label: "Roof", status: roofStatus, kind: "roofCondition" as const },
                   ].map((it) => {
                     const t =
                       CONDITION_TONE[it.status] ?? CONDITION_TONE.fair;
@@ -293,7 +294,7 @@ export function BlockInspector({
                           t.chip,
                         )}
                       >
-                        {it.label}: {it.status}
+                        {it.label}: {label(it.kind, it.status)}
                       </span>
                     );
                   })}

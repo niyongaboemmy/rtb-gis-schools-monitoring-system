@@ -11,6 +11,7 @@ import {
 import { Button } from "../components/ui/button";
 import { PageHeader } from "../components/ui/page-header";
 import { useAuthStore } from "../store/authStore";
+import { api } from "../lib/api";
 
 export default function PlacesOverlayUpload() {
   const { id } = useParams<{ id: string }>();
@@ -40,7 +41,7 @@ export default function PlacesOverlayUpload() {
     }
   };
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (!file || !id) return;
 
     setStatus("uploading");
@@ -54,6 +55,8 @@ export default function PlacesOverlayUpload() {
     xhrRef.current = xhr;
 
     const apiBaseUrl = import.meta.env.VITE_API_URL || "/api/v1";
+    // The access token lives in memory and expires; this call refreshes it.
+    await api.get("/auth/me").catch(() => undefined);
     const token = useAuthStore.getState().token;
 
     xhr.open("POST", `${apiBaseUrl}/schools/${id}/kmz/places-overlay`);

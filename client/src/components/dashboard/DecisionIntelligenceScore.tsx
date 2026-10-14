@@ -13,10 +13,28 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { cn } from "../../lib/utils";
+import { formatNumber, formatScore } from "../../lib/format";
+import { label } from "../../lib/labels";
+import { MetricInfo } from "../metric-help/MetricInfo";
+import { DataGapBadge } from "../metric-help/DataGapBadge";
+import type { MetricId } from "../metric-help/metrics";
+import type { SchoolMetrics } from "./types";
 
 interface DecisionIntelligenceProps {
-  assessment: any;
+  /**
+   * School assessment / metrics payload (GET /analytics/schools/:id/metrics
+   * shape). `dataGaps` marks components that used the neutral 50.
+   */
+  assessment: (Partial<SchoolMetrics> & { resolutionRate?: number | null }) | null | undefined;
 }
+
+type GapKey =
+  | "infrastructure"
+  | "buildingAge"
+  | "accessibility"
+  | "population"
+  | "facilityCompliance"
+  | "resolution";
 
 interface ScoreMetric {
   label: string;
@@ -24,87 +42,64 @@ interface ScoreMetric {
   weight: string;
   score: number | null;
   icon: React.ComponentType<{ className?: string }>;
-  tooltip?: string;
+  metricId: MetricId;
+  gapKey: GapKey;
 }
 
-/** Safe parse: returns 0 for null / NaN / undefined */
-const safeNum = (v: unknown): number => {
+const bandOf = (s: number) =>
+  s < 35 ? "critical" : s < 55 ? "high" : s < 75 ? "medium" : "low";
+
+/** Safe parse: returns null for null / NaN / undefined (never a fake 0). */
+const numOrNull = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === "") return null;
   const n = parseFloat(String(v));
-  return isFinite(n) ? n : 0;
+  return isFinite(n) ? Math.min(100, Math.max(0, Math.round(n))) : null;
 };
 
 export const DecisionIntelligenceScore = React.memo(
   ({ assessment }: DecisionIntelligenceProps) => {
-    const overallScore = Math.min(
-      100,
-      Math.max(0, Math.round(safeNum(assessment?.overallScore ?? 50))),
-    );
+    const overallScore = numOrNull(assessment?.overallScore);
+    const band = overallScore != null ? bandOf(overallScore) : null;
 
-    // Weighted composite breakdown — labels and weights mirror the server formula
+    // Server data-gap flags (WS1.7). Older payloads only carry the two
+    // persisted flags, so fall back to those.
+    const gaps: Partial<Record<GapKey, boolean>> = {
+      infrastructure: assessment?.hasInfraDataGap ?? undefined,
+      population: assessment?.hasPopDataGap ?? undefined,
+      ...(assessment?.dataGaps ?? {}),
+    };
+
+    // The six components, in weight order — mirrors scoring.constants.ts.
     const metrics: ScoreMetric[] = [
-      {
-        label: "Infrastructure",
-        weight: "35%",
-        score: assessment?.infrastructureScore != null
-          ? Math.min(100, Math.max(0, Math.round(safeNum(assessment.infrastructureScore))))
-          : null,
-        icon: Building2,
-      },
-      {
-        label: "Building Age",
-        weight: "25%",
-        score: assessment?.buildingAgeScore != null
-          ? Math.min(100, Math.max(0, Math.round(safeNum(assessment.buildingAgeScore))))
-          : null,
-        icon: TrendingUp,
-      },
-      {
-        label: "Capacity Resilience",
-        weight: "10%",
-        score: assessment?.populationPressureScore != null
-          ? Math.min(100, Math.max(0, Math.round(safeNum(assessment.populationPressureScore))))
-          : null,
-        icon: Users,
-        tooltip: "Higher = more capacity headroom vs. local school-age population",
-      },
-      {
-        label: "Accessibility",
-        weight: "10%",
-        score: assessment?.accessibilityScore != null
-          ? Math.min(100, Math.max(0, Math.round(safeNum(assessment.accessibilityScore))))
-          : null,
-        icon: MapPin,
-      },
-      {
-        label: "Facility Compliance",
-        weight: "15%",
-        score: assessment?.facilityComplianceScore != null
-          ? Math.min(100, Math.max(0, Math.round(safeNum(assessment.facilityComplianceScore))))
-          : null,
-        icon: ClipboardCheck,
-      },
+      { label: "Infrastructure", weight: "35%", score: numOrNull(assessment?.infrastructureScore), icon: Building2, metricId: "component.infrastructure", gapKey: "infrastructure" },
+      { label: "Building Age Score", weight: "25%", score: numOrNull(assessment?.buildingAgeScore), icon: TrendingUp, metricId: "component.buildingAge", gapKey: "buildingAge" },
+      { label: "Facility Compliance", weight: "15%", score: numOrNull(assessment?.facilityComplianceScore), icon: ClipboardCheck, metricId: "component.facilityCompliance", gapKey: "facilityCompliance" },
+      { label: "Accessibility", weight: "10%", score: numOrNull(assessment?.accessibilityScore), icon: MapPin, metricId: "component.accessibility", gapKey: "accessibility" },
+      { label: "Population Pressure", weight: "10%", score: numOrNull(assessment?.populationPressureScore), icon: Users, metricId: "component.population", gapKey: "population" },
       {
         label: "Resolution Rate",
         weight: "5%",
-        // resolutionRate is computed client-side in getAssessment(); null = no reports (neutral)
-        score: assessment?.resolutionRate != null
-          ? Math.min(100, Math.max(0, Math.round(safeNum(assessment.resolutionRate))))
-          : null,
+        // Server component score (neutral 50 when there are no reports).
+        score: numOrNull(assessment?.resolutionRateScore ?? assessment?.resolutionRate),
         icon: CheckCircle2,
+        metricId: "component.resolution",
+        gapKey: "resolution",
       },
     ];
 
-    const scoreColor =
-      overallScore >= 70
-        ? "text-emerald-500"
-        : overallScore >= 50
-          ? "text-blue-500"
-          : "text-red-500";
+    const BAND_TEXT = {
+      low: "text-emerald-500",
+      medium: "text-amber-500",
+      high: "text-orange-500",
+      critical: "text-red-500",
+    } as const;
+    const scoreColor = band ? BAND_TEXT[band] : "text-muted-foreground";
 
     const barColor = (s: number | null) => {
       if (s == null) return "bg-muted-foreground/20";
-      if (s >= 70)   return "bg-emerald-500/60";
-      if (s >= 50)   return "bg-blue-500/60";
+      if (s >= 75)   return "bg-emerald-500/60";
+      if (s >= 55)   return "bg-amber-500/60";
+      if (s >= 35)   return "bg-orange-500/60";
       return           "bg-red-500/60";
     };
 
@@ -113,30 +108,20 @@ export const DecisionIntelligenceScore = React.memo(
         <div className="absolute -inset-x-20 -top-20 h-64 bg-primary/5 blur-[100px] rounded-full pointer-events-none opacity-0 transition-opacity duration-700" />
 
         <CardHeader className="border-b border-slate-100 dark:border-blue-500/12 pb-5 relative z-10">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle className="text-lg font-medium flex items-center gap-3 text-slate-800 dark:text-white/90">
               <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
                 <Activity className="w-5 h-5 text-primary opacity-80" />
               </div>
-              Decision intelligence score
+              School Condition Score
+              <MetricInfo id="school.conditionScore" />
             </CardTitle>
-            <div className="flex items-center gap-4">
-              <div className="flex flex-col items-end">
-                <span className="text-[9px] font-normal text-slate-500 dark:text-white/50 tracking-wider">
-                  System status
-                </span>
-                <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400/90 flex items-center gap-1.5 mt-0.5">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Live analysis
-                </span>
-              </div>
-              <Badge
-                variant="outline"
-                className="rounded-full bg-slate-50 dark:bg-white/5 text-slate-500 dark:text-white/40 border-slate-200 dark:border-blue-500/20 text-[12px] font-medium px-4 py-1 tracking-wide"
-              >
-                Strategic cockpit
-              </Badge>
-            </div>
+            <Badge
+              variant="outline"
+              className="rounded-full bg-slate-50 dark:bg-white/5 text-slate-600 dark:text-white/60 border-slate-200 dark:border-blue-500/20 text-[12px] font-medium px-4 py-1 tracking-wide"
+            >
+              0–100 · higher is better
+            </Badge>
           </div>
         </CardHeader>
 
@@ -144,14 +129,14 @@ export const DecisionIntelligenceScore = React.memo(
           <div className="flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-slate-100 dark:divide-white/5">
 
             {/* ── Overall score ring ───────────────────────────────────── */}
-            <div className="lg:w-5/12 p-10 flex flex-col items-center justify-center bg-linear-to-b from-slate-50/80 dark:from-white/2 to-transparent">
+            <div className="lg:w-5/12 p-6 sm:p-10 flex flex-col items-center justify-center bg-linear-to-b from-slate-50/80 dark:from-white/2 to-transparent">
               <motion.div
                 initial={{ scale: 0.95, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ duration: 0.8 }}
-                className="relative w-48 h-48"
+                className="relative w-40 h-40 sm:w-48 sm:h-48"
               >
-                <svg className="w-full h-full transform -rotate-90">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 192 192" role="img" aria-label={overallScore != null ? `School Condition Score ${overallScore} out of 100` : "Not assessed yet"}>
                   <circle
                     cx="96" cy="96" r="88"
                     stroke="currentColor" strokeWidth="2" fill="none"
@@ -164,7 +149,7 @@ export const DecisionIntelligenceScore = React.memo(
                   />
                   <motion.circle
                     initial={{ pathLength: 0 }}
-                    animate={{ pathLength: overallScore / 100 }}
+                    animate={{ pathLength: (overallScore ?? 0) / 100 }}
                     transition={{ duration: 2, ease: "circOut" }}
                     cx="96" cy="96" r="80"
                     stroke="currentColor" strokeWidth="8" fill="none"
@@ -175,14 +160,11 @@ export const DecisionIntelligenceScore = React.memo(
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <div className="flex items-baseline">
                     <span className="text-5xl font-medium text-slate-900 dark:text-white tracking-tighter">
-                      {overallScore}
-                    </span>
-                    <span className="text-base font-normal text-slate-400 dark:text-white/50 ml-0.5">
-                      %
+                      {formatScore(overallScore)}
                     </span>
                   </div>
                   <span className="text-[12px] font-normal tracking-wider text-slate-500 dark:text-white/50 mt-2">
-                    Global strength
+                    out of 100
                   </span>
                 </div>
               </motion.div>
@@ -190,69 +172,61 @@ export const DecisionIntelligenceScore = React.memo(
               {/* Urgency + operational health ── */}
               <div className="mt-8 grid grid-cols-2 gap-4 w-full">
                 <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/2 border border-slate-200 dark:border-blue-500/12 text-center">
-                  <p className="text-[12px] font-normal text-slate-500 dark:text-white mb-2">
-                    Operational health
+                  <p className="text-[12px] font-normal text-slate-500 dark:text-white mb-2 flex items-center justify-center gap-1">
+                    Intervention Priority
+                    <MetricInfo id="school.priority" size="xs" />
                   </p>
                   <Badge
                     variant="outline"
                     className={cn(
                       "rounded-xl font-medium text-[11px] px-4 py-1 border-slate-200 dark:border-blue-500/12 bg-white dark:bg-white/2",
-                      overallScore >= 70
-                        ? "text-emerald-600 dark:text-emerald-400/80"
-                        : overallScore >= 50
-                          ? "text-blue-600 dark:text-blue-400/80"
-                          : "text-red-600 dark:text-red-400/80",
+                      scoreColor,
                     )}
                   >
-                    {overallScore >= 70 ? "Optimal" : overallScore >= 50 ? "Strategic" : "Critical"}
+                    {band ? label("priority", band) : "Not assessed"}
                   </Badge>
                 </div>
                 <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/2 border border-slate-200 dark:border-blue-500/12 text-center">
-                  <p className="text-[12px] font-normal text-slate-500 dark:text-white mb-2">
-                    Decision urgency
+                  <p className="text-[12px] font-normal text-slate-500 dark:text-white mb-2 flex items-center justify-center gap-1">
+                    Months to intervention
+                    <MetricInfo id="school.urgencyMonths" size="xs" />
                   </p>
                   <div className="text-xl font-medium text-slate-900 dark:text-white/90">
-                    {assessment?.urgencyMonths != null && !isNaN(assessment.urgencyMonths)
-                      ? assessment.urgencyMonths
-                      : "—"}
-                    <span className="text-[11px] font-normal text-slate-400 dark:text-white/20 ml-0.5">
-                      {assessment?.urgencyMonths != null ? " mo" : ""}
-                    </span>
+                    {assessment?.urgencyMonths == null || isNaN(assessment.urgencyMonths)
+                      ? "—"
+                      : Number(assessment.urgencyMonths) === 0
+                        ? "Now"
+                        : formatNumber(Number(assessment.urgencyMonths))}
                   </div>
                 </div>
               </div>
 
               {/* Benchmarking strip — uses scoreDeltaFromDistrict when available */}
               <div className="mt-8 w-full px-4 pt-4 border-t border-slate-100 dark:border-blue-500/12 flex items-center justify-between">
-                <span className="text-[12px] font-normal text-slate-400 dark:text-white/40 tracking-wide">
-                  Benchmarking
+                <span className="text-[12px] font-normal text-slate-500 dark:text-white/50 tracking-wide flex items-center gap-1">
+                  vs district average
+                  <MetricInfo id="school.peerDelta" size="xs" />
                 </span>
-                <span className="text-[12px] font-medium text-primary">
+                <span className="text-[12px] font-medium text-primary tabular-nums">
                   {(() => {
-                    const delta = assessment?.scoreDeltaFromDistrict;
-                    if (delta != null && isFinite(delta)) {
-                      const sign = delta >= 0 ? "+" : "";
-                      if (delta >= 10)  return `${sign}${delta.toFixed(1)} vs district — Above peers`;
-                      if (delta >= 0)   return `${sign}${delta.toFixed(1)} vs district avg`;
-                      if (delta >= -10) return `${delta.toFixed(1)} vs district avg`;
-                      return `${delta.toFixed(1)} vs district — Below avg`;
+                    const delta = Number(assessment?.scoreDeltaFromDistrict);
+                    if (assessment?.scoreDeltaFromDistrict == null || !isFinite(delta)) {
+                      return "No district comparison yet";
                     }
-                    // Fallback: threshold-based label until peer data is available
-                    if (overallScore > 80) return "Regional top 10%";
-                    if (overallScore > 60) return "Regional top 25%";
-                    if (overallScore > 40) return "Regional average";
-                    return "Needs improvement";
+                    const sign = delta > 0 ? "+" : delta < 0 ? "−" : "±";
+                    return `${sign}${formatNumber(Math.abs(delta), 1)} points`;
                   })()}
                 </span>
               </div>
             </div>
 
             {/* ── Score breakdown ──────────────────────────────────────── */}
-            <div className="lg:w-7/12 p-8 space-y-8 bg-slate-50/50 dark:bg-gray-900/10">
-              <div className="grid grid-cols-2 gap-4">
+            <div className="lg:w-7/12 p-4 sm:p-8 space-y-8 bg-slate-50/50 dark:bg-gray-900/10">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {metrics.map((metric, index) => {
                   const hasScore = metric.score != null;
                   const scoreValue = metric.score ?? 0;
+                  const estimated = gaps[metric.gapKey] === true;
 
                   return (
                     <motion.div
@@ -260,7 +234,6 @@ export const DecisionIntelligenceScore = React.memo(
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.1 * index }}
-                      title={metric.tooltip}
                       className="p-5 rounded-3xl bg-white dark:bg-white/2 border border-slate-200 dark:border-blue-500/12 group/metric hover:bg-slate-50 dark:hover:bg-gray-900/60 transition-all"
                     >
                       <div className="flex items-center justify-between mb-3">
@@ -276,9 +249,10 @@ export const DecisionIntelligenceScore = React.memo(
 
                       <div className="space-y-2">
                         {/* Label + weight chip on same row */}
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-[13px] font-normal text-slate-500 dark:text-white group-hover/metric:text-slate-800 dark:group-hover/metric:text-white/70 transition-colors leading-tight">
+                        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                          <p className="flex min-w-0 items-center gap-1 text-[13px] font-normal text-slate-600 dark:text-white group-hover/metric:text-slate-800 dark:group-hover/metric:text-white/70 transition-colors leading-tight">
                             {metric.label}
+                            <MetricInfo id={metric.metricId} size="xs" />
                           </p>
                           <span className="shrink-0 text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-white/30 border border-slate-200 dark:border-white/6">
                             weight {metric.weight}
@@ -297,10 +271,11 @@ export const DecisionIntelligenceScore = React.memo(
 
                         {/* How this factor feeds the overall index */}
                         {hasScore && (
-                          <p className="text-[10px] tabular-nums text-slate-400 dark:text-white/30">
-                            {scoreValue} × {metric.weight} = {((scoreValue * parseFloat(metric.weight)) / 100).toFixed(1)} pts of the overall
+                          <p className="text-[11px] tabular-nums text-slate-500 dark:text-white/40">
+                            {scoreValue} × {metric.weight} = {formatNumber((scoreValue * parseFloat(metric.weight)) / 100, 1)} points of the score
                           </p>
                         )}
+                        {estimated && <DataGapBadge metricId={metric.metricId} />}
                       </div>
                     </motion.div>
                   );
@@ -312,10 +287,10 @@ export const DecisionIntelligenceScore = React.memo(
                 <div className="flex items-center justify-between px-2">
                   <h4 className="text-[11px] font-medium text-slate-500 dark:text-white/50 flex items-center gap-2 tracking-wide">
                     <div className="w-1.5 h-1.5 rounded-full bg-primary/40" />
-                    Decision directives
+                    Top recommendations
                   </h4>
-                  <span className="text-[9px] font-normal text-slate-400 dark:text-white/20 italic">
-                    Managed by AI precision
+                  <span className="text-[10px] font-normal text-slate-500 dark:text-white/40 italic">
+                    Rule-based, from the scores
                   </span>
                 </div>
 
@@ -335,7 +310,7 @@ export const DecisionIntelligenceScore = React.memo(
                         </div>
                         <div>
                           <p className="text-[12px] font-medium text-slate-500 dark:text-white/40 mb-0.5 tracking-wide">
-                            Directive 0{i + 1}
+                            Recommendation {i + 1}
                           </p>
                           <p className="text-[13px] font-normal text-slate-700 dark:text-white/70 leading-relaxed group-hover:text-slate-900 dark:group-hover:text-white/90 transition-colors">
                             {rec.replace(/^\[[A-Z]+\]\s*/, "").trim()}
@@ -346,7 +321,7 @@ export const DecisionIntelligenceScore = React.memo(
                   {(!assessment?.recommendations ||
                     assessment.recommendations.length === 0) && (
                     <p className="text-xs text-slate-400 dark:text-white/30 italic px-1">
-                      No critical directives at this time.
+                      No recommendations at this time.
                     </p>
                   )}
                 </div>
@@ -354,12 +329,12 @@ export const DecisionIntelligenceScore = React.memo(
                 {/* ── Score interpretation legend (collapsible) ──────── */}
                 <details className="group/legend border-t border-slate-100 dark:border-blue-500/6 pt-3 mt-2">
                   <summary className="cursor-pointer list-none flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-white/30 hover:text-slate-600 dark:hover:text-white/50 transition-colors select-none">
-                    <span>Score Guide</span>
+                    <span>Intervention Priority bands</span>
                     <span className="transition-transform group-open/legend:rotate-180 text-[9px]">
                       ▾
                     </span>
                   </summary>
-                  <div className="mt-3 grid grid-cols-4 gap-1.5">
+                  <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                     {(
                       [
                         {
@@ -381,7 +356,7 @@ export const DecisionIntelligenceScore = React.memo(
                             "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20",
                         },
                         {
-                          band: "Optimal",
+                          band: "Low",
                           range: "75–100",
                           color:
                             "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",

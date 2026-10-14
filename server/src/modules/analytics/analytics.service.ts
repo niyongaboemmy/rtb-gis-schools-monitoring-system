@@ -48,6 +48,20 @@ import {
   safeScore,
 } from './scoring.constants';
 import { AuditService, AuditActor } from '../audit/audit.service';
+import {
+  ComponentDataGaps,
+  averageBuildingAge,
+  capacityUtilisationPct,
+  computeDataGaps,
+  landSummary,
+  maleTeacherSharePct,
+  nationalCapacityUtilisation as computeNationalCapacityUtilisation,
+  programmeTotals,
+  staffCount,
+  studentTeacherRatio,
+  teacherCount,
+} from './school-metrics.helpers';
+import { computeRiskAssessment } from './risk-assessment';
 import { EventsGateway } from '../events/events.gateway';
 
 @Injectable()
@@ -127,6 +141,7 @@ export class AnalyticsService {
       lastCalcResult,
       provinceStatsRaw,
       capacityRows,
+      dataGapRow,
     ] = await Promise.all([
       // 1. total active school count
       activeInScope(
@@ -306,31 +321,31 @@ export class AnalyticsService {
           .select(['s.id', 's.totalStudents', 's.educationPrograms']),
         's.id',
       ).getMany(),
+
+      // 14. data-gap counts — schools whose infrastructure / population
+      //     component used the neutral 50 (WS1.7), so national averages can be
+      //     read with the right caveat.
+      activeInScope(
+        this.assessmentRepository
+          .createQueryBuilder('da')
+          .innerJoin('School', 's', 'CAST(s.id AS text) = da.schoolId')
+          .select(
+            'SUM(CASE WHEN da.hasInfraDataGap = true THEN 1 ELSE 0 END)',
+            'infraGaps',
+          )
+          .addSelect(
+            'SUM(CASE WHEN da.hasPopDataGap = true THEN 1 ELSE 0 END)',
+            'popGaps',
+          ),
+        'da.schoolId',
+      ).getRawOne(),
     ]);
 
-    // National capacity utilisation = Σ enrolled ÷ Σ programme capacity (0–100+).
-    let capStudents = 0;
-    let capSeats = 0;
-    for (const s of capacityRows) {
-      const programs = (s.educationPrograms as any[]) ?? [];
-      const seats = programs.reduce(
-        (sum, p) => sum + (parseFloat(String(p.capacity)) || 0),
-        0,
-      );
-      const enrolled =
-        programs.reduce(
-          (sum, p) => sum + (parseFloat(String(p.totalStudents)) || 0),
-          0,
-        ) ||
-        parseFloat(String(s.totalStudents)) ||
-        0;
-      if (seats > 0) {
-        capSeats += seats;
-        capStudents += enrolled;
-      }
-    }
+    // National capacity utilisation = Σ enrolled ÷ Σ programme capacity (0–100+),
+    // over active, in-scope schools with capacity > 0. null = no capacity data.
+    // Metric id `national.capacityUtilisation` (docs/METRIC_DICTIONARY.md).
     const nationalCapacityUtilisation =
-      capSeats > 0 ? Math.round((capStudents / capSeats) * 100) : null;
+      computeNationalCapacityUtilisation(capacityRows);
 
     // ── Parse all raw results — pg driver returns numerics as strings ──────────
 
@@ -403,6 +418,11 @@ export class AnalyticsService {
       nationalAvgAccessScore,
       nationalAvgComplianceScore,
       nationalCapacityUtilisation,
+      dataGaps: {
+        scoredSchools: scoredSchoolCount,
+        infrastructure: parseInt(String(dataGapRow?.infraGaps), 10) || 0,
+        population: parseInt(String(dataGapRow?.popGaps), 10) || 0,
+      },
       totalStudents,
       totalTeachers,
       kmzCoverageRate,
@@ -442,8 +462,8 @@ export class AnalyticsService {
       'Code',
       'Province',
       'District',
-      'Overall Score',
-      'Priority Level',
+      'School Condition Score',
+      'Intervention Priority',
       'Infrastructure Score',
       'Building Age Score',
       'Accessibility Score',
@@ -690,7 +710,61 @@ export class AnalyticsService {
 
     if (scope) applySchoolScope(qb, scope, 's');
 
-    return qb.getMany();
+    const rows = await qb.getMany();
+    return this.attachDataGaps(rows);
+  }
+
+  /**
+   * Adds `dataGaps` (which components used the neutral 50 — WS1.7) to each
+   * decision row with three grouped queries instead of one per school.
+   */
+  private async attachDataGaps(
+    rows: DecisionAssessment[],
+  ): Promise<Array<DecisionAssessment & { dataGaps: ComponentDataGaps }>> {
+    if (rows.length === 0) return [];
+    const ids = rows.map((r) => r.schoolId);
+    const [yearRows, surveyRows, reportRows] = await Promise.all([
+      this.buildingRepository
+        .createQueryBuilder('b')
+        .select('b.schoolId', 'schoolId')
+        .addSelect('COUNT(*)', 'n')
+        .where('b.schoolId IN (:...ids)', { ids })
+        .andWhere('b.yearBuilt IS NOT NULL')
+        .groupBy('b.schoolId')
+        .getRawMany<{ schoolId: string; n: string }>(),
+      this.surveyRepository
+        .createQueryBuilder('sv')
+        .select('sv.schoolId', 'schoolId')
+        .addSelect('COUNT(*)', 'n')
+        .where('sv.schoolId IN (:...ids)', { ids })
+        .groupBy('sv.schoolId')
+        .getRawMany<{ schoolId: string; n: string }>(),
+      this.issueReportRepository
+        .createQueryBuilder('r')
+        .select('r.schoolId', 'schoolId')
+        .addSelect('COUNT(*)', 'n')
+        .where('r.schoolId IN (:...ids)', { ids })
+        .groupBy('r.schoolId')
+        .getRawMany<{ schoolId: string; n: string }>(),
+    ]);
+    const toMap = (list: Array<{ schoolId: string; n: string }>) =>
+      new Map(list.map((r) => [String(r.schoolId), parseInt(r.n, 10) || 0]));
+    const years = toMap(yearRows ?? []);
+    const surveys = toMap(surveyRows ?? []);
+    const reports = toMap(reportRows ?? []);
+    return rows.map((r) => {
+      const school = (r as DecisionAssessment & { school?: School }).school;
+      const gaps = computeDataGaps({
+        assessedBuildingCount: r.hasInfraDataGap ? 0 : 1,
+        buildingsWithYearCount: years.get(r.schoolId) ?? 0,
+        establishedYear: school?.establishedYear,
+        roadStatusPercentage: school?.roadStatusPercentage,
+        hasPopulationData: !r.hasPopDataGap,
+        surveyCount: surveys.get(r.schoolId) ?? 0,
+        reportCount: reports.get(r.schoolId) ?? 0,
+      });
+      return Object.assign(r, { dataGaps: gaps });
+    });
   }
 
   async recalculateAllScores(
@@ -792,46 +866,24 @@ export class AnalyticsService {
     const buildings = school.buildings ?? [];
     const programs = (school.educationPrograms as any[]) ?? [];
 
-    // ── Student / capacity counts ─────────────────────────────────────────────
-    const totalStudentsFromPrograms = programs.reduce(
-      (sum, p) => sum + (parseFloat(String(p.totalStudents)) || 0),
-      0,
+    // ── Student / capacity / staff counts (school-metrics.helpers.ts) ─────────
+    // Enrolment prefers the programme roll-up; teachers use the same rule as
+    // the national aggregate (gender breakdown, else totalTeachers).
+    const { students: totalStudents, capacity: totalCapacity } =
+      programmeTotals(school);
+    const totalTeachers = teacherCount(school);
+    const totalStaff = staffCount(school);
+    const maleTeacherShare = maleTeacherSharePct(school);
+    const maleTeacherRatio = maleTeacherShare ?? 0;
+    const capacityUtilisation = capacityUtilisationPct(
+      totalStudents,
+      totalCapacity,
     );
-    const totalCapacityFromPrograms = programs.reduce(
-      (sum, p) => sum + (parseFloat(String(p.capacity)) || 0),
-      0,
-    );
-    // Prefer program-level roll-up; fall back to school.totalStudents
-    const totalStudents =
-      totalStudentsFromPrograms > 0
-        ? totalStudentsFromPrograms
-        : parseFloat(String(school.totalStudents)) || 0;
-    const totalCapacity = totalCapacityFromPrograms;
-
-    // ── Staff counts — parse every field; TypeORM int columns can return strings ──
-    const maleTeachers = parseFloat(String(school.maleTeachers)) || 0;
-    const femaleTeachers = parseFloat(String(school.femaleTeachers)) || 0;
-    const totalTeachers = maleTeachers + femaleTeachers;
-    const totalStaff =
-      maleTeachers +
-      femaleTeachers +
-      (parseFloat(String(school.maleAdminStaff)) || 0) +
-      (parseFloat(String(school.femaleAdminStaff)) || 0) +
-      (parseFloat(String(school.maleSupportStaff)) || 0) +
-      (parseFloat(String(school.femaleSupportStaff)) || 0);
-    const maleTeacherRatio =
-      totalTeachers > 0 ? Math.round((maleTeachers / totalTeachers) * 100) : 0;
+    const land = landSummary(school);
 
     // ── Building age ──────────────────────────────────────────────────────────
     const buildingsWithYear = buildings.filter((b) => b.yearBuilt);
-    const ages = buildingsWithYear.map(
-      // parseInt for year columns; parseFloat would work too but years are integers
-      (b) => currentYear - parseInt(String(b.yearBuilt), 10),
-    );
-    const avgBuildingAge =
-      ages.length > 0
-        ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length)
-        : null;
+    const avgBuildingAge = averageBuildingAge(buildings, currentYear);
     const avgBuildingYear =
       avgBuildingAge !== null ? currentYear - avgBuildingAge : null;
 
@@ -850,10 +902,10 @@ export class AnalyticsService {
 
     // ── Ratios ────────────────────────────────────────────────────────────────
     // Education standard: students per TEACHING staff (not all staff ÷ students)
-    const studentToTeacherRatio =
-      totalTeachers > 0
-        ? parseFloat((totalStudents / totalTeachers).toFixed(1))
-        : null;
+    const studentToTeacherRatio = studentTeacherRatio(
+      totalStudents,
+      totalTeachers,
+    );
 
     // latrineCount: field does not yet exist on School or SchoolFacilitySurvey —
     // will be non-null once those columns are added; null is the honest value here.
@@ -876,6 +928,8 @@ export class AnalyticsService {
       where: { schoolId },
       order: { createdAt: 'DESC' },
     });
+    // Present when assessment.facilityComplianceScore came from ≥1 survey row.
+    const surveyCount = latestSurvey ? 1 : 0;
 
     // ── Parallel peer-benchmarking queries ────────────────────────────────────
     // Exclude the current school from both averages so it doesn't skew its own peer group.
@@ -955,48 +1009,67 @@ export class AnalyticsService {
       (filledCount / completenessChecks.length) * 100,
     );
 
-    // ── Risk matrix input scores ──────────────────────────────────────────────
-    const criticalBuildingCount = buildings.filter(
-      (b) =>
-        b.condition === BuildingCondition.CRITICAL ||
-        b.condition === BuildingCondition.POOR,
-    ).length;
-    const safeAvgBuildingAge = avgBuildingAge ?? 50;
-    const urgencyMo = assessment.urgencyMonths ?? 36;
-
-    // Days since last survey — Infinity when never surveyed (pessimistic, correct)
-    const daysSinceLastSurvey = latestSurvey
-      ? (Date.now() - new Date(latestSurvey.createdAt).getTime()) / 86_400_000
-      : Infinity;
-
-    // Impact = consequence severity if the risk materialises
-    //   50% from overall score deficit, 30% from critical-building proportion,
-    //   20% from urgency (more urgent = higher impact contribution)
-    const riskImpactScore = Math.min(
-      100,
-      Math.round(
-        (100 - overallScoreParsed) * 0.5 +
-          (criticalBuildingCount / Math.max(1, buildings.length)) * 100 * 0.3 +
-          (urgencyMo === 0 ? 100 : Math.max(0, 100 - urgencyMo * 2)) * 0.2,
-      ),
+    // ── Report roll-up (Issue Reports) ────────────────────────────────────────
+    const countStatus = (st: ReportStatus) =>
+      allReports.filter((r) => r.status === st).length;
+    const needsInterventionCount = countStatus(ReportStatus.NEED_INTERVENTION);
+    const pendingCount = countStatus(ReportStatus.PENDING);
+    const resolvedCount = countStatus(ReportStatus.SOLVED);
+    const failedCount = countStatus(ReportStatus.FAILED);
+    const resolvedWithDate = allReports.filter(
+      (r) => r.resolvedAt && r.createdAt,
     );
+    const avgResolutionDays =
+      resolvedWithDate.length > 0
+        ? Math.round(
+            (resolvedWithDate.reduce(
+              (sum, r) =>
+                sum +
+                (new Date(r.resolvedAt).getTime() -
+                  new Date(r.createdAt).getTime()) /
+                  86_400_000,
+              0,
+            ) /
+              resolvedWithDate.length) *
+              10,
+          ) / 10
+        : null;
 
-    // Probability = likelihood of structural / operational failure
-    //   50% from building age (older = more likely), 25% from pop-data gap,
-    //   25% from survey staleness (longer since last survey = higher probability)
-    const riskProbabilityScore = Math.min(
-      100,
-      Math.round(
-        Math.min(100, safeAvgBuildingAge * 1.5) * 0.5 +
-          ((assessment.hasPopDataGap ?? false) ? 60 : 20) * 0.25 +
-          (daysSinceLastSurvey > 365
-            ? 80
-            : daysSinceLastSurvey > 180
-              ? 50
-              : 20) *
-            0.25,
-      ),
-    );
+    // ── Data gaps: components that used the neutral 50 (WS1.7) ───────────────
+    const dataGaps = computeDataGaps({
+      assessedBuildingCount: this.assessedBuildings(buildings).length,
+      buildingsWithYearCount: buildingsWithYear.length,
+      establishedYear: school.establishedYear,
+      roadStatusPercentage: school.roadStatusPercentage,
+      hasPopulationData: !(assessment.hasPopDataGap ?? populationRow == null),
+      surveyCount,
+      reportCount: allReports.length,
+    });
+
+    // ── Indicative risk heuristics (risk-assessment.ts, WS1.5) ────────────────
+    const riskAssessment = computeRiskAssessment({
+      overallScore: overallScoreParsed,
+      infrastructureScore: parseFloat(String(assessment.infrastructureScore)),
+      populationScore: parseFloat(String(assessment.populationPressureScore)),
+      urgencyMonths: assessment.urgencyMonths ?? null,
+      buildingCount: buildings.length,
+      poorOrCriticalBuildingCount: buildings.filter(
+        (b) =>
+          b.condition === BuildingCondition.CRITICAL ||
+          b.condition === BuildingCondition.POOR,
+      ).length,
+      avgBuildingAge,
+      hasPopDataGap: dataGaps.population,
+      hasInfraDataGap: dataGaps.infrastructure,
+      daysSinceLastSurvey: latestSurvey
+        ? (Date.now() - new Date(latestSurvey.createdAt).getTime()) / 86_400_000
+        : null,
+      needsInterventionCount,
+      failedCount,
+      avgResolutionDays,
+    });
+    const riskImpactScore = riskAssessment.impactScore;
+    const riskProbabilityScore = riskAssessment.probabilityScore;
 
     // ── Assemble DTO ──────────────────────────────────────────────────────────
     const dto = new SchoolMetricsDto();
@@ -1012,7 +1085,9 @@ export class AnalyticsService {
     dto.totalCapacity = totalCapacity;
     dto.totalTeachers = totalTeachers;
     dto.totalStaff = totalStaff;
+    dto.capacityUtilisation = capacityUtilisation;
     dto.maleTeacherRatio = maleTeacherRatio;
+    dto.maleTeacherShare = maleTeacherShare;
     dto.studentToTeacherRatio = studentToTeacherRatio;
     dto.studentToLatrineRatio = studentToLatrineRatio;
     dto.latrineCount = latrineCount > 0 ? latrineCount : null;
@@ -1033,14 +1108,10 @@ export class AnalyticsService {
 
     // Programs & land
     dto.educationProgramsCount = programs.length;
-    dto.usedLandArea =
-      school.usedLandArea != null
-        ? parseFloat(String(school.usedLandArea))
-        : null;
-    dto.unusedLandArea =
-      school.unusedLandArea != null
-        ? parseFloat(String(school.unusedLandArea))
-        : null;
+    dto.usedLandArea = land.usedHa;
+    dto.unusedLandArea = land.unusedHa;
+    dto.totalLandArea = land.totalHa;
+    dto.usedLandPct = land.usedPct;
     dto.roadStatusPercentage = school.roadStatusPercentage ?? null;
 
     // Assessment scores
@@ -1090,18 +1161,22 @@ export class AnalyticsService {
     // Risk matrix
     dto.riskImpactScore = riskImpactScore;
     dto.riskProbabilityScore = riskProbabilityScore;
+    dto.riskAssessment = riskAssessment;
+    dto.dataGaps = dataGaps;
 
     // Reporting summary
     const reportSummary: ReportSummaryDto = {
       total: allReports.length,
-      critical: allReports.filter(
-        (r) => r.status === ReportStatus.NEED_INTERVENTION,
-      ).length,
-      pending: allReports.filter((r) => r.status === ReportStatus.PENDING)
-        .length,
-      resolved: allReports.filter((r) => r.status === ReportStatus.SOLVED)
-        .length,
-      failed: allReports.filter((r) => r.status === ReportStatus.FAILED).length,
+      critical: needsInterventionCount,
+      pending: pendingCount,
+      resolved: resolvedCount,
+      failed: failedCount,
+      active: pendingCount + needsInterventionCount + failedCount,
+      resolutionRate:
+        allReports.length > 0
+          ? Math.round((resolvedCount / allReports.length) * 100)
+          : null,
+      avgResolutionDays,
       recentCritical: allReports
         .filter((r) => r.status === ReportStatus.NEED_INTERVENTION)
         .slice(0, 5)

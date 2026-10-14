@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from "react";
+import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
@@ -6,6 +6,8 @@ import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { api, FILE_SERVER_URL } from "../lib/api";
+import { useAuthorization } from "../hooks/useAuthorization";
+import { Permission } from "../lib/permissions";
 
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from "three-mesh-bvh";
 
@@ -23,6 +25,40 @@ import { BuildingFormDrawer, type AvailableFacility } from "./school-form-steps/
 import type { BuildingData } from "./school-form-steps/BuildingsStep";
 import ViewerHelpModal from "./3dviewercomponents/ViewerHelpModal";
 import ViewerMainCanvas from "./3dviewercomponents/ViewerMainCanvas";
+import ActiveToolBanner from "./3dviewercomponents/ActiveToolBanner";
+import ModelScaleBanner from "./3dviewercomponents/ModelScaleBanner";
+import type { MeasurementRow } from "./3dviewercomponents/MeasurementListPanel";
+import {
+  annotationToFeature,
+  computeMeasure,
+  featuresToScene,
+  measureToFeature,
+  type Annotation,
+  type MeasureLine,
+  type MeasurePoint,
+  type SceneFrame,
+} from "./3dviewercomponents/siteFeatures3d";
+import { useToast } from "./ui/toast";
+import { useSiteFeatures } from "../lib/measure/useSiteFeatures";
+import { downloadSiteFeaturesCsv } from "../lib/measure/site-features";
+import { measurePolygon, measureValue } from "../lib/measure/geometry3d";
+import { isValidOrigin, wgs84ToModel, modelToWgs84, type GeoOrigin } from "../lib/geo-bridge";
+import {
+  accuracyLabel,
+  broadcastSelection,
+  canUseTool,
+  formatMeasureArea,
+  formatMeasureLength,
+  isTypingTarget,
+  loadDisplayUnit,
+  onSelection,
+  readViewerDeepLink,
+  saveDisplayUnit,
+  toolForKey,
+  viewerLink,
+  type DisplayUnit,
+  type ViewerToolId,
+} from "../lib/viewer-tools";
 
 // Styles
 import "./School3DView.css";
@@ -128,21 +164,37 @@ interface LoadStats { fileName: string; fileSize: number; loadTime: number; tria
 interface CameraHome { position: { x: number; y: number; z: number }; target: { x: number; y: number; z: number }; near: number; far: number; }
 
 type RenderMode = "unlit" | "lit" | "wireframe";
-type MeasureMode = "distance" | "area" | "perimeter" | "annotate" | null;
+type MeasureMode = "distance" | "area" | "perimeter" | "height" | "annotate" | null;
 type VisibilityMode = "all" | "annotations" | "measures" | "clear";
-type Unit = "m" | "cm" | "mm" | "km" | "ft" | "in";
 
-interface MeasurePoint { x: number; y: number; z: number; }
-interface MeasureLine { id: string; points: MeasurePoint[]; mode: "distance" | "area" | "perimeter"; result: number; unit: Unit; label: string; color: string; }
-interface Annotation { id: string; point: MeasurePoint; text: string; color: string; }
+/** Measure mode ↔ shared tool id (lib/viewer-tools). */
+const MODE_TOOL: Record<Exclude<MeasureMode, null>, ViewerToolId> = {
+  distance: "measure_distance",
+  area: "measure_area",
+  perimeter: "measure_perimeter",
+  height: "measure_height",
+  annotate: "annotate",
+};
+const TOOL_MODE: Partial<Record<ViewerToolId, Exclude<MeasureMode, null>>> = {
+  measure_distance: "distance",
+  measure_area: "area",
+  measure_perimeter: "perimeter",
+  measure_height: "height",
+  annotate: "annotate",
+};
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const LS_HOME_KEY = "glb_viewer_home_v1";
 const LS_MODE_KEY = "glb_viewer_mode_v1";
-const LS_MEASURES_KEY = "glb_viewer_measures_v1";
-const LS_ANNOTATIONS_KEY = "glb_viewer_annotations_v1";
-const LS_UNIT_KEY = "glb_viewer_unit_v1";
+/** Legacy global keys — leaked measures/annotations across schools (C2). */
+const LEGACY_MEASURES_KEY = "glb_viewer_measures_v1";
+const LEGACY_ANNOTATIONS_KEY = "glb_viewer_annotations_v1";
+/** Per-school browser caches from before site_features — removed on open
+ *  (viewer data now lives only on the server; WS5 acceptance). */
+const measuresKey = (schoolId: string) => `glb_viewer_measures_v2:${schoolId}`;
+const annotationsKey = (schoolId: string) => `glb_viewer_annotations_v2:${schoolId}`;
+const LEGACY_UNIT_KEY = "glb_viewer_unit_v1";
 
 /** Normalizes a raw API building record to match the BuildingData client interface */
 function normalizeBuilding(b: any): any {
@@ -166,10 +218,6 @@ function normalizeBuilding(b: any): any {
 }
 
 const MODE_LABELS: Record<RenderMode, string> = { unlit: "Unlit (Metashape-style)", lit: "Lit (PBR)", wireframe: "Wireframe" };
-const UNIT_LABELS: Record<Unit, string> = { m: "Meters (m)", cm: "Centimeters (cm)", mm: "Millimeters (mm)", km: "Kilometers (km)", ft: "Feet (ft)", in: "Inches (in)" };
-const UNIT_FACTOR: Record<Unit, number> = { m: 1, cm: 100, mm: 1000, km: 0.001, ft: 3.28084, in: 39.3701 };
-const UNIT_SUFFIX: Record<Unit, string> = { m: "m", cm: "cm", mm: "mm", km: "km", ft: "ft", in: "in" };
-const AREA_SUFFIX: Record<Unit, string> = { m: "m²", cm: "cm²", mm: "mm²", km: "km²", ft: "ft²", in: "in²" };
 
 const MEASURE_COLORS = ["#3b82f6", "#2563eb", "#00d4aa", "#ffb347", "#7ec8e3", "#ff7f50"];
 const ANNOT_COLORS = ["#00d4aa", "#2563eb", "#ffb347", "#7ec8e3", "#93c5fd", "#ffffff"];
@@ -188,45 +236,58 @@ function formatTime(ms: number) { return ms < 1000 ? `${ms}ms` : `${(ms / 1000).
 function nearestSpeedIdx(v: number) { return SPEED_STEPS.reduce((b, s, i) => Math.abs(s - v) < Math.abs(SPEED_STEPS[b] - v) ? i : b, Math.floor(SPEED_STEPS.length / 2)); }
 function uid() { return Math.random().toString(36).slice(2, 9); }
 
-function convertDist(meters: number, unit: Unit) { return meters * UNIT_FACTOR[unit]; }
-function fmtDist(meters: number, unit: Unit) { return `${convertDist(meters, unit).toFixed(3)} ${UNIT_SUFFIX[unit]}`; }
-function fmtArea(sqMeters: number, unit: Unit) { return `${(sqMeters * UNIT_FACTOR[unit] * UNIT_FACTOR[unit]).toFixed(3)} ${AREA_SUFFIX[unit]}`; }
-
-function calcPolyArea(pts: MeasurePoint[]): number {
-  if (pts.length < 3) return 0;
-  const n = new THREE.Vector3();
-  const vpts = pts.map(p => new THREE.Vector3(p.x, p.y, p.z));
-  for (let i = 0; i < vpts.length; i++) {
-    const a = vpts[i], b = vpts[(i + 1) % vpts.length], c = vpts[(i + 2) % vpts.length];
-    const ab = b.clone().sub(a), ac = c.clone().sub(a);
-    n.add(new THREE.Vector3().crossVectors(ab, ac));
-  }
-  n.normalize(); let area = 0;
-  for (let i = 0; i < vpts.length; i++) { const a = vpts[i], b = vpts[(i + 1) % vpts.length]; area += a.clone().cross(b).dot(n); }
-  return Math.abs(area) / 2;
-}
-
-function calcPerimeter(pts: MeasurePoint[]): number {
-  let total = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const a = pts[i], b = pts[(i + 1) % pts.length];
-    total += Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
-  }
-  return total;
-}
-
-function calcDistance(pts: MeasurePoint[]): number {
-  if (pts.length < 2) return 0;
-  let total = 0;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const a = pts[i], b = pts[i + 1];
-    total += Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
-  }
-  return total;
+/** Formatted value of a 3D measurement (honest precision, WS6.5). */
+function fmtMeasure(mode: MeasureLine["mode"], value: number, unit: DisplayUnit) {
+  return mode === "area" ? formatMeasureArea(value, "3d", unit) : formatMeasureLength(value, "3d", unit);
 }
 
 function loadJson<T>(key: string, def: T): T { try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : def; } catch { return def; } }
 function saveJson(key: string, val: unknown) { try { localStorage.setItem(key, JSON.stringify(val)); } catch { } }
+
+interface ViewerState {
+  home: CameraHome | null;
+  buildingPins: Record<string, MeasurePoint>;
+  /** Legacy only — read once for the import into site_features. */
+  annotations?: unknown[];
+  measures?: unknown[];
+}
+
+const isEmptyViewerState = (s: Partial<ViewerState> | null | undefined) =>
+  !s || (!s.home && !s.annotations?.length && !s.measures?.length &&
+    !Object.keys(s.buildingPins ?? {}).length);
+
+/**
+ * Reads the school's viewer state (camera home + building pins) from the API.
+ * The first time a school is opened after the move off the file-server, its
+ * old `viewer-state.json` is read once and, if the user may save, copied into
+ * the API — home/pins into viewer-state, measures/notes into site_features via
+ * `importFeatures`.
+ */
+async function loadViewerState(
+  schoolId: string,
+  canSave: boolean,
+  importFeatures?: (measures: unknown[], annotations: unknown[]) => Promise<void>,
+): Promise<ViewerState | null> {
+  const { data } = await api.get(`/schools/${schoolId}/viewer-state`);
+  if (data?.exists) return data;
+
+  const legacy: Partial<ViewerState> | null = await fetch(`${FILE_SERVER_URL}/schools/${schoolId}/viewer-state`)
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+  if (isEmptyViewerState(legacy)) return data ?? null;
+
+  const imported: ViewerState = {
+    home: legacy?.home ?? null,
+    buildingPins: legacy?.buildingPins ?? {},
+  };
+  if (canSave) {
+    await api.put(`/schools/${schoolId}/viewer-state`, imported).catch(() => { });
+    if (importFeatures && (legacy?.measures?.length || legacy?.annotations?.length)) {
+      await importFeatures(legacy?.measures ?? [], legacy?.annotations ?? []).catch(() => { });
+    }
+  }
+  return imported;
+}
 /**
  * Per-model localStorage key for the saved camera home. The `sig` (rounded
  * model dimensions) is part of the key so a home saved for a previous build of
@@ -302,6 +363,31 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const { id: routeId } = useParams<{ id: string }>();
   const schoolId = propSchoolId || routeId || "";
   const schoolName = propSchoolName || "";
+  const { hasPermission, user } = useAuthorization();
+  const notify = useToast();
+  const canSaveViewerState = hasPermission(Permission.SAVE_SITE_FEATURES);
+  const canMeasure = hasPermission(Permission.USE_MEASURE_TOOLS);
+  const canEditAnyFeature = hasPermission(Permission.EDIT_SITE_ANNOTATIONS);
+  const canExport = hasPermission(Permission.EXPORT_VIEWER_DATA);
+  const canSaveViewerStateRef = useRef(canSaveViewerState);
+  useEffect(() => { canSaveViewerStateRef.current = canSaveViewerState; }, [canSaveViewerState]);
+  /** Saves stay off until the server state has loaded, so a stale local
+   *  cache can never overwrite what is stored for this school. */
+  const viewerStateLoadedRef = useRef(false);
+
+  // Cleanup of browser-stored viewer data: the legacy global keys (C2) and
+  // the per-school caches — measures/notes now live only in site_features.
+  useEffect(() => {
+    try {
+      localStorage.removeItem(LEGACY_MEASURES_KEY);
+      localStorage.removeItem(LEGACY_ANNOTATIONS_KEY);
+      localStorage.removeItem(LEGACY_UNIT_KEY);
+      if (schoolId) {
+        localStorage.removeItem(measuresKey(schoolId));
+        localStorage.removeItem(annotationsKey(schoolId));
+      }
+    } catch { /* ignore */ }
+  }, [schoolId]);
 
   const mountRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -414,17 +500,75 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const [isModelReady, setIsModelReady] = useState(false);
   const [measureMode, setMeasureMode] = useState<MeasureMode>(null);
   const [visibility, setVisibility] = useState<VisibilityMode>("all");
-  const [unit, setUnit] = useState<Unit>(() => loadJson(LS_UNIT_KEY, "m") as Unit);
-  const [measures, setMeasures] = useState<MeasureLine[]>(() => loadJson(LS_MEASURES_KEY, []));
-  const [annotations, setAnnotations] = useState<Annotation[]>(() => loadJson(LS_ANNOTATIONS_KEY, []));
+  // Display unit is a per-user UI preference (key includes the user id).
+  const [unit, setUnitState] = useState<DisplayUnit>(() => loadDisplayUnit(user?.id));
+  const setUnit = useCallback((u: DisplayUnit) => { setUnitState(u); saveDisplayUnit(user?.id, u); }, [user?.id]);
+
+  // Saved measurements / notes come from site_features (both viewers, live);
+  // measurements by users who can't save stay local and are marked "Not saved".
+  const siteFeatures = useSiteFeatures(schoolId);
+  const [tempMeasures, setTempMeasures] = useState<MeasureLine[]>([]);
+  const [tempAnnotations, setTempAnnotations] = useState<Annotation[]>([]);
+  /** Model georeference + scale from GET kmz/status (WS5.3 / WS6.4). */
+  const [modelGeo, setModelGeo] = useState<{
+    origin: GeoOrigin | null;
+    scale: number;
+    scaleFactor: number | null;
+    scaleWarning: string | null;
+  }>({ origin: null, scale: 1, scaleFactor: null, scaleWarning: null });
+  /** Bumped whenever the model's scene transform changes (load / flip). */
+  const [frameVersion, setFrameVersion] = useState(0);
   const [pendingPts, setPendingPts] = useState<MeasurePoint[]>([]);
   const pendingPtsRef = useRef<MeasurePoint[]>([]);
   useEffect(() => { pendingPtsRef.current = pendingPts; }, [pendingPts]);
 
-  const annotationsRef = useRef<Annotation[]>([]);
-  const measuresRef = useRef<MeasureLine[]>([]);
-  useEffect(() => { annotationsRef.current = annotations; }, [annotations]);
-  useEffect(() => { measuresRef.current = measures; }, [measures]);
+  /** True once every mesh has its BVH — draping raycasts are cheap from then on. */
+  const bvhReadyRef = useRef(false);
+
+  /** Model (GLB) frame ↔ scene, via the model's current world matrix. */
+  const getSceneFrame = useCallback((): SceneFrame | null => {
+    const model = modelRef.current;
+    if (!model) return null;
+    model.updateMatrixWorld(true);
+    const m = model.matrixWorld.clone();
+    const inv = m.clone().invert();
+    const v = new THREE.Vector3();
+    const down = new THREE.Vector3(0, -1, 0);
+    return {
+      toScene: (p) => { v.set(p.x, p.y, p.z).applyMatrix4(m); return { x: v.x, y: v.y, z: v.z }; },
+      toModel: (p) => { v.set(p.x, p.y, p.z).applyMatrix4(inv); return { x: v.x, y: v.y, z: v.z }; },
+      drapeY: (x, z) => {
+        if (!bvhReadyRef.current) return null;
+        const top = (modelBoundsRef.current?.max.y ?? 1000) + 10;
+        raycasterRef.current.set(new THREE.Vector3(x, top, z), down);
+        const hit = raycasterRef.current.intersectObject(model, true)[0];
+        return hit ? hit.point.y : null;
+      },
+    };
+  }, []);
+
+  /** Georeference origin: the model's own (from the optimizer), else the
+   *  school point — approximate, flagged on anything saved with it. */
+  const effectiveOrigin = useMemo(() => {
+    if (modelGeo.origin) return { origin: modelGeo.origin, approximate: false };
+    const o = { lat: Number(dbSchool?.latitude), lng: Number(dbSchool?.longitude), alt: 0 };
+    return isValidOrigin(o) ? { origin: o as GeoOrigin, approximate: true } : { origin: null, approximate: true };
+  }, [modelGeo.origin, dbSchool]);
+  const effectiveOriginRef = useRef(effectiveOrigin);
+  useEffect(() => { effectiveOriginRef.current = effectiveOrigin; }, [effectiveOrigin]);
+  const modelScaleRef = useRef(1);
+  useEffect(() => { modelScaleRef.current = modelGeo.scale; }, [modelGeo.scale]);
+
+  // Saved features (from either viewer) in scene coordinates; 2D ones draped.
+  const serverScene = useMemo(() => {
+    const frame = isModelReady ? getSceneFrame() : null;
+    if (!frame) return { measures: [] as MeasureLine[], annotations: [] as Annotation[] };
+    return featuresToScene(siteFeatures.features, effectiveOrigin.origin, frame, modelGeo.scale);
+    // frameVersion: recompute after a flip / once the BVH allows draping.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteFeatures.features, effectiveOrigin, modelGeo.scale, isModelReady, frameVersion, getSceneFrame]);
+  const measures = useMemo(() => [...serverScene.measures, ...tempMeasures], [serverScene.measures, tempMeasures]);
+  const annotations = useMemo(() => [...serverScene.annotations, ...tempAnnotations], [serverScene.annotations, tempAnnotations]);
 
   const dbMarkersRef = useRef<any[]>([]);
   const dbBuildingsRef = useRef<any[]>([]);
@@ -433,23 +577,16 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   useEffect(() => { dbBuildingsRef.current = dbBuildings; }, [dbBuildings]);
   useEffect(() => { measureModeRef.current = measureMode; }, [measureMode]);
 
-  const viewerStatePrefetchRef = useRef<Promise<any> | null>(null);
   const threeInitResolveRef = useRef<(() => void) | null>(null);
   const threeInitPromiseRef = useRef<Promise<void>>(new Promise(() => {}));
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleSave = useCallback(() => {
-    if (!schoolId) return;
+    if (!schoolId || !viewerStateLoadedRef.current || !canSaveViewerStateRef.current) return;
     if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
     saveDebounceRef.current = setTimeout(() => {
-      fetch(`${FILE_SERVER_URL}/schools/${schoolId}/viewer-state`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          home: cameraHomeRef.current,
-          annotations: annotationsRef.current,
-          measures: measuresRef.current,
-          buildingPins: buildingPinsRef.current,
-        }),
+      api.put(`/schools/${schoolId}/viewer-state`, {
+        home: cameraHomeRef.current,
+        buildingPins: buildingPinsRef.current,
       }).catch(() => { });
     }, 800);
   }, [schoolId]);
@@ -464,9 +601,6 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const [annotPendingPt, setAnnotPendingPt] = useState<MeasurePoint | null>(null);
   const [annotColor] = useState<string>(ANNOT_COLORS[0]);
 
-  useEffect(() => { saveJson(LS_MEASURES_KEY, measures); scheduleSave(); }, [measures, scheduleSave]);
-  useEffect(() => { saveJson(LS_ANNOTATIONS_KEY, annotations); scheduleSave(); }, [annotations, scheduleSave]);
-  useEffect(() => { saveJson(LS_UNIT_KEY, unit); }, [unit]);
   useEffect(() => { scheduleSave(); }, [buildingPins, scheduleSave]);
 
   const applyRenderMode = useCallback((mode: RenderMode) => {
@@ -482,6 +616,29 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   useEffect(() => {
     if (phase === "viewing" && modelRef.current) { applyRenderMode(renderMode); saveJson(LS_MODE_KEY, renderMode); }
   }, [renderMode, phase, applyRenderMode]);
+
+  /** One-time import of a school's old file-server measures/notes (scene
+   *  coordinates of that era ≈ model frame) into site_features. */
+  const createFeature = siteFeatures.create;
+  const importLegacyFeatures = useCallback(async (legacyMeasures: unknown[], legacyNotes: unknown[]) => {
+    const { origin, approximate } = effectiveOriginRef.current;
+    const frame = getSceneFrame();
+    if (!origin || !frame) return;
+    const scale = modelScaleRef.current;
+    for (const raw of legacyMeasures) {
+      const x = raw as { points?: MeasurePoint[]; mode?: string; color?: string };
+      const mode = (["distance", "area", "perimeter", "height"].includes(String(x?.mode)) ? x.mode : "distance") as MeasureLine["mode"];
+      const pts = Array.isArray(x?.points) ? x.points.filter((p) => [p?.x, p?.y, p?.z].every(Number.isFinite)) : [];
+      if (pts.length < 2) continue;
+      const v = computeMeasure(mode, pts, scale);
+      await createFeature(measureToFeature({ mode, points: pts, result: v.result, surface: v.surface, name: null, color: x.color ?? "#3b82f6" }, origin, frame, approximate));
+    }
+    for (const raw of legacyNotes) {
+      const a = raw as { point?: MeasurePoint; text?: string; color?: string };
+      if (!a?.point || ![a.point.x, a.point.y, a.point.z].every(Number.isFinite)) continue;
+      await createFeature(annotationToFeature({ point: a.point, text: a.text || "Note", color: a.color ?? "#00d4aa" }, origin, frame, approximate));
+    }
+  }, [createFeature, getSceneFrame]);
 
   const finalizeGLTF = useCallback(async (
     gltf: GLTF,
@@ -519,11 +676,14 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     });
 
     scene.add(model); modelRef.current = model;
+    bvhReadyRef.current = false;
     ;(async () => {
       for (let i = 0; i < bvhMeshes.length; i++) {
         bvhMeshes[i].geometry.computeBoundsTree();
         if (i % 5 === 4) await new Promise(r => setTimeout(r, 0));
       }
+      bvhReadyRef.current = true;
+      setFrameVersion(v => v + 1); // re-drape 2D features on the surface
     })();
 
     model.updateMatrixWorld(true);
@@ -579,15 +739,14 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
     if (schoolId) {
       try {
-        const serverState = viewerStatePrefetchRef.current
-          ? await viewerStatePrefetchRef.current
-          : await fetch(`${FILE_SERVER_URL}/schools/${schoolId}/viewer-state`).then(r => r.ok ? r.json() : null).catch(() => null);
-        if (serverState?.home) savedHome = serverState.home;
-        if (serverState?.annotations?.length) setAnnotations(serverState.annotations);
-        if (serverState?.measures?.length) setMeasures(serverState.measures);
-        if (serverState?.buildingPins && Object.keys(serverState.buildingPins).length)
-          setBuildingPins(serverState.buildingPins);
-      } catch { }
+        const serverState = await loadViewerState(schoolId, canSaveViewerStateRef.current, importLegacyFeatures);
+        if (serverState) {
+          if (serverState.home) savedHome = serverState.home;
+          if (serverState.buildingPins && Object.keys(serverState.buildingPins).length)
+            setBuildingPins(serverState.buildingPins);
+        }
+      } catch { /* offline: keep the per-school local cache */ }
+      viewerStateLoadedRef.current = true;
     }
 
     // Reject a saved home that clearly belongs to an older version of this
@@ -671,7 +830,8 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
     setIsModelReady(true);
     setProgress(100); setProgressLabel("Done!");
-  }, [renderMode, applyRenderMode, schoolId]);
+    setFrameVersion(v => v + 1);
+  }, [renderMode, applyRenderMode, schoolId, importLegacyFeatures]);
 
   const loadGLB = useCallback(async (file: File) => {
     setError(null); setPhase("loading"); setProgress(0); setProgressLabel("Reading file…");
@@ -797,10 +957,22 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       modelBytes?: number | null;
       modelOptimizeError?: string | null;
       modelOptimizedAt?: string | null;
+      modelScaleFactor?: number | null;
+      modelScaleWarning?: string | null;
+      modelOrigin?: { lat: number; lng: number; alt: number } | null;
     } | null = null;
     try {
       st = (await api.get(`/schools/${schoolId}/kmz/status`)).data;
     } catch { /* status unavailable — proceed without cache/gate */ }
+
+    // Georeference + scale check for measurements and 2D↔3D sync.
+    const sf = Number(st?.modelScaleFactor);
+    setModelGeo({
+      origin: isValidOrigin(st?.modelOrigin ?? null) ? (st!.modelOrigin as GeoOrigin) : null,
+      scale: Number.isFinite(sf) && sf > 0 ? sf : 1,
+      scaleFactor: Number.isFinite(sf) && sf > 0 ? sf : null,
+      scaleWarning: st?.modelScaleWarning ?? null,
+    });
 
     const versionTag =
       st?.modelOptimizedAt ||
@@ -939,12 +1111,64 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const toggleMode = useCallback((mode: MeasureMode) => {
     setMeasureMode(prev => {
       const isNew = prev !== mode;
-      if (isNew && mode !== "annotate") setShowMeasurePanel(true);
+      // Desktop only — on a phone the list would cover the model being measured.
+      if (isNew && mode !== "annotate" && window.innerWidth >= 768) setShowMeasurePanel(true);
       return isNew ? mode : null;
     });
     setVisibility("all");
     setPendingPts([]); hoverPtRef.current = null; setAnnotPendingPt(null);
   }, []);
+
+  /** Toolbar / shortcut entry point — tools without permission do nothing. */
+  const selectTool = useCallback((id: ViewerToolId) => {
+    if (!canUseTool(id, hasPermission)) return;
+    if (id === "navigate") {
+      setMeasureMode(null); setPendingPts([]); hoverPtRef.current = null; setAnnotPendingPt(null); setPinBuildingId(null);
+      return;
+    }
+    const mode = TOOL_MODE[id];
+    if (mode) toggleMode(mode);
+  }, [hasPermission, toggleMode]);
+
+  const cancelTool = useCallback(() => {
+    setMeasureMode(null); setPendingPts([]); hoverPtRef.current = null;
+    setAnnotPendingPt(null); setPinBuildingId(null);
+  }, []);
+
+  const undoLastPoint = useCallback(() => {
+    setPendingPts(prev => { const next = prev.slice(0, -1); pendingPtsRef.current = next; return next; });
+  }, []);
+
+  /** Saved items: own, or any with EDIT_SITE_ANNOTATIONS. Temporary: always. */
+  const canChangeItem = useCallback(
+    (it: { saved: boolean; createdBy?: string | null }) =>
+      !it.saved || (canSaveViewerState && (canEditAnyFeature || (!!user?.id && it.createdBy === user.id))),
+    [canSaveViewerState, canEditAnyFeature, user?.id],
+  );
+
+  const removeFeature = siteFeatures.remove;
+  const updateFeature = siteFeatures.update;
+
+  const deleteItem = useCallback(async (id: string) => {
+    if (tempMeasures.some(m => m.id === id)) { setTempMeasures(p => p.filter(m => m.id !== id)); return; }
+    if (tempAnnotations.some(a => a.id === id)) { setTempAnnotations(p => p.filter(a => a.id !== id)); return; }
+    try { await removeFeature(id); }
+    catch { notify.error("Could not delete it. You may only delete your own measurements."); }
+  }, [tempMeasures, tempAnnotations, removeFeature, notify]);
+
+  const renameItem = useCallback(async (id: string, name: string) => {
+    if (tempMeasures.some(m => m.id === id)) { setTempMeasures(p => p.map(m => m.id === id ? { ...m, name } : m)); return; }
+    if (tempAnnotations.some(a => a.id === id)) { setTempAnnotations(p => p.map(a => a.id === id ? { ...a, text: name } : a)); return; }
+    try { await updateFeature(id, { label: name }); }
+    catch { notify.error("Could not rename it."); }
+  }, [tempMeasures, tempAnnotations, updateFeature, notify]);
+
+  const exportCsv = useCallback(async () => {
+    try {
+      const slug = schoolName ? schoolName.replace(/[^a-zA-Z0-9]+/g, "_") : schoolId;
+      await downloadSiteFeaturesCsv(schoolId, `${slug}_site_features.csv`);
+    } catch { notify.error("Export failed. Please try again."); }
+  }, [schoolId, schoolName, notify]);
 
   const cycleVisibility = useCallback(() => {
     setVisibility(prev => {
@@ -955,13 +1179,19 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     });
   }, []);
 
-  const clearAllMeasurements = useCallback(() => {
-    setMeasures([]);
-    setAnnotations([]);
+  /** Clears temporary items and every saved item the user may delete
+   *  (the list panel asks for confirmation first). */
+  const clearAllMeasurements = useCallback(async () => {
+    setTempMeasures([]);
+    setTempAnnotations([]);
     setPendingPts([]);
     hoverPtRef.current = null;
     setAnnotPendingPt(null);
-  }, []);
+    const deletable = [...serverScene.measures, ...serverScene.annotations].filter(canChangeItem);
+    const results = await Promise.allSettled(deletable.map(it => removeFeature(it.id)));
+    const failed = results.filter(r => r.status === "rejected").length;
+    if (failed) notify.error(`${failed} item(s) could not be deleted.`);
+  }, [serverScene, canChangeItem, removeFeature, notify]);
 
   const drawOverlay = useCallback(() => {
     const canvas = overlayRef.current; const camera = cameraRef.current;
@@ -1064,18 +1294,19 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
     if (visibility === "all" || visibility === "measures") {
       measures.forEach(m => {
-        if (m.mode === "distance") {
-          drawLine(m.points, m.color);
+        if (m.mode === "distance" || m.mode === "height") {
+          drawLine(m.points, m.color, !m.saved);
         } else {
           drawPolygon(m.points, m.color, true);
         }
 
         m.points.forEach(p => drawDot(p, m.color, 5));
 
-        const anchor = (m.mode === "distance" || m.mode === "perimeter")
+        const anchor = (m.mode === "distance" || m.mode === "perimeter" || m.mode === "height")
           ? midpointAlongPolyline(m.points)
           : centroidOf(m.points);
-        drawLabel(anchor, m.label, m.color);
+        const text = `${m.name ? `${m.name}: ` : ""}${fmtMeasure(m.mode, m.result, unit)}${m.saved ? "" : " · not saved"}`;
+        drawLabel(anchor, text, m.color);
       });
     }
 
@@ -1097,7 +1328,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         if (hoverPt) {
           const lastPt = livePts[livePts.length - 1];
           drawLine([lastPt, hoverPt], col, true);
-          if (measureMode !== "distance" && livePts.length >= 2) {
+          if (measureMode !== "distance" && measureMode !== "height" && livePts.length >= 2) {
             drawLine([livePts[0], hoverPt], col, true);
           }
         }
@@ -1105,25 +1336,15 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         livePts.forEach(p => drawDot(p, col, 5));
 
         if (hoverPt) {
-          let liveLabel = "";
-          let liveLabelAnchor: MeasurePoint;
-          if (measureMode === "area") {
-            const all = [...livePts, hoverPt];
-            liveLabel = fmtArea(calcPolyArea(all), unit);
-            liveLabelAnchor = centroidOf(all);
-          } else {
-            const allPts = [...livePts, hoverPt];
-            let currentDist = calcDistance(livePts);
-            const dToHover = new THREE.Vector3(livePts[livePts.length - 1].x, livePts[livePts.length - 1].y, livePts[livePts.length - 1].z)
-              .distanceTo(new THREE.Vector3(hoverPt.x, hoverPt.y, hoverPt.z));
-            let total = currentDist + dToHover;
-            if (measureMode === "perimeter" && livePts.length >= 2) {
-              const dBackToStart = new THREE.Vector3(livePts[0].x, livePts[0].y, livePts[0].z).distanceTo(new THREE.Vector3(hoverPt.x, hoverPt.y, hoverPt.z));
-              total += dBackToStart;
-            }
-            liveLabel = fmtDist(total, unit);
-            liveLabelAnchor = midpointAlongPolyline(allPts);
-          }
+          // Live value through the one 3D maths module (plan area for areas).
+          const all = [...livePts, hoverPt];
+          const scale = modelScaleRef.current;
+          const liveMode = measureMode as MeasureLine["mode"];
+          const liveValue = liveMode === "area"
+            ? measurePolygon(all, scale).planArea
+            : measureValue(liveMode, all, { scale });
+          const liveLabel = fmtMeasure(liveMode, liveValue, unit);
+          const liveLabelAnchor: MeasurePoint = liveMode === "area" ? centroidOf(all) : midpointAlongPolyline(all);
           drawLabel(liveLabelAnchor!, liveLabel, col);
         }
       }
@@ -1441,21 +1662,44 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   }, [phase]);
 
   // ── Keys & Finalization
-  const finalizeMeasure = useCallback(() => {
-    if (!pendingPts.length || measureMode === "annotate") return;
-    if (pendingPts.length < 2) { setPendingPts([]); hoverPtRef.current = null; return; }
+  const finalizeMeasure = useCallback((ptsOverride?: MeasurePoint[]) => {
+    const pts = ptsOverride ?? pendingPtsRef.current;
+    if (!pts.length || !measureMode || measureMode === "annotate") return;
+    if (pts.length < 2) { setPendingPts([]); hoverPtRef.current = null; return; }
+    const mode = measureMode as MeasureLine["mode"];
+
+    const v = computeMeasure(mode, pts, modelScaleRef.current);
+    if (mode === "area") {
+      const validity = measurePolygon(pts).validity;
+      if (validity.issue === "too-few-points" || validity.issue === "collinear") {
+        notify.warning(validity.message ?? "That shape has no area.");
+        return; // keep the points so the user can add more / undo
+      }
+      if (validity.issue === "self-intersecting") notify.warning(validity.message ?? "The outline crosses itself.");
+    }
 
     const col = MEASURE_COLORS[colorIdxRef.current % MEASURE_COLORS.length]; colorIdxRef.current++;
-    let result = 0; let label = "";
-    if (measureMode === "distance") { result = calcDistance(pendingPts); label = fmtDist(result, unit); }
-    else if (measureMode === "area") { result = calcPolyArea(pendingPts); label = fmtArea(result, unit); }
-    else if (measureMode === "perimeter") { result = calcPerimeter(pendingPts); label = fmtDist(result, unit); }
-
-    const m: MeasureLine = { id: uid(), points: [...pendingPts], mode: measureMode as any, result, unit, label, color: col };
-    setMeasures(prev => [...prev, m]);
+    const m: MeasureLine = {
+      id: `tmp-${uid()}`, points: [...pts], mode, result: v.result, surface: v.surface, warning: v.warning,
+      name: null, color: col, saved: false, source: "3d", createdByName: user ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() : null,
+      createdAt: new Date().toISOString(),
+    };
     setPendingPts([]);
+    pendingPtsRef.current = [];
     hoverPtRef.current = null;
-  }, [pendingPts, measureMode, unit]);
+
+    const { origin, approximate } = effectiveOriginRef.current;
+    const frame = getSceneFrame();
+    if (canSaveViewerStateRef.current && origin && frame) {
+      // Saved for everyone; the list refreshes live in both viewers.
+      createFeature(measureToFeature(m, origin, frame, approximate)).catch(() => {
+        notify.error("Could not save the measurement — kept on this screen only.");
+        setTempMeasures(prev => [...prev, m]);
+      });
+    } else {
+      setTempMeasures(prev => [...prev, m]);
+    }
+  }, [measureMode, notify, user, getSceneFrame, createFeature]);
 
   // ── Interaction Logic ────────────────────────────────────────────────────────
   const getAccurateRaycastPt = useCallback((e: React.MouseEvent<HTMLDivElement>): MeasurePoint | null => {
@@ -1550,11 +1794,13 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     const prev = pendingPtsRef.current;
     if (prev.length > 0 && new THREE.Vector3(prev[prev.length - 1].x, prev[prev.length - 1].y, prev[prev.length - 1].z).distanceTo(new THREE.Vector3(pt.x, pt.y, pt.z)) < 0.001) return;
     const next = [...prev, pt]; pendingPtsRef.current = next; setPendingPts(next);
+    // Height needs exactly two points: base, then top.
+    if (measureMode === "height" && next.length === 2) finalizeMeasure(next);
   };
 
   const handleOverlayContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (measureMode && pendingPts.length >= 2) finalizeMeasure();
+    if (measureMode && measureMode !== "annotate" && pendingPts.length >= 2) finalizeMeasure();
     else if (measureMode) { setMeasureMode(null); setPendingPts([]); hoverPtRef.current = null; setAnnotPendingPt(null); }
   };
 
@@ -1615,6 +1861,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     model.rotation.x -= Math.PI / 2; model.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(model), center = box.getCenter(new THREE.Vector3());
     model.position.set(-center.x, -box.min.y, -center.z); model.updateMatrixWorld(true);
+    setFrameVersion(v => v + 1); // saved features follow the model
     handleResetCamera();
   }, [handleResetCamera]);
 
@@ -1649,9 +1896,23 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     if (!annotPendingPt) return;
     const emoji = ICON_EMOJI_MAP[iconType] || "";
     const label = [emoji, title].filter(Boolean).join(" ") || "Note";
-    const a: Annotation = { id: uid(), point: annotPendingPt, text: label, color: mapColor || ANNOT_COLORS[colorIdxRef.current++ % ANNOT_COLORS.length] };
-    setAnnotations(prev => [...prev, a]); setAnnotPickerOpen(false); setAnnotPendingPt(null); setMeasureMode(null);
-  }, [annotPendingPt]);
+    const a: Annotation = {
+      id: `tmp-${uid()}`, point: annotPendingPt, text: label,
+      color: mapColor || ANNOT_COLORS[colorIdxRef.current++ % ANNOT_COLORS.length],
+      saved: false, source: "3d", createdAt: new Date().toISOString(),
+    };
+    const { origin, approximate } = effectiveOriginRef.current;
+    const frame = getSceneFrame();
+    if (canSaveViewerStateRef.current && origin && frame) {
+      createFeature(annotationToFeature(a, origin, frame, approximate)).catch(() => {
+        notify.error("Could not save the note — kept on this screen only.");
+        setTempAnnotations(prev => [...prev, a]);
+      });
+    } else {
+      setTempAnnotations(prev => [...prev, a]);
+    }
+    setAnnotPickerOpen(false); setAnnotPendingPt(null); setMeasureMode(null);
+  }, [annotPendingPt, getSceneFrame, createFeature, notify]);
 
   const cancelAnnotation = () => { setAnnotPickerOpen(false); setAnnotPendingPt(null); setPinBuildingId(null); };
   const flyToPoint = useCallback((pt: MeasurePoint & { camera?: CameraHome }) => {
@@ -1673,6 +1934,136 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     };
     step();
   }, []);
+
+  // ── Shortcuts, selection sync, measurement list (WS4 / WS5.6) ──────────────
+
+  /** Fly to a lat/lng on the model (bridge → scene, draped on the surface). */
+  const flyToLatLng = useCallback((lat: number, lng: number) => {
+    const { origin } = effectiveOriginRef.current;
+    const frame = getSceneFrame();
+    if (!origin || !frame || !Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    const p = frame.toScene(wgs84ToModel({ lat, lng, alt: origin.alt }, origin));
+    const y = frame.drapeY?.(p.x, p.z);
+    if (y != null) p.y = y;
+    flyToPoint(p);
+    return true;
+  }, [getSceneFrame, flyToPoint]);
+
+  /** Select a building and fly to its pin, else to its recorded coordinate. */
+  type GeoBuilding = { id: string; latitude?: unknown; longitude?: unknown; centroidLat?: unknown; centroidLng?: unknown; geolocation?: { latitude?: unknown; longitude?: unknown } };
+  const focusBuilding = useCallback((b: GeoBuilding | null | undefined, fallback?: { lat: number | null; lng: number | null }) => {
+    if (!b) return;
+    setSelectedBuilding(b);
+    const pin = buildingPinsRef.current[b.id] as (MeasurePoint & { camera?: CameraHome }) | undefined;
+    if (pin) { flyToPoint(pin); return; }
+    const lat = Number(b.geolocation?.latitude ?? b.latitude ?? b.centroidLat ?? fallback?.lat);
+    const lng = Number(b.geolocation?.longitude ?? b.longitude ?? b.centroidLng ?? fallback?.lng);
+    flyToLatLng(lat, lng);
+  }, [flyToPoint, flyToLatLng]);
+
+  // Deep link from the 2D map: ?building=<id>&lat=&lng= — select + fly once.
+  const deepLinkDoneRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkDoneRef.current || !isModelReady) return;
+    const link = readViewerDeepLink(window.location.search);
+    if (!link.buildingId && link.lat == null) { deepLinkDoneRef.current = true; return; }
+    if (link.buildingId && !dbBuildings.length) return; // wait for buildings
+    deepLinkDoneRef.current = true;
+    const b = link.buildingId ? dbBuildings.find(x => x.id === link.buildingId) : null;
+    if (b) focusBuilding(b, link);
+    else if (link.lat != null && link.lng != null) flyToLatLng(link.lat, link.lng);
+  }, [isModelReady, dbBuildings, focusBuilding, flyToLatLng]);
+
+  // Selection sync with an open 2D map tab (same browser).
+  const remoteSelectionRef = useRef(false);
+  const firstSelectionRef = useRef(true);
+  useEffect(() => {
+    if (firstSelectionRef.current) { firstSelectionRef.current = false; return; }
+    if (remoteSelectionRef.current) { remoteSelectionRef.current = false; return; }
+    if (schoolId) broadcastSelection({ schoolId, buildingId: selectedBuilding?.id ?? null, from: "3d" });
+  }, [selectedBuilding?.id, schoolId]);
+  useEffect(() => {
+    if (!schoolId) return;
+    return onSelection(schoolId, "3d", (buildingId) => {
+      remoteSelectionRef.current = true;
+      if (!buildingId) { setSelectedBuilding(null); return; }
+      const b = dbBuildingsRef.current.find(x => x.id === buildingId);
+      if (b) focusBuilding(b); else remoteSelectionRef.current = false;
+    });
+  }, [schoolId, focusBuilding]);
+
+  const open2DView = useCallback(() => {
+    const b = selectedBuilding;
+    const lat = Number(b?.geolocation?.latitude ?? b?.latitude);
+    const lng = Number(b?.geolocation?.longitude ?? b?.longitude);
+    let ll: { lat: number | null; lng: number | null } = { lat: Number.isFinite(lat) && lat ? lat : null, lng: Number.isFinite(lng) && lng ? lng : null };
+    // No building coordinate → send the camera target, converted to WGS84.
+    if (ll.lat == null && controlsRef.current && effectiveOriginRef.current.origin) {
+      const frame = getSceneFrame();
+      if (frame) {
+        const g = modelToWgs84(frame.toModel(controlsRef.current.target), effectiveOriginRef.current.origin);
+        ll = { lat: Number(g.lat.toFixed(7)), lng: Number(g.lng.toFixed(7)) };
+      }
+    }
+    window.open(viewerLink("2d", schoolId, { buildingId: b?.id ?? null, ...ll }), "_blank");
+  }, [selectedBuilding, schoolId, getSceneFrame]);
+
+  // Keyboard: tool shortcuts, Esc cancel, Backspace / Ctrl+Z undo, Enter finish, ? help.
+  useEffect(() => {
+    if (phase !== "viewing") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target) || annotPickerOpen || drawerOpen) return;
+      const mode = measureModeRef.current;
+      if (e.key === "Escape") {
+        if (mode || pinBuildingIdRef.current) { e.preventDefault(); cancelTool(); }
+        return;
+      }
+      if (mode && mode !== "annotate") {
+        if (e.key === "Backspace" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z")) { e.preventDefault(); undoLastPoint(); return; }
+        if (e.key === "Enter") { e.preventDefault(); finalizeMeasure(); return; }
+      }
+      if (e.key === "?") { setShowHelp(v => !v); return; }
+      const tool = toolForKey(e, "3d");
+      if (tool) { e.preventDefault(); selectTool(tool); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [phase, annotPickerOpen, drawerOpen, cancelTool, undoLastPoint, finalizeMeasure, selectTool]);
+
+  const measureRows = useMemo<MeasurementRow[]>(() => {
+    const fmt = (m: MeasureLine) =>
+      m.mode === "area" ? formatMeasureArea(m.result, m.source, unit) : formatMeasureLength(m.result, m.source, unit);
+    const kindName: Record<MeasureLine["mode"], string> = { distance: "Distance", area: "Area", perimeter: "Perimeter", height: "Height" };
+    return [
+      ...measures.map((m): MeasurementRow => ({
+        id: m.id,
+        name: m.name || kindName[m.mode],
+        kind: `measure_${m.mode}` as MeasurementRow["kind"],
+        value: m.mode === "area" ? `${fmt(m)} plan` : fmt(m),
+        secondary: m.mode === "area" && m.surface != null ? `Surface (sloped): ${formatMeasureArea(m.surface, "3d", unit)}` : null,
+        warning: m.warning,
+        source: m.source,
+        createdByName: m.createdByName,
+        createdAt: m.createdAt,
+        saved: m.saved,
+        canEdit: canChangeItem(m),
+        canDelete: canChangeItem(m),
+        color: m.color,
+      })),
+      ...annotations.map((a): MeasurementRow => ({
+        id: a.id, name: a.text, kind: "note", value: "", source: a.source,
+        createdByName: a.createdByName, createdAt: a.createdAt, saved: a.saved,
+        canEdit: canChangeItem(a), canDelete: canChangeItem(a), color: a.color,
+      })),
+    ];
+  }, [measures, annotations, unit, canChangeItem]);
+
+  const flyToItem = useCallback((id: string) => {
+    const m = measures.find(x => x.id === id);
+    if (m) { flyToPoint(m.mode === "area" ? centroidOf(m.points) : midpointAlongPolyline(m.points)); return; }
+    const a = annotations.find(x => x.id === id);
+    if (a) flyToPoint(a.point);
+  }, [measures, annotations, flyToPoint]);
 
   // ── API Operations ──────────────────────────────────────────────────────────
   const handleUpdateBuilding = async (data: BuildingData) => {
@@ -1774,19 +2165,41 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
                 showBuildingsList={showBuildingsList} setShowBuildingsList={setShowBuildingsList}
                 buildingsCount={dbBuildings.length} renderMode={renderMode} setRenderMode={setRenderMode}
                 modeLabels={MODE_LABELS} speedIdx={speedIdx} speedSteps={SPEED_STEPS} speedUp={speedUp} speedDown={speedDown}
-                measureMode={measureMode} toggleMode={toggleMode} setMeasureMode={setMeasureMode}
-                unit={unit} setUnit={setUnit} unitLabels={UNIT_LABELS} visibility={visibility} cycleVisibility={cycleVisibility}
-                finalizeMeasure={finalizeMeasure} pendingPtsCount={pendingPts.length}
+                activeTool={measureMode ? MODE_TOOL[measureMode] : "navigate"} onSelectTool={selectTool}
+                showMeasurePanel={showMeasurePanel} setShowMeasurePanel={setShowMeasurePanel} measureCount={measureRows.length}
+                visibility={visibility} cycleVisibility={cycleVisibility}
                 handleScreenshot={handleScreenshot} screenshotFlash={screenshotFlash}
                 handleResetCamera={handleResetCamera} handleSaveHome={handleSaveHome} saveFlash={saveFlash} toggleOrientation={toggleOrientation}
+                on2DView={schoolId ? open2DView : undefined}
               />
+              {measureMode && (
+                <ActiveToolBanner
+                  tool={MODE_TOOL[measureMode]}
+                  pointCount={pendingPts.length}
+                  liveValue={(() => {
+                    if (measureMode === "annotate" || pendingPts.length < 2) return null;
+                    const mode = measureMode as MeasureLine["mode"];
+                    return fmtMeasure(mode, computeMeasure(mode, pendingPts, modelGeo.scale).result, unit);
+                  })()}
+                  accuracy={accuracyLabel("3d")}
+                  warning={measureMode === "area" && pendingPts.length >= 4 ? measurePolygon(pendingPts).validity.message : null}
+                  notSaved={measureMode !== "annotate" && canMeasure && !canSaveViewerState}
+                  onUndo={measureMode !== "annotate" ? undoLastPoint : undefined}
+                  onFinish={measureMode !== "annotate" && measureMode !== "height" ? () => finalizeMeasure() : undefined}
+                  onCancel={cancelTool}
+                />
+              )}
+              {modelGeo.scaleWarning && <ModelScaleBanner warning={modelGeo.scaleWarning} factor={modelGeo.scaleFactor} />}
               {showMeasurePanel && (
                 <ViewerMeasurePanel
-                  measures={measures}
-                  annotations={annotations}
-                  clearAllMeasurements={clearAllMeasurements}
-                  setMeasures={setMeasures}
-                  setAnnotations={setAnnotations}
+                  rows={measureRows}
+                  unit={unit}
+                  onUnitChange={setUnit}
+                  onFlyTo={flyToItem}
+                  onRename={renameItem}
+                  onDelete={deleteItem}
+                  onClearAll={clearAllMeasurements}
+                  onExport={canExport ? exportCsv : undefined}
                   onClose={() => setShowMeasurePanel(false)}
                 />
               )}
@@ -1831,7 +2244,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
               )}
               <AnnotationPickerModal open={annotPickerOpen} annotationType="point" initialTitle={pinBuildingId ? (dbBuildings.find(b => b.id === pinBuildingId)?.buildingName || "") : ""} onConfirm={submit3DAnnotation} onCancel={cancelAnnotation} />
               <ViewerStatsFooter stats={stats} showMeasurePanel={showMeasurePanel} formatBytes={formatBytes} formatTime={formatTime} />
-              {showHelp && <ViewerHelpModal setShowHelp={setShowHelp} />}
+              {showHelp && <ViewerHelpModal setShowHelp={setShowHelp} viewer="3d" />}
               <ViewerMovementControls 
                 keysRef={keysRef} 
                 isSprinting={isSprinting} 

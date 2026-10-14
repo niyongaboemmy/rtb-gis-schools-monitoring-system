@@ -16,7 +16,10 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
 import { School } from '../schools/entities/school.entity';
-import { SchoolBuilding, BuildingCondition } from '../schools/entities/school-building.entity';
+import {
+  SchoolBuilding,
+  BuildingCondition,
+} from '../schools/entities/school-building.entity';
 import { PopulationData } from '../population/entities/population-data.entity';
 import { ReportsService } from '../reports/reports.service';
 import { AnalyticsService } from '../analytics/analytics.service';
@@ -25,18 +28,24 @@ import { AnalyticsService } from '../analytics/analytics.service';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function buildBuilding(condition: BuildingCondition, extra: Partial<SchoolBuilding> = {}): SchoolBuilding {
+function buildBuilding(
+  condition: BuildingCondition,
+  extra: Partial<SchoolBuilding> = {},
+): SchoolBuilding {
   return {
     id: `b-${Math.random()}`,
     schoolId: 'school-1',
     condition,
-    yearBuilt: 2015,      // deterministic ageScore (≈9 years old → 95)
+    yearBuilt: 2015, // deterministic ageScore (≈9 years old → 95)
     lastInspectionDate: new Date(),
     ...extra,
   } as unknown as SchoolBuilding;
 }
 
-function buildSchool(buildings: SchoolBuilding[], extra: Partial<School> = {}): School {
+function buildSchool(
+  buildings: SchoolBuilding[],
+  extra: Partial<School> = {},
+): School {
   return {
     id: 'school-1',
     name: 'Test School',
@@ -53,7 +62,10 @@ function buildSchool(buildings: SchoolBuilding[], extra: Partial<School> = {}): 
 /** Assembles the DashboardService with all dependencies mocked. */
 async function makeService(
   schoolRepoOverrides: Partial<Record<string, jest.Mock>> = {},
-): Promise<{ service: DashboardService; schoolRepo: Record<string, jest.Mock> }> {
+): Promise<{
+  service: DashboardService;
+  schoolRepo: Record<string, jest.Mock>;
+}> {
   const schoolRepo = {
     findOne: jest.fn().mockResolvedValue(null),
     ...schoolRepoOverrides,
@@ -63,19 +75,31 @@ async function makeService(
     providers: [
       DashboardService,
       { provide: getRepositoryToken(School), useValue: schoolRepo },
-      { provide: getRepositoryToken(SchoolBuilding), useValue: { find: jest.fn().mockResolvedValue([]) } },
-      { provide: getRepositoryToken(PopulationData), useValue: { find: jest.fn().mockResolvedValue([]) } },
+      {
+        provide: getRepositoryToken(SchoolBuilding),
+        useValue: { find: jest.fn().mockResolvedValue([]) },
+      },
+      {
+        provide: getRepositoryToken(PopulationData),
+        useValue: { find: jest.fn().mockResolvedValue([]) },
+      },
       {
         provide: ReportsService,
-        useValue: { findAll: jest.fn().mockResolvedValue({ data: [], total: 0 }) },
+        useValue: {
+          findAll: jest.fn().mockResolvedValue({ data: [], total: 0 }),
+        },
       },
       {
         provide: AnalyticsService,
         useValue: {
           getSchoolMetrics: jest.fn().mockResolvedValue({
-            overallScore: 70, infrastructureScore: 70, buildingAgeScore: 80,
-            populationPressureScore: 50, accessibilityScore: 60,
-            facilityComplianceScore: 50, depreciation: 20,
+            overallScore: 70,
+            infrastructureScore: 70,
+            buildingAgeScore: 80,
+            populationPressureScore: 50,
+            accessibilityScore: 60,
+            facilityComplianceScore: 50,
+            depreciation: 20,
             reportSummary: { total: 0 },
           }),
         },
@@ -142,7 +166,9 @@ describe('DashboardService.mainPayload – healthIndex (BUG-02 regression)', () 
 describe('DashboardService.mainPayload – healthIndex exact values', () => {
   it('single GOOD building → healthIndex = 100', async () => {
     const { service, schoolRepo } = await makeService();
-    schoolRepo.findOne.mockResolvedValue(buildSchool([buildBuilding(BuildingCondition.GOOD)]));
+    schoolRepo.findOne.mockResolvedValue(
+      buildSchool([buildBuilding(BuildingCondition.GOOD)]),
+    );
 
     const { data } = await service.mainPayload('school-1');
     expect(data.infrastructure.healthIndex).toBe(100);
@@ -150,7 +176,9 @@ describe('DashboardService.mainPayload – healthIndex exact values', () => {
 
   it('single FAIR building → healthIndex = 70', async () => {
     const { service, schoolRepo } = await makeService();
-    schoolRepo.findOne.mockResolvedValue(buildSchool([buildBuilding(BuildingCondition.FAIR)]));
+    schoolRepo.findOne.mockResolvedValue(
+      buildSchool([buildBuilding(BuildingCondition.FAIR)]),
+    );
 
     const { data } = await service.mainPayload('school-1');
     expect(data.infrastructure.healthIndex).toBe(70);
@@ -158,7 +186,9 @@ describe('DashboardService.mainPayload – healthIndex exact values', () => {
 
   it('single POOR building → healthIndex = 30 (canonical condition map)', async () => {
     const { service, schoolRepo } = await makeService();
-    schoolRepo.findOne.mockResolvedValue(buildSchool([buildBuilding(BuildingCondition.POOR)]));
+    schoolRepo.findOne.mockResolvedValue(
+      buildSchool([buildBuilding(BuildingCondition.POOR)]),
+    );
 
     const { data } = await service.mainPayload('school-1');
     expect(data.infrastructure.healthIndex).toBe(30);
@@ -166,7 +196,9 @@ describe('DashboardService.mainPayload – healthIndex exact values', () => {
 
   it('single CRITICAL building → healthIndex = 10', async () => {
     const { service, schoolRepo } = await makeService();
-    schoolRepo.findOne.mockResolvedValue(buildSchool([buildBuilding(BuildingCondition.CRITICAL)]));
+    schoolRepo.findOne.mockResolvedValue(
+      buildSchool([buildBuilding(BuildingCondition.CRITICAL)]),
+    );
 
     const { data } = await service.mainPayload('school-1');
     expect(data.infrastructure.healthIndex).toBe(10);
@@ -201,7 +233,10 @@ describe('DashboardService.mainPayload – healthIndex exact values', () => {
     // for that building (neutral 50), matching analytics.service.
     const buildings = [
       buildBuilding(BuildingCondition.CRITICAL),
-      { ...buildBuilding(BuildingCondition.CRITICAL), condition: 'unknown_xyz' } as any,
+      {
+        ...buildBuilding(BuildingCondition.CRITICAL),
+        condition: 'unknown_xyz',
+      } as any,
     ];
     const { service, schoolRepo } = await makeService();
     schoolRepo.findOne.mockResolvedValue(buildSchool(buildings));
@@ -241,7 +276,11 @@ describe('DashboardService.mainPayload – infrastructure slice correctness', ()
     const recentDate = new Date(); // inspected today → not outdated
     const { service, schoolRepo } = await makeService();
     schoolRepo.findOne.mockResolvedValue(
-      buildSchool([buildBuilding(BuildingCondition.GOOD, { lastInspectionDate: recentDate })]),
+      buildSchool([
+        buildBuilding(BuildingCondition.GOOD, {
+          lastInspectionDate: recentDate,
+        }),
+      ]),
     );
 
     const { data } = await service.mainPayload('school-1');
@@ -258,9 +297,7 @@ describe('DashboardService.mainPayload – infrastructure slice correctness', ()
 
   it('capacityUtilization reflects students / capacity ratio from programs', async () => {
     const school = buildSchool([], {
-      educationPrograms: [
-        { totalStudents: 300, capacity: 500 },
-      ] as any,
+      educationPrograms: [{ totalStudents: 300, capacity: 500 }] as any,
     });
     const { service, schoolRepo } = await makeService();
     schoolRepo.findOne.mockResolvedValue(school);
@@ -277,11 +314,26 @@ describe('DashboardService.mainPayload – infrastructure slice correctness', ()
 describe('DashboardService.mainPayload – facilities summary', () => {
   it('counts buildings by function keyword: classroom, lab, dormitory', async () => {
     const buildings: SchoolBuilding[] = [
-      { ...buildBuilding(BuildingCondition.GOOD), function: 'Classroom Block A' } as any,
-      { ...buildBuilding(BuildingCondition.GOOD), function: 'classroom_2' } as any,
-      { ...buildBuilding(BuildingCondition.GOOD), function: 'Computer Lab' } as any,
-      { ...buildBuilding(BuildingCondition.GOOD), function: 'Dormitory Main' } as any,
-      { ...buildBuilding(BuildingCondition.GOOD), function: 'Admin Block' } as any,
+      {
+        ...buildBuilding(BuildingCondition.GOOD),
+        function: 'Classroom Block A',
+      } as any,
+      {
+        ...buildBuilding(BuildingCondition.GOOD),
+        function: 'classroom_2',
+      } as any,
+      {
+        ...buildBuilding(BuildingCondition.GOOD),
+        function: 'Computer Lab',
+      } as any,
+      {
+        ...buildBuilding(BuildingCondition.GOOD),
+        function: 'Dormitory Main',
+      } as any,
+      {
+        ...buildBuilding(BuildingCondition.GOOD),
+        function: 'Admin Block',
+      } as any,
     ];
     const { service, schoolRepo } = await makeService();
     schoolRepo.findOne.mockResolvedValue(buildSchool(buildings));
@@ -349,7 +401,9 @@ describe('DashboardService.mainPayload – error handling', () => {
     const { service, schoolRepo } = await makeService();
     schoolRepo.findOne.mockResolvedValue(null);
 
-    await expect(service.mainPayload('missing-id')).rejects.toThrow(NotFoundException);
+    await expect(service.mainPayload('missing-id')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('throws with the correct school-not-found message', async () => {

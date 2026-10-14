@@ -77,6 +77,7 @@ import { cn } from "../../lib/utils";
 import { Skeleton } from "../ui/skeleton";
 import { MetricCard } from "../ui/metric-card";
 import { useCountUp, deltaPct } from "../../lib/dashboard-utils";
+import { label } from "../../lib/labels";
 
 /* ─────────────────────────────── model ─────────────────────────────── */
 
@@ -126,7 +127,7 @@ const STATUS: Record<
     ring: "ring-rose-500/40",
   },
   SOLVED: {
-    label: "Solved",
+    label: label("reportStatus", "SOLVED"),
     color: "#10b981",
     text: "text-emerald-500",
     bg: "bg-emerald-500/12",
@@ -864,7 +865,7 @@ export function AdminReportingDashboard() {
                 suffix="%"
                 hint={
                   kpi.failed > 0
-                    ? `${kpi.solved} solved · ${kpi.failed} invalid excl.`
+                    ? `${kpi.solved} resolved · ${kpi.failed} invalid excl.`
                     : `${kpi.solved} of ${kpi.total} resolved`
                 }
                 spark={sparks.solved}
@@ -1230,7 +1231,7 @@ export function AdminReportingDashboard() {
                         <SortHeader field="total" className="text-right">Total</SortHeader>
                         <SortHeader field="pending" className="text-right">Pending</SortHeader>
                         <SortHeader field="needsIntervention" className="text-right">Critical</SortHeader>
-                        <SortHeader field="solved" className="text-right">Solved</SortHeader>
+                        <SortHeader field="solved" className="text-right">Resolved</SortHeader>
                         <SortHeader field="resolutionRate" className="text-right">Rate</SortHeader>
                       </TableRow>
                     </TableHeader>

@@ -28,10 +28,13 @@ export enum Permission {
   UPLOAD_KMZ = 'UPLOAD_KMZ',
   EDIT_SITE_ANNOTATIONS = 'EDIT_SITE_ANNOTATIONS',
   SYNC_POPULATION = 'SYNC_POPULATION',
+  USE_MEASURE_TOOLS = 'USE_MEASURE_TOOLS',
+  SAVE_SITE_FEATURES = 'SAVE_SITE_FEATURES',
+  EXPORT_VIEWER_DATA = 'EXPORT_VIEWER_DATA',
 
   // ── Surveys & assessments ────────────────────────────────────────────────
   RUN_FACILITY_SURVEY = 'RUN_FACILITY_SURVEY',
-  SCHOOL_SURVERY_EDIT = 'SCHOOL_SURVERY_EDIT',
+  SCHOOL_SURVEY_EDIT = 'SCHOOL_SURVEY_EDIT',
 
   // ── Decisions & exports ──────────────────────────────────────────────────
   MANAGE_DECISIONS = 'MANAGE_DECISIONS',
@@ -72,7 +75,8 @@ export interface PermissionMeta {
 export const PERMISSION_CATALOG: Record<Permission, PermissionMeta> = {
   [Permission.VIEW_DASHBOARD]: {
     label: 'View national dashboard',
-    description: 'Open the main dashboard and national intelligence summaries.',
+    description:
+      'Open the main dashboard and national School Condition Score summaries.',
     group: PermissionGroup.NAVIGATION,
   },
   [Permission.VIEW_MAP]: {
@@ -82,27 +86,32 @@ export const PERMISSION_CATALOG: Record<Permission, PermissionMeta> = {
   },
   [Permission.VIEW_SCHOOLS]: {
     label: 'View schools directory',
-    description: 'Browse the school directory and open individual school records.',
+    description:
+      'Browse the school directory and open individual school records.',
     group: PermissionGroup.NAVIGATION,
   },
   [Permission.VIEW_ANALYTICS]: {
     label: 'View decision analytics',
-    description: 'Open the decision & analytics dashboards and assessment tables.',
+    description:
+      'Open the decision & analytics dashboards and assessment tables.',
     group: PermissionGroup.NAVIGATION,
   },
   [Permission.VIEW_INTELLIGENCE]: {
-    label: 'View intelligence scores',
-    description: 'See AI-driven priority scores, infrastructure deltas and the per-school decision dashboard.',
+    label: 'View school condition scores',
+    description:
+      'See School Condition Scores, intervention priorities and the per-school decision dashboard.',
     group: PermissionGroup.NAVIGATION,
   },
   [Permission.SCHOOL_LEVEL_DASHBOARD]: {
     label: 'School dashboard',
-    description: 'Open the detailed single-school dashboard (main + reporting tabs).',
+    description:
+      'Open the detailed single-school dashboard (main + reporting tabs).',
     group: PermissionGroup.NAVIGATION,
   },
   [Permission.VIEW_POPULATION]: {
     label: 'View population analytics',
-    description: 'Open population-density analytics and per-school catchment data.',
+    description:
+      'Open population-density analytics and per-school catchment data.',
     group: PermissionGroup.NAVIGATION,
   },
   [Permission.VIEW_REPORTING]: {
@@ -112,12 +121,14 @@ export const PERMISSION_CATALOG: Record<Permission, PermissionMeta> = {
   },
   [Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD]: {
     label: 'Org-wide reporting oversight',
-    description: 'See the cross-school reporting dashboard covering every institution, not only assigned ones.',
+    description:
+      'See the cross-school reporting dashboard covering every institution, not only assigned ones.',
     group: PermissionGroup.NAVIGATION,
   },
   [Permission.SCHOOL_VIEW_2D3D_MAP]: {
     label: 'Open 2D / 3D viewer',
-    description: 'Access the multimodal 2D/3D building viewers and GLB explorer.',
+    description:
+      'Access the multimodal 2D/3D building viewers and GLB explorer.',
     group: PermissionGroup.NAVIGATION,
   },
 
@@ -138,17 +149,20 @@ export const PERMISSION_CATALOG: Record<Permission, PermissionMeta> = {
   },
   [Permission.EDIT_SCHOOL_PROFILE]: {
     label: 'Edit school profile',
-    description: 'General ability to modify school profile data from the school view.',
+    description:
+      'General ability to modify school profile data from the school view.',
     group: PermissionGroup.SCHOOL_RECORDS,
   },
   [Permission.EDIT_SCHOOL_BASIC]: {
     label: 'Edit identity & status',
-    description: 'Modify name, code, type, establishing year and operating status.',
+    description:
+      'Modify name, code, type, establishing year and operating status.',
     group: PermissionGroup.SCHOOL_RECORDS,
   },
   [Permission.EDIT_SCHOOL_LOCATION]: {
     label: 'Edit location',
-    description: 'Update coordinates and administrative location (province/district/sector).',
+    description:
+      'Update coordinates and administrative location (province/district/sector).',
     group: PermissionGroup.SCHOOL_RECORDS,
   },
   [Permission.EDIT_SCHOOL_CONTACT]: {
@@ -173,7 +187,8 @@ export const PERMISSION_CATALOG: Record<Permission, PermissionMeta> = {
   },
   [Permission.EDIT_SCHOOL_BUILDINGS]: {
     label: 'Edit buildings',
-    description: 'Create, update and remove building records, conditions and footprints.',
+    description:
+      'Create, update and remove building records, conditions and footprints.',
     group: PermissionGroup.SCHOOL_RECORDS,
   },
 
@@ -184,12 +199,31 @@ export const PERMISSION_CATALOG: Record<Permission, PermissionMeta> = {
   },
   [Permission.EDIT_SITE_ANNOTATIONS]: {
     label: 'Edit map overlays & annotations',
-    description: 'Add or remove 2D overlays, places overlays and site annotations.',
+    description:
+      'Add or remove 2D overlays, places overlays and site annotations.',
     group: PermissionGroup.GEOSPATIAL,
   },
   [Permission.SYNC_POPULATION]: {
     label: 'Sync population data',
     description: 'Trigger the ArcGIS population-density synchronisation job.',
+    group: PermissionGroup.GEOSPATIAL,
+  },
+  [Permission.USE_MEASURE_TOOLS]: {
+    label: 'Use measuring tools',
+    description:
+      'Measure distances, areas and heights in the 2D and 3D viewers (not saved).',
+    group: PermissionGroup.GEOSPATIAL,
+  },
+  [Permission.SAVE_SITE_FEATURES]: {
+    label: 'Save measurements & notes',
+    description:
+      'Save measurements, notes and pins on a school site so others can see them.',
+    group: PermissionGroup.GEOSPATIAL,
+  },
+  [Permission.EXPORT_VIEWER_DATA]: {
+    label: 'Export viewer data',
+    description:
+      'Download measurement lists and site features from the 2D/3D viewers (CSV).',
     group: PermissionGroup.GEOSPATIAL,
   },
 
@@ -198,20 +232,23 @@ export const PERMISSION_CATALOG: Record<Permission, PermissionMeta> = {
     description: 'Initiate infrastructure-compliance assessments for a school.',
     group: PermissionGroup.SURVEYS,
   },
-  [Permission.SCHOOL_SURVERY_EDIT]: {
+  [Permission.SCHOOL_SURVEY_EDIT]: {
     label: 'Edit survey responses',
-    description: 'Update compliance answers and notes on an in-progress survey.',
+    description:
+      'Update compliance answers and notes on an in-progress survey.',
     group: PermissionGroup.SURVEYS,
   },
 
   [Permission.MANAGE_DECISIONS]: {
     label: 'Manage decision engine',
-    description: 'Re-run priority algorithms, edit weights and manage intervention actions.',
+    description:
+      'Recalculate School Condition Scores and manage intervention actions.',
     group: PermissionGroup.DECISIONS,
   },
   [Permission.EXPORT_REPORTS]: {
     label: 'Export data & reports',
-    description: 'Download schools, analytics and report exports (Excel / CSV).',
+    description:
+      'Download schools, analytics and report exports (Excel / CSV).',
     group: PermissionGroup.DECISIONS,
   },
 
@@ -238,7 +275,8 @@ export const PERMISSION_CATALOG: Record<Permission, PermissionMeta> = {
   },
   [Permission.MANAGE_ROLES]: {
     label: 'Manage roles & access levels',
-    description: 'Create roles, assign permissions and configure access levels.',
+    description:
+      'Create roles, assign permissions and configure access levels.',
     group: PermissionGroup.ADMINISTRATION,
   },
   [Permission.VIEW_AUDIT_LOGS]: {
@@ -279,8 +317,11 @@ export const DefaultRolePermissions: Record<string, Permission[]> = {
     Permission.UPLOAD_KMZ,
     Permission.EDIT_SITE_ANNOTATIONS,
     Permission.SYNC_POPULATION,
+    Permission.USE_MEASURE_TOOLS,
+    Permission.SAVE_SITE_FEATURES,
+    Permission.EXPORT_VIEWER_DATA,
     Permission.RUN_FACILITY_SURVEY,
-    Permission.SCHOOL_SURVERY_EDIT,
+    Permission.SCHOOL_SURVEY_EDIT,
     Permission.MANAGE_DECISIONS,
     Permission.EXPORT_REPORTS,
     Permission.CREATE_REPORT,
@@ -304,6 +345,10 @@ export const DefaultRolePermissions: Record<string, Permission[]> = {
     Permission.UPLOAD_KMZ,
     Permission.EDIT_SITE_ANNOTATIONS,
     Permission.SYNC_POPULATION,
+    Permission.USE_MEASURE_TOOLS,
+    Permission.SAVE_SITE_FEATURES,
+    Permission.EXPORT_VIEWER_DATA,
+    Permission.EXPORT_REPORTS,
     Permission.CREATE_REPORT,
   ],
 
@@ -317,6 +362,72 @@ export const DefaultRolePermissions: Record<string, Permission[]> = {
     Permission.VIEW_POPULATION,
     Permission.VIEW_REPORTING,
     Permission.SCHOOL_VIEW_2D3D_MAP,
+    Permission.USE_MEASURE_TOOLS,
+    // Kept pending RTB decision D2 (the proposed matrix removes it).
     Permission.CREATE_REPORT,
   ],
+};
+
+/**
+ * Role presets that are bound to a sub-national access level (WS7.3). Unlike
+ * the system roles above, seeding only *creates* them; once they exist an
+ * administrator owns their permissions and the seed never overwrites them.
+ * Users given these roles must carry a matching `location`.
+ */
+export const ScopedRolePresets: Record<
+  string,
+  {
+    accessLevel: 'district' | 'school';
+    description: string;
+    permissions: Permission[];
+  }
+> = {
+  district_officer: {
+    accessLevel: 'district',
+    description:
+      'District / sector education officer: oversees the schools in their district.',
+    permissions: [
+      Permission.VIEW_DASHBOARD,
+      Permission.VIEW_MAP,
+      Permission.VIEW_SCHOOLS,
+      Permission.VIEW_ANALYTICS,
+      Permission.VIEW_INTELLIGENCE,
+      Permission.SCHOOL_LEVEL_DASHBOARD,
+      Permission.VIEW_POPULATION,
+      Permission.VIEW_REPORTING,
+      Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD,
+      Permission.SCHOOL_VIEW_2D3D_MAP,
+      Permission.USE_MEASURE_TOOLS,
+      Permission.SAVE_SITE_FEATURES,
+      Permission.EXPORT_VIEWER_DATA,
+      Permission.CREATE_REPORT,
+      Permission.MANAGE_REPORTS,
+      Permission.RUN_FACILITY_SURVEY,
+      Permission.SCHOOL_SURVEY_EDIT,
+      Permission.EXPORT_REPORTS,
+    ],
+  },
+  school_leader: {
+    accessLevel: 'school',
+    description:
+      'Head teacher / school manager: manages and reports on their own school.',
+    permissions: [
+      Permission.VIEW_SCHOOLS,
+      Permission.VIEW_INTELLIGENCE,
+      Permission.SCHOOL_LEVEL_DASHBOARD,
+      Permission.VIEW_REPORTING,
+      Permission.SCHOOL_VIEW_2D3D_MAP,
+      Permission.USE_MEASURE_TOOLS,
+      Permission.SAVE_SITE_FEATURES,
+      Permission.EXPORT_VIEWER_DATA,
+      Permission.EDIT_SCHOOL_PROFILE,
+      Permission.EDIT_SCHOOL_CONTACT,
+      Permission.EDIT_SCHOOL_PROGRAMS,
+      Permission.EDIT_SCHOOL_STAFF,
+      Permission.CREATE_REPORT,
+      Permission.RUN_FACILITY_SURVEY,
+      Permission.SCHOOL_SURVEY_EDIT,
+      Permission.EXPORT_REPORTS,
+    ],
+  },
 };

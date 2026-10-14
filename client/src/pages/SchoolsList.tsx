@@ -28,12 +28,20 @@ import {
   CheckCircle2,
   Radar,
   Trash2,
+  Pencil,
+  MessageSquarePlus,
+  Bookmark,
+  Link2,
+  ChevronDown,
 } from "lucide-react";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { RichDropdown } from "../components/ui/rich-dropdown";
-import { Skeleton } from "../components/ui/skeleton";
+import { Skeleton, SkeletonTable } from "../components/ui/skeleton";
+import { EmptyState } from "../components/ui/empty-state";
+import { ErrorState } from "../components/ui/error-state";
+import { RequestChangeDialog } from "../components/school-form-steps/RequestChangeDialog";
 import { PageHeader } from "../components/ui/page-header";
 import {
   Table,
@@ -147,6 +155,30 @@ export default function SchoolsList() {
   const { user } = useAuthStore();
   const canExport = hasPermission(user, Permission.EXPORT_REPORTS);
   const canCreate = hasPermission(user, Permission.CREATE_SCHOOL);
+  const canDelete = hasPermission(user, Permission.DELETE_SCHOOL);
+  const canUpload = hasPermission(user, Permission.UPLOAD_KMZ);
+  const canEdit =
+    hasPermission(user, Permission.MANAGE_SCHOOLS) ||
+    hasPermission(user, Permission.EDIT_SCHOOL_PROFILE);
+  const canOpenDetail = hasPermission(user, Permission.VIEW_INTELLIGENCE);
+  // Users who cannot edit location / identity may ask the GIS team (WS7.7).
+  const canRequestChange =
+    hasPermission(user, Permission.CREATE_REPORT) &&
+    !hasPermission(user, Permission.MANAGE_SCHOOLS) &&
+    !hasPermission(user, Permission.EDIT_SCHOOL_LOCATION);
+  const [editing, setEditing] = useState<{ id: string; data: Record<string, unknown> } | null>(null);
+  const [changeTarget, setChangeTarget] = useState<School | null>(null);
+  const openSchool = (id: string) => {
+    if (canOpenDetail) navigate(`/schools/${id}/decision`);
+  };
+  const startEdit = async (id: string) => {
+    try {
+      const res = await api.get(`/schools/${id}`);
+      setEditing({ id, data: res.data as Record<string, unknown> });
+    } catch {
+      toast.error("Could not load this school for editing. Please try again.");
+    }
+  };
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -330,6 +362,88 @@ export default function SchoolsList() {
   ].filter(Boolean) as { key: string; label: string }[];
 
   const loading = allSchoolsLoading && !allSchoolsLoaded;
+  // The store swallows fetch errors: not loading, not loaded → it failed.
+  const loadFailed = !allSchoolsLoading && !allSchoolsLoaded;
+  const retryLoad = () => {
+    invalidateAllSchools();
+    void fetchAllSchools();
+  };
+  const clearFilters = () => {
+    setSearchDraft("");
+    patch({ q: null, type: null, priority: null, gis: null, province: null });
+  };
+
+  /* ── saved views (WS3.10): named presets per user, URL stays shareable ── */
+  const presetKey = `rtb-schools-views:${user?.id ?? "anon"}`;
+  const [presets, setPresets] = useState<SavedView[]>(() => readViews(presetKey));
+  const saveCurrentView = (name: string) => {
+    const query = new URLSearchParams(params);
+    query.delete("page");
+    const next = [
+      ...presets.filter((v) => v.name !== name),
+      { name, query: query.toString() },
+    ];
+    setPresets(next);
+    writeViews(presetKey, next);
+    toast.success(`Saved view "${name}"`);
+  };
+  const deleteView = (name: string) => {
+    const next = presets.filter((v) => v.name !== name);
+    setPresets(next);
+    writeViews(presetKey, next);
+  };
+  const applyView = (v: SavedView) => {
+    setParams(new URLSearchParams(v.query), { replace: true });
+    setSearchDraft(new URLSearchParams(v.query).get("q") ?? "");
+  };
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast.success("Link to this filtered view copied");
+    } catch {
+      toast.info(window.location.href, { title: "Copy this link" });
+    }
+  };
+
+  /* ── exports (EXPORT_REPORTS): filtered view client-side, full set server-side ── */
+  const exportRows = () =>
+    sorted.map((s) => ({
+      Name: s.name,
+      Code: s.code,
+      Type: s.type ?? "",
+      Province: resolveProvinceName(s.province),
+      District: resolveDistrictName(s.district),
+      Priority: priorityStyle(s.priorityLevel).label,
+      Status: s.status ?? "",
+      Score: calculatedScore(s),
+      "GIS / 3D": s.kmzStatus ?? "",
+    }));
+  const exportFilteredCsv = () => {
+    const rows = exportRows();
+    const header = Object.keys(rows[0] ?? { Name: "" });
+    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const csv = [
+      header.join(","),
+      ...rows.map((r) => header.map((h) => esc((r as Record<string, unknown>)[h])).join(",")),
+    ].join("\n");
+    downloadBlobUrl(new Blob([csv], { type: "text/csv" }), `schools-${rows.length}.csv`);
+  };
+  const exportFilteredXlsx = async () => {
+    setExporting(true);
+    try {
+      const XLSX = await import("xlsx");
+      const ws = XLSX.utils.json_to_sheet(exportRows());
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Schools");
+      const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+      downloadBlobUrl(new Blob([buf]), `schools-${sorted.length}.xlsx`);
+    } catch (err) {
+      console.error("Export failed", err);
+      toast.error("The export could not be created. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   /* ── selection ── */
   const pageIds = pageRows.map((s) => s.id);
@@ -402,6 +516,7 @@ export default function SchoolsList() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Export failed", err);
+      toast.error("The export could not be downloaded. Please try again.");
     } finally {
       setExporting(false);
     }
@@ -457,19 +572,16 @@ export default function SchoolsList() {
           description="Manage and monitor all national TVET institutions"
           icon={Building2}
           actions={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {canExport && (
-                <Button
-                  variant="outline"
-                  onClick={handleExport}
-                  disabled={exporting}
-                  className="h-10 gap-2 rounded-full border-border/20 px-5 text-[10px] font-black uppercase tracking-wider shadow-none hover:bg-primary/5"
-                >
-                  <FileDown
-                    className={cn("h-3.5 w-3.5", exporting && "animate-pulse")}
-                  />
-                  {exporting ? "Exporting…" : "Export Excel"}
-                </Button>
+                <ExportMenu
+                  busy={exporting}
+                  count={sorted.length}
+                  filtered={activeChips.length > 0}
+                  onCsv={exportFilteredCsv}
+                  onXlsx={exportFilteredXlsx}
+                  onFull={handleExport}
+                />
               )}
               {canCreate && (
                 <Button
@@ -508,7 +620,7 @@ export default function SchoolsList() {
           />
           <StatTile
             icon={Sparkles}
-            label="Avg. intelligence score"
+            label="Avg. School Condition Score"
             value={stats.avg}
             tone="bg-amber-500/10 text-amber-600 dark:text-amber-400"
             loading={loading}
@@ -524,6 +636,7 @@ export default function SchoolsList() {
                   <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <input
                     ref={searchRef}
+                    aria-label="Search schools"
                     value={searchDraft}
                     onChange={(e) => setSearchDraft(e.target.value)}
                     onKeyDown={(e) => {
@@ -632,11 +745,29 @@ export default function SchoolsList() {
                 </div>
               </div>
 
+              <div className="flex flex-wrap items-center gap-2">
+                <SavedViewsMenu
+                  views={presets}
+                  onApply={applyView}
+                  onSave={saveCurrentView}
+                  onDelete={deleteView}
+                />
+                <button
+                  type="button"
+                  onClick={copyLink}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border/40 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Link2 className="h-3.5 w-3.5" aria-hidden="true" /> Copy link to this view
+                </button>
+              </div>
+
               {activeChips.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
                   {activeChips.map((c) => (
                     <button
                       key={c.key}
+                      type="button"
+                      aria-label={`Remove filter ${c.label}`}
                       onClick={() => {
                         if (c.key === "q") setSearchDraft("");
                         patch({ [c.key]: null });
@@ -667,23 +798,35 @@ export default function SchoolsList() {
 
             {/* ── content ── */}
             {loading ? (
-              <div className="space-y-2 p-4">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <Skeleton key={i} className="h-16 w-full rounded-xl" />
-                ))}
-              </div>
+              <SkeletonTable rows={8} columns={6} className="m-4" />
+            ) : loadFailed ? (
+              <ErrorState
+                className="m-4"
+                message="The schools list could not be loaded. Check your connection and try again."
+                onRetry={retryLoad}
+              />
             ) : sorted.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 px-6 py-20 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
-                  <Radar className="h-7 w-7 text-muted-foreground" />
-                </div>
-                <p className="text-sm font-bold text-foreground">
-                  No institutions match these filters
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Adjust the search or filter chips above.
-                </p>
-              </div>
+              allSchools.length === 0 ? (
+                <EmptyState
+                  className="m-4"
+                  icon={Radar}
+                  title="No schools in your area yet"
+                  description={
+                    canCreate
+                      ? "Register the first TVET school to start monitoring it."
+                      : "When schools in your access area are registered they will appear here."
+                  }
+                  action={canCreate ? { label: "Add a school", onClick: () => setIsAddModalOpen(true), icon: Plus } : undefined}
+                />
+              ) : (
+                <EmptyState
+                  className="m-4"
+                  icon={Radar}
+                  title="No schools match these filters"
+                  description="Adjust the search or remove a filter."
+                  secondaryAction={{ label: "Clear filters", onClick: clearFilters }}
+                />
+              )
             ) : view === "grid" ? (
               <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
                 <AnimatePresence mode="popLayout">
@@ -694,13 +837,27 @@ export default function SchoolsList() {
                       index={i}
                       selected={selected.has(s.id)}
                       onSelect={() => toggleOne(s.id)}
-                      onOpen={() => navigate(`/schools/${s.id}/decision`)}
+                      onOpen={canOpenDetail ? () => openSchool(s.id) : undefined}
                     />
                   ))}
                 </AnimatePresence>
               </div>
             ) : (
-              <Table wrapperClassName="border-none rounded-none bg-transparent shadow-none">
+              <>
+              {/* Phones / small tablets: cards instead of a wide table (WS3.4) */}
+              <div className="grid gap-3 p-4 sm:grid-cols-2 md:hidden">
+                {pageRows.map((s, i) => (
+                  <SchoolCard
+                    key={s.id}
+                    school={s}
+                    index={i}
+                    selected={selected.has(s.id)}
+                    onSelect={() => toggleOne(s.id)}
+                    onOpen={canOpenDetail ? () => openSchool(s.id) : undefined}
+                  />
+                ))}
+              </div>
+              <Table wrapperClassName="hidden md:block border-none rounded-none bg-transparent shadow-none">
                 <TableHeader>
                   <TableRow className="border-b border-border/10 hover:bg-transparent">
                     <TableHead className="w-10">
@@ -779,10 +936,8 @@ export default function SchoolsList() {
                             />
                           </TableCell>
                           <TableCell
-                            onClick={() =>
-                              navigate(`/schools/${school.id}/decision`)
-                            }
-                            className="cursor-pointer"
+                            onClick={() => openSchool(school.id)}
+                            className={canOpenDetail ? "cursor-pointer" : undefined}
                           >
                             <div className="flex items-center gap-2.5">
                               <span
@@ -790,9 +945,22 @@ export default function SchoolsList() {
                                 style={{ background: ps.dot }}
                               />
                               <div className="min-w-0">
-                                <div className="truncate text-sm font-semibold text-foreground transition-colors group-hover:text-primary">
-                                  {school.name}
-                                </div>
+                                {canOpenDetail ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openSchool(school.id);
+                                    }}
+                                    className="block max-w-full truncate rounded text-left text-sm font-semibold text-foreground transition-colors group-hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  >
+                                    {school.name}
+                                  </button>
+                                ) : (
+                                  <div className="truncate text-sm font-semibold text-foreground">
+                                    {school.name}
+                                  </div>
+                                )}
                                 <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
                                   {school.code}
                                 </div>
@@ -800,10 +968,8 @@ export default function SchoolsList() {
                             </div>
                           </TableCell>
                           <TableCell
-                            onClick={() =>
-                              navigate(`/schools/${school.id}/decision`)
-                            }
-                            className="cursor-pointer"
+                            onClick={() => openSchool(school.id)}
+                            className={canOpenDetail ? "cursor-pointer" : undefined}
                           >
                             <div className="flex items-center gap-1.5 text-sm font-medium text-foreground/80">
                               <MapPin className="h-3 w-3 text-muted-foreground" />
@@ -831,40 +997,35 @@ export default function SchoolsList() {
                             <GisCell school={school} />
                           </TableCell>
                           <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 rounded-full hover:bg-primary/10 hover:text-primary"
-                                onClick={() =>
-                                  navigate(`/schools/${school.id}/decision`)
-                                }
-                                title="View detail & 3D"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 rounded-full hover:bg-primary/10 hover:text-primary"
-                                onClick={() =>
-                                  navigate(`/schools/${school.id}/kmz`)
-                                }
-                                title="Upload KMZ"
-                              >
-                                <Upload className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 rounded-full hover:bg-destructive/10 hover:text-destructive"
-                                onClick={() =>
-                                  handleDeleteSchool(school.id, school.name)
-                                }
-                                title="Delete school"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                            <div className="flex items-center justify-end gap-1 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
+                              {canOpenDetail && (
+                                <RowAction label={`Open ${school.name}`} onClick={() => openSchool(school.id)} icon={Eye} />
+                              )}
+                              {canEdit && (
+                                <RowAction label={`Edit ${school.name}`} onClick={() => void startEdit(school.id)} icon={Pencil} />
+                              )}
+                              {canRequestChange && (
+                                <RowAction
+                                  label={`Request a change to ${school.name}`}
+                                  onClick={() => setChangeTarget(school)}
+                                  icon={MessageSquarePlus}
+                                />
+                              )}
+                              {canUpload && (
+                                <RowAction
+                                  label={`Upload KMZ or 3D model for ${school.name}`}
+                                  onClick={() => navigate(`/schools/${school.id}/kmz`)}
+                                  icon={Upload}
+                                />
+                              )}
+                              {canDelete && (
+                                <RowAction
+                                  label={`Delete ${school.name}`}
+                                  onClick={() => handleDeleteSchool(school.id, school.name)}
+                                  icon={Trash2}
+                                  danger
+                                />
+                              )}
                             </div>
                           </TableCell>
                         </motion.tr>
@@ -873,6 +1034,7 @@ export default function SchoolsList() {
                   </AnimatePresence>
                 </TableBody>
               </Table>
+              </>
             )}
 
             {/* ── footer / pagination ── */}
@@ -959,6 +1121,253 @@ export default function SchoolsList() {
         }}
         mode="create"
       />
+      {editing && (
+        <SchoolForm
+          isOpen
+          onClose={() => setEditing(null)}
+          onSuccess={() => {
+            invalidateAllSchools();
+            void fetchAllSchools();
+          }}
+          mode="edit"
+          schoolId={editing.id}
+          initialData={editing.data as never}
+        />
+      )}
+      {changeTarget && (
+        <RequestChangeDialog
+          isOpen
+          onClose={() => setChangeTarget(null)}
+          schoolId={changeTarget.id}
+          school={changeTarget as unknown as Record<string, unknown>}
+          initialFields={["latitude"]}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── saved views ── */
+
+interface SavedView {
+  name: string;
+  query: string;
+}
+
+function readViews(key: string): SavedView[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) ?? "[]") as SavedView[];
+    return Array.isArray(v) ? v.filter((x) => x && typeof x.name === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeViews(key: string, views: SavedView[]) {
+  try {
+    localStorage.setItem(key, JSON.stringify(views.slice(0, 20)));
+  } catch {
+    /* storage blocked */
+  }
+}
+
+function downloadBlobUrl(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function RowAction({
+  label,
+  onClick,
+  icon: Icon,
+  danger,
+}: {
+  label: string;
+  onClick: () => void;
+  icon: ComponentType<{ className?: string }>;
+  danger?: boolean;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className={cn(
+        "h-8 w-8 rounded-full",
+        danger
+          ? "hover:bg-destructive/10 hover:text-destructive"
+          : "hover:bg-primary/10 hover:text-primary",
+      )}
+    >
+      <Icon className="h-4 w-4" />
+    </Button>
+  );
+}
+
+function SavedViewsMenu({
+  views,
+  onApply,
+  onSave,
+  onDelete,
+}: {
+  views: SavedView[];
+  onApply: (v: SavedView) => void;
+  onSave: (name: string) => void;
+  onDelete: (name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className="inline-flex items-center gap-1.5 rounded-full border border-border/40 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Bookmark className="h-3.5 w-3.5" aria-hidden="true" />
+        Saved views{views.length ? ` (${views.length})` : ""}
+        <ChevronDown className="h-3 w-3" aria-hidden="true" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setOpen(false)} />
+          <div
+            role="dialog"
+            aria-label="Saved views"
+            onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
+            className="absolute left-0 top-full z-50 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-border bg-background p-2 shadow-xl"
+          >
+            {views.length === 0 ? (
+              <p className="px-2 py-2 text-xs text-muted-foreground">
+                No saved views yet. Set filters, then save them here.
+              </p>
+            ) : (
+              <ul className="max-h-56 overflow-y-auto">
+                {views.map((v) => (
+                  <li key={v.name} className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onApply(v);
+                        setOpen(false);
+                      }}
+                      className="flex-1 truncate rounded-lg px-2 py-1.5 text-left text-sm text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {v.name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDelete(v.name)}
+                      aria-label={`Delete saved view ${v.name}`}
+                      className="rounded-lg p-1.5 text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <form
+              className="mt-2 flex items-center gap-1 border-t border-border/50 pt-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!name.trim()) return;
+                onSave(name.trim());
+                setName("");
+              }}
+            >
+              <label className="sr-only" htmlFor="saved-view-name">
+                Name for the current view
+              </label>
+              <input
+                id="saved-view-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Name this view…"
+                maxLength={40}
+                className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              <Button type="submit" size="sm" className="h-8" disabled={!name.trim()}>
+                Save
+              </Button>
+            </form>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ExportMenu({
+  busy,
+  count,
+  filtered,
+  onCsv,
+  onXlsx,
+  onFull,
+}: {
+  busy: boolean;
+  count: number;
+  filtered: boolean;
+  onCsv: () => void;
+  onXlsx: () => void;
+  onFull: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const item =
+    "flex w-full flex-col items-start rounded-lg px-3 py-2 text-left hover:bg-accent focus-visible:outline-none focus-visible:bg-accent";
+  const run = (fn: () => void) => () => {
+    setOpen(false);
+    fn();
+  };
+  return (
+    <div className="relative">
+      <Button
+        variant="outline"
+        onClick={() => setOpen((o) => !o)}
+        disabled={busy}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="h-10 gap-2 rounded-full border-border/20 px-5 text-[11px] font-black uppercase tracking-wider shadow-none hover:bg-primary/5"
+      >
+        <FileDown className={cn("h-3.5 w-3.5", busy && "animate-pulse")} aria-hidden="true" />
+        {busy ? "Exporting…" : "Export"}
+        <ChevronDown className="h-3 w-3" aria-hidden="true" />
+      </Button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setOpen(false)} />
+          <div
+            role="menu"
+            aria-label="Export schools"
+            onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
+            className="absolute right-0 top-full z-50 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-background p-1.5 shadow-xl"
+          >
+            <button type="button" role="menuitem" className={item} onClick={run(onXlsx)}>
+              <span className="text-sm text-foreground">Current view — Excel</span>
+              <span className="text-xs text-muted-foreground">
+                {count} school{count === 1 ? "" : "s"}{filtered ? " matching your filters" : ""}
+              </span>
+            </button>
+            <button type="button" role="menuitem" className={item} onClick={run(onCsv)}>
+              <span className="text-sm text-foreground">Current view — CSV</span>
+              <span className="text-xs text-muted-foreground">Same rows, plain text for any tool</span>
+            </button>
+            <button type="button" role="menuitem" className={item} onClick={run(onFull)}>
+              <span className="text-sm text-foreground">Full dataset — Excel</span>
+              <span className="text-xs text-muted-foreground">Every school in your access area, more columns</span>
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1036,8 +1445,9 @@ function SortableHead({
   return (
     <TableHead>
       <button
+        type="button"
         onClick={() => onSort(col)}
-        className="flex items-center gap-1.5 uppercase transition-colors hover:text-foreground"
+        className="flex items-center gap-1.5 rounded uppercase transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {label}
         {icon}
@@ -1107,7 +1517,7 @@ function SchoolCard({
   index: number;
   selected: boolean;
   onSelect: () => void;
-  onOpen: () => void;
+  onOpen?: () => void;
 }) {
   const ps = priorityStyle(school.priorityLevel);
   const score = calculatedScore(school);
@@ -1130,7 +1540,12 @@ function SchoolCard({
         style={{ background: ps.dot }}
       />
       <div className="flex items-start justify-between gap-2">
-        <button onClick={onOpen} className="min-w-0 text-left">
+        <button
+          type="button"
+          onClick={onOpen}
+          disabled={!onOpen}
+          className="min-w-0 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+        >
           <h3 className="truncate text-sm font-bold text-foreground transition-colors group-hover:text-primary">
             {school.name}
           </h3>
@@ -1171,14 +1586,16 @@ function SchoolCard({
 
       <div className="mt-3 flex items-center justify-between border-t border-border/10 pt-3">
         <GisCell school={school} />
+        {onOpen && (
         <Button
           variant="ghost"
           size="sm"
           onClick={onOpen}
           className="h-7 gap-1 rounded-lg text-[10px] font-black uppercase tracking-wider text-primary hover:bg-primary/10"
         >
-          <Eye className="h-3.5 w-3.5" /> Open
+          <Eye className="h-3.5 w-3.5" aria-hidden="true" /> Open
         </Button>
+        )}
       </div>
     </motion.div>
   );

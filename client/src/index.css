@@ -55,12 +55,12 @@
     --secondary-foreground: 222.2 47.4% 11.2%;
 
     --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted-foreground: 215.4 16.3% 43%; /* WCAG AA: ≥4.5:1 on background, card and muted (was 46.9%) */
 
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
 
-    --destructive: 0 84.2% 60.2%;
+    --destructive: 0 72.2% 46%; /* WCAG AA: 5.3:1 as text and under white text (was 60.2%) */
     --destructive-foreground: 210 40% 98%;
 
     --border: 214 24% 89%;
@@ -81,7 +81,7 @@
     --popover-foreground: 210 40% 98%;
 
     --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%; /* WCAG AA: 4.9:1 on the lighter dark-mode primary (white was 3.5:1) */
 
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
@@ -93,11 +93,11 @@
     --accent-foreground: 210 40% 98%;
 
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 222.2 47.4% 11.2%; /* 4.7:1 on red-500 */
 
     --border: 215 20% 21%;
     --input: 215 20% 23%;
-    --ring: 224 76% 48%;
+    --ring: 217.2 91.2% 59.8%; /* visible focus ring: 5.5:1 on background (was 3.0:1) */
   }
 }
 
@@ -343,4 +343,25 @@
 @keyframes fade {
   from { opacity: 0.4; }
   to { opacity: 0.8; }
+}
+
+/* ── Accessibility baseline (WS3.3) ─────────────────────────────────────
+   A visible keyboard focus indicator everywhere (components that draw their
+   own ring override this via utilities), and reduced motion on request. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

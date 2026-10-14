@@ -4,7 +4,8 @@
   "private": true,
   "description": "Dedicated static file server for heavy spatial assets (KMZ, KML, GeoJSON)",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { label } from "../../lib/labels";
 
 interface AddBuildingForm {
   name: string;
@@ -287,7 +288,7 @@ export const ViewerAddBuildingModal: React.FC<ViewerAddBuildingModalProps> = ({
               <option value="">Select condition…</option>
               {CONDITIONS.map((c) => (
                 <option key={c} value={c}>
-                  {c.charAt(0).toUpperCase() + c.slice(1)}
+                  {label("buildingCondition", c)}
                 </option>
               ))}
             </select>

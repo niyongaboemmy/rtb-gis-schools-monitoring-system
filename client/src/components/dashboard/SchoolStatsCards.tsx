@@ -12,124 +12,127 @@ import {
 import { Card, CardContent } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { cn } from "../../lib/utils";
+import { formatHectares, formatNumber, formatPercent } from "../../lib/format";
+import { MetricInfo } from "../metric-help/MetricInfo";
+import type { MetricId } from "../metric-help/metrics";
 
-interface SchoolStatsCardsProps {
-  schoolData: any;
-  totalStudents: number;
-  totalCapacity: number;
-  totalStaff: number;
-  totalTeachers: number;
-  maleTeachers: number;
-  buildings: any[];
-  avgBuildingYear: number;
-  formatNumber: (num: number | undefined | null) => string;
+/**
+ * Server-computed school figures (GET /analytics/schools/:id/metrics).
+ * Nothing here is derived from raw records — WS1.4.
+ */
+export interface SchoolStatsMetrics {
+  totalStudents?: number | null;
+  totalCapacity?: number | null;
+  capacityUtilisation?: number | null;
+  totalStaff?: number | null;
+  totalTeachers?: number | null;
+  maleTeacherShare?: number | null;
+  studentToTeacherRatio?: number | null;
+  buildingCount?: number | null;
+  avgBuildingAge?: number | null;
+  avgBuildingYear?: number | null;
+  usedLandArea?: number | null;
+  totalLandArea?: number | null;
+  usedLandPct?: number | null;
+  educationProgramsCount?: number | null;
+  roadStatusPercentage?: number | null;
 }
 
+interface SchoolStatsCardsProps {
+  metrics: SchoolStatsMetrics | null;
+}
+
+interface StatItem {
+  label: string;
+  value: string;
+  subValue: string;
+  benchmark: string;
+  icon: React.ComponentType<{ className?: string }>;
+  color: string;
+  bg: string;
+  metricId: MetricId;
+  /** 0–100 fill for the thin bar at the card bottom, if any. */
+  bar?: number | null;
+}
+
+const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
 export const SchoolStatsCards = React.memo(
-  ({
-    schoolData,
-    totalStudents,
-    totalCapacity,
-    totalStaff,
-    totalTeachers,
-    maleTeachers,
-    buildings,
-    avgBuildingYear,
-    formatNumber,
-  }: SchoolStatsCardsProps) => {
+  ({ metrics }: SchoolStatsCardsProps) => {
+    const m = metrics ?? {};
+    const road = isNum(m.roadStatusPercentage) ? m.roadStatusPercentage : null;
+    const items: StatItem[] = [
+      {
+        label: "Total students",
+        value: formatNumber(m.totalStudents ?? null),
+        subValue: isNum(m.totalCapacity) && m.totalCapacity > 0 ? `Capacity ${formatNumber(m.totalCapacity)}` : "Capacity not recorded",
+        benchmark: isNum(m.capacityUtilisation)
+          ? `${formatPercent(m.capacityUtilisation, { decimals: 1 })} of capacity`
+          : "No capacity data yet",
+        icon: Users,
+        color: "text-primary",
+        bg: "bg-primary/5",
+        metricId: "school.capacityUtilisation",
+        bar: isNum(m.capacityUtilisation) ? Math.min(100, m.capacityUtilisation) : null,
+      },
+      {
+        label: "Total staff",
+        value: formatNumber(m.totalStaff ?? null),
+        subValue: isNum(m.maleTeacherShare) ? `${formatPercent(m.maleTeacherShare)} male teachers` : "No gender breakdown",
+        benchmark: isNum(m.studentToTeacherRatio)
+          ? `${formatNumber(m.studentToTeacherRatio, 1)}:1 students per teacher`
+          : "No teacher data",
+        icon: TeacherIcon,
+        color: "text-blue-500",
+        bg: "bg-blue-500/5",
+        metricId: "school.studentTeacherRatio",
+      },
+      {
+        label: "Buildings",
+        value: formatNumber(m.buildingCount ?? 0),
+        subValue: isNum(m.avgBuildingYear) ? `Average year built ${m.avgBuildingYear}` : "Year unknown",
+        benchmark: isNum(m.avgBuildingAge) ? `${formatNumber(m.avgBuildingAge)} years average age` : "No building ages",
+        icon: Building2,
+        color: "text-emerald-500",
+        bg: "bg-emerald-500/5",
+        metricId: "school.buildingCount",
+      },
+      {
+        label: "Land area",
+        value: formatHectares(m.usedLandArea ?? null),
+        subValue: isNum(m.totalLandArea) ? `${formatHectares(m.totalLandArea)} total` : "No land data",
+        benchmark: isNum(m.usedLandPct) ? `${formatPercent(m.usedLandPct, { decimals: 1 })} used` : "Land data unavailable",
+        icon: MapPin,
+        color: "text-amber-500",
+        bg: "bg-amber-500/5",
+        metricId: "school.landArea",
+        bar: isNum(m.usedLandPct) ? m.usedLandPct : null,
+      },
+      {
+        label: "TVET programmes",
+        value: formatNumber(m.educationProgramsCount ?? 0),
+        subValue: "Trades offered",
+        benchmark: (m.educationProgramsCount ?? 0) > 0 ? `${formatNumber(m.educationProgramsCount ?? 0)} programmes` : "No programmes recorded",
+        icon: GraduationCap,
+        color: "text-indigo-500",
+        bg: "bg-indigo-500/5",
+        metricId: "school.programmes",
+      },
+      {
+        label: "Road access",
+        value: road != null ? formatPercent(road) : "—",
+        subValue: "Accessibility",
+        benchmark: road == null ? "Not recorded" : road > 80 ? "Good access" : road > 50 ? "Moderate access" : "Limited access",
+        icon: MapIcon,
+        color: "text-slate-500",
+        bg: "bg-slate-500/5",
+        metricId: "school.roadAccess",
+      },
+    ];
+
     return (
-      <div className="flex flex-col gap-3 w-full h-max">
-        {[
-          {
-            label: "Total students",
-            value: formatNumber(totalStudents),
-            subValue: `Cap: ${formatNumber(totalCapacity)}`,
-            icon: Users,
-            color: "text-primary",
-            bg: "bg-primary/5",
-            border: "border-primary/20",
-            benchmark:
-              totalCapacity > 0
-                ? `${((totalStudents / totalCapacity) * 100).toFixed(1)}% capacity`
-                : "Capacity data unavailable",
-          },
-          {
-            label: "Total staff",
-            value: formatNumber(totalStaff),
-            subValue:
-              totalTeachers > 0
-                ? `${Math.round((maleTeachers / totalTeachers) * 100)}% male teachers`
-                : "N/A",
-            icon: TeacherIcon,
-            color: "text-blue-500",
-            bg: "bg-blue-500/5",
-            border: "border-blue-500/12",
-            // Education standard: students per TEACHING staff (not all staff ÷ students)
-            benchmark:
-              totalTeachers > 0
-                ? `${Math.round(totalStudents / totalTeachers)}:1 student:teacher`
-                : "No teacher data",
-          },
-          {
-            label: "Block count",
-            value: buildings.length,
-            subValue: `Avg year: ${avgBuildingYear > 0 ? avgBuildingYear : "N/A"}`,
-            icon: Building2,
-            color: "text-emerald-500",
-            bg: "bg-emerald-500/5",
-            border: "border-emerald-500/20",
-            benchmark:
-              buildings.length > 0
-                ? `${Math.round(new Date().getFullYear() - avgBuildingYear)} yrs avg`
-                : "No building data",
-          },
-          {
-            label: "Land allocation",
-            value:
-              schoolData.usedLandArea !== undefined
-                ? `${Math.round(parseFloat(String(schoolData.usedLandArea)))}h`
-                : "--",
-            subValue: `${Math.round((parseFloat(String(schoolData.usedLandArea)) || 0) + (parseFloat(String(schoolData.unusedLandArea)) || 0))}h total`,
-            icon: MapPin,
-            color: "text-amber-500",
-            bg: "bg-amber-500/5",
-            border: "border-amber-500/20",
-            benchmark:
-              (parseFloat(String(schoolData.usedLandArea)) || 0) > 0
-                ? `${(((parseFloat(String(schoolData.usedLandArea)) || 0) / ((parseFloat(String(schoolData.usedLandArea)) || 0) + (parseFloat(String(schoolData.unusedLandArea)) || 0) || 1)) * 100).toFixed(1)}% used`
-                : "Land data unavailable",
-          },
-          {
-            label: "TVET programs",
-            value: schoolData.educationPrograms?.length || 0,
-            subValue: "Active trades",
-            icon: GraduationCap,
-            color: "text-indigo-500",
-            bg: "bg-indigo-500/5",
-            border: "border-indigo-500/20",
-            benchmark:
-              schoolData.educationPrograms?.length > 0
-                ? `${schoolData.educationPrograms.length} programs`
-                : "No programs",
-          },
-          {
-            label: "Accessibility",
-            value: schoolData.roadStatusPercentage
-              ? `${parseFloat(String(schoolData.roadStatusPercentage)).toFixed(1)}%`
-              : "--",
-            subValue: "Connectivity",
-            icon: MapIcon,
-            color: "text-slate-500",
-            bg: "bg-slate-500/5",
-            border: "border-slate-500/12",
-            benchmark:
-              parseFloat(String(schoolData.roadStatusPercentage)) > 80
-                ? "Good access"
-                : parseFloat(String(schoolData.roadStatusPercentage)) > 50
-                  ? "Moderate access"
-                  : "Limited access",
-          },
-        ].map((item, index) => (
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-3 w-full h-max">
+        {items.map((item, index) => (
           <motion.div
             key={item.label}
             initial={{ opacity: 0, x: 10 }}
@@ -162,8 +165,9 @@ export const SchoolStatsCards = React.memo(
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-normal text-slate-500 dark:text-white/80 tracking-wide mb-0.5">
+                    <p className="flex items-center gap-1 text-[12px] font-normal text-slate-600 dark:text-white/80 tracking-wide mb-0.5">
                       {item.label}
+                      <MetricInfo id={item.metricId} size="xs" />
                     </p>
                     <h4 className="text-xl font-medium text-slate-900 dark:text-white tracking-tight leading-none group-hover:translate-x-0.5 transition-transform duration-300">
                       {item.value}
@@ -171,7 +175,7 @@ export const SchoolStatsCards = React.memo(
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between border-t border-slate-100 dark:border-blue-500/12 pt-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 dark:border-blue-500/12 pt-3">
                   <div className="flex items-center gap-1.5 text-[10px] font-normal text-slate-500 dark:text-white/40">
                     <TrendingUp
                       className={cn(
@@ -179,36 +183,29 @@ export const SchoolStatsCards = React.memo(
                         item.color,
                       )}
                     />
-                    <span className="group-hover:text-slate-900 dark:group-hover:text-white/60 transition-colors truncate max-w-[80px]">
+                    <span className="group-hover:text-slate-900 dark:group-hover:text-white/60 transition-colors">
                       {item.subValue}
                     </span>
                   </div>
                   <Badge
                     variant="outline"
-                    className="text-[9px] font-normal border-slate-200 dark:border-blue-500/12 bg-slate-50 dark:bg-white/2 text-slate-500 dark:text-white/40 group-hover:text-primary dark:group-hover:text-primary/60 group-hover:border-primary/20 transition-all rounded-full h-5 px-2.5 shrink-0"
+                    className="text-[10px] font-normal border-slate-200 dark:border-blue-500/12 bg-slate-50 dark:bg-white/2 text-slate-500 dark:text-white/40 group-hover:text-primary dark:group-hover:text-primary/60 group-hover:border-primary/20 transition-all rounded-full h-5 px-2.5 shrink-0"
                   >
                     {item.benchmark}
                   </Badge>
                 </div>
               </CardContent>
 
-              {item.label === "Land allocation" &&
-                schoolData.usedLandArea !== undefined &&
-                schoolData.unusedLandArea !== undefined && (
-                  <div className="absolute bottom-0 inset-x-0 h-0.5 bg-slate-100 dark:bg-white/2 overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{
-                        width: `${Math.round((parseFloat(schoolData.usedLandArea || 0) / (parseFloat(schoolData.usedLandArea || 0) + parseFloat(schoolData.unusedLandArea || 0))) * 100)}%`,
-                      }}
-                      transition={{ duration: 1.5, delay: 0.5 }}
-                      className={cn(
-                        "h-full opacity-30",
-                        item.color.replace("text-", "bg-"),
-                      )}
-                    />
-                  </div>
-                )}
+              {item.bar != null && (
+                <div className="absolute bottom-0 inset-x-0 h-0.5 bg-slate-100 dark:bg-white/2 overflow-hidden" aria-hidden="true">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.max(0, Math.min(100, item.bar))}%` }}
+                    transition={{ duration: 1.5, delay: 0.5 }}
+                    className={cn("h-full opacity-30", item.color.replace("text-", "bg-"))}
+                  />
+                </div>
+              )}
             </Card>
           </motion.div>
         ))}

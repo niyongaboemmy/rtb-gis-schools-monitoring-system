@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, type ReactNode } from "react";
-import { io, type Socket } from "socket.io-client";
+import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import type { Socket } from "socket.io-client";
+import { connectSocket } from "../lib/socket";
 import {
   Navigate,
   Outlet,
@@ -19,15 +20,12 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Menu,
-  Bell,
   MapPin,
   Layers,
   BarChart3,
   GraduationCap,
   ClipboardList,
-  AlertTriangle,
-  CheckCircle2,
-  Info,
+  X,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -35,7 +33,28 @@ import { GlobalSearch } from "../components/GlobalSearch";
 import type { PermissionType } from "../lib/permissions";
 import { Permission } from "../lib/permissions";
 import { useAuthorization } from "../hooks/useAuthorization";
-import { useScope } from "../hooks/useScope";
+import { useScope, isSchoolLevelUser } from "../hooks/useScope";
+import { Breadcrumbs } from "../components/layout/Breadcrumbs";
+import { NotificationBell } from "../components/layout/NotificationBell";
+import { HelpMenu } from "../components/layout/HelpMenu";
+import { Tour } from "../components/layout/Tour";
+import {
+  NATIONAL_TOUR,
+  SCHOOL_TOUR,
+  markTourSeen,
+  tourSeen,
+} from "../components/layout/layout-utils";
+import {
+  useNotifications,
+  describeStatusChange,
+  describeAssignment,
+  type ReportStatusChangedPayload,
+  type ReportAssignedPayload,
+} from "../components/layout/notifications";
+import { useFocusTrap } from "../components/layout/useFocusTrap";
+import { useToast } from "../components/ui/toast";
+import { titleCase } from "../lib/labels";
+import { IdleTimeoutGuard } from "../components/auth/IdleTimeoutGuard";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Tooltip,
@@ -46,6 +65,24 @@ import {
 /* ─── helpers ─────────────────────────────────────────────────── */
 const SIDEBAR_EXPANDED = 256;
 const SIDEBAR_COLLAPSED = 68;
+const DESKTOP_QUERY = "(min-width: 1024px)";
+
+/** Tracks the lg breakpoint so the sidebar can become an off-canvas drawer. */
+function useIsDesktop() {
+  const get = () =>
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia(DESKTOP_QUERY).matches
+      : true;
+  const [isDesktop, setIsDesktop] = useState(get);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia(DESKTOP_QUERY);
+    const on = () => setIsDesktop(mq.matches);
+    mq.addEventListener?.("change", on);
+    return () => mq.removeEventListener?.("change", on);
+  }, []);
+  return isDesktop;
+}
 
 export function ProtectedRoute({
   children,
@@ -95,43 +132,90 @@ export function AppLayout() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const [reportNotification, setReportNotification] = useState<{
-    reportId: string;
-    schoolId: string;
-    newStatus: string;
-  } | null>(null);
-  const reportToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isDesktop = useIsDesktop();
+  const sidebarRef = useRef<HTMLElement>(null);
+  const closeMobileMenu = useCallback(() => setIsMobileMenuOpen(false), []);
+  // Off-canvas drawer on small screens: trap focus, Esc closes (WS3.3/3.4).
+  useFocusTrap(sidebarRef, !isDesktop && isMobileMenuOpen, closeMobileMenu);
+  // Close the drawer on any navigation or when growing to desktop
+  // ("adjust state during render" pattern, no effect needed).
+  const [menuKey, setMenuKey] = useState(`${location.pathname}|${isDesktop}`);
+  const currentMenuKey = `${location.pathname}|${isDesktop}`;
+  if (menuKey !== currentMenuKey) {
+    setMenuKey(currentMenuKey);
+    if (isMobileMenuOpen) setIsMobileMenuOpen(false);
+  }
+
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const closeProfile = useCallback(() => setIsProfileOpen(false), []);
+  useFocusTrap(profileMenuRef, isProfileOpen, closeProfile);
+
+  const toast = useToast();
+  const toastRef = useRef(toast);
+  useEffect(() => {
+    toastRef.current = toast;
+  }, [toast]);
+  const bindNotifications = useNotifications((st) => st.bind);
+  const addNotification = useNotifications((st) => st.add);
+  const canTriageAll = isAnyAuthorized([
+    Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD,
+    Permission.EDIT_SCHOOL_LOCATION,
+  ]);
+  const reportsPath: "/reports" | "/reporting" = canTriageAll ? "/reports" : "/reporting";
+  const reportsPathRef = useRef(reportsPath);
+  useEffect(() => {
+    reportsPathRef.current = reportsPath;
+  }, [reportsPath]);
+
+  useEffect(() => {
+    bindNotifications(user?.id ?? null);
+  }, [user?.id, bindNotifications]);
 
   useEffect(() => {
     if (!user?.id) return;
 
     // Connect to the same origin — Vite proxies /socket.io → :3001 in dev,
     // and in production the API server serves both HTTP and WS on the same origin.
-    const socket: Socket = io(window.location.origin, { withCredentials: true });
+    const socket: Socket = connectSocket();
 
     // Join on every (re)connect so the room survives network drops.
     const userId = user.id;
     socket.on("connect", () => socket.emit("join", `user:${userId}`));
 
-    socket.on(
-      "report:status_changed",
-      (payload: { reportId: string; schoolId: string; newStatus: string; reportedBy: string }) => {
-        setReportNotification({
-          reportId: payload.reportId,
-          schoolId: payload.schoolId,
-          newStatus: payload.newStatus,
-        });
-        if (reportToastTimerRef.current) clearTimeout(reportToastTimerRef.current);
-        reportToastTimerRef.current = setTimeout(() => setReportNotification(null), 5000);
-      },
-    );
+    // WS3.11: keep a persistent notification and show the usual toast.
+    socket.on("report:status_changed", (payload: ReportStatusChangedPayload) => {
+      const n = describeStatusChange(payload, reportsPathRef.current);
+      addNotification(n);
+      const t = toastRef.current;
+      const show =
+        n.tone === "success" ? t.success : n.tone === "danger" ? t.error : n.tone === "warning" ? t.warning : t.info;
+      show(n.body, { title: n.title });
+    });
+    socket.on("report:assigned", (payload: ReportAssignedPayload) => {
+      const n = describeAssignment(payload, reportsPathRef.current);
+      addNotification(n);
+      toastRef.current.info(n.body, { title: n.title });
+    });
 
     return () => {
-      if (reportToastTimerRef.current) clearTimeout(reportToastTimerRef.current);
       socket.emit("leave", `user:${userId}`);
       socket.disconnect();
     };
-  }, [user?.id]);
+  }, [user?.id, addNotification]);
+
+  // First-run guided tour (WS3.7), once per user and role variant.
+  const tourVariant = isSchoolLevelUser(user) ? "school" : "national";
+  const [tourOpen, setTourOpen] = useState(false);
+  useEffect(() => {
+    if (!user?.id || tourSeen(user.id, tourVariant)) return;
+    const t = window.setTimeout(() => setTourOpen(true), 900);
+    return () => window.clearTimeout(t);
+  }, [user?.id, tourVariant]);
+  const tourUserId = user?.id;
+  const closeTour = useCallback(() => {
+    setTourOpen(false);
+    if (tourUserId) markTourSeen(tourUserId, tourVariant);
+  }, [tourUserId, tourVariant]);
 
   const allNavItems = [
     {
@@ -179,7 +263,10 @@ export function AppLayout() {
       name: "Reports",
       path: "/reports",
       icon: FileSearch,
-      requiredPermission: Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD,
+      requiredAnyPermission: [
+        Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD,
+        Permission.EDIT_SCHOOL_LOCATION,
+      ] as PermissionType[],
     },
     {
       name: "Settings",
@@ -213,11 +300,9 @@ export function AppLayout() {
     return true;
   });
   const initials = `${user?.firstName?.charAt(0) ?? ""}${user?.lastName?.charAt(0) ?? ""}`;
-  const roleName = (
-    typeof user?.role === "object" ? user.role.name || "" : user?.role || ""
-  )
-    .replace(/_/g, " ")
-    .toLowerCase();
+  const roleName = titleCase(
+    typeof user?.role === "object" ? user.role.name || "" : user?.role || "",
+  );
 
   const accessLevelName: string | null =
     typeof user?.role === "object" && user?.role !== null
@@ -235,11 +320,16 @@ export function AppLayout() {
           : (loc.province ?? null)
     : null;
 
-  const currentSegment =
-    location.pathname.split("/")[1]?.replace(/-/g, " ") || "dashboard";
+  const drawerHidden = !isDesktop && !isMobileMenuOpen;
 
   return (
     <div className="flex h-screen w-full bg-muted/30 overflow-hidden">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[400] focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-primary-foreground"
+      >
+        Skip to content
+      </a>
       {/* ── Mobile overlay ─────────────────────────────── */}
       <AnimatePresence>
         {isMobileMenuOpen && (
@@ -257,14 +347,18 @@ export function AppLayout() {
 
       {/* ── Sidebar ────────────────────────────────────── */}
       <motion.aside
+        ref={sidebarRef}
+        id="app-sidebar"
+        aria-label="Main menu"
+        {...(!isDesktop && isMobileMenuOpen
+          ? { role: "dialog", "aria-modal": true }
+          : {})}
+        // Off-screen drawer must not be reachable by Tab / screen readers.
+        inert={drawerHidden || undefined}
         initial={false}
         animate={{
-          width: isSidebarCollapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED,
-          x: isMobileMenuOpen
-            ? 0
-            : typeof window !== "undefined" && window.innerWidth < 1024
-              ? -SIDEBAR_EXPANDED
-              : 0,
+          width: isSidebarCollapsed && isDesktop ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED,
+          x: drawerHidden ? -SIDEBAR_EXPANDED : 0,
         }}
         transition={{ type: "tween", ease: [0.4, 0, 0.2, 1], duration: 0.22 }}
         className={cn(
@@ -274,7 +368,7 @@ export function AppLayout() {
       >
         {/* Logo / Brand – only shown in expanded state */}
         <AnimatePresence initial={false}>
-          {!isSidebarCollapsed && (
+          {(!isSidebarCollapsed || !isDesktop) && (
             <motion.div
               key="sidebar-header"
               initial={{ opacity: 0 }}
@@ -300,30 +394,43 @@ export function AppLayout() {
                 </div>
               </div>
 
-              {/* Collapse button */}
+              {/* Close (mobile drawer) */}
+              <button
+                type="button"
+                onClick={closeMobileMenu}
+                aria-label="Close menu"
+                className="lg:hidden flex items-center justify-center w-8 h-8 rounded-xl text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <X className="w-4 h-4" aria-hidden="true" />
+              </button>
 
+              {/* Collapse button (desktop) */}
               <motion.button
+                type="button"
+                aria-label="Collapse sidebar"
                 onClick={() => setIsSidebarCollapsed(true)}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                className="flex items-center justify-center w-8 h-8 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                className="hidden lg:flex items-center justify-center w-8 h-8 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <PanelLeftClose className="w-4 h-4" />
+                <PanelLeftClose className="w-4 h-4" aria-hidden="true" />
               </motion.button>
             </motion.div>
           )}
         </AnimatePresence>
 
         {/* Collapsed header: just the expand button */}
-        {isSidebarCollapsed && (
+        {isSidebarCollapsed && isDesktop && (
           <div className="h-14 flex items-center justify-center border-b border-border/20 shrink-0">
             <motion.button
+              type="button"
+              aria-label="Expand sidebar"
               onClick={() => setIsSidebarCollapsed(false)}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
             >
-              <PanelLeftOpen className="w-4 h-4" />
+              <PanelLeftOpen className="w-4 h-4" aria-hidden="true" />
             </motion.button>
           </div>
         )}
@@ -346,6 +453,8 @@ export function AppLayout() {
 
         {/* Nav items */}
         <nav
+          aria-label="Primary"
+          data-tour="nav"
           className={cn(
             "flex-1 pb-2 space-y-0.5 overflow-y-auto mt-2",
             isSidebarCollapsed ? "px-0 flex flex-col items-center" : "px-3",
@@ -361,8 +470,11 @@ export function AppLayout() {
                 key={item.path}
                 to={item.path}
                 onClick={() => setIsMobileMenuOpen(false)}
+                aria-current={isActive ? "page" : undefined}
+                aria-label={isSidebarCollapsed ? item.name : undefined}
+                data-tour={`nav-${item.path.replace(/^\//, "") || "dashboard"}`}
                 className={cn(
-                  "relative flex items-center gap-3 rounded-xl transition-colors duration-150",
+                  "relative flex items-center gap-3 rounded-xl transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   isSidebarCollapsed
                     ? "w-10 h-10 justify-center"
                     : "w-full px-3 py-2.5",
@@ -436,8 +548,10 @@ export function AppLayout() {
               transition={{ duration: 0.15 }}
               className="p-3 border-t border-border/20"
             >
-              <div
-                className="flex items-center gap-3 px-2 py-2 pr-3 rounded-full bg-muted/40 hover:bg-muted/70 transition-colors cursor-pointer"
+              <button
+                type="button"
+                aria-label="Open my profile"
+                className="w-full text-left flex items-center gap-3 px-2 py-2 pr-3 rounded-full bg-muted/40 hover:bg-muted/70 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => navigate("/profile")}
               >
                 {/* Avatar */}
@@ -462,8 +576,8 @@ export function AppLayout() {
                   )}
                 </div>
                 {/* Settings cog  */}
-                <Settings className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-              </div>
+                <Settings className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -474,6 +588,8 @@ export function AppLayout() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  type="button"
+                  aria-label="Open my profile"
                   onClick={() => navigate("/profile")}
                   className="w-8 h-8 rounded-full bg-primary/15 text-primary flex items-center justify-center text-[11px] font-semibold border border-primary/20 hover:bg-primary/25 transition-colors"
                 >
@@ -491,15 +607,19 @@ export function AppLayout() {
       {/* ── Main area ──────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top bar */}
-        <header className="h-14 flex items-center justify-between gap-4 px-5 bg-background border-b border-border/20 shrink-0">
+        <header className="h-14 flex items-center justify-between gap-2 sm:gap-4 px-3 sm:px-5 bg-background border-b border-border/20 shrink-0">
           {/* Left: collapsed RTB mark + mobile hamburger + breadcrumb */}
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {/* Mobile hamburger */}
             <button
+              type="button"
               onClick={() => setIsMobileMenuOpen(true)}
-              className="lg:hidden flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              aria-label="Open menu"
+              aria-expanded={isMobileMenuOpen}
+              aria-controls="app-sidebar"
+              className="lg:hidden flex items-center justify-center w-9 h-9 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <Menu className="w-4 h-4" />
+              <Menu className="w-4 h-4" aria-hidden="true" />
             </button>
 
             {/* RTB mark – appears in topbar when sidebar is collapsed */}
@@ -529,26 +649,24 @@ export function AppLayout() {
               )}
             </AnimatePresence>
 
-            {/* Breadcrumb */}
-            <div className="flex items-center gap-2 text-sm min-w-0">
-              <span className="text-muted-foreground shrink-0">TVET 3D GIS</span>
-              <span className="text-muted-foreground/40 shrink-0">/</span>
-              <span className="font-semibold text-foreground capitalize truncate">
-                {currentSegment}
-              </span>
-            </div>
+            {/* Breadcrumbs + school switcher (WS3.9) */}
+            <Breadcrumbs />
           </div>
 
           {/* Right: actions */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <GlobalSearch />
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+            <div data-tour="search">
+              <GlobalSearch />
+            </div>
 
             {/* Access-scope chip — the geographic window this account operates in */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <span
+                  data-tour="scope"
+                  tabIndex={0}
                   className={cn(
-                    "hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold select-none",
+                    "hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     scope.isNational
                       ? "border-border/30 text-muted-foreground"
                       : "border-primary/25 text-primary bg-primary/10",
@@ -567,18 +685,19 @@ export function AppLayout() {
 
             <ThemeToggle />
 
-            {/* Notification bell */}
-            <button className="relative flex items-center justify-center w-9 h-9 rounded-full text-muted-foreground border border-transparent hover:text-foreground hover:bg-accent hover:border-border/20 transition-colors">
-              <Bell className="w-4 h-4" />
-              {/* Unread dot */}
-              <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-primary" />
-            </button>
+            {/* Notifications (WS3.11) + Help (WS3.7) */}
+            <NotificationBell />
+            <HelpMenu onStartTour={() => setTourOpen(true)} />
 
             {/* Profile chip */}
             <button
+              type="button"
               onClick={() => setIsProfileOpen(!isProfileOpen)}
+              aria-haspopup="menu"
+              aria-expanded={isProfileOpen}
+              aria-label="Account menu"
               className={cn(
-                "flex items-center gap-2 ml-1 pl-1 pr-3 py-1 rounded-full border transition-colors duration-150",
+                "flex items-center gap-2 ml-1 pl-1 pr-1 sm:pr-3 py-1 rounded-full border transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 isProfileOpen
                   ? "bg-accent border-border"
                   : "border-border/20 hover:bg-accent hover:border-border",
@@ -609,6 +728,9 @@ export function AppLayout() {
               />
               <motion.div
                 key="profile-menu"
+                ref={profileMenuRef}
+                role="menu"
+                aria-label="Account"
                 initial={{ opacity: 0, y: -8, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.97 }}
@@ -617,7 +739,7 @@ export function AppLayout() {
                   ease: [0.4, 0, 0.2, 1],
                   duration: 0.18,
                 }}
-                className="absolute right-5 top-[60px] w-58 z-50 bg-background border border-border/60 rounded-xl overflow-hidden"
+                className="absolute right-3 sm:right-5 top-[60px] w-58 max-w-[calc(100vw-1.5rem)] z-50 bg-background border border-border/60 rounded-xl overflow-hidden"
               >
                 {/* Avatar block */}
                 <div className="px-4 py-4 flex items-center gap-3 bg-muted/20 border-b border-border/20">
@@ -704,8 +826,10 @@ export function AppLayout() {
 
         {/* Page content */}
         <main
+          id="main-content"
+          tabIndex={-1}
           className={cn(
-            "flex-1 overflow-auto bg-slate-200/20 dark:bg-black [--app-shell-inset:0px]",
+            "flex-1 overflow-auto bg-slate-200/20 dark:bg-black [--app-shell-inset:0px] focus:outline-none",
             isSidebarCollapsed
               ? "lg:[--app-shell-inset:68px]"
               : "lg:[--app-shell-inset:256px]",
@@ -720,54 +844,20 @@ export function AppLayout() {
               ease: [0.4, 0, 0.2, 1],
               duration: 0.22,
             }}
-            className="container  mx-auto p-5 md:p-7 w-full h-full"
+            className="container mx-auto p-4 sm:p-5 md:p-7 w-full h-full"
           >
             <Outlet />
           </motion.div>
         </main>
       </div>
 
-      {/* ── Report status-change toast ──────────────────── */}
-      <AnimatePresence>
-        {reportNotification && (
-          <motion.div
-            key="report-notif"
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            transition={{ duration: 0.22 }}
-            className="fixed bottom-6 right-6 z-200 flex items-start gap-3 max-w-sm w-full px-5 py-4 rounded-2xl shadow-xl pointer-events-none"
-            style={{
-              background:
-                reportNotification.newStatus === "SOLVED"
-                  ? "rgba(5,150,105,0.95)"
-                  : reportNotification.newStatus === "NEED_INTERVENTION"
-                    ? "rgba(220,38,38,0.95)"
-                    : "rgba(30,41,59,0.95)",
-              backdropFilter: "blur(12px)",
-            }}
-          >
-            <div className="shrink-0 mt-0.5">
-              {reportNotification.newStatus === "SOLVED" ? (
-                <CheckCircle2 className="w-5 h-5 text-white" />
-              ) : reportNotification.newStatus === "NEED_INTERVENTION" ? (
-                <AlertTriangle className="w-5 h-5 text-white" />
-              ) : (
-                <Info className="w-5 h-5 text-white" />
-              )}
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-white leading-none mb-1">
-                Report status updated
-              </p>
-              <p className="text-xs text-white/80 leading-snug">
-                Your report was marked{" "}
-                <span className="font-semibold">{reportNotification.newStatus.replace(/_/g, " ")}</span>.
-              </p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* WS9.16 inactivity sign-out (Agent A) */}
+      <IdleTimeoutGuard />
+      <Tour
+        open={tourOpen}
+        onClose={closeTour}
+        steps={tourVariant === "school" ? SCHOOL_TOUR : NATIONAL_TOUR}
+      />
     </div>
   );
 }

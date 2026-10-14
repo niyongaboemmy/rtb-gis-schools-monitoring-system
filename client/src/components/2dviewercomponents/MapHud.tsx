@@ -1,5 +1,6 @@
-import { Info, Globe, Ruler, Square, X, Box } from "lucide-react";
-import { Button } from "../ui/button";
+import { Info, Globe, X, Box } from "lucide-react";
+import DOMPurify from "dompurify";
+import { viewerLink } from "../../lib/viewer-tools";
 
 interface MapHudProps {
   school: any;
@@ -9,8 +10,11 @@ interface MapHudProps {
   isLoading: boolean;
   currentLat: number;
   currentLng: number;
-  measurementMode: "none" | "distance" | "area";
-  measureResult: string | null;
+  /** @deprecated The shared ActiveToolBanner shows the measuring state now. */
+  measurementMode?: "none" | "distance" | "area" | "perimeter";
+  measureResult?: string | null;
+  /** Selected building, carried into the 3D viewer (WS5.6). */
+  selectedBuilding?: { id: string; geolocation?: { latitude?: unknown; longitude?: unknown } } | null;
   infoFeature: { name: string; description?: string } | null;
   onCloseInfo: () => void;
   onSaveMeasurement?: () => void;
@@ -23,11 +27,9 @@ export const MapHud: React.FC<MapHudProps> = ({
   isLoading,
   currentLat,
   currentLng,
-  measurementMode,
-  measureResult,
   infoFeature,
   onCloseInfo,
-  onSaveMeasurement,
+  selectedBuilding,
 }) => {
   return (
     <>
@@ -52,40 +54,6 @@ export const MapHud: React.FC<MapHudProps> = ({
         </div>
       )}
 
-      {/* ── Measurement mode banner ───────────────────────────────────────── stack it above the title */}
-      {measurementMode !== "none" && (
-        <div className="absolute top-16 md:top-24 left-1/2 z-40 -translate-x-1/2 w-full px-4 sm:w-auto">
-          <div className="flex items-center gap-2 rounded-2xl bg-white/95 dark:bg-card/95 backdrop-blur-2xl border border-amber-400/30 px-4 md:px-5 py-2 md:py-2.5">
-            {measurementMode === "distance" ? (
-              <Ruler className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-            ) : (
-              <Square className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-            )}
-            <span className="text-[10px] md:text-xs font-bold text-amber-700 dark:text-amber-300">
-              {measurementMode === "distance" ? "Measure Path" : "Measure Area"}
-            </span>
-            {measureResult && (
-              <>
-                <span className="mx-1 text-amber-400/50">·</span>
-                <span className="text-[10px] md:text-xs font-black text-amber-600 dark:text-amber-200">
-                  {measureResult}
-                </span>
-                {measurementMode === "area" && onSaveMeasurement && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-2 h-6 md:h-7 px-2 md:px-3 rounded-lg md:rounded-xl bg-amber-500/10 dark:bg-amber-400/20 text-amber-600 dark:text-amber-200 font-bold hover:bg-amber-500/20 dark:hover:bg-amber-400/30 border border-amber-500/20 dark:border-amber-400/30 transition-all text-[9px] md:text-[10px] uppercase tracking-widest"
-                    onClick={onSaveMeasurement}
-                  >
-                    Save
-                  </Button>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* ── Feature info popup ────────────────────────────────────────────── moved to TOP */}
       {infoFeature && (
         <div className="absolute top-32 md:top-40 left-1/2 z-30 -translate-x-1/2 max-w-[90vw] md:max-w-sm w-full px-4">
@@ -101,7 +69,12 @@ export const MapHud: React.FC<MapHudProps> = ({
                     <div
                       className="text-[10px] text-slate-600 dark:text-white/80 mt-1 space-y-2 [&_table]:w-full [&_td]:py-1 [&_td:first-child]:font-semibold [&_td:first-child]:text-slate-400 dark:[&_td:first-child]:text-white/60"
                       dangerouslySetInnerHTML={{
-                        __html: infoFeature.description,
+                        // KMZ descriptions are untrusted HTML from uploaded files.
+                        __html: DOMPurify.sanitize(infoFeature.description, {
+                          USE_PROFILES: { html: true },
+                          FORBID_TAGS: ["style", "form", "input", "iframe"],
+                          FORBID_ATTR: ["style"],
+                        }),
                       }}
                     />
                   )}
@@ -142,11 +115,15 @@ export const MapHud: React.FC<MapHudProps> = ({
         <button
           onClick={() => {
             if (!school?.id) return;
-            const params = new URLSearchParams();
-            if (school?.name) params.set("schoolName", school.name);
-            const qs = params.toString();
+            const lat = Number(selectedBuilding?.geolocation?.latitude);
+            const lng = Number(selectedBuilding?.geolocation?.longitude);
             window.open(
-              `/schools/${school.id}/3d-explorer${qs ? `?${qs}` : ""}`,
+              viewerLink("3d", school.id, {
+                schoolName: school?.name,
+                buildingId: selectedBuilding?.id ?? null,
+                lat: Number.isFinite(lat) && lat ? lat : null,
+                lng: Number.isFinite(lng) && lng ? lng : null,
+              }),
               "_blank",
             );
           }}

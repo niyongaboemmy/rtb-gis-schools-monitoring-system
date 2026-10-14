@@ -133,7 +133,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {typeof document !== "undefined" &&
         createPortal(
           <div className="pointer-events-none fixed inset-0 z-9999 flex flex-col items-end gap-3 p-4 sm:p-6">
-            <div className="mt-auto flex w-full max-w-sm flex-col gap-3">
+            {/* Always-mounted live region so screen readers announce new toasts (WCAG 4.1.3). */}
+            <div
+              className="mt-auto flex w-full max-w-sm flex-col gap-3"
+              role="region"
+              aria-label="Notifications"
+              aria-live="polite"
+              aria-relevant="additions"
+            >
               <AnimatePresence initial={false}>
                 {toasts.map((t) => {
                   const styles = VARIANT_STYLES[t.variant];
@@ -146,7 +153,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                       exit={{ opacity: 0, x: 24, scale: 0.96 }}
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}
                       className={`pointer-events-auto flex items-start gap-3 rounded-xl border border-black/5 bg-white/95 p-4 shadow-lg ring-1 backdrop-blur dark:border-white/10 dark:bg-slate-900/95 ${styles.ring}`}
-                      role="status"
+                      aria-atomic="true"
                     >
                       <span className={`mt-0.5 shrink-0 ${styles.accent}`}>
                         {styles.icon}

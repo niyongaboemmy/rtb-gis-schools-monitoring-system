@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   IsArray,
+  IsUUID,
   ValidateNested,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
@@ -25,6 +26,12 @@ export class FacilityItemDto {
 }
 
 export class BuildingDto {
+  /** Existing building to update in place; omit to create a new one. */
+  @ApiPropertyOptional()
+  @IsUUID()
+  @IsOptional()
+  id?: string;
+
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()
@@ -89,6 +96,8 @@ export class BuildingDto {
   @IsOptional()
   @Type(() => Object)
   @Transform(({ value }) => {
+    // Not sent → leave the stored value alone on update.
+    if (value === undefined) return undefined;
     if (!Array.isArray(value)) return [];
     // Filter out null, undefined, and nested empty arrays (e.g. [[]])
     return value.filter(
@@ -105,6 +114,8 @@ export class BuildingDto {
   @IsOptional()
   @Type(() => Object)
   @Transform(({ value }) => {
+    // Not sent → leave the stored value alone on update.
+    if (value === undefined) return undefined;
     if (!Array.isArray(value)) return [];
     return value.filter(
       (item: any) =>

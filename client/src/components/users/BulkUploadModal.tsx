@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { api } from "../../lib/api";
-import { useAuthStore } from "../../store/authStore";
+import { useToast } from "../ui/toast";
 
 interface BulkUploadModalProps {
   isOpen: boolean;
@@ -37,6 +37,7 @@ export function BulkUploadModal({
   const [loading, setLoading] = useState(false);
   const [uploadResult, setUploadResult] = useState<any | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const toast = useToast();
 
   const resetState = () => {
     setStep("upload");
@@ -65,8 +66,8 @@ export function BulkUploadModal({
         const data = XLSX.utils.sheet_to_json(ws, { defval: "" });
         setParsedData(data);
         setStep("preview");
-      } catch (err) {
-        alert(
+      } catch {
+        toast.error(
           "Failed to parse the file. Please ensure it is a valid Excel document.",
         );
       } finally {
@@ -74,7 +75,7 @@ export function BulkUploadModal({
       }
     };
     reader.onerror = () => {
-      alert("Error reading file");
+      toast.error("Error reading file");
       setLoading(false);
     };
     reader.readAsBinaryString(file);
@@ -109,20 +110,20 @@ export function BulkUploadModal({
   };
 
   const downloadTemplate = () => {
-    const token = useAuthStore.getState().token;
-    fetch(`${import.meta.env.VITE_API_URL}/users/upload/template`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((res) => res.blob())
-      .then((blob) => {
-        const url = window.URL.createObjectURL(blob);
+    // Through `api` so an expired access token is refreshed transparently.
+    api
+      .get<Blob>("/users/upload/template", { responseType: "blob" })
+      .then(({ data }) => {
+        const url = window.URL.createObjectURL(data);
         const a = document.createElement("a");
         a.href = url;
         a.download = "users_upload_template.xlsx";
         document.body.appendChild(a);
         a.click();
         a.remove();
-      });
+        window.URL.revokeObjectURL(url);
+      })
+      .catch(() => toast.error("Could not download the template."));
   };
 
   // Pre-define columns expected based on backend template mapping
@@ -243,6 +244,14 @@ export function BulkUploadModal({
               onChange={handleFileUpload}
             />
           </div>
+        )}
+        {step === "upload" && (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Passwords must be at least 10 characters with upper- and lower-case
+            letters, a number and a symbol, and must not contain the email.
+            Imported users are asked to choose their own password at first
+            sign-in.
+          </p>
         )}
 
         {step === "preview" && (

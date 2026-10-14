@@ -121,8 +121,7 @@ export function urgencyMonthsFromScore(overallScore: number): number {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-export const clamp0to100 = (n: number): number =>
-  Math.min(100, Math.max(0, n));
+export const clamp0to100 = (n: number): number => Math.min(100, Math.max(0, n));
 
 /** parseFloat that never yields NaN — returns `fallback` instead. */
 export const safeScore = (v: unknown, fallback = 0): number => {

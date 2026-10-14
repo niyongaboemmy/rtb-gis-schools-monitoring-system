@@ -27,6 +27,28 @@ import { api } from "../lib/api";
 import { useAuthStore } from "../store/authStore";
 import { hasPermission, Permission } from "../lib/permissions";
 import { cn } from "../lib/utils";
+import { formatNumber } from "../lib/format";
+import { MetricInfo } from "../components/metric-help/MetricInfo";
+import type { MetricId } from "../components/metric-help/metrics";
+import {
+  DashboardError,
+  DashboardSkeleton,
+} from "../components/dashboard/DashboardStates";
+
+/** GET /population/summary (server: population-summary.ts). */
+interface PopulationSummary {
+  totalSchools: number;
+  schoolsWithData: number;
+  totalPopulation2km: number;
+  avgDensityPerKm2: number | null;
+  avgStudentsPerResident: number | null;
+  provinces: Array<{
+    province: string;
+    schools: number;
+    totalPopulation2km: number;
+    avgDensityPerKm2: number | null;
+  }>;
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,8 +76,7 @@ interface PopulationRecord {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const fmt = (n: number | null | undefined) =>
-  n == null ? "—" : new Intl.NumberFormat("en-US").format(Math.round(n));
+const fmt = (n: number | null | undefined) => formatNumber(n ?? null);
 
 const densityColor = (density: number): string => {
   if (density >= 5000) return "bg-red-500";
@@ -89,12 +110,14 @@ function KpiCard({
   sub,
   icon: Icon,
   color,
+  metricId,
 }: {
   label: string;
   value: string;
   sub?: string;
   icon: React.ElementType;
   color: string;
+  metricId: MetricId;
 }) {
   return (
     <Card className="border border-border/20 bg-card/50 backdrop-blur-sm rounded-3xl overflow-hidden">
@@ -103,8 +126,9 @@ function KpiCard({
           <Icon className="w-5 h-5" />
         </div>
         <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-1 flex items-center gap-1">
             {label}
+            <MetricInfo id={metricId} size="xs" />
           </p>
           <p className="text-2xl font-semibold text-foreground leading-tight">
             {value}
@@ -119,12 +143,18 @@ function KpiCard({
 }
 
 // Custom bar chart tooltip
-function BarTooltip({ active, payload, label }: any) {
+interface BarTooltipProps {
+  active?: boolean;
+  label?: string;
+  payload?: Array<{ name: string; value: number; fill?: string }>;
+}
+
+function BarTooltip({ active, payload, label }: BarTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-card border border-border/20 rounded-2xl p-3 shadow-xl text-[12px] min-w-40">
       <p className="font-semibold text-foreground mb-2 truncate max-w-45">{label}</p>
-      {payload.map((p: any) => (
+      {payload.map((p) => (
         <div key={p.name} className="flex items-center justify-between gap-4">
           <span className="text-muted-foreground flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full inline-block" style={{ background: p.fill }} />
@@ -142,22 +172,25 @@ function BarTooltip({ active, payload, label }: any) {
 function ProvinceRow({
   province,
   schools,
+  avgDensity,
+  totalPop2km,
 }: {
   province: string;
   schools: PopulationRecord[];
+  /** Server roll-up (population/summary). */
+  avgDensity: number;
+  totalPop2km: number;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const avgDensity =
-    schools.reduce((s, r) => s + (r.populationDensityPerKm2 ?? 0), 0) /
-    (schools.length || 1);
+  // Only used to scale the per-school bars inside the expanded list.
   const maxDensity = Math.max(...schools.map((r) => r.populationDensityPerKm2 ?? 0));
-  const totalPop2km = schools.reduce((s, r) => s + (r.population2km ?? 0), 0);
 
   return (
     <div className="rounded-2xl border border-border/20 overflow-hidden">
       <button
-        className="w-full flex items-center gap-4 px-5 py-4 hover:bg-muted/30 transition-colors text-left"
+        className="w-full flex items-center gap-3 sm:gap-4 px-4 sm:px-5 py-4 hover:bg-muted/30 transition-colors text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
         onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
       >
         {/* Density bar */}
         <div className="w-2 self-stretch rounded-full shrink-0" style={{ minHeight: 32 }}>
@@ -179,16 +212,16 @@ function ProvinceRow({
           </div>
           <p className="text-[11px] text-muted-foreground mt-0.5">
             {schools.length} school{schools.length !== 1 ? "s" : ""} ·{" "}
-            {fmt(totalPop2km)} total pop. within 2 km
+            {fmt(totalPop2km)} people within 2 km
           </p>
         </div>
         <div className="text-right shrink-0">
           <p className={cn("text-base font-semibold tabular-nums", densityTextColor(avgDensity))}>
             {fmt(avgDensity)}
           </p>
-          <p className="text-[10px] text-muted-foreground">avg /km²</p>
+          <p className="text-[10px] text-muted-foreground">people/km² (avg)</p>
         </div>
-        <span className="text-muted-foreground text-[10px] font-black ml-2">
+        <span className="text-muted-foreground text-[10px] font-black ml-2" aria-hidden="true">
           {expanded ? "▲" : "▼"}
         </span>
       </button>
@@ -226,7 +259,7 @@ function ProvinceRow({
                             />
                           </div>
                           <span className={cn("text-[10px] font-semibold tabular-nums shrink-0", densityTextColor(d))}>
-                            {fmt(d)}/km²
+                            {fmt(d)} people/km²
                           </span>
                         </div>
                       </div>
@@ -248,7 +281,9 @@ export default function PopulationAnalytics() {
   const canSync = hasPermission(user, Permission.SYNC_POPULATION);
 
   const [records, setRecords] = useState<PopulationRecord[]>([]);
+  const [summary, setSummary] = useState<PopulationSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ synced: number; errors: string[] } | null>(null);
   const [syncToast, setSyncToast] = useState<"success" | "error" | null>(null);
@@ -256,11 +291,18 @@ export default function PopulationAnalytics() {
 
   const fetchData = async () => {
     setLoading(true);
+    setLoadError(false);
     try {
-      const res = await api.get("/population");
+      const [res, summaryRes] = await Promise.all([
+        api.get("/population"),
+        api.get("/population/summary"),
+      ]);
       setRecords(res.data ?? []);
+      setSummary(summaryRes.data ?? null);
     } catch {
       setRecords([]);
+      setSummary(null);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -293,23 +335,6 @@ export default function PopulationAnalytics() {
     (r) => r.population2km != null || r.populationDensityPerKm2 != null,
   );
 
-  const avgRatio = useMemo(() => {
-    const valid = withData.filter((r) => r.studentToSchoolRatio != null);
-    if (!valid.length) return null;
-    return valid.reduce((s, r) => s + (r.studentToSchoolRatio ?? 0), 0) / valid.length;
-  }, [withData]);
-
-  const totalPop2km = useMemo(
-    () => withData.reduce((s, r) => s + (r.population2km ?? 0), 0),
-    [withData],
-  );
-
-  const avgDensity = useMemo(() => {
-    const valid = withData.filter((r) => r.populationDensityPerKm2 != null);
-    if (!valid.length) return null;
-    return valid.reduce((s, r) => s + (r.populationDensityPerKm2 ?? 0), 0) / valid.length;
-  }, [withData]);
-
   // Bar chart: top 12 schools sorted by population2km
   const barData = useMemo(() => {
     return withData
@@ -328,23 +353,30 @@ export default function PopulationAnalytics() {
       }));
   }, [withData]);
 
-  // Province groups for heatmap
+  // Province groups for heatmap — totals from the server summary; the record
+  // list only supplies the per-school rows shown when a province is expanded.
   const provinceGroups = useMemo(() => {
     const map: Record<string, PopulationRecord[]> = {};
     for (const r of withData) {
-      const prov = r.school?.province ?? "Unknown";
+      const prov = r.school?.province || "Unknown";
       (map[prov] ??= []).push(r);
     }
-    return Object.entries(map).sort(([, a], [, b]) => b.length - a.length);
-  }, [withData]);
+    return (summary?.provinces ?? []).map((p) => ({ ...p, records: map[p.province] ?? [] }));
+  }, [withData, summary]);
 
   // ── Empty / loading states ──────────────────────────────────────────────────
 
   if (loading) {
+    return <DashboardSkeleton cards={4} label="Loading population analytics…" className="pt-4" />;
+  }
+
+  if (loadError) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
-      </div>
+      <DashboardError
+        className="mt-8"
+        title="We couldn't load population data"
+        onRetry={fetchData}
+      />
     );
   }
 
@@ -414,9 +446,15 @@ export default function PopulationAnalytics() {
               <p className="font-semibold text-foreground">No population data yet</p>
               <p className="text-sm text-muted-foreground mt-1">
                 {canSync
-                  ? 'Use "Sync Population Data" to pull ArcGIS demographics for all schools.'
-                  : "Population data has not been synced. Contact an administrator."}
+                  ? 'Select "Sync Population Data" to pull ArcGIS figures for every active school. Until then, the Population Pressure part of each score is estimated.'
+                  : "Population data has not been synced yet. Ask an administrator to run the sync."}
               </p>
+              {canSync && (
+                <Button onClick={handleSync} disabled={syncing} className="mt-4 rounded-full">
+                  <RefreshCw className={cn("mr-2 h-3.5 w-3.5", syncing && "animate-spin")} />
+                  {syncing ? "Syncing…" : "Sync Population Data"}
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -427,32 +465,36 @@ export default function PopulationAnalytics() {
           {/* ── KPI row ─────────────────────────────────────────────────────── */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard
-              label="Avg Student-to-School Ratio"
-              value={avgRatio != null ? avgRatio.toFixed(3) : "—"}
-              sub="Students per resident in 2 km catchment"
+              label="Students per resident (2 km)"
+              value={summary?.avgStudentsPerResident != null ? formatNumber(summary.avgStudentsPerResident, 3) : "—"}
+              sub="Enrolled students for each person living within 2 km"
               icon={TrendingUp}
               color="bg-primary/10 text-primary"
+              metricId="population.studentsPerResident"
             />
             <KpiCard
-              label="Schools with Population Data"
-              value={String(withData.length)}
-              sub={`of ${records.length} total schools`}
+              label="Schools with population data"
+              value={fmt(summary?.schoolsWithData ?? withData.length)}
+              sub={`of ${fmt(summary?.totalSchools ?? null)} active schools`}
               icon={Database}
               color="bg-blue-500/10 text-blue-500"
+              metricId="population.schoolsWithData"
             />
             <KpiCard
-              label="Total Catchment Population (2 km)"
-              value={fmt(totalPop2km)}
-              sub="Sum of populations within 2 km of all schools"
+              label="Population within 2 km"
+              value={fmt(summary?.totalPopulation2km ?? null)}
+              sub="Summed over schools; overlapping areas count more than once"
               icon={Users}
               color="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+              metricId="population.totalPopulation2km"
             />
             <KpiCard
-              label="Avg Population Density"
-              value={avgDensity != null ? `${fmt(avgDensity)}/km²` : "—"}
-              sub="Average across all synced schools"
+              label="Average density"
+              value={summary?.avgDensityPerKm2 != null ? `${fmt(summary.avgDensityPerKm2)} people/km²` : "—"}
+              sub="Within 2 km, averaged over schools with data"
               icon={MapPin}
               color="bg-amber-500/10 text-amber-600 dark:text-amber-400"
+              metricId="population.avgDensity"
             />
           </div>
 
@@ -462,10 +504,14 @@ export default function PopulationAnalytics() {
               <CardHeader className="border-b border-border/10 pb-4">
                 <CardTitle className="text-sm font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-primary/50 inline-block" />
-                  Population by Buffer Radius — Top {barData.length} Schools
+                  Population by distance — top {barData.length} schools
+                  <MetricInfo id="population.buffers" size="xs" />
                 </CardTitle>
+                <p className="text-[12px] text-muted-foreground mt-1">
+                  2 km figures come from ArcGIS. 1 km and 500 m are estimates (50% and 15% of 2 km), not measurements.
+                </p>
               </CardHeader>
-              <CardContent className="p-6">
+              <CardContent className="p-2 sm:p-6">
                 <ResponsiveContainer width="100%" height={340}>
                   <BarChart
                     data={barData}
@@ -521,7 +567,7 @@ export default function PopulationAnalytics() {
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <CardTitle className="text-sm font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-primary/50 inline-block" />
-                    Province Density Heatmap
+                    Population density by province
                   </CardTitle>
                   {/* Legend */}
                   <div className="flex items-center gap-3 flex-wrap">
@@ -541,8 +587,14 @@ export default function PopulationAnalytics() {
                 </div>
               </CardHeader>
               <CardContent className="p-4 space-y-2">
-                {provinceGroups.map(([province, schools]) => (
-                  <ProvinceRow key={province} province={province} schools={schools} />
+                {provinceGroups.map((p) => (
+                  <ProvinceRow
+                    key={p.province}
+                    province={p.province}
+                    schools={p.records}
+                    avgDensity={p.avgDensityPerKm2 ?? 0}
+                    totalPop2km={p.totalPopulation2km}
+                  />
                 ))}
               </CardContent>
             </Card>

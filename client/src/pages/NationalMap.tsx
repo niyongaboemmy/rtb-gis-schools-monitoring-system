@@ -23,6 +23,9 @@ import {
 } from "../store/schoolsStore";
 import { SchoolCoverMap } from "../components/maps/SchoolCoverMap";
 import { PRIORITY_META, priorityMeta } from "../components/maps/schoolMap";
+import { EmptyState } from "../components/ui/empty-state";
+import { ErrorState } from "../components/ui/error-state";
+import { label } from "../lib/labels";
 
 const PRIORITY_KEYS = ["critical", "high", "medium", "low"] as const;
 const RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
@@ -36,7 +39,13 @@ const hasCoords = (s: School) =>
 export default function NationalMap() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const { allSchools, allSchoolsLoading, allSchoolsLoaded, fetchAllSchools } =
+  const {
+    allSchools,
+    allSchoolsLoading,
+    allSchoolsLoaded,
+    fetchAllSchools,
+    invalidateAllSchools,
+  } =
     useSchoolsStore();
 
   const [panelOpen, setPanelOpen] = useState(
@@ -150,6 +159,9 @@ export default function NationalMap() {
   );
 
   const loading = allSchoolsLoading && !allSchoolsLoaded;
+  // The store swallows fetch errors: neither loading nor loaded → it failed.
+  const loadFailed = !allSchoolsLoading && !allSchoolsLoaded;
+  const priorityText = (p?: string | null) => (p ? label("priority", p) : "Not assessed");
 
   return (
     <div className="relative flex h-[calc(100vh-8rem)] w-full flex-col space-y-4">
@@ -160,6 +172,8 @@ export default function NationalMap() {
         actions={
           <Button
             variant="outline"
+            aria-expanded={panelOpen}
+            aria-controls="map-inspector"
             onClick={() => setPanelOpen((v) => !v)}
             className="h-9 gap-2 rounded-xl border-border/20 text-[10px] font-black uppercase tracking-wider shadow-none"
           >
@@ -170,14 +184,33 @@ export default function NationalMap() {
       />
 
       {loading ? (
-        <Card className="flex flex-1 items-center justify-center overflow-hidden rounded-3xl border border-border/20 bg-slate-100/50 shadow-none backdrop-blur-sm dark:bg-white/5">
+        <Card
+          role="status"
+          className="flex flex-1 items-center justify-center overflow-hidden rounded-3xl border border-border/20 bg-slate-100/50 shadow-none backdrop-blur-sm dark:bg-white/5"
+        >
           <div className="flex flex-col items-center gap-4">
-            <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-primary" />
-            <p className="animate-pulse text-sm font-bold uppercase tracking-widest text-muted-foreground">
-              Initialising GIS engine…
+            <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-primary motion-reduce:animate-none" aria-hidden="true" />
+            <p className="text-sm font-semibold text-muted-foreground">
+              Loading the map…
             </p>
           </div>
         </Card>
+      ) : loadFailed ? (
+        <ErrorState
+          className="flex-1"
+          message="The schools could not be loaded, so the map is empty. Check your connection and try again."
+          onRetry={() => {
+            invalidateAllSchools();
+            void fetchAllSchools();
+          }}
+        />
+      ) : mappable.length === 0 ? (
+        <EmptyState
+          className="flex-1"
+          icon={MapIcon}
+          title="No schools to show on the map yet"
+          description="Schools appear here once their location (latitude and longitude) is recorded. A GIS analyst can add it from the school record or by uploading a KMZ file."
+        />
       ) : (
         <div className="relative flex-1 overflow-hidden rounded-3xl">
           <SchoolCoverMap
@@ -206,7 +239,7 @@ export default function NationalMap() {
                     }
                     className="rounded-full px-2 py-0 text-[9px] font-black uppercase"
                   >
-                    {s.priorityLevel || "Unassessed"}
+                    {priorityText(s.priorityLevel)}
                   </Badge>
                 </div>
                 <h4 className="mb-1 text-sm font-bold text-foreground">
@@ -228,9 +261,13 @@ export default function NationalMap() {
 
           {/* ── Inspector panel ── */}
           <div
+            id="map-inspector"
+            role="region"
+            aria-label="Map filters and school list"
+            inert={!panelOpen || undefined}
             className={cn(
-              "absolute left-4 top-4 z-40 flex w-[min(88vw,340px)] flex-col overflow-hidden rounded-2xl border border-border/40 bg-background/85 shadow-2xl backdrop-blur-xl transition-[transform,opacity] duration-300 dark:border-white/6 dark:bg-[#0c1120]/85",
-              "bottom-4",
+              "absolute left-2 top-2 sm:left-4 sm:top-4 z-40 flex w-[min(calc(100vw-3rem),340px)] flex-col overflow-hidden rounded-2xl border border-border/40 bg-background/85 shadow-2xl backdrop-blur-xl transition-[transform,opacity] duration-300 dark:border-white/6 dark:bg-[#0c1120]/85",
+              "bottom-2 sm:bottom-4",
               panelOpen
                 ? "translate-x-0 opacity-100"
                 : "pointer-events-none -translate-x-[calc(100%+1.5rem)] opacity-0",
@@ -244,15 +281,16 @@ export default function NationalMap() {
               </span>
               <div className="flex items-center gap-1">
                 <button
+                  type="button"
                   onClick={resetFilters}
-                  className="flex items-center gap-1 rounded-lg px-1.5 py-1 text-[9px] font-black uppercase tracking-wider text-muted-foreground hover:text-primary"
+                  className="flex items-center gap-1 rounded-lg px-1.5 py-1 text-[10px] font-black uppercase tracking-wider text-muted-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <RotateCcw className="h-3 w-3" /> Reset
                 </button>
                 <button
                   onClick={() => setPanelOpen(false)}
                   aria-label="Collapse panel"
-                  className="rounded-lg p-1 text-muted-foreground hover:bg-muted"
+                  className="rounded-lg p-1 text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
@@ -269,9 +307,11 @@ export default function NationalMap() {
                   return (
                     <button
                       key={key}
+                      type="button"
+                      aria-pressed={on}
                       onClick={() => togglePriority(key)}
                       className={cn(
-                        "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-wider transition-colors",
+                        "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         on
                           ? "border-transparent text-white"
                           : "border-border/40 text-muted-foreground opacity-60 dark:border-white/6",
@@ -295,6 +335,7 @@ export default function NationalMap() {
               </div>
 
               <select
+                aria-label="Filter by province"
                 value={province}
                 onChange={(e) => patch({ province: e.target.value || null })}
                 className="h-9 w-full rounded-xl border border-border/40 bg-background/60 px-3 text-xs font-bold text-foreground outline-none focus:border-primary/50 dark:border-white/6 dark:bg-white/5"
@@ -337,7 +378,7 @@ export default function NationalMap() {
                 })}
               </div>
               <div className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
-                Avg. intelligence score{" "}
+                Avg. School Condition Score{" "}
                 <span className="tabular-nums text-foreground">{avgScore}</span>
               </div>
             </div>
@@ -355,13 +396,15 @@ export default function NationalMap() {
                   return (
                     <button
                       key={s.id}
+                      type="button"
+                      aria-pressed={active}
                       onClick={() => selectSchool(active ? null : s.id)}
                       onMouseEnter={() => setHoverId(s.id)}
                       onMouseLeave={() =>
                         setHoverId((cur) => (cur === s.id ? null : cur))
                       }
                       className={cn(
-                        "flex w-full items-center gap-2.5 border-b border-border/10 px-4 py-2.5 text-left transition-colors",
+                        "flex w-full items-center gap-2.5 border-b border-border/10 px-4 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:bg-primary/10",
                         active ? "bg-primary/10" : "hover:bg-primary/5",
                       )}
                     >
@@ -404,7 +447,7 @@ export default function NationalMap() {
                   <button
                     onClick={() => selectSchool(null)}
                     aria-label="Clear selection"
-                    className="rounded-lg p-1 text-muted-foreground hover:bg-muted"
+                    className="rounded-lg p-1 text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -414,7 +457,7 @@ export default function NationalMap() {
                     className="rounded-full px-2 py-0 text-[9px] font-black uppercase"
                     style={{ background: priorityMeta(selected.priorityLevel).color }}
                   >
-                    {selected.priorityLevel || "Unassessed"}
+                    {priorityText(selected.priorityLevel)}
                   </Badge>
                   <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
                     Score{" "}
@@ -437,8 +480,11 @@ export default function NationalMap() {
           {/* re-open handle */}
           {!panelOpen && (
             <button
+              type="button"
+              aria-expanded={false}
+              aria-controls="map-inspector"
               onClick={() => setPanelOpen(true)}
-              className="absolute left-4 top-4 z-40 flex items-center gap-2 rounded-xl border border-border/40 bg-background/85 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-foreground shadow-lg backdrop-blur-md dark:border-white/6 dark:bg-[#0c1120]/85"
+              className="absolute left-2 top-2 sm:left-4 sm:top-4 z-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring flex items-center gap-2 rounded-xl border border-border/40 bg-background/85 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-foreground shadow-lg backdrop-blur-md dark:border-white/6 dark:bg-[#0c1120]/85"
             >
               <SlidersHorizontal className="h-3.5 w-3.5 text-primary" />
               Filters · {filtered.length}

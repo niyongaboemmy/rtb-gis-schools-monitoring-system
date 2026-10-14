@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { api } from "../../lib/api";
+import { api, apiErrorMessage } from "../../lib/api";
+import { useToast } from "../ui/toast";
 import {
   Card,
   CardContent,
@@ -26,6 +27,7 @@ import { useAuthStore } from "../../store/authStore";
 import { useSchoolsStore } from "../../store/schoolsStore";
 import { resolveDistrictName, resolveProvinceName } from "../../lib/rwanda-locations";
 import {
+  Send,
   Search,
   Plus,
   Eye,
@@ -45,6 +47,7 @@ import {
 import { motion } from "framer-motion";
 import { format } from "date-fns";
 import { cn } from "../../lib/utils";
+import { titleCase } from "../../lib/labels";
 
 export function UsersTab() {
   const [users, setUsers] = useState<any[]>([]);
@@ -73,6 +76,7 @@ export function UsersTab() {
   const isAL = (key: string) => actionLoading[key] === true;
 
   const { user: currentUser } = useAuthStore();
+  const toast = useToast();
   const fetchPromise = useRef<Promise<any> | null>(null);
 
   useEffect(() => {
@@ -108,15 +112,31 @@ export function UsersTab() {
     try {
       await api.delete(`/users/${id}`);
       fetchInitialData();
+      toast.success(`${name} was deactivated and signed out.`);
     } catch (err) {
-      console.error("Failed to deactivate user", err);
+      toast.error(apiErrorMessage(err, "Failed to deactivate user"));
+    } finally {
+      setAL(key, false);
+    }
+  };
+
+  /** Emails the user a one-time code to set a new password (WS10.4). */
+  const handleSendReset = async (id: string, email: string) => {
+    const key = `reset-user-${id}`;
+    setAL(key, true);
+    try {
+      const { data } = await api.post<{ delivered: boolean }>(`/users/${id}/send-reset`);
+      if (data.delivered) toast.success(`A reset code was emailed to ${email}.`);
+      else toast.warning("Email is disabled on this server; the code was written to the server log.");
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not send the reset code."));
     } finally {
       setAL(key, false);
     }
   };
 
   const roleOptions = roles.map((role) => ({
-    label: role.name.replace("_", " ").toUpperCase(),
+    label: titleCase(role.name),
     value: role.id,
   }));
 
@@ -177,7 +197,7 @@ export function UsersTab() {
       </div>
 
       <Card className="border border-border/20 dark:border-gray-900 bg-card/60 backdrop-blur-xl rounded-3xl overflow-hidden">
-        <CardHeader className="flex flex-col md:flex-row items-center justify-between gap-6 p-6 py-4 pr-4 border-b border-border/40">
+        <CardHeader className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4 xl:gap-6 p-6 py-4 pr-4 border-b border-border/40">
           <div>
             <CardTitle className="text-lg font-bold tracking-tight">
               Administrative Directory
@@ -186,7 +206,7 @@ export function UsersTab() {
               Manage and inspect authorized system identities.
             </CardDescription>
           </div>
-          <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-center gap-4 w-full xl:w-auto xl:justify-end">
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <Button
                 size="sm"
@@ -277,8 +297,19 @@ export function UsersTab() {
                             <div className="font-bold text-foreground text-sm leading-tight group-hover/row:text-primary transition-colors">
                               {u.firstName} {u.lastName}
                             </div>
-                            <div className="text-[10px] text-muted-foreground font-medium">
+                            <div className="text-[10px] text-muted-foreground font-medium flex items-center gap-1.5">
                               {u.email}
+                              {u.totpEnabled && (
+                                <span title="Two-factor authentication on" className="inline-flex items-center text-emerald-600 dark:text-emerald-400">
+                                  <ShieldCheck className="w-3 h-3" aria-hidden />
+                                  <span className="sr-only">2FA on</span>
+                                </span>
+                              )}
+                              {u.mustChangePassword && (
+                                <span className="rounded-full bg-amber-500/15 px-1.5 text-[9px] font-bold text-amber-700 dark:text-amber-400">
+                                  pending password
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -288,7 +319,7 @@ export function UsersTab() {
                           variant="outline"
                           className="uppercase text-[8px] font-black tracking-widest px-2 py-0 rounded-full border-primary/20 text-primary bg-primary/5 shadow-none"
                         >
-                          {u.role?.name?.replace("_", " ") || "None"}
+                          {u.role?.name ? titleCase(u.role.name) : "None"}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -348,7 +379,7 @@ export function UsersTab() {
                         {format(new Date(u.createdAt), "dd.MM.yy")}
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                        <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover/row:opacity-100 focus-within:opacity-100 transition-opacity">
                           <Button
                             variant="outline"
                             size="icon"
@@ -369,8 +400,24 @@ export function UsersTab() {
                             <Edit2 className="w-3.5 h-3.5" />
                           </Button>
                           <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Send ${u.email} a password reset code`}
+                            title="Send reset code"
+                            disabled={!u.isActive || isAL(`reset-user-${u.id}`)}
+                            onClick={() => void handleSendReset(u.id, u.email)}
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-primary rounded-lg"
+                          >
+                            {isAL(`reset-user-${u.id}`) ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Send className="w-3.5 h-3.5" />
+                            )}
+                          </Button>
+                          <Button
                             variant="outline"
                             size="icon"
+                            aria-label={`Deactivate ${u.email}`}
                             className="h-8 w-8 rounded-full border-border/20 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20 transition-all shadow-none"
                             disabled={
                               u.id === currentUser?.id ||
@@ -455,7 +502,7 @@ export function UsersTab() {
                 {previewUser.email}
               </p>
               <Badge className="mt-3 px-3 py-0.5 rounded-full uppercase tracking-widest text-[8px] font-black bg-primary/10 text-primary border-primary/20">
-                {previewUser.role?.name?.replace("_", " ") || "No Clearance"}
+                {previewUser.role?.name ? titleCase(previewUser.role.name) : "No Clearance"}
               </Badge>
             </div>
 

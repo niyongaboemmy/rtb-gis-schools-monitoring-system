@@ -7,236 +7,94 @@ import {
   Clock,
   DollarSign,
   Users,
+  HelpCircle,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { cn } from "../../lib/utils";
+import { formatNumber, formatPercent } from "../../lib/format";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { MetricInfo } from "../metric-help/MetricInfo";
+
+/** Shape of `riskAssessment` from GET /analytics/schools/:id/metrics (server: risk-assessment.ts). */
+export interface RiskAssessmentData {
+  indicative: true;
+  impactScore: number;
+  probabilityScore: number;
+  overall: { score: number; level: RiskLevel; rule: string };
+  factors: Array<{
+    id: string;
+    title: string;
+    level: RiskLevel;
+    impact: number;
+    probability: number;
+    riskScore: number;
+    mitigation: string;
+    timeline: string;
+    owner: string;
+    rule: string;
+  }>;
+  strategies: Array<{
+    id: string;
+    title: string;
+    priority: "immediate" | "short-term" | "long-term";
+    cost: "low" | "medium" | "high";
+    effectiveness: number;
+    description: string;
+    rule: string;
+  }>;
+  rules: { impact: string; probability: string };
+}
+
+type RiskLevel = "low" | "medium" | "high" | "critical";
 
 interface RiskAssessmentProps {
-  assessment: any;
-  reportingData?: {
-    statusCounts?: {
-      pending: number;
-      needIntervention: number;
-      solved: number;
-      failed: number;
-    };
-    totalReports?: number;
-    critical?: number;
-    high?: number;
-    medium?: number;
-    low?: number;
-    avgResolutionTime?: number;
-  };
+  /** Server-computed indicative risk. null → not available yet. */
+  risk: RiskAssessmentData | null | undefined;
 }
 
-interface RiskFactor {
-  id: string;
-  title: string;
-  level: "low" | "medium" | "high" | "critical";
-  impact: number;       // consequence severity (0–100) — driven by score deficit
-  probability: number;  // likelihood of failure (0–100) — driven by urgency timeline
-  mitigation: string;
-  timeline: string;
-  owner: string;
-}
+const LEVEL_LABEL: Record<string, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  critical: "Critical",
+  immediate: "Immediate",
+  "short-term": "Short term",
+  "long-term": "Long term",
+};
 
-interface MitigationStrategy {
-  title: string;
-  priority: "immediate" | "short-term" | "long-term";
-  cost: "low" | "medium" | "high";
-  effectiveness: number;
-  description: string;
+/** Small "rule" tooltip trigger — every indicative number shows how it was made. */
+function RuleTip({ rule, label }: { rule: string; label: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={`${label}: how is this worked out?`}
+          className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-500 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        >
+          <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs whitespace-normal normal-case tracking-normal text-[12px] font-medium leading-snug">
+        {rule}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 export const RiskAssessment = React.memo(
-  ({ assessment, reportingData }: RiskAssessmentProps) => {
-    const criticalCount =
-      reportingData?.statusCounts?.needIntervention ??
-      reportingData?.critical ??
-      0;
-    const needInterventionCount =
-      reportingData?.statusCounts?.needIntervention || 0;
-    const avgResolutionTime = reportingData?.avgResolutionTime || 0;
-
-    // ── Semantically distinct axes ────────────────────────────────────────────
-    // Impact   = consequence severity if the risk materialises
-    // Probability = likelihood of failure in the next 12 months
-    //
-    // When server-computed values are available (from getSchoolMetrics), prefer
-    // them — they incorporate building age, survey staleness, and pop-data gaps
-    // that the client-side estimate cannot see.
-    const overallScore = Math.min(
-      100,
-      Math.max(0, parseFloat(String(assessment?.overallScore)) || 0),
-    );
-    const urgencyMonths: number = assessment?.urgencyMonths ?? 36;
-    const infrastructureScore =
-      parseFloat(String(assessment?.infrastructureScore)) || 50;
-    const populationScore =
-      parseFloat(String(assessment?.populationPressureScore)) || 50;
-
-    // Server-computed impact (Phase 4.5) — falls back to score-deficit estimate
-    const baseImpact =
-      assessment?.riskImpactScore != null
-        ? Math.min(100, Math.max(0, parseFloat(String(assessment.riskImpactScore))))
-        : Math.min(100, Math.max(0, Math.round(100 - overallScore)));
-
-    // Server-computed probability — falls back to urgency-band estimate
-    const baseProbability =
-      assessment?.riskProbabilityScore != null
-        ? Math.min(100, Math.max(0, parseFloat(String(assessment.riskProbabilityScore))))
-        : urgencyMonths === 0
-          ? 95
-          : urgencyMonths <= 6
-            ? 75
-            : urgencyMonths <= 12
-              ? 55
-              : urgencyMonths <= 24
-                ? 35
-                : 20;
-
-    const resolutionRiskScore =
-      avgResolutionTime > 5
-        ? Math.min(Math.round((avgResolutionTime / 10) * 100), 100)
-        : 0;
-
-    const riskFactors: RiskFactor[] = [
-      {
-        id: "1",
-        title: "Critical Issues Requiring Immediate Attention",
-        level:
-          criticalCount > 5
-            ? "critical"
-            : criticalCount > 2
-              ? "high"
-              : criticalCount > 0
-                ? "medium"
-                : "low",
-        // Impact: base deficit, amplified by critical count (more unresolved = worse outcome)
-        impact: Math.min(100, baseImpact + Math.min(20, criticalCount * 4)),
-        // Probability: consistently from urgency timeline (independent of impact driver)
-        probability: baseProbability,
-        mitigation:
-          "Prioritize resolution of critical issues through emergency intervention protocols",
-        timeline: "1-7 days",
-        owner: "Crisis Management Team",
-      },
-      {
-        id: "2",
-        title: "Issues Needing Intervention",
-        level:
-          needInterventionCount > 10
-            ? "high"
-            : needInterventionCount > 5
-              ? "medium"
-              : "low",
-        // Impact: base deficit, amplified by volume of unresolved interventions
-        impact: Math.min(
-          100,
-          baseImpact + Math.min(15, needInterventionCount * 2),
-        ),
-        probability: baseProbability,
-        mitigation:
-          "Deploy intervention teams to address escalated issues before they become critical",
-        timeline: "1-4 weeks",
-        owner: "Intervention Team",
-      },
-      {
-        id: "3",
-        title: "Infrastructure Deterioration",
-        level: infrastructureScore < 50 ? "high" : "medium",
-        // Impact: infra-specific score deficit (independently meaningful)
-        impact: Math.min(
-          100,
-          Math.max(0, Math.round(100 - infrastructureScore)),
-        ),
-        probability: baseProbability,
-        mitigation:
-          "Implement preventive maintenance schedule and prioritize critical repairs",
-        timeline: "3-6 months",
-        owner: "Facilities Management",
-      },
-      {
-        id: "4",
-        title: "Demographic Pressure on Capacity",
-        level:
-          populationScore < 30
-            ? "critical"
-            : populationScore < 50
-              ? "high"
-              : "medium",
-        // Impact: population-specific score deficit (capacity headroom deficit)
-        impact: Math.min(
-          100,
-          Math.max(0, Math.round(100 - populationScore)),
-        ),
-        probability: baseProbability,
-        mitigation:
-          "Expand facilities or optimize space utilization through scheduling",
-        timeline: "6-12 months",
-        owner: "School Administration",
-      },
-      {
-        id: "5",
-        title: "Slow Resolution Times",
-        level:
-          avgResolutionTime > 10
-            ? "high"
-            : avgResolutionTime > 5
-              ? "medium"
-              : "low",
-        // Impact: resolution-time-specific (operational lag severity)
-        impact: Math.min(100, resolutionRiskScore),
-        probability: baseProbability,
-        mitigation:
-          "Streamline issue resolution workflows and allocate additional resources",
-        timeline: "2-8 weeks",
-        owner: "Operations Manager",
-      },
-    ];
-
-    // ── Mitigation strategies ─────────────────────────────────────────────────
-    // Effectiveness must DECREASE when more critical issues exist:
-    // more critical = stretched resources = lower expected effectiveness (not higher)
-    const mitigationStrategies: MitigationStrategy[] = [
-      {
-        title: "Emergency Critical Issue Response",
-        priority: criticalCount > 0 ? "immediate" : "short-term",
-        cost: "high",
-        // FIXED: was `90 + criticalCount * 2` (inverted) → now decreases with count
-        effectiveness: Math.max(20, Math.min(85, 90 - criticalCount * 8)),
-        description: `Address ${criticalCount} critical issue${criticalCount !== 1 ? "s" : ""} requiring immediate intervention through emergency protocols`,
-      },
-      {
-        title: "Intervention Team Deployment",
-        priority: needInterventionCount > 5 ? "immediate" : "short-term",
-        cost: "medium",
-        // FIXED: was `85 + needInterventionCount` (inverted) → now decreases with count
-        effectiveness: Math.max(20, Math.min(80, 85 - needInterventionCount * 3)),
-        description: `Deploy teams to handle ${needInterventionCount} issue${needInterventionCount !== 1 ? "s" : ""} needing intervention before escalation`,
-      },
-      {
-        title: "Resolution Workflow Optimization",
-        priority: avgResolutionTime > 7 ? "immediate" : "short-term",
-        cost: avgResolutionTime > 10 ? "high" : "medium",
-        // Reasonable as-is: longer delay = less effective optimization ceiling
-        effectiveness: Math.max(
-          30,
-          Math.min(90, 85 - (avgResolutionTime > 5 ? 10 : 0)),
-        ),
-        description: `Streamline processes to reduce current ${avgResolutionTime.toFixed(1)} day average resolution time`,
-      },
-      {
-        title: "Preventive Maintenance System",
-        priority:
-          assessment?.infrastructureScore < 50 ? "immediate" : "long-term",
-        cost: "low",
-        effectiveness: infrastructureScore < 50 ? 85 : 70,
-        description:
-          "Implement regular maintenance schedule to prevent infrastructure deterioration",
-      },
-    ];
+  ({ risk }: RiskAssessmentProps) => {
+    if (!risk) {
+      return (
+        <div className="rounded-3xl border border-dashed border-slate-300 dark:border-white/10 p-6 text-center text-sm text-slate-500 dark:text-white/50">
+          Indicative risk is not available yet. It appears once the school has been scored.
+        </div>
+      );
+    }
+    const riskFactors = risk.factors;
+    const mitigationStrategies = risk.strategies;
+    const overallRisk = risk.overall;
 
     const getRiskColor = (level: string) => {
       switch (level) {
@@ -279,46 +137,34 @@ export const RiskAssessment = React.memo(
       }
     };
 
-    const calculateOverallRisk = () => {
-      const totalImpact = riskFactors.reduce(
-        (sum, risk) => sum + (risk.impact * risk.probability) / 100,
-        0,
-      );
-      const averageRisk = totalImpact / riskFactors.length;
-
-      if (averageRisk > 70)
-        return { level: "critical", score: Math.round(averageRisk) };
-      if (averageRisk > 50)
-        return { level: "high", score: Math.round(averageRisk) };
-      if (averageRisk > 30)
-        return { level: "medium", score: Math.round(averageRisk) };
-      return { level: "low", score: Math.round(averageRisk) };
-    };
-
-    const overallRisk = calculateOverallRisk();
 
     return (
       <div className="space-y-8">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-medium text-slate-800 dark:text-white/90 flex items-center gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="text-lg font-medium text-slate-800 dark:text-white/90 flex flex-wrap items-center gap-3">
               <div className="p-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/20">
                 <Shield className="w-5 h-5 text-primary opacity-80" />
               </div>
-              Risk Assessment & Mitigation
+              Risk & mitigation
+              <Badge className="text-[10px] font-semibold uppercase tracking-wider bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                Indicative
+              </Badge>
+              <MetricInfo id="risk.overall" />
             </h3>
-            <p className="text-sm text-slate-500 dark:text-white/60 mt-1">
-              Proactive risk management and strategic mitigation planning
+            <p className="text-sm text-slate-600 dark:text-white/60 mt-1">
+              Rules of thumb to help plan. Not part of the School Condition Score and not a measurement.
             </p>
           </div>
 
           <div className="text-right">
-            <div className="text-2xl font-bold text-slate-900 dark:text-white">
-              {overallRisk.score}
+            <div className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
+              {formatNumber(overallRisk.score)}
             </div>
-            <div className="text-xs text-slate-500 dark:text-white/60">
-              Overall Risk Score
+            <div className="text-xs text-slate-500 dark:text-white/60 flex items-center justify-end gap-1">
+              Indicative risk
+              <RuleTip rule={overallRisk.rule} label="Indicative risk" />
             </div>
             <Badge
               className={cn(
@@ -326,7 +172,7 @@ export const RiskAssessment = React.memo(
                 getRiskColor(overallRisk.level),
               )}
             >
-              {overallRisk.level.toUpperCase()}
+              {LEVEL_LABEL[overallRisk.level] ?? overallRisk.level}
             </Badge>
           </div>
         </div>
@@ -336,10 +182,10 @@ export const RiskAssessment = React.memo(
           <CardHeader className="border-b border-slate-100 dark:border-blue-500/12">
             <CardTitle className="text-base font-medium flex items-center gap-3">
               <AlertTriangle className="w-5 h-5 text-primary opacity-80" />
-              Risk Factor Analysis
+              Risk factors
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="space-y-4">
               {riskFactors.map((risk, index) => (
                 <motion.div
@@ -350,18 +196,19 @@ export const RiskAssessment = React.memo(
                   className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12 hover:bg-slate-100 dark:hover:bg-white/10 transition-all"
                 >
                   <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
                         <h4 className="text-sm font-medium text-slate-900 dark:text-white">
                           {risk.title}
                         </h4>
+                        <RuleTip rule={risk.rule} label={risk.title} />
                         <Badge
                           className={cn(
                             "text-xs font-medium",
                             getRiskColor(risk.level),
                           )}
                         >
-                          {risk.level.toUpperCase()}
+                          {LEVEL_LABEL[risk.level] ?? risk.level}
                         </Badge>
                       </div>
                       <p className="text-xs text-slate-600 dark:text-white/60 mb-3">
@@ -369,11 +216,11 @@ export const RiskAssessment = React.memo(
                       </p>
                     </div>
                     <div className="text-right ml-4">
-                      <div className="text-lg font-bold text-slate-900 dark:text-white">
-                        {Math.round((risk.impact * risk.probability) / 100)}
+                      <div className="text-lg font-bold text-slate-900 dark:text-white tabular-nums">
+                        {formatNumber(risk.riskScore)}
                       </div>
                       <div className="text-xs text-slate-500 dark:text-white/60">
-                        Risk Score
+                        Risk
                       </div>
                     </div>
                   </div>
@@ -381,11 +228,12 @@ export const RiskAssessment = React.memo(
                   <div className="grid grid-cols-2 gap-4 mb-3">
                     <div>
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-slate-500 dark:text-white/60">
+                        <span className="text-xs text-slate-500 dark:text-white/60 flex items-center gap-1">
                           Impact
+                          <MetricInfo id="risk.impact" size="xs" />
                         </span>
-                        <span className="text-xs font-medium text-slate-900 dark:text-white">
-                          {risk.impact}%
+                        <span className="text-xs font-medium text-slate-900 dark:text-white tabular-nums">
+                          {formatNumber(risk.impact)}
                         </span>
                       </div>
                       <div className="w-full bg-slate-100 dark:bg-white/5 rounded-full h-1.5">
@@ -397,11 +245,12 @@ export const RiskAssessment = React.memo(
                     </div>
                     <div>
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-slate-500 dark:text-white/60">
+                        <span className="text-xs text-slate-500 dark:text-white/60 flex items-center gap-1">
                           Probability
+                          <MetricInfo id="risk.probability" size="xs" />
                         </span>
-                        <span className="text-xs font-medium text-slate-900 dark:text-white">
-                          {risk.probability}%
+                        <span className="text-xs font-medium text-slate-900 dark:text-white tabular-nums">
+                          {formatNumber(risk.probability)}
                         </span>
                       </div>
                       <div className="w-full bg-slate-100 dark:bg-white/5 rounded-full h-1.5">
@@ -414,7 +263,7 @@ export const RiskAssessment = React.memo(
                   </div>
 
                   <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-4">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                       <div className="flex items-center gap-1 text-slate-500 dark:text-white/60">
                         <Clock className="w-3 h-3" />
                         <span>{risk.timeline}</span>
@@ -436,14 +285,15 @@ export const RiskAssessment = React.memo(
           <CardHeader className="border-b border-slate-100 dark:border-blue-500/12">
             <CardTitle className="text-base font-medium flex items-center gap-3">
               <Target className="w-5 h-5 text-primary opacity-80" />
-              Strategic Mitigation Plan
+              Mitigation options
+              <MetricInfo id="risk.mitigation" />
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {mitigationStrategies.map((strategy, index) => (
                 <motion.div
-                  key={index}
+                  key={strategy.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.1 }}
@@ -451,19 +301,20 @@ export const RiskAssessment = React.memo(
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
-                      <h4 className="text-sm font-medium text-slate-900 dark:text-white mb-2">
+                      <h4 className="text-sm font-medium text-slate-900 dark:text-white mb-2 flex items-center gap-1">
                         {strategy.title}
+                        <RuleTip rule={strategy.rule} label={strategy.title} />
                       </h4>
                       <p className="text-xs text-slate-600 dark:text-white/60 mb-3">
                         {strategy.description}
                       </p>
                     </div>
                     <div className="text-right ml-4">
-                      <div className="text-lg font-bold text-slate-900 dark:text-white">
-                        {strategy.effectiveness}%
+                      <div className="text-lg font-bold text-slate-900 dark:text-white tabular-nums">
+                        {formatPercent(strategy.effectiveness)}
                       </div>
                       <div className="text-xs text-slate-500 dark:text-white/60">
-                        Effectiveness
+                        Est. effectiveness
                       </div>
                     </div>
                   </div>
@@ -486,7 +337,7 @@ export const RiskAssessment = React.memo(
                         getPriorityColor(strategy.priority),
                       )}
                     >
-                      {strategy.priority.toUpperCase()}
+                      {LEVEL_LABEL[strategy.priority] ?? strategy.priority}
                     </Badge>
                     <div className="flex items-center gap-1">
                       <DollarSign
@@ -498,7 +349,7 @@ export const RiskAssessment = React.memo(
                           getCostColor(strategy.cost),
                         )}
                       >
-                        {strategy.cost.toUpperCase()} COST
+                        {LEVEL_LABEL[strategy.cost] ?? strategy.cost} cost
                       </span>
                     </div>
                   </div>

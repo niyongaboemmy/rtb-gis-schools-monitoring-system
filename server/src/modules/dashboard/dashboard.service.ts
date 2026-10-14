@@ -58,7 +58,10 @@ export class DashboardService {
     // Infrastructure health — identical model to analytics.service so the
     // school dashboard's healthIndex always matches its infrastructureScore.
     const healthSum = buildings.reduce(
-      (acc, b) => acc + (CONDITION_SCORE_MAP[b.condition as BuildingCondition] ?? NEUTRAL_SCORE),
+      (acc, b) =>
+        acc +
+        (CONDITION_SCORE_MAP[b.condition as BuildingCondition] ??
+          NEUTRAL_SCORE),
       0,
     );
     const healthIndex =
@@ -75,10 +78,7 @@ export class DashboardService {
         ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length)
         : 0;
     // Use existing aging model to derive a score
-    const ageScore = this.calculateAgeScore(
-      buildings as any[],
-      school.establishedYear,
-    );
+    const ageScore = this.calculateAgeScore(buildings, school.establishedYear);
 
     // Maintenance due heuristic: if CPOR or last inspection older than 1 year (approx)
     const maintenanceDue = buildings.some((b) => {
@@ -158,8 +158,11 @@ export class DashboardService {
         { category: 'population', score: metrics.populationPressureScore },
         { category: 'accessibility', score: metrics.accessibilityScore },
         { category: 'facility', score: metrics.facilityComplianceScore },
-        { category: 'depreciation', score: metrics.depreciation },
+        // Sixth canonical component (5%). Replaces the retired "depreciation"
+        // proxy, which was just 100 − building-age score.
+        { category: 'resolution', score: metrics.resolutionRateScore ?? 50 },
       ],
+      dataGaps: metrics.dataGaps,
     };
 
     // Initialize trends (fallbacks)
@@ -186,8 +189,8 @@ export class DashboardService {
     let lastReportDate = '';
     let generatedReportCount = metrics.reportSummary?.total ?? 0;
     let computedAvgResolutionTime = 0;
-    let monthlyTrendsBack: number[] = new Array(12).fill(0);
-    let weeklyTrendsBack: number[] = new Array(7).fill(0);
+    const monthlyTrendsBack: number[] = new Array(12).fill(0);
+    const weeklyTrendsBack: number[] = new Array(7).fill(0);
     // category counts from report categories
     const categoryKeys = [
       'infrastructure',
@@ -227,8 +230,8 @@ export class DashboardService {
       low: 0,
     };
 
-    let monthCurrent = emptyMonthSnap();
-    let monthPrevious = emptyMonthSnap();
+    const monthCurrent = emptyMonthSnap();
+    const monthPrevious = emptyMonthSnap();
 
     try {
       const resp = await this.reportsService.findAll({
@@ -284,7 +287,11 @@ export class DashboardService {
 
           const rYm = d.getFullYear() * 12 + d.getMonth();
           const snap =
-            rYm === curYm ? monthCurrent : rYm === prevYm ? monthPrevious : null;
+            rYm === curYm
+              ? monthCurrent
+              : rYm === prevYm
+                ? monthPrevious
+                : null;
           if (snap) {
             if (status === ReportStatus.PENDING) snap.pending += 1;
             else if (status === ReportStatus.NEED_INTERVENTION)
@@ -309,9 +316,7 @@ export class DashboardService {
           } catch {
             // ignore
           }
-          const cats = Array.isArray((r as any).issueCategory)
-            ? (r as any).issueCategory
-            : [];
+          const cats = Array.isArray(r.issueCategory) ? r.issueCategory : [];
           cats.forEach((cat: string) => {
             const lower = String(cat).toLowerCase();
             if (categoryKeys.includes(lower)) {
@@ -319,7 +324,9 @@ export class DashboardService {
             }
           });
         });
-        const resolvedCount = reportsList.filter((r: any) => r.resolvedAt).length;
+        const resolvedCount = reportsList.filter(
+          (r: any) => r.resolvedAt,
+        ).length;
         if (resolvedCount > 0)
           computedAvgResolutionTime = computedAvgResolutionTime / resolvedCount;
       }

@@ -3,7 +3,7 @@ import React, { forwardRef } from 'react';
 interface ViewerMainCanvasProps {
   progress: number;
   progressLabel: string;
-  measureMode: any;
+  measureMode: string | null;
   isPinMode?: boolean;
   handleOverlayMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void;
   handleOverlayClick: (e: React.MouseEvent<HTMLDivElement>) => void;

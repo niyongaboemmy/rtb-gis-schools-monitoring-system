@@ -1,4 +1,5 @@
 import { Fill, Stroke, Style, Circle as CircleStyle, Text } from "ol/style";
+import { formatArea as sharedFormatArea, formatLength as sharedFormatLength } from "../../lib/format";
 import Feature from "ol/Feature";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -285,7 +286,7 @@ export function siteAnnotationStyle(feature: Feature): Style {
   // Lines and polygons
   const area = ann?.areaSquareMeters || feature.get("areaSquareMeters");
   const length = ann?.lengthMeters || feature.get("lengthMeters");
-  const suffix = area ? ` (${Number(area).toFixed(1)}m²)` : length ? ` (${Number(length).toFixed(1)}m)` : "";
+  const suffix = area ? ` (${formatArea(Number(area))})` : length ? ` (${formatLength(Number(length))})` : "";
   const finalLabel = label + suffix;
 
   return new Style({
@@ -311,14 +312,12 @@ export function siteAnnotationStyle(feature: Feature): Style {
 // Utilities
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 2D map length — honest 0.1 m precision via the shared formatter (WS6.5). */
 export function formatLength(meters: number): string {
-  return meters > 1000
-    ? `${(meters / 1000).toFixed(2)} km`
-    : `${meters.toFixed(1)} m`;
+  return sharedFormatLength(meters, "2d");
 }
 
+/** 2D map area — 0.1 m², with hectares from 10,000 m² (WS6.5). */
 export function formatArea(sqm: number): string {
-  return sqm > 10_000
-    ? `${(sqm / 1_000_000).toFixed(4)} km²`
-    : `${sqm.toFixed(1)} m²`;
+  return sharedFormatArea(sqm, "2d");
 }

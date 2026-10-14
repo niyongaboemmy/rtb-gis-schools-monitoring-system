@@ -45,6 +45,8 @@ import { PriorityLevel, SchoolStatus } from './entities/school.entity';
 import { ComplianceLevel } from './entities/school-facility-survey.entity';
 import { BuildingDto } from './dto/building.dto';
 import { SurveyUpdateItemDto } from './dto/survey-update.dto';
+import { CreateChangeRequestDto } from './dto/change-request.dto';
+import { ReportsService } from '../reports/reports.service';
 
 @ApiTags('schools')
 @Controller('schools')
@@ -52,7 +54,10 @@ import { SurveyUpdateItemDto } from './dto/survey-update.dto';
 @RequirePermissions(Permission.VIEW_SCHOOLS)
 @ApiBearerAuth()
 export class SchoolsController {
-  constructor(private readonly schoolsService: SchoolsService) {}
+  constructor(
+    private readonly schoolsService: SchoolsService,
+    private readonly reportsService: ReportsService,
+  ) {}
 
   @Post()
   @RequirePermissions(Permission.CREATE_SCHOOL)
@@ -222,7 +227,7 @@ export class SchoolsController {
   @Patch(':id/survey')
   @ScopedResource('id')
   @RequireAnyPermission(
-    Permission.SCHOOL_SURVERY_EDIT,
+    Permission.SCHOOL_SURVEY_EDIT,
     Permission.RUN_FACILITY_SURVEY,
   )
   @ApiOperation({ summary: 'Bulk update facility survey items' })
@@ -237,7 +242,7 @@ export class SchoolsController {
   @Patch('survey/:surveyId')
   @ScopedResource('surveyId', 'params', 'survey')
   @RequireAnyPermission(
-    Permission.SCHOOL_SURVERY_EDIT,
+    Permission.SCHOOL_SURVEY_EDIT,
     Permission.RUN_FACILITY_SURVEY,
   )
   @ApiOperation({ summary: 'Update a single survey item' })
@@ -262,8 +267,25 @@ export class SchoolsController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateSchoolDto: UpdateSchoolDto,
+    @Request() req: any,
   ) {
-    return this.schoolsService.update(id, updateSchoolDto);
+    return this.schoolsService.update(id, updateSchoolDto, req.user);
+  }
+
+  @Post(':id/change-requests')
+  @ScopedResource('id')
+  @RequirePermissions(Permission.VIEW_SCHOOLS, Permission.CREATE_REPORT)
+  @ApiOperation({
+    summary:
+      'Request a change to locked school fields (location, buildings, …); creates a data_change_request report routed to GIS analysts',
+  })
+  async requestChange(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateChangeRequestDto,
+    @Request() req: any,
+  ) {
+    const payload = await this.schoolsService.buildChangeRequest(id, dto);
+    return this.reportsService.createChangeRequest(id, payload, req.user.id);
   }
 
   @Delete(':id')
@@ -299,27 +321,9 @@ export class SchoolsController {
     return this.schoolsService.updateBuilding(id, buildingDto);
   }
 
-  @Post(':id/kmz/2d/site-annotations')
-  @ScopedResource('id')
-  @RequirePermissions(Permission.EDIT_SITE_ANNOTATIONS)
-  @ApiOperation({ summary: 'Add a site annotation' })
-  addSiteAnnotation(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() annotation: any,
-  ) {
-    return this.schoolsService.addSiteAnnotation(id, annotation);
-  }
-
-  @Delete(':id/kmz/2d/site-annotations/:annId')
-  @ScopedResource('id')
-  @RequirePermissions(Permission.EDIT_SITE_ANNOTATIONS)
-  @ApiOperation({ summary: 'Delete a site annotation' })
-  removeSiteAnnotation(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Param('annId') annId: string,
-  ) {
-    return this.schoolsService.removeSiteAnnotation(id, annId);
-  }
+  // Site annotations live on KmzController (`schools/:schoolId/kmz/2d/site-annotations`,
+  // backed by SiteFeaturesService). The duplicate routes that used to be here
+  // were removed to avoid route-order ambiguity.
 
   @Delete('buildings/:id')
   @ScopedResource('id', 'params', 'building')

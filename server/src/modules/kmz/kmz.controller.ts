@@ -12,6 +12,7 @@ import {
   Body,
   Patch,
   HttpCode,
+  Request,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -33,6 +34,32 @@ import {
 import { Permission } from '../../common/constants/permissions.constant';
 import { ScopeGuard } from '../../common/scope/scope.guard';
 import { ScopedResource } from '../../common/scope/scope.decorator';
+import { LegacySiteAnnotationDto } from '../site-features/dto/site-feature.dto';
+import type { ActingUser } from '../site-features/site-features.service';
+import { KmzFromUrlDto } from './dto/kmz-from-url.dto';
+import * as fs from 'fs';
+import {
+  UPLOAD_EXTENSIONS,
+  assertTrustedFileUrl,
+  assertUploadedFile,
+  extensionFileFilter,
+} from '../../common/security/upload-validation';
+
+/**
+ * Checks extension + magic bytes of a multer upload on disk; deletes the
+ * staged file when it is rejected (WS9.7).
+ */
+function checkUpload(
+  file: Express.Multer.File | undefined,
+  allowed: readonly string[],
+) {
+  try {
+    assertUploadedFile(file, allowed);
+  } catch (err) {
+    if (file?.path) fs.unlink(file.path, () => {});
+    throw err;
+  }
+}
 
 @ApiTags('kmz')
 @Controller('schools/:schoolId/kmz')
@@ -84,11 +111,16 @@ export class KmzController {
       properties: { file: { type: 'string', format: 'binary' } },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      fileFilter: extensionFileFilter(UPLOAD_EXTENSIONS.model),
+    }),
+  )
   uploadGlbModel(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
+    checkUpload(file, UPLOAD_EXTENSIONS.model);
     return this.kmzService.uploadGlbModel(schoolId, file);
   }
 
@@ -108,8 +140,9 @@ export class KmzController {
   })
   uploadKmz2dFromUrl(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
-    @Body() body: { fileUrl: string; fileName: string },
+    @Body() body: KmzFromUrlDto,
   ) {
+    assertTrustedFileUrl(body.fileUrl);
     return this.kmzService.uploadKmz2dFromUrl(
       schoolId,
       body.fileUrl,
@@ -133,8 +166,9 @@ export class KmzController {
   })
   uploadGlbFromUrl(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
-    @Body() body: { fileUrl: string; fileName: string },
+    @Body() body: KmzFromUrlDto,
   ) {
+    assertTrustedFileUrl(body.fileUrl);
     return this.kmzService.uploadGlbFromUrl(
       schoolId,
       body.fileUrl,
@@ -157,11 +191,16 @@ export class KmzController {
       properties: { file: { type: 'string', format: 'binary' } },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      fileFilter: extensionFileFilter(UPLOAD_EXTENSIONS.geospatial),
+    }),
+  )
   uploadKmz2d(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
+    checkUpload(file, UPLOAD_EXTENSIONS.geospatial);
     return this.kmzService.uploadKmz2d(schoolId, file);
   }
 
@@ -179,11 +218,16 @@ export class KmzController {
       properties: { file: { type: 'string', format: 'binary' } },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      fileFilter: extensionFileFilter(UPLOAD_EXTENSIONS.overlay),
+    }),
+  )
   uploadPlacesOverlay(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
+    checkUpload(file, UPLOAD_EXTENSIONS.overlay);
     return this.kmzService.uploadPlacesOverlay(schoolId, file);
   }
 
@@ -256,11 +300,16 @@ export class KmzController {
       properties: { file: { type: 'string', format: 'binary' } },
     },
   })
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      fileFilter: extensionFileFilter(UPLOAD_EXTENSIONS.overlay),
+    }),
+  )
   addOverlay(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @UploadedFile() file: Express.Multer.File,
   ) {
+    checkUpload(file, UPLOAD_EXTENSIONS.overlay);
     return this.kmzService.addOverlay(schoolId, file);
   }
 
@@ -268,12 +317,16 @@ export class KmzController {
   @RequirePermissions(Permission.EDIT_SITE_ANNOTATIONS)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Add a site-wide annotation (measurement/label)' })
+  @ApiOperation({
+    summary:
+      'Add a site-wide annotation (legacy; stored as a site feature — prefer POST /schools/:id/site-features)',
+  })
   addSiteAnnotation(
     @Param('schoolId', ParseUUIDPipe) schoolId: string,
-    @Body() annotation: any,
+    @Body() annotation: LegacySiteAnnotationDto,
+    @Request() req: { user?: ActingUser },
   ) {
-    return this.kmzService.addSiteAnnotation(schoolId, annotation);
+    return this.kmzService.addSiteAnnotation(schoolId, annotation, req.user);
   }
 
   @Delete('2d/site-annotations/:id')

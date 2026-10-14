@@ -26,8 +26,14 @@ import { hasPermission, Permission } from "../lib/permissions";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
+import { label } from "../lib/labels";
 import SchoolMap from "../components/SchoolMap";
 import { DecisionIntelligenceScore } from "../components/dashboard/DecisionIntelligenceScore";
+import { SchoolActivitySection } from "../components/audit/SchoolActivitySection";
+import { SkeletonCards, SkeletonText } from "../components/ui/skeleton";
+import { ErrorState } from "../components/ui/error-state";
+import { errorMessage } from "../components/ui/error-message";
+import { RequestChangeDialog } from "../components/school-form-steps/RequestChangeDialog";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,7 +92,6 @@ function buildAssessment(school: any, metrics: any) {
       accessibilityScore: metrics.accessibilityScore,
       facilityComplianceScore: metrics.facilityComplianceScore,
       overallScore: metrics.overallScore,
-      depreciation: metrics.depreciation,
       averageBuildingAge: metrics.avgBuildingAge ?? avgAge,
       totalStudents: metrics.totalStudents ?? tStudents,
       totalStaff: metrics.totalStaff ?? tStaff,
@@ -108,7 +113,6 @@ function buildAssessment(school: any, metrics: any) {
     accessibilityScore: parseFloat(String(school.calculatedAssessment?.accessibilityScore)) || 50,
     facilityComplianceScore: parseFloat(String(school.calculatedAssessment?.facilityComplianceScore)) || 50,
     overallScore: parseFloat(String(school.calculatedAssessment?.overallScore)) || 65,
-    depreciation: parseFloat(String(school.calculatedAssessment?.depreciation)) || 20,
     recommendations: school.calculatedAssessment?.recommendations ?? [],
   };
 }
@@ -138,7 +142,7 @@ function OverviewTab({ school }: { school: any }) {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
       <OverviewField icon={School} label="Name" value={school.name} />
       <OverviewField icon={Hash} label="Code" value={school.code} />
-      <OverviewField icon={Building2} label="Type" value={school.type} />
+      <OverviewField icon={Building2} label="Type" value={school.type ? label("schoolType", school.type) : undefined} />
       <OverviewField icon={MapPin} label="Province" value={school.province} />
       <OverviewField icon={MapPin} label="District" value={school.district} />
       {school.sector && <OverviewField icon={MapPin} label="Sector" value={school.sector} />}
@@ -183,7 +187,7 @@ function BuildingsTab({ buildings }: { buildings: any[] }) {
               </div>
               {condition && (
                 <Badge variant="outline" className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full border shrink-0", conditionStyle)}>
-                  {condition}
+                  {label("buildingCondition", b.condition)}
                 </Badge>
               )}
             </div>
@@ -234,7 +238,7 @@ function AnalyticsTab({
         <div>
           <p className="font-semibold text-foreground">No analytics data yet</p>
           <p className="text-sm text-muted-foreground mt-1">
-            Run a recalculation to generate the decision intelligence score for this school.
+            Run a recalculation to generate the School Condition Score for this school.
           </p>
         </div>
         <Button
@@ -280,7 +284,7 @@ function ActionsTab({ id, user }: { id: string; user: any }) {
     },
     {
       label: "3D Explorer",
-      description: "Interactive 3D campus model with CesiumJS",
+      description: "Interactive 3D campus model: walk around, measure and inspect buildings",
       icon: Box,
       href: `/schools/${id}/3d-explorer`,
       allowed: can2D3D,
@@ -360,6 +364,12 @@ export default function SchoolDetail() {
   const [assessment, setAssessment] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [requestingChange, setRequestingChange] = useState(false);
+  // Location / buildings are locked for e.g. school leaders: offer a change request (WS7.7).
+  const canRequestChange =
+    hasPermission(user, Permission.CREATE_REPORT) &&
+    !hasPermission(user, Permission.MANAGE_SCHOOLS) &&
+    !hasPermission(user, Permission.EDIT_SCHOOL_LOCATION);
 
   const fetchSchool = useCallback(async () => {
     if (!id) return;
@@ -376,7 +386,7 @@ export default function SchoolDetail() {
       setSchool(sData);
       setAssessment(computed);
     } catch (e: any) {
-      setError(e?.response?.data?.message ?? e?.message ?? "Failed to load school");
+      setError(errorMessage(e, "This school could not be loaded."));
     } finally {
       setLoading(false);
     }
@@ -389,18 +399,22 @@ export default function SchoolDetail() {
   // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
+      <div className="space-y-6 pb-10" aria-busy="true">
+        <SkeletonText lines={2} className="max-w-md" />
+        <SkeletonCards count={4} />
+        <SkeletonText lines={6} />
       </div>
     );
   }
 
   if (error || !school) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
-        <p className="text-red-500 dark:text-red-400 text-sm">{error ?? "School not found"}</p>
-        <Button variant="outline" onClick={fetchSchool}>Retry</Button>
-      </div>
+      <ErrorState
+        className="min-h-[50vh]"
+        title="Could not open this school"
+        message={error ?? "We could not find this school."}
+        onRetry={fetchSchool}
+      />
     );
   }
 
@@ -417,17 +431,26 @@ export default function SchoolDetail() {
         <div>
           <h1 className="text-xl font-semibold text-slate-900 dark:text-white">{school.name}</h1>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span className="text-[12px] text-slate-500 dark:text-white/40 font-mono">{school.code}</span>
+            <span className="text-[12px] text-slate-600 dark:text-white/60 font-mono">{school.code}</span>
             {school.type && (
               <Badge variant="outline" className="text-[10px] rounded-full px-2 py-0.5 border-slate-200 dark:border-white/6 text-slate-500 dark:text-white/40">
-                {school.type}
+                {label("schoolTypeShort", school.type)}
               </Badge>
             )}
             {school.province && (
-              <span className="text-[12px] text-slate-400 dark:text-white/30 flex items-center gap-1">
-                <MapPin className="w-3 h-3" />
+              <span className="text-[12px] text-slate-600 dark:text-white/60 flex items-center gap-1">
+                <MapPin className="w-3 h-3" aria-hidden="true" />
                 {school.province}{school.district ? `, ${school.district}` : ""}
               </span>
+            )}
+            {canRequestChange && (
+              <button
+                type="button"
+                onClick={() => setRequestingChange(true)}
+                className="text-[12px] font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              >
+                Location or buildings wrong? Request a change
+              </button>
             )}
           </div>
         </div>
@@ -439,16 +462,22 @@ export default function SchoolDetail() {
       </div>
 
       {/* ── Tab Bar ────────────────────────────────────────────────────────── */}
-      <div className="flex gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-white/5 w-fit">
+      <div
+        role="group"
+        aria-label="School sections"
+        className="flex gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-white/5 w-fit max-w-full overflow-x-auto"
+      >
         {TABS.map((tab) => (
           <button
             key={tab.id}
+            type="button"
+            aria-pressed={activeTab === tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              "flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium transition-all",
+              "flex shrink-0 items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               activeTab === tab.id
                 ? "bg-white dark:bg-white/10 text-slate-900 dark:text-white shadow-sm"
-                : "text-slate-500 dark:text-white/40 hover:text-slate-700 dark:hover:text-white/60",
+                : "text-slate-600 dark:text-white/60 hover:text-slate-800 dark:hover:text-white/80",
             )}
           >
             <tab.icon className="w-3.5 h-3.5" />
@@ -474,6 +503,21 @@ export default function SchoolDetail() {
         )}
         {activeTab === "actions" && <ActionsTab id={id!} user={user} />}
       </motion.div>
+
+      {canRequestChange && requestingChange && (
+        <RequestChangeDialog
+          isOpen
+          onClose={() => setRequestingChange(false)}
+          schoolId={id!}
+          school={school}
+          initialFields={["latitude"]}
+        />
+      )}
+
+      {/* ── Activity (audit trail, WS11.8) ─────────────────────────────────── */}
+      {(activeTab === "overview" || activeTab === "buildings") && (
+        <SchoolActivitySection schoolId={id!} />
+      )}
     </div>
   );
 }

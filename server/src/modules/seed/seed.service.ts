@@ -5,7 +5,11 @@ import { Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
 import { Role } from '../roles/entities/role.entity';
 import { AccessLevel } from '../access-levels/entities/access-level.entity';
-import { DefaultRolePermissions } from '../../common/constants/permissions.constant';
+import {
+  DefaultRolePermissions,
+  ScopedRolePresets,
+} from '../../common/constants/permissions.constant';
+import { planRolePermissionSync } from './role-permission-sync';
 import {
   School,
   SchoolType,
@@ -93,7 +97,7 @@ export class SeedService implements OnModuleInit {
       'EDIT_SCHOOL_BUILDINGS',
       'UPLOAD_KMZ',
       'RUN_FACILITY_SURVEY',
-      'SCHOOL_SURVERY_EDIT',
+      'SCHOOL_SURVEY_EDIT',
       'MANAGE_DECISIONS',
       'EXPORT_REPORTS',
       'CREATE_REPORT',
@@ -235,7 +239,12 @@ export class SeedService implements OnModuleInit {
     }
   }
 
-  private async seedAdminUser() {
+  /**
+   * Create missing built-in roles and add permissions that are new in code
+   * since the last sync. Never removes an admin's grant and never re-adds a
+   * permission an admin removed (see role-permission-sync.ts). Idempotent.
+   */
+  async syncBuiltInRoles() {
     for (const [roleName, permissions] of Object.entries(
       DefaultRolePermissions,
     )) {
@@ -243,17 +252,76 @@ export class SeedService implements OnModuleInit {
         where: { name: roleName },
       });
       if (!existingRole) {
+        // Built-in roles are organisation-wide (see seedAccessLevels).
+        const national = await this.accessLevelRepo.findOne({
+          where: { slug: 'national' },
+        });
         await this.roleRepo.save(
-          this.roleRepo.create({ name: roleName, permissions }),
+          this.roleRepo.create({
+            name: roleName,
+            permissions: [...permissions],
+            seededPermissions: [...permissions],
+            ...(national ? { accessLevel: national } : {}),
+          }),
         );
         this.logger.log(`✅ Created role: ${roleName}`);
-      } else {
-        // Sync permissions for all system roles to ensure they have latest capabilities
-        existingRole.permissions = permissions;
-        await this.roleRepo.save(existingRole);
-        this.logger.log(`✅ Synced permissions for role: ${roleName}`);
+        continue;
+      }
+      const plan = planRolePermissionSync(
+        existingRole.permissions,
+        existingRole.seededPermissions,
+        permissions,
+      );
+      if (!plan.changed) continue;
+      existingRole.permissions = plan.permissions;
+      existingRole.seededPermissions = plan.seededPermissions;
+      await this.roleRepo.save(existingRole);
+      if (plan.added.length) {
+        this.logger.log(
+          `✅ Added new permissions to role ${roleName}: ${plan.added.join(', ')}`,
+        );
       }
     }
+  }
+
+  /**
+   * Create the sub-national role presets (district_officer, school_leader)
+   * bound to their access level — only when missing. An existing preset is
+   * owned by the administrators and is never modified here.
+   */
+  async seedScopedRolePresets() {
+    for (const [roleName, preset] of Object.entries(ScopedRolePresets)) {
+      const existing = await this.roleRepo.findOne({
+        where: { name: roleName },
+      });
+      if (existing) continue;
+      const level = await this.accessLevelRepo.findOne({
+        where: { slug: preset.accessLevel },
+      });
+      if (!level) {
+        this.logger.warn(
+          `Role preset ${roleName} skipped — access level "${preset.accessLevel}" not found.`,
+        );
+        continue;
+      }
+      await this.roleRepo.save(
+        this.roleRepo.create({
+          name: roleName,
+          description: preset.description,
+          permissions: [...preset.permissions],
+          seededPermissions: [...preset.permissions],
+          accessLevel: level,
+        }),
+      );
+      this.logger.log(
+        `✅ Created role preset: ${roleName} (${level.name} level)`,
+      );
+    }
+  }
+
+  private async seedAdminUser() {
+    await this.syncBuiltInRoles();
+    await this.seedScopedRolePresets();
 
     const superAdminRole = await this.roleRepo.findOne({
       where: { name: 'super_admin' },

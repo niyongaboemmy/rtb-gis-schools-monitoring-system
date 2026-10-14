@@ -1,6 +1,8 @@
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { cn } from '../../lib/utils';
+import { formatScore } from '../../lib/format';
+import { MetricInfo } from '../metric-help/MetricInfo';
 
 interface DistributionItem {
   label: string;
@@ -36,12 +38,13 @@ export function DistributionChart({
       )}
     >
       <CardHeader className="border-b border-border/20 dark:border-blue-700/20 pb-4">
-        <CardTitle className="text-base font-black uppercase tracking-widest text-muted-foreground/80">
+        <CardTitle className="flex items-center gap-1 text-base font-black uppercase tracking-widest text-muted-foreground">
           {title}
+          <MetricInfo id="national.provinceDistribution" size="xs" />
         </CardTitle>
         {onItemClick && (
-          <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50 mt-0.5">
-            Click a row to drill down
+          <p className="text-[11px] font-semibold text-muted-foreground mt-0.5">
+            Select a province to see its districts
           </p>
         )}
       </CardHeader>
@@ -65,9 +68,22 @@ export function DistributionChart({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.1 * idx }}
                 onClick={isClickable ? () => onItemClick(item.label) : undefined}
+                role={isClickable ? 'button' : undefined}
+                tabIndex={isClickable ? 0 : undefined}
+                aria-pressed={isClickable ? isSelected : undefined}
+                onKeyDown={
+                  isClickable
+                    ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          onItemClick(item.label);
+                        }
+                      }
+                    : undefined
+                }
                 className={cn(
                   'space-y-3 rounded-2xl p-2 -mx-2 transition-all duration-200',
-                  isClickable && 'cursor-pointer hover:bg-muted/30',
+                  isClickable && 'cursor-pointer hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
                   isSelected && 'ring-2 ring-primary/30 bg-primary/5',
                 )}
               >
@@ -83,7 +99,7 @@ export function DistributionChart({
                   <div className="flex items-center gap-2">
                     {item.avgScore != null && (
                       <span className="text-[9px] font-black text-primary/70 tabular-nums">
-                        avg {item.avgScore.toFixed(0)}
+                        avg score {formatScore(item.avgScore)}
                       </span>
                     )}
                     <span className="text-[10px] font-black uppercase text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full border border-border/10">
@@ -117,7 +133,7 @@ export function DistributionChart({
                       animate={{ width: `${optPct}%` }}
                       transition={{ duration: 1, delay: 0.7 + idx * 0.1 }}
                       className="bg-emerald-500 h-full border-l border-white/6"
-                      title={`Optimal: ${remaining}`}
+                      title={`Other (Medium, Low or not assessed): ${remaining}`}
                     />
                   )}
                 </div>
@@ -133,15 +149,15 @@ export function DistributionChart({
                   </div>
                   <div className="flex items-center gap-1">
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    <span>{remaining} Optimal</span>
+                    <span>{remaining} Other</span>
                   </div>
                 </div>
               </motion.div>
             );
           })}
           {items.length === 0 && (
-            <p className="text-[10px] text-muted-foreground text-center py-4">
-              No data available
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No schools in this area yet.
             </p>
           )}
         </div>

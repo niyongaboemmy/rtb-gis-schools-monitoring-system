@@ -24,6 +24,13 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../../lib/utils";
 import { PERMISSION_GROUPS } from "../../lib/permissions";
+import { titleCase } from "../../lib/labels";
+
+
+/** Roles the seed keeps in sync (cannot be deleted). */
+const BUILT_IN_ROLES = ["super_admin", "admin", "gis_analyst", "viewer"];
+/** Scoped presets the seed creates once (WS7.3); admins own them afterwards. */
+const PRESET_ROLES = ["district_officer", "school_leader"];
 
 export function RolesTab() {
   const [roles, setRoles] = useState<any[]>([]);
@@ -213,7 +220,7 @@ export function RolesTab() {
               </div>
               <div className="text-left">
                 <div className="font-bold text-xs uppercase tracking-wider">
-                  {role.name.replace("_", " ")}
+                  {titleCase(role.name)}
                 </div>
                 <div
                   className={cn(
@@ -224,6 +231,12 @@ export function RolesTab() {
                   )}
                 >
                   {role.usersCount || 0} users
+                  {role.accessLevel?.name ? ` · ${role.accessLevel.name} level` : ""}
+                  {BUILT_IN_ROLES.includes(role.name)
+                    ? " · Built-in"
+                    : PRESET_ROLES.includes(role.name)
+                      ? " · Preset"
+                      : ""}
                 </div>
               </div>
             </div>
@@ -279,9 +292,8 @@ export function RolesTab() {
                         className="rounded-xl h-8 px-3 border-destructive/20 text-destructive text-[10px] uppercase font-bold hover:bg-destructive/5"
                         onClick={() => handleDeleteRole(selectedRole.id)}
                         disabled={
-                          ["super_admin", "admin", "viewer"].includes(
-                            selectedRole.name,
-                          ) || isAL(`del-role-${selectedRole.id}`)
+                          BUILT_IN_ROLES.includes(selectedRole.name) ||
+                          isAL(`del-role-${selectedRole.id}`)
                         }
                       >
                         {isAL(`del-role-${selectedRole.id}`) ? (

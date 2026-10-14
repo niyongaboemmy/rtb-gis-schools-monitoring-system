@@ -17,6 +17,7 @@ import { Button } from "../components/ui/button";
 import { PageHeader } from "../components/ui/page-header";
 import { cn } from "../lib/utils";
 import { api } from "../lib/api";
+import { useAuthStore } from "../store/authStore";
 
 const FILE_SERVER_BASE = (
   import.meta.env.VITE_FILE_SERVER_URL || "http://localhost:3002/files"
@@ -102,6 +103,11 @@ export default function KmzUpload() {
       const formData = new FormData();
       formData.append("files", file);
 
+      // The file-server verifies the access token when the request starts, so
+      // make sure it is fresh first (this call refreshes it on a 401).
+      await api.get("/auth/me");
+      const token = useAuthStore.getState().token;
+
       const xhr = new XMLHttpRequest();
       xhrRef.current = xhr;
 
@@ -123,12 +129,15 @@ export default function KmzUpload() {
               : `${FILE_SERVER_BASE}${relUrl.startsWith("/") ? "" : "/"}${relUrl}`;
             resolve(absUrl);
           } else {
-            reject(new Error(`File server upload failed (${xhr.status})`));
+            let detail = "";
+            try { detail = JSON.parse(xhr.responseText)?.message ?? ""; } catch { /* not JSON */ }
+            reject(new Error(detail || `File server upload failed (${xhr.status})`));
           }
         };
         xhr.onerror = () =>
           reject(new Error("Network error uploading to file server"));
         xhr.open("POST", `${FILE_SERVER_BASE}/upload?folder=${folder}`);
+        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
         xhr.send(formData);
       });
 
