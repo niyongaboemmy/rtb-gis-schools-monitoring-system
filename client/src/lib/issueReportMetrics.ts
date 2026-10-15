@@ -90,7 +90,25 @@ function pctChange(cur: number, prev: number): number | null {
   return Math.round(((cur - prev) / prev) * 1000) / 10;
 }
 
-export function rollupIssueReports(reports: any[]): ReportingRollup {
+/** Minimal Issue Report shape read by these helpers. */
+export interface IssueReportLike {
+  status?: unknown;
+  createdAt?: string | Date | null;
+  updatedAt?: string | Date | null;
+  resolvedAt?: string | Date | null;
+  buildingId?: string | null;
+  reporter?: { firstName?: string | null; lastName?: string | null; email?: string | null } | null;
+}
+
+/** Minimal building shape read by these helpers. */
+export interface BuildingLike {
+  id?: string;
+  name?: string | null;
+  yearBuilt?: number | string | null;
+  condition?: unknown;
+}
+
+export function rollupIssueReports(reports: IssueReportLike[]): ReportingRollup {
   const list = Array.isArray(reports) ? reports : [];
   const statusCounts = {
     pending: 0,
@@ -107,8 +125,8 @@ export function rollupIssueReports(reports: any[]): ReportingRollup {
   const now = new Date();
   const curYm = now.getFullYear() * 12 + now.getMonth();
   const prevYm = curYm - 1;
-  let monthCurrent = emptyMonth();
-  let monthPrevious = emptyMonth();
+  const monthCurrent = emptyMonth();
+  const monthPrevious = emptyMonth();
 
   for (const r of list) {
     const st = normalizeReportStatus(r?.status);
@@ -194,16 +212,17 @@ export interface BuildingAttentionRow {
   failed: number;
   lastReportAt: string | null;
   reporterLabel: string;
-  severityLabel: "CRITICAL" | "HIGH" | "MEDIUM";
+  /** Priority-style key; render with label("priority", …). */
+  severityLabel: "critical" | "high" | "medium";
   score: number;
 }
 
 export function buildBuildingsAttention(
-  buildings: any[],
-  reports: any[],
+  buildings: BuildingLike[],
+  reports: IssueReportLike[],
   max = 3,
 ): BuildingAttentionRow[] {
-  const bmap = new Map<string, any>();
+  const bmap = new Map<string, BuildingLike>();
   for (const b of buildings || []) {
     if (b?.id) bmap.set(b.id, b);
   }
@@ -253,9 +272,9 @@ export function buildBuildingsAttention(
       v.intervention * 100 +
       v.failed * 40 +
       v.pending * 10 +
-      (CONDITION_SCORE[String(b?.condition)] || 0);
+      (CONDITION_SCORE[String(b?.condition ?? "").toUpperCase()] || 0);
     const sev: BuildingAttentionRow["severityLabel"] =
-      v.intervention > 0 ? "CRITICAL" : v.failed > 0 ? "HIGH" : "MEDIUM";
+      v.intervention > 0 ? "critical" : v.failed > 0 ? "high" : "medium";
     rows.push({
       buildingId: bid,
       name: b?.name || `Building ${bid.slice(0, 8)}`,
@@ -275,10 +294,18 @@ export function buildBuildingsAttention(
 
   if (out.length < max) {
     const used = new Set(out.map((r) => r.buildingId));
+    // Building conditions are stored lower-case ('poor', 'critical'); only
+    // poor / critical buildings qualify without a linked report.
+    const cond = (b: { condition?: unknown } | null | undefined) => String(b?.condition ?? "").toUpperCase();
     const rest = (buildings || [])
-      .filter((b) => b?.id && !used.has(b.id))
+      .filter(
+        (b) =>
+          b?.id &&
+          !used.has(b.id) &&
+          (cond(b) === "CRITICAL" || cond(b) === "POOR"),
+      )
       .map((b) => ({
-        buildingId: b.id,
+        buildingId: String(b.id),
         name: b.name || "Building",
         yearBuilt: b.yearBuilt != null ? Number(b.yearBuilt) : null,
         pending: 0,
@@ -286,10 +313,10 @@ export function buildBuildingsAttention(
         failed: 0,
         lastReportAt: null as string | null,
         reporterLabel: "—",
-        severityLabel: (["CRITICAL", "POOR"].includes(String(b.condition))
-          ? "CRITICAL"
-          : "MEDIUM") as BuildingAttentionRow["severityLabel"],
-        score: CONDITION_SCORE[String(b.condition)] || 0,
+        severityLabel: (cond(b) === "CRITICAL"
+          ? "critical"
+          : "high") as BuildingAttentionRow["severityLabel"],
+        score: CONDITION_SCORE[cond(b)] || 0,
       }))
       .sort((a, b) => b.score - a.score);
     for (const r of rest) {

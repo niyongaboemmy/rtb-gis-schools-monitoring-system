@@ -112,7 +112,7 @@ const DEFAULT_META: SchoolsMeta = {
 
 // ─── Computed Helpers ────────────────────────────────────────────────────────
 
-/** Single source of truth for a school's intelligence score on the frontend. */
+/** Single source of truth for a school's School Condition Score on the frontend. */
 export const calculatedScore = (school: School): number => {
   // API returns numeric columns as strings (e.g. "82.00") — coerce safely.
   const n = Number(school.overallScore);

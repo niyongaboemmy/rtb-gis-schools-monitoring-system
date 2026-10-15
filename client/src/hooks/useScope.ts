@@ -34,6 +34,12 @@ const RANK_BY_TIER: Record<AccessTier, number> = {
  * Resolves the current user's geographic access scope from the login payload.
  * Mirrors the server's `resolveAccessScope` so the UI can label and adapt to it.
  */
+/** "Musanze" + district → "Musanze District"; "Kigali TSS School" stays as is. */
+function withTier(node: string, tier: string): string {
+  const word = tier.charAt(0).toUpperCase() + tier.slice(1);
+  return new RegExp(`\\b${word}$`, "i").test(node.trim()) ? node : `${node} ${word}`;
+}
+
 export function useScope(): ResolvedScope {
   const user = useAuthStore((s) => s.user);
 
@@ -77,8 +83,51 @@ export function useScope(): ResolvedScope {
   const label = isNational
     ? "National"
     : node
-      ? `${node} ${tier!.charAt(0).toUpperCase()}${tier!.slice(1)}`
+      ? withTier(node, tier!)
       : (levelName ?? tier!.charAt(0).toUpperCase() + tier!.slice(1));
 
   return { tier, rank, levelName, node, label, isNational };
+}
+
+type ScopeUser = {
+  role?: unknown;
+  location?: { schoolId?: string } | null;
+} | null | undefined;
+
+function roleOf(user: ScopeUser) {
+  const r = user?.role;
+  return r && typeof r === "object"
+    ? (r as {
+        name?: string;
+        permissions?: string[];
+        accessLevel?: { slug?: string | null; name?: string } | null;
+      })
+    : null;
+}
+
+/**
+ * True for school-tier users bound to a school (WS3.6): their role's access
+ * level is School and their location carries a schoolId.
+ */
+export function isSchoolLevelUser(user: ScopeUser): boolean {
+  const al = roleOf(user)?.accessLevel;
+  const tier = (al?.slug || al?.name || "").toLowerCase();
+  return tier === "school" && !!user?.location?.schoolId;
+}
+
+/**
+ * Where a user lands after login or on "/" (WS3.6): school leaders go to
+ * their school dashboard, national/sub-national roles to the national
+ * dashboard, and anyone without dashboard access to the welcome page.
+ */
+export function homePathFor(user: ScopeUser): string {
+  const role = roleOf(user);
+  const perms = role?.permissions ?? [];
+  const superAdmin =
+    (role?.name || "").toLowerCase().replace(/\s+/g, "_") === "super_admin";
+  const can = (p: string) => superAdmin || perms.includes(p);
+  if (isSchoolLevelUser(user) && can("SCHOOL_LEVEL_DASHBOARD"))
+    return "/school-dashboard";
+  if (can("VIEW_DASHBOARD")) return "/";
+  return "/welcome";
 }

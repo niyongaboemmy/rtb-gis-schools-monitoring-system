@@ -1,6 +1,16 @@
 export interface DecisionAssessmentSummary {
+  /** School Condition Score (0–100, higher = better). */
   overallScore: number;
   weightBreakdown: Array<{ category: string; score: number }>;
+  /** Per component: true when the neutral 50 was used for missing data. */
+  dataGaps?: {
+    infrastructure: boolean;
+    buildingAge: boolean;
+    accessibility: boolean;
+    population: boolean;
+    facilityCompliance: boolean;
+    resolution: boolean;
+  };
 }
 export interface AnalyticsMetrics {
   trendScore: number;

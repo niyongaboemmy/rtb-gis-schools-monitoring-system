@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
 import {
   Mail,
@@ -15,16 +15,10 @@ import { motion } from "framer-motion";
 import { PasswordInput } from "../components/ui/password-input";
 import { OtpInput } from "../components/ui/otp-input";
 import { AuthShell } from "../components/ui/AuthShell";
+import { PasswordStrengthMeter } from "../components/auth/PasswordStrengthMeter";
+import { isPasswordAcceptable } from "../components/auth/password-policy";
 
 type Step = "email" | "code" | "password" | "done";
-
-/** Kept in step with ResetPasswordDto on the server. */
-const RULES = [
-  { label: "At least 8 characters", test: (v: string) => v.length >= 8 },
-  { label: "One uppercase letter", test: (v: string) => /[A-Z]/.test(v) },
-  { label: "One lowercase letter", test: (v: string) => /[a-z]/.test(v) },
-  { label: "One number", test: (v: string) => /\d/.test(v) },
-];
 
 /** Pulls the server's message out of an axios error, whatever its shape. */
 function errorMessage(err: unknown, fallback: string) {
@@ -39,9 +33,13 @@ function errorMessage(err: unknown, fallback: string) {
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
+  // Emailed reset links (incl. admin "send reset code") carry ?email=… so
+  // the user lands straight on the code step.
+  const [searchParams] = useSearchParams();
+  const linkedEmail = searchParams.get("email")?.trim() ?? "";
 
-  const [step, setStep] = useState<Step>("email");
-  const [email, setEmail] = useState("");
+  const [step, setStep] = useState<Step>(linkedEmail ? "code" : "email");
+  const [email, setEmail] = useState(linkedEmail);
   const [otp, setOtp] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -121,9 +119,9 @@ export default function ForgotPassword() {
     }
   };
 
-  const unmetRule = RULES.find((rule) => !rule.test(password));
   const mismatch = confirm.length > 0 && password !== confirm;
-  const canSubmitPassword = !unmetRule && !mismatch && confirm.length > 0;
+  const canSubmitPassword =
+    isPasswordAcceptable(password, email) && !mismatch && confirm.length > 0;
 
   const banner = error ? (
     <motion.div
@@ -217,6 +215,9 @@ export default function ForgotPassword() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
+              autoComplete="new-password"
+              aria-label="New password"
+              aria-describedby="reset-password-rules"
               autoFocus
               required
             />
@@ -239,24 +240,12 @@ export default function ForgotPassword() {
             )}
           </div>
 
-          <ul className="space-y-1.5 rounded-xl bg-muted/40 p-4">
-            {RULES.map((rule) => {
-              const met = rule.test(password);
-              return (
-                <li
-                  key={rule.label}
-                  className={`flex items-center gap-2 text-xs font-semibold transition-colors ${
-                    met ? "text-primary" : "text-muted-foreground"
-                  }`}
-                >
-                  <CheckCircle2
-                    className={`h-3.5 w-3.5 ${met ? "opacity-100" : "opacity-30"}`}
-                  />
-                  {rule.label}
-                </li>
-              );
-            })}
-          </ul>
+          <PasswordStrengthMeter
+            id="reset-password-rules"
+            password={password}
+            email={email}
+            className="rounded-xl bg-muted/40 p-4"
+          />
 
           <motion.button
             whileHover={

@@ -1,91 +1,24 @@
 // Load .env before any decorator is evaluated so process.env is populated
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import compression from 'compression';
-import cookieParser from 'cookie-parser';
-import helmet from 'helmet';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { configureApp } from './app.setup';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-
-  // Security
-  app.use(helmet({
-    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
-  }));
-  app.use(compression());
-  app.use(cookieParser());
-
-  // Increase body size limits for large KMZ/KML geospatial data
-  const { json, urlencoded } = require('body-parser');
-  app.use(json({ limit: '1024mb' }));
-  app.use(urlencoded({ limit: '1024mb', extended: true }));
-
-  // CORS — origins from APP_CORS_ORIGINS env var (comma-separated)
-  const corsOrigins = (process.env.APP_CORS_ORIGINS || 'http://localhost:5173')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
-
-  if (
-    process.env.NODE_ENV === 'production' &&
-    corsOrigins.some((o) => o.includes('localhost'))
-  ) {
-    console.warn(
-      '[WARN] APP_CORS_ORIGINS contains a localhost origin in production. ' +
-        'Set APP_CORS_ORIGINS to your production frontend URL(s).',
-    );
-  }
-
-  app.enableCors({
-    origin: corsOrigins,
-    credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+  // Body parsing is registered in configureApp with per-route limits; Nest's
+  // own parser would otherwise apply its defaults first.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
   });
-
-  // Global validation pipe
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: { enableImplicitConversion: true },
-    }),
-  );
-
-  // API prefix
-  app.setGlobalPrefix('api/v1');
-
-  // Swagger documentation
-  if (process.env.SWAGGER_ENABLED !== 'false') {
-    const config = new DocumentBuilder()
-      .setTitle('TVET 3D GIS API')
-      .setDescription(
-        'API for the TVET 3D GIS platform (Rwanda TVET Board)',
-      )
-      .setVersion('1.0')
-      .addBearerAuth()
-      .addTag('auth', 'Authentication endpoints')
-      .addTag('schools', 'School management')
-      .addTag('kmz', 'KMZ geospatial processing')
-      .addTag('population', 'Population analytics')
-      .addTag('analytics', 'Decision support & analytics')
-      .addTag('users', 'User management')
-      .build();
-
-    const document = SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('api/docs', app, document, {
-      swaggerOptions: { persistAuthorization: true },
-    });
-  }
+  const { swaggerEnabled } = configureApp(app);
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);
 
   console.log(`\n🚀 TVET 3D GIS Server running at: http://localhost:${port}`);
-  console.log(`📚 API Docs: http://localhost:${port}/api/docs`);
+  if (swaggerEnabled)
+    console.log(`📚 API Docs: http://localhost:${port}/api/docs`);
 }
 
 bootstrap();

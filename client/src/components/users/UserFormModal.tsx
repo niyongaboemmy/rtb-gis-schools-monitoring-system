@@ -11,8 +11,20 @@ import {
   Lock,
   Flag,
   Loader2,
+  KeyRound,
+  ShieldOff,
+  Send,
+  History,
 } from "lucide-react";
-import { api } from "../../lib/api";
+import { api, apiErrorMessage } from "../../lib/api";
+import { useToast } from "../ui/toast";
+import { Badge } from "../ui/badge";
+import { PasswordStrengthMeter } from "../auth/PasswordStrengthMeter";
+import { isPasswordAcceptable } from "../auth/password-policy";
+import { ActivityFeed } from "../audit/ActivityFeed";
+import { useAuthorization } from "../../hooks/useAuthorization";
+import { Permission } from "../../lib/permissions";
+import { titleCase } from "../../lib/labels";
 import {
   getProvinces,
   getDistricts,
@@ -40,6 +52,14 @@ export function UserFormModal({
 }: UserFormModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // New accounts: email a set-password code (recommended) instead of an
+  // admin-chosen password (WS10.4). Either way the user must pick their own.
+  const [sendInvite, setSendInvite] = useState(true);
+  const [actionBusy, setActionBusy] = useState<"" | "reset" | "mfa">("");
+  const [confirmMfaReset, setConfirmMfaReset] = useState(false);
+  const toast = useToast();
+  const { isAuthorized } = useAuthorization();
+  const canViewAudit = isAuthorized(Permission.VIEW_AUDIT_LOGS);
   const [formData, setFormData] = useState<any>({
     firstName: "",
     lastName: "",
@@ -71,8 +91,40 @@ export function UserFormModal({
         });
       }
       setError("");
+      setSendInvite(true);
     }
   }, [isOpen, editingUser, roles]);
+
+  const sendReset = async () => {
+    if (!editingUser) return;
+    setActionBusy("reset");
+    try {
+      const { data } = await api.post<{ message: string; delivered: boolean }>(
+        `/users/${editingUser.id}/send-reset`,
+      );
+      if (data.delivered) toast.success(data.message);
+      else toast.warning("Email is disabled on this server; the code was written to the server log.");
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not send the reset code."));
+    } finally {
+      setActionBusy("");
+    }
+  };
+
+  const resetMfa = async () => {
+    if (!editingUser) return;
+    setConfirmMfaReset(false);
+    setActionBusy("mfa");
+    try {
+      await api.post(`/users/${editingUser.id}/2fa/reset`);
+      toast.success("Two-factor authentication was reset.");
+      onSuccess();
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not reset two-factor."));
+    } finally {
+      setActionBusy("");
+    }
+  };
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -142,23 +194,46 @@ export function UserFormModal({
     setLoading(true);
     setError("");
 
+    // Only the fields the API accepts (it rejects unknown ones).
+    const loc = formData.location ?? {};
+    const location = Object.fromEntries(
+      ["province", "district", "sector", "schoolId", "schoolName"]
+        .filter((k) => loc[k])
+        .map((k) => [k, loc[k]]),
+    );
+    const base = {
+      firstName: formData.firstName,
+      lastName: formData.lastName,
+      email: formData.email,
+      ...(formData.roleId ? { roleId: formData.roleId } : {}),
+      location,
+    };
+
     try {
       if (editingUser) {
-        // Edit flow
-        const payload = { ...formData };
-        if (!payload.password) delete payload.password; // Don't update password if empty
-        await api.patch(`/users/${editingUser.id}`, payload);
+        // Edit flow — passwords are never set here (use "Send reset code").
+        await api.patch(`/users/${editingUser.id}`, base);
+        toast.success("User updated.");
       } else {
-        // Create flow
-        await api.post("/users", formData);
+        if (!sendInvite && !isPasswordAcceptable(formData.password, formData.email)) {
+          setError("The temporary password does not meet the password policy.");
+          return;
+        }
+        const { data } = await api.post<{ inviteSent?: boolean }>(
+          "/users",
+          sendInvite ? base : { ...base, password: formData.password },
+        );
+        if (sendInvite && data.inviteSent)
+          toast.success(`Account created. ${formData.email} was emailed a code to set their password.`);
+        else if (sendInvite)
+          toast.warning("Account created, but the email could not be sent. Use “Send reset code” later.");
+        else
+          toast.success("Account created. The user must change the temporary password at first sign-in.");
       }
       onSuccess();
       onClose();
-    } catch (err: any) {
-      setError(
-        err.response?.data?.message ||
-          `Failed to ${editingUser ? "update" : "create"} identity`,
-      );
+    } catch (err) {
+      setError(apiErrorMessage(err, `Failed to ${editingUser ? "update" : "create"} identity`));
     } finally {
       setLoading(false);
     }
@@ -280,22 +355,99 @@ export function UserFormModal({
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest pl-1 flex items-center gap-1.5">
-                <Lock className="w-3 h-3" /> Password
-              </label>
-              <Input
-                name="password"
-                type="password"
-                required={!editingUser}
-                className="h-11 rounded-xl bg-muted/40 border-border"
-                placeholder={
-                  editingUser ? "Leave blank to keep unchanged" : "••••••••"
-                }
-                value={formData.password}
-                onChange={handleInputChange}
-              />
-            </div>
+            {editingUser ? (
+              <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
+                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                  <Lock className="w-3 h-3" aria-hidden /> Sign-in & security
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {editingUser.totpEnabled ? (
+                    <Badge variant="success">2FA on</Badge>
+                  ) : (
+                    <Badge variant="outline">2FA off</Badge>
+                  )}
+                  {editingUser.mustChangePassword && (
+                    <Badge variant="warning">Must change password</Badge>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void sendReset()}
+                    isLoading={actionBusy === "reset"}
+                  >
+                    <Send className="w-3.5 h-3.5 mr-1.5" aria-hidden /> Send reset code
+                  </Button>
+                  {editingUser.totpEnabled && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConfirmMfaReset(true)}
+                      isLoading={actionBusy === "mfa"}
+                    >
+                      <ShieldOff className="w-3.5 h-3.5 mr-1.5" aria-hidden /> Reset 2FA
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Administrators never set passwords for existing users: the user
+                  receives a one-time code by email and chooses their own.
+                </p>
+              </div>
+            ) : (
+              <fieldset className="space-y-3">
+                <legend className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest pl-1 flex items-center gap-1.5 mb-1.5">
+                  <KeyRound className="w-3 h-3" aria-hidden /> Initial password
+                </legend>
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="password-mode"
+                    checked={sendInvite}
+                    onChange={() => setSendInvite(true)}
+                    className="mt-1 accent-primary"
+                  />
+                  <span>
+                    Email the user a code to set their own password{" "}
+                    <span className="text-muted-foreground">(recommended)</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="password-mode"
+                    checked={!sendInvite}
+                    onChange={() => setSendInvite(false)}
+                    className="mt-1 accent-primary"
+                  />
+                  <span>Set a temporary password (changed at first sign-in)</span>
+                </label>
+                {!sendInvite && (
+                  <div className="space-y-2">
+                    <Input
+                      name="password"
+                      type="password"
+                      aria-label="Temporary password"
+                      aria-describedby="new-user-password-rules"
+                      autoComplete="new-password"
+                      required
+                      className="h-11 rounded-xl bg-muted/40 border-border"
+                      placeholder="••••••••••"
+                      value={formData.password}
+                      onChange={handleInputChange}
+                    />
+                    <PasswordStrengthMeter
+                      id="new-user-password-rules"
+                      password={formData.password}
+                      email={formData.email}
+                    />
+                  </div>
+                )}
+              </fieldset>
+            )}
 
             <div className="space-y-1.5">
               <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest pl-1 flex items-center gap-1.5">
@@ -312,7 +464,7 @@ export function UserFormModal({
                 }}
                 options={roles.map((r: any) => ({
                   value: r.id,
-                  label: `${r.name.replace("_", " ").toUpperCase()} (${r.accessLevel?.name || "National"})`,
+                  label: `${titleCase(r.name)} (${r.accessLevel?.name || "National"})`,
                 }))}
                 placeholder="Select authorization level..."
                 className="h-11"
@@ -441,7 +593,38 @@ export function UserFormModal({
             )}
           </div>
         </div>
+
+        {editingUser && canViewAudit && (
+          <section aria-label="Activity" className="space-y-3 border-t border-border/40 pt-6">
+            <h4 className="text-[14px] font-black text-foreground uppercase tracking-widest flex items-center gap-2">
+              <History className="w-4 h-4 text-primary" aria-hidden /> Activity
+            </h4>
+            <ActivityFeed filters={{ subjectUserId: editingUser.id }} pageSize={10} />
+          </section>
+        )}
       </form>
+      <Modal
+        isOpen={confirmMfaReset}
+        onClose={() => setConfirmMfaReset(false)}
+        title="Reset two-factor authentication?"
+        maxWidth="max-w-md"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmMfaReset(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => void resetMfa()}>
+              Reset 2FA
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-muted-foreground">
+          {editingUser?.email} will be signed out of every device and must set up
+          two-factor again at their next sign-in (if their role requires it).
+          Only do this after verifying their identity.
+        </p>
+      </Modal>
     </Modal>
   );
 }

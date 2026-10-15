@@ -34,6 +34,16 @@ import { useAuthStore } from "../store/authStore";
 import { hasPermission } from "../lib/permissions";
 import { Button } from "../components/ui/button";
 import { SchoolCoverMap } from "../components/maps/SchoolCoverMap";
+import { formatDate, formatNumber, formatPercent, formatScore } from "../lib/format";
+import { MetricInfo } from "../components/metric-help/MetricInfo";
+import type { MetricId } from "../components/metric-help/metrics";
+import type { HierarchyItem, NationalOverview, ProvinceStat } from "../components/dashboard/types";
+import type { LucideIcon } from "lucide-react";
+import {
+  DashboardEmpty,
+  DashboardError,
+  DashboardSkeleton,
+} from "../components/dashboard/DashboardStates";
 
 interface DashboardSchool {
   id: string;
@@ -41,14 +51,22 @@ interface DashboardSchool {
   code?: string;
   district?: string;
   calculatedScore: number;
+  overallScore?: number | string | null;
 }
 
+const num = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
 export default function Dashboard() {
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<NationalOverview | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [selectedProvince, setSelectedProvince] = useState<string | null>(null);
-  const [drillData, setDrillData] = useState<any>(null);
+  const [drillData, setDrillData] = useState<{ items?: HierarchyItem[] } | null>(null);
   const fetchedRef = useRef(false);
 
   const navigate = useNavigate();
@@ -101,22 +119,25 @@ export default function Dashboard() {
     fetchAllSchools();
   }, [fetchAllSchools]);
 
+  const fetchOverview = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const statsRes = await api.get("/analytics/overview");
+      setStats(statsRes.data);
+    } catch (err) {
+      console.error("Failed to load data", err);
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-
-    const fetchData = async () => {
-      try {
-        const statsRes = await api.get("/analytics/overview");
-        setStats(statsRes.data);
-      } catch (err) {
-        console.error("Failed to load data", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
+    fetchOverview();
+  }, [fetchOverview]);
 
   const schools = useMemo(
     () =>
@@ -124,32 +145,56 @@ export default function Dashboard() {
         // Analytics reflect the operating network only — drop inactive /
         // under-renovation schools (server does the same for every aggregate).
         .filter((s) => (s.status ?? "active") === "active")
+        // Rankings only make sense for scored schools; unscored ones would
+        // otherwise sort to the bottom as a fake 0.
+        .filter((s) => num(s.overallScore) !== null)
         .map((s) => ({ ...s, calculatedScore: calculatedScore(s) }))
         .sort((a, b) => b.calculatedScore - a.calculatedScore),
     [allSchools],
   );
 
   if (loading || allSchoolsLoading) {
+    return <DashboardSkeleton cards={5} label="Loading national dashboard…" className="pt-4" />;
+  }
+
+  if (loadError || !stats) {
     return (
-      <div className="flex h-full items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground animate-pulse">
-            Synchronizing National Intelligence...
-          </p>
-        </div>
-      </div>
+      <DashboardError
+        className="mt-8"
+        title="We couldn't load the national dashboard"
+        onRetry={fetchOverview}
+      />
+    );
+  }
+
+  if ((stats.totalSchools ?? 0) === 0) {
+    return (
+      <DashboardEmpty
+        className="mt-8"
+        icon={Building2}
+        title="No schools to show yet"
+        description={
+          <>
+            There are no active schools in your area. Add a school, or set an
+            existing school's status to Active, and its scores will appear here.
+          </>
+        }
+        actionLabel="Go to schools"
+        actionTo="/schools"
+      />
     );
   }
 
   const top5 = schools.slice(0, 5);
   const bottom5 = [...schools].reverse().slice(0, 5);
 
-  // Server-computed arithmetic mean — no synthetic formula on the client
-  const aggregateScore = Math.min(
-    100,
-    Math.max(0, Math.round(parseFloat(String(stats?.nationalAvgScore)) || 0)),
-  );
+  // Server-computed values only — nothing is derived from raw records here.
+  const scoredCount: number = stats.scoredSchoolCount ?? 0;
+  const aggregateScore = scoredCount > 0 ? num(stats.nationalAvgScore) : null;
+  const infraGaps: number = stats.dataGaps?.infrastructure ?? 0;
+  const popGaps: number = stats.dataGaps?.population ?? 0;
+  const gapNote = (n: number) =>
+    n > 0 ? `Estimated for ${n} of ${scoredCount} school${scoredCount === 1 ? "" : "s"}` : null;
 
   return (
     <div className="relative space-y-8 pb-10 min-h-screen">
@@ -166,7 +211,7 @@ export default function Dashboard() {
           variant="hero"
           interactive
           title="National School Network"
-          subtitle="Live infrastructure intelligence across Rwanda's TVET institutions"
+          subtitle="Condition of Rwanda's TVET schools at a glance"
           href="/map"
           hrefLabel="Open national map"
           onSchoolClick={(s) => navigate(`/schools/${s.id}/decision`)}
@@ -174,8 +219,8 @@ export default function Dashboard() {
         />
 
         <PageHeader
-        title="National System Overview"
-        description="GIS Intelligence & Infrastructure Monitoring Dashboard"
+        title="National Overview"
+        description="School Condition Scores and Intervention Priorities for the active schools in your area"
         icon={LayoutGrid}
         actions={
           <div className="flex items-center gap-3 flex-wrap">
@@ -192,135 +237,131 @@ export default function Dashboard() {
               </Button>
             )}
             <div className="text-[10px] font-black tracking-widest text-muted-foreground bg-background/50 backdrop-blur-md px-4 py-2 rounded-xl border border-border/20">
-              SCORES AS OF{" "}
-              {stats?.lastCalculatedAt
-                ? new Date(stats.lastCalculatedAt).toLocaleDateString("en-RW", {
-                    dateStyle: "medium",
-                  })
-                : new Date().toLocaleDateString("en-RW", {
-                    dateStyle: "medium",
-                  })}
+              Scores as of{" "}
+              {stats?.lastCalculatedAt ? formatDate(stats.lastCalculatedAt) : "—"}
             </div>
           </div>
         }
       />
 
       {/* KPI Cards Section */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
         <KPICard
-          title="Total Institutions"
-          value={stats?.totalSchools || 0}
+          title="Active schools"
+          value={formatNumber(stats.totalSchools)}
+          subValue={
+            stats.byPriority?.unassessed
+              ? `${formatNumber(stats.byPriority.unassessed)} not assessed yet`
+              : undefined
+          }
           icon={Building2}
           variant="info"
           delay={0.1}
+          metricId="national.totalSchools"
+          className="col-span-2 lg:col-span-1"
         />
         <KPICard
-          title="Critical Priority"
-          value={stats?.byPriority?.critical || 0}
+          title="Critical priority"
+          value={formatNumber(stats.byPriority?.critical ?? 0)}
+          subValue="Score below 35"
           icon={AlertTriangle}
           variant="destructive"
           delay={0.2}
+          metricId="national.priorityCount"
         />
         <KPICard
-          title="High Priority"
-          value={stats?.byPriority?.high || 0}
+          title="High priority"
+          value={formatNumber(stats.byPriority?.high ?? 0)}
+          subValue="Score 35–54"
           icon={AlertTriangle}
           variant="warning"
           delay={0.3}
+          metricId="national.priorityCount"
         />
         <KPICard
-          title="Medium Priority"
-          value={stats?.byPriority?.medium || 0}
+          title="Medium priority"
+          value={formatNumber(stats.byPriority?.medium ?? 0)}
+          subValue="Score 55–74"
           icon={AlertTriangle}
           variant="warning"
           delay={0.35}
+          metricId="national.priorityCount"
         />
         <KPICard
-          title="Optimal Status"
-          value={stats?.byPriority?.low || 0}
+          title="Low priority"
+          value={formatNumber(stats.byPriority?.low ?? 0)}
+          subValue="Score 75 or more"
           icon={CheckCircle2}
           variant="success"
           delay={0.4}
+          metricId="national.priorityCount"
         />
       </div>
 
       {/* Coverage data strip — sourced entirely from server-side aggregates */}
-      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground border border-border/10 rounded-2xl py-2 px-4 bg-muted/10">
-        <span>
-          Survey coverage:{" "}
-          <strong className="text-foreground">
-            {stats?.surveyCompletionRate != null ? `${stats.surveyCompletionRate}%` : "—"}
-          </strong>
-        </span>
-        <span className="text-border/40">·</span>
-        <span>
-          GIS coverage:{" "}
-          <strong className="text-foreground">
-            {stats?.kmzCoverageRate != null ? `${stats.kmzCoverageRate}%` : "—"}
-          </strong>
-        </span>
-        <span className="text-border/40">·</span>
-        <span>
-          Total students:{" "}
-          <strong className="text-foreground">
-            {stats?.totalStudents != null
-              ? Number(stats.totalStudents).toLocaleString()
-              : "—"}
-          </strong>
-        </span>
-        <span className="text-border/40">·</span>
-        <span>
-          Total teachers:{" "}
-          <strong className="text-foreground">
-            {stats?.totalTeachers != null
-              ? Number(stats.totalTeachers).toLocaleString()
-              : "—"}
-          </strong>
-        </span>
-      </div>
+      <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground border border-border/10 rounded-2xl p-2 sm:py-2 sm:px-4 bg-muted/10">
+        {(
+          [
+            ["Survey Coverage", formatPercent(num(stats.surveyCompletionRate)), "national.surveyCoverage"],
+            ["Map Coverage", formatPercent(num(stats.kmzCoverageRate)), "national.mapCoverage"],
+            ["Total students", formatNumber(num(stats.totalStudents)), "national.totalStudents"],
+            ["Total teachers", formatNumber(num(stats.totalTeachers)), "national.totalTeachers"],
+          ] as Array<[string, string, MetricId]>
+        ).map(([labelText, value, id]) => (
+          <div key={labelText} className="flex flex-wrap items-center justify-center gap-x-1.5 min-w-0 text-center">
+            <dt className="truncate">{labelText}:</dt>
+            <dd className="text-foreground font-black tabular-nums">{value}</dd>
+            <MetricInfo id={id} size="xs" />
+          </div>
+        ))}
+      </dl>
 
       <div className="grid gap-6 grid-cols-1 xl:grid-cols-3">
         <IntelligenceScore
           score={aggregateScore}
           isAggregate={true}
+          assessedCount={scoredCount}
           metrics={[
             {
-              label: "National Health Score",
-              // Server-computed arithmetic mean — no synthetic formula
-              score: aggregateScore,
+              label: "Infrastructure",
+              score: scoredCount > 0 ? num(stats.nationalAvgInfraScore) : null,
               icon: Building2,
+              metricId: "national.avgInfrastructure",
+              estimatedNote: gapNote(infraGaps),
             },
             {
-              label: "Buildings Depreciation",
-              // 100 − avg building-age score: higher age score = newer stock = less depreciation
-              score: Math.min(100, Math.max(0, Math.round(
-                100 - (parseFloat(String(stats?.nationalAvgAgeScore)) || 50)
-              ))),
+              label: "Building Age Score",
+              score: scoredCount > 0 ? num(stats.nationalAvgAgeScore) : null,
               icon: MapPin,
-            },
-            {
-              label: "Capacity Utilisation",
-              // Server-side: totalStudents ÷ totalCapacity — null until that field is wired
-              score: stats?.nationalCapacityUtilisation != null
-                ? Math.min(100, Math.max(0, Math.round(
-                    parseFloat(String(stats.nationalCapacityUtilisation))
-                  )))
-                : null,
-              icon: Users,
-            },
-            {
-              label: "School Accessibility",
-              score: Math.min(100, Math.max(0, Math.round(
-                parseFloat(String(stats?.nationalAvgAccessScore)) || 0
-              ))),
-              icon: ClipboardCheck,
+              metricId: "national.avgBuildingAgeScore",
             },
             {
               label: "Facility Compliance",
-              score: Math.min(100, Math.max(0, Math.round(
-                parseFloat(String(stats?.nationalAvgComplianceScore)) || 0
-              ))),
+              score: scoredCount > 0 ? num(stats.nationalAvgComplianceScore) : null,
               icon: ClipboardCheck,
+              metricId: "national.avgFacilityCompliance",
+            },
+            {
+              label: "Accessibility",
+              score: scoredCount > 0 ? num(stats.nationalAvgAccessScore) : null,
+              icon: MapPin,
+              metricId: "national.avgAccessibility",
+            },
+            {
+              label: "Population Pressure",
+              score: scoredCount > 0 ? num(stats.nationalAvgPopScore) : null,
+              icon: Users,
+              metricId: "national.avgPopulation",
+              estimatedNote: gapNote(popGaps),
+            },
+            {
+              label: "Capacity Utilisation",
+              // Σ students ÷ Σ capacity (server). null → no capacity on record.
+              score: num(stats.nationalCapacityUtilisation),
+              unit: "percent",
+              emptyText: "No capacity data yet",
+              icon: Users,
+              metricId: "national.capacityUtilisation",
             },
           ]}
           className="xl:col-span-2"
@@ -330,9 +371,9 @@ export default function Dashboard() {
               Array.isArray(stats?.nationalRecommendations) &&
               stats.nationalRecommendations.length > 0
                 ? stats.nationalRecommendations
-                : ["No recommendations available — run a full recalculation to generate insights."]
+                : ["No recommendations yet. Recalculate scores on the Decisions page to generate them."]
             }
-            title="National Intelligence Insights"
+            title="National recommendations"
             className="mt-6"
           />
         </IntelligenceScore>
@@ -351,19 +392,19 @@ export default function Dashboard() {
             title={
               selectedProvince
                 ? `${selectedProvince} — Districts`
-                : "Provincial Distribution"
+                : "Schools by province"
             }
             selectedLabel={selectedProvince}
             onItemClick={!selectedProvince ? handleProvinceClick : undefined}
             items={
-              drillData?.items?.map((d: any) => ({
+              drillData?.items?.map((d: HierarchyItem) => ({
                 label:    d.label,
                 total:    Number(d.total),
                 critical: Number(d.critical),
                 high:     Number(d.high),
                 avgScore: d.avgScore,
               })) ??
-              stats?.provinceStats?.map((p: any) => ({
+              stats?.provinceStats?.map((p: ProvinceStat) => ({
                 label:    p.province,
                 total:    Number(p.total),
                 critical: Number(p.critical),
@@ -379,15 +420,15 @@ export default function Dashboard() {
       {/* Top and Bottom Rankings */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <DirectorySection
-          title="Top Performing Institutions"
-          subtitle="Highest Decision Intelligence Scores"
+          title="Highest scores"
+          subtitle="Top 5 School Condition Scores"
           icon={TrendingUp}
           schools={top5}
           variant="success"
         />
         <DirectorySection
-          title="Needs Priority Attention"
-          subtitle="Lowest Decision Intelligence Scores"
+          title="Lowest scores"
+          subtitle="Bottom 5 School Condition Scores"
           icon={TrendingDown}
           schools={bottom5}
           variant="destructive"
@@ -407,7 +448,7 @@ function DirectorySection({
 }: {
   title: string;
   subtitle: string;
-  icon: any;
+  icon: LucideIcon;
   schools: DashboardSchool[];
   variant: "success" | "destructive";
 }) {
@@ -423,8 +464,9 @@ function DirectorySection({
           <Icon className="w-5 h-5" />
         </div>
         <div>
-          <h3 className="text-lg font-black tracking-tight text-foreground uppercase">
+          <h3 className="flex items-center gap-1 text-lg font-black tracking-tight text-foreground uppercase">
             {title}
+            <MetricInfo id="national.rankings" />
           </h3>
           <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">
             {subtitle}
@@ -448,7 +490,14 @@ function DirectorySection({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {schools.map((school: any) => (
+            {schools.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={3} className="py-8 text-center text-sm text-muted-foreground">
+                  No scored schools yet. Scores appear after a school's data is entered and recalculated.
+                </TableCell>
+              </TableRow>
+            )}
+            {schools.map((school) => (
               <TableRow
                 key={school.id}
                 className="group/row border-b border-border/5 last:border-0 hover:bg-primary/5 transition-colors"
@@ -484,12 +533,13 @@ function DirectorySection({
                         : "bg-destructive/10 text-destructive",
                     )}
                   >
-                    {school.calculatedScore}%
+                    {formatScore(school.calculatedScore)}
                   </span>
                 </TableCell>
                 <TableCell className="text-right pr-6">
                   <Link
                     to={`/schools/${school.id}/decision`}
+                    aria-label={`Open ${school.name} dashboard`}
                     className="text-primary hover:text-primary transition-all"
                   >
                     <ArrowRight className="w-4 h-4 ml-auto" />

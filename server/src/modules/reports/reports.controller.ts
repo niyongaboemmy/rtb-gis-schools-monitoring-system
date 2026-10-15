@@ -17,7 +17,12 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import * as path from 'path';
 import { join } from 'path';
-import { mkdirSync } from 'fs';
+import { mkdirSync, unlink } from 'fs';
+import {
+  UPLOAD_EXTENSIONS,
+  assertUploadedFile,
+  extensionFileFilter,
+} from '../../common/security/upload-validation';
 import { v4 as uuid } from 'uuid';
 
 import { tmpdir } from 'os';
@@ -58,6 +63,7 @@ import {
 import { ReportsService } from './reports.service';
 import {
   CreateReportDto,
+  UpdateReportDto,
   UpdateReportStatusDto,
 } from './dto/create-report.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -67,7 +73,7 @@ import {
   RequireAnyPermission,
 } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/constants/permissions.constant';
-import { ReportStatus } from './entities/issue-report.entity';
+import { ReportStatus, ReportType } from './entities/issue-report.entity';
 import { CurrentScope } from '../../common/scope/scope.decorator';
 import type { AccessScope } from '../../common/scope/access-scope';
 
@@ -99,20 +105,27 @@ export class ReportsController {
         },
       }),
       limits: { fileSize: MAX_ATTACHMENT_MB * 1024 * 1024, files: 5 },
-      fileFilter: (req, file, cb) => {
-        if (!/\.(jpe?g|png|webp|heic|pdf)$/i.test(file.originalname)) {
-          return cb(new Error('Only images and PDF files are allowed!'), false);
-        }
-        cb(null, true);
-      },
+      fileFilter: extensionFileFilter(UPLOAD_EXTENSIONS.reportAttachment),
     }),
   )
   async create(
     @Body() createReportDto: CreateReportDto,
     @Req() req: any,
     @UploadedFiles() files?: Express.Multer.File[],
+    @CurrentScope() scope?: AccessScope,
   ) {
     const userId = req.user.id;
+
+    // Content must match the extension (WS9.7); drop every staged file if
+    // any one is rejected so nothing unvalidated stays on disk.
+    try {
+      for (const file of files ?? [])
+        assertUploadedFile(file, UPLOAD_EXTENSIONS.reportAttachment);
+    } catch (err) {
+      for (const file of files ?? [])
+        if (file.path) unlink(file.path, () => {});
+      throw err;
+    }
 
     // Relative URL — resolves behind the same-origin nginx proxy that fronts
     // both the API and the file-server (see deploy/nginx/*.conf).
@@ -129,6 +142,7 @@ export class ReportsController {
     return this.reportsService.create(
       { ...createReportDto, attachments: finalAttachments },
       userId,
+      scope,
     );
   }
 
@@ -136,6 +150,7 @@ export class ReportsController {
   @ApiOperation({ summary: 'Get all issue reports' })
   @ApiQuery({ name: 'schoolId', required: false })
   @ApiQuery({ name: 'status', required: false, enum: ReportStatus })
+  @ApiQuery({ name: 'type', required: false, enum: ReportType })
   @ApiQuery({ name: 'buildingId', required: false })
   @ApiQuery({ name: 'facilityId', required: false })
   @ApiQuery({ name: 'reportedBy', required: false })
@@ -146,6 +161,7 @@ export class ReportsController {
   findAll(
     @Query('schoolId') schoolId?: string,
     @Query('status') status?: ReportStatus,
+    @Query('type') type?: ReportType,
     @Query('buildingId') buildingId?: string,
     @Query('facilityId') facilityId?: string,
     @Query('reportedBy') reportedBy?: string,
@@ -159,6 +175,9 @@ export class ReportsController {
       {
         schoolId,
         status,
+        type: Object.values(ReportType).includes(type as ReportType)
+          ? type
+          : undefined,
         buildingId,
         facilityId,
         reportedBy,
@@ -185,24 +204,32 @@ export class ReportsController {
   @ApiOperation({ summary: 'Update report details' })
   update(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() updateReportDto: Partial<CreateReportDto>,
+    @Body() updateReportDto: UpdateReportDto,
     @CurrentScope() scope?: AccessScope,
   ) {
     return this.reportsService.update(id, updateReportDto, scope);
   }
 
   @Patch(':id/status')
-  @RequirePermissions(Permission.MANAGE_REPORTS)
+  // MANAGE_REPORTS triages any report; GIS analysts (EDIT_SCHOOL_LOCATION)
+  // may close the data change requests routed to them (WS7.7) — the service
+  // enforces that second case.
+  @RequireAnyPermission(
+    Permission.MANAGE_REPORTS,
+    Permission.EDIT_SCHOOL_LOCATION,
+  )
   @ApiOperation({ summary: 'Update report status' })
   updateStatus(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateReportStatusDto: UpdateReportStatusDto,
+    @Req() req: any,
     @CurrentScope() scope?: AccessScope,
   ) {
     return this.reportsService.updateStatus(
       id,
       updateReportStatusDto.status,
       scope,
+      req.user,
     );
   }
 

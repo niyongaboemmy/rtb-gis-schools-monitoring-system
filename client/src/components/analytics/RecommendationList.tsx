@@ -17,7 +17,7 @@ interface RecommendationListProps {
 export function RecommendationList({
   recommendations,
   className,
-  title = "Intelligence Suggestions",
+  title = "Recommendations",
 }: RecommendationListProps) {
   const parseRecommendation = (
     rec: string | Recommendation,
@@ -27,11 +27,8 @@ export function RecommendationList({
     const isUrgent = rec.includes("[URGENT]");
     const isCritical = rec.includes("[CRITICAL]");
     const isStrategic = rec.includes("[STRATEGIC]");
-    const cleanRec = rec
-      .replace("[URGENT]", "")
-      .replace("[CRITICAL]", "")
-      .replace("[STRATEGIC]", "")
-      .trim();
+    // Strip any leading server tag such as [URGENT] or [INFO].
+    const cleanRec = rec.replace(/^\s*\[[A-Z]+\]\s*/, "").trim();
 
     return {
       text: cleanRec,
@@ -52,7 +49,7 @@ export function RecommendationList({
           bg: "bg-red-500/5 border-red-500/20",
           iconBg: "bg-red-500 text-white",
           icon: AlertTriangle,
-          label: "Urgent Refactor",
+          label: "Urgent",
           labelColor: "text-red-500",
           dot: "bg-red-500",
         };
@@ -61,7 +58,7 @@ export function RecommendationList({
           bg: "bg-amber-500/5 border-amber-500/20",
           iconBg: "bg-amber-500 text-white",
           icon: Wrench,
-          label: "Critical Need",
+          label: "Critical",
           labelColor: "text-amber-600",
           dot: "bg-amber-500",
         };
@@ -70,7 +67,7 @@ export function RecommendationList({
           bg: "bg-emerald-500/5 border-emerald-500/20",
           iconBg: "bg-emerald-500 text-white",
           icon: Sparkles,
-          label: "Strategic Goal",
+          label: "Strategic",
           labelColor: "text-emerald-600",
           dot: "bg-emerald-500",
         };
@@ -79,7 +76,7 @@ export function RecommendationList({
           bg: "bg-primary/5 border-primary/20",
           iconBg: "bg-primary text-white",
           icon: CheckCircle2,
-          label: "System Note",
+          label: "Note",
           labelColor: "text-primary",
           dot: "bg-primary",
         };
@@ -148,7 +145,7 @@ export function RecommendationList({
           <div className="text-center py-8">
             <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-500/20" />
             <p className="text-[10px] uppercase font-black text-muted-foreground tracking-widest">
-              Calculations optimal
+              Nothing flagged right now
             </p>
           </div>
         )}

@@ -122,32 +122,111 @@ export class MailService implements OnModuleInit {
     name: string,
     otp: string,
     expiresInMinutes: number,
+    options: { requestedByAdmin?: boolean; resetUrl?: string } = {},
   ) {
-    const subject = `${otp} is your RTB GIS verification code`;
+    await this.sendCode({
+      to,
+      name,
+      code: otp,
+      expiresInMinutes,
+      subject: `${otp} is your RTB GIS verification code`,
+      heading: 'Verification code',
+      purpose: options.requestedByAdmin
+        ? 'An administrator asked us to send you a code to set a new RTB GIS password.'
+        : 'Use the code below to reset your RTB GIS password.',
+      footer:
+        'If you did not request a reset, you can safely ignore this email — your password will not change.',
+      linkUrl: options.resetUrl,
+      linkLabel: 'Open the reset page',
+    });
+  }
+
+  /** Email second factor (WS10.8). */
+  async sendLoginCode(
+    to: string,
+    name: string,
+    code: string,
+    expiresInMinutes: number,
+  ) {
+    await this.sendCode({
+      to,
+      name,
+      code,
+      expiresInMinutes,
+      subject: `${code} is your RTB GIS sign-in code`,
+      heading: 'Sign-in code',
+      purpose: 'Use the code below to finish signing in to RTB GIS.',
+      footer:
+        'If you were not signing in, someone may know your password — change it now and tell an administrator.',
+    });
+  }
+
+  /**
+   * Short security notice ("your password was changed", "2FA turned off" …).
+   * Throws like `send`; callers that must not fail wrap it (fail soft).
+   */
+  async sendSecurityNotice(
+    to: string,
+    name: string,
+    subject: string,
+    lines: string[],
+  ) {
     const text =
-      `Hello ${name},\n\n` +
-      `Use this verification code to reset your RTB GIS password:\n\n` +
-      `${otp}\n\n` +
-      `The code expires in ${expiresInMinutes} minutes and can only be used once.\n\n` +
-      `If you did not request this, you can safely ignore this email — ` +
-      `your password will not change. Never share this code with anyone.`;
+      `Hello ${name},\n\n${lines.join('\n\n')}\n\n` +
+      `If this was not you, reset your password immediately and contact an RTB administrator.`;
+    const html = `
+      <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;color:#0f172a">
+        <h1 style="font-size:20px;font-weight:800;margin:0 0 4px">${escapeHtml(subject)}</h1>
+        <p style="color:#64748b;font-size:13px;margin:0 0 24px">RTB GIS Schools Monitoring System</p>
+        <p style="font-size:15px;line-height:1.6">Hello ${escapeHtml(name)},</p>
+        ${lines.map((l) => `<p style="font-size:15px;line-height:1.6">${escapeHtml(l)}</p>`).join('')}
+        <p style="font-size:13px;color:#b91c1c;line-height:1.6;margin-top:24px">
+          If this was not you, reset your password immediately and contact an RTB administrator.
+        </p>
+      </div>
+    `;
+    await this.send({ to, subject: `RTB GIS: ${subject}`, html, text });
+  }
+
+  private async sendCode(o: {
+    to: string;
+    name: string;
+    code: string;
+    expiresInMinutes: number;
+    subject: string;
+    heading: string;
+    purpose: string;
+    footer: string;
+    linkUrl?: string;
+    linkLabel?: string;
+  }) {
+    const text =
+      `Hello ${o.name},\n\n` +
+      `${o.purpose}\n\n` +
+      `${o.code}\n\n` +
+      (o.linkUrl ? `${o.linkLabel}: ${o.linkUrl}\n\n` : '') +
+      `The code expires in ${o.expiresInMinutes} minutes and can only be used once.\n\n` +
+      `${o.footer} Never share this code with anyone.`;
 
     const html = `
       <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;color:#0f172a">
-        <h1 style="font-size:20px;font-weight:800;margin:0 0 4px">Verification code</h1>
+        <h1 style="font-size:20px;font-weight:800;margin:0 0 4px">${escapeHtml(o.heading)}</h1>
         <p style="color:#64748b;font-size:13px;margin:0 0 24px">RTB GIS Schools Monitoring System</p>
-        <p style="font-size:15px;line-height:1.6">Hello ${name},</p>
-        <p style="font-size:15px;line-height:1.6">
-          Use the code below to reset your password.
-        </p>
+        <p style="font-size:15px;line-height:1.6">Hello ${escapeHtml(o.name)},</p>
+        <p style="font-size:15px;line-height:1.6">${escapeHtml(o.purpose)}</p>
         <div style="margin:28px 0;padding:20px;background:#f1f5f9;border-radius:12px;text-align:center">
           <div style="font-size:34px;font-weight:800;letter-spacing:10px;color:#1d4ed8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">
-            ${otp}
+            ${escapeHtml(o.code)}
           </div>
         </div>
+        ${
+          o.linkUrl
+            ? `<p style="text-align:center;margin:0 0 24px"><a href="${escapeHtml(o.linkUrl)}" style="display:inline-block;padding:10px 18px;border-radius:10px;background:#1d4ed8;color:#fff;text-decoration:none;font-weight:700;font-size:14px">${escapeHtml(o.linkLabel ?? 'Open')}</a></p>`
+            : ''
+        }
         <p style="font-size:13px;color:#64748b;line-height:1.6">
-          This code expires in <strong>${expiresInMinutes} minutes</strong> and can only be used once.
-          If you did not request a reset, you can safely ignore this email — your password will not change.
+          This code expires in <strong>${o.expiresInMinutes} minutes</strong> and can only be used once.
+          ${escapeHtml(o.footer)}
         </p>
         <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin-top:24px">
           RTB staff will never ask you for this code. Never share it with anyone.
@@ -155,6 +234,16 @@ export class MailService implements OnModuleInit {
       </div>
     `;
 
-    await this.send({ to, subject, html, text });
+    await this.send({ to: o.to, subject: o.subject, html, text });
   }
+}
+
+/** Names come from user input; never interpolate them into HTML raw. */
+function escapeHtml(value: string): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

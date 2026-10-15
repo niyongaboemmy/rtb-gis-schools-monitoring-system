@@ -6,6 +6,8 @@ const path = require('path');
 const multer = require('multer');
 const { v4: uuid } = require('uuid');
 const fs = require('fs');
+const { isUuid, resolveJwtSecret, createRequireUploader } = require('./auth');
+const { findRejectedFiles } = require('./file-types');
 
 const app = express();
 
@@ -24,9 +26,17 @@ const MAX_FILES = parseInt(
   10,
 );
 
-// Optional shared secret. When set, /upload and the viewer-state PUT require
-// the `x-file-server-token` header. Unset = open (backwards compatible).
+// Optional legacy shared secret for server-to-server uploads
+// (`x-file-server-token` header). Browsers authenticate with their JWT instead.
 const UPLOAD_TOKEN = (process.env.FILE_SERVER_UPLOAD_TOKEN || '').trim();
+
+// The API's JWT secret; uploads verify the user's access token against it.
+const JWT_SECRET = resolveJwtSecret();
+
+// Development escape hatch only: accept unauthenticated uploads when no JWT
+// secret can be found. Never set this in production.
+const ALLOW_ANONYMOUS_UPLOADS =
+  process.env.FILE_SERVER_ALLOW_ANONYMOUS_UPLOADS === 'true';
 
 const STORAGE_DIR = path.isAbsolute(process.env.FILE_SERVER_STORAGE_DIR || '')
   ? process.env.FILE_SERVER_STORAGE_DIR
@@ -63,7 +73,7 @@ app.use(
   cors({
     origin: CORS_ORIGINS.length ? CORS_ORIGINS : '*',
     credentials: false,
-    methods: ['GET', 'POST', 'PUT', 'HEAD', 'OPTIONS'],
+    methods: ['GET', 'POST', 'HEAD', 'OPTIONS'],
   }),
 );
 
@@ -77,10 +87,20 @@ app.use((req, _res, next) => {
   next();
 });
 
-const requireToken = (req, res, next) => {
-  if (!UPLOAD_TOKEN) return next();
-  if ((req.headers['x-file-server-token'] || '') === UPLOAD_TOKEN) return next();
-  return res.status(401).json({ success: false, message: 'Invalid upload token' });
+const requireUploader = createRequireUploader({
+  jwtSecret: JWT_SECRET,
+  uploadToken: UPLOAD_TOKEN,
+  allowAnonymous: ALLOW_ANONYMOUS_UPLOADS,
+  resolveFolder,
+});
+
+// `schoolId` reaches filesystem paths, so only a UUID is accepted — a value
+// like "../.." would otherwise escape STORAGE_DIR.
+const rejectBadSchoolId = (req, res, next) => {
+  const id = req.params.schoolId ?? req.query.schoolId;
+  if (id !== undefined && !isUuid(String(id)))
+    return res.status(400).json({ success: false, message: 'Invalid school id' });
+  return next();
 };
 
 // ── Multer ────────────────────────────────────────────────────────────────
@@ -117,7 +137,7 @@ const upload = multer({
 });
 
 // ── Routes ────────────────────────────────────────────────────────────────
-app.post('/upload', requireToken, upload.array('files', MAX_FILES), (req, res) => {
+app.post('/upload', rejectBadSchoolId, requireUploader, upload.array('files', MAX_FILES), (req, res) => {
   try {
     const files = req.files || [];
     if (!files.length) {
@@ -128,6 +148,16 @@ app.post('/upload', requireToken, upload.array('files', MAX_FILES), (req, res) =
 
     const folder = resolveFolder(req.query.folder);
     const { schoolId } = req.query;
+
+    // Reject the whole batch if any file's content isn't allowed here.
+    const rejected = findRejectedFiles(files, folder);
+    if (rejected.length) {
+      files.forEach((f) => fs.unlink(f.path, () => {}));
+      return res.status(415).json({
+        success: false,
+        message: `Unsupported file type for ${folder}: ${rejected.join(', ')}`,
+      });
+    }
 
     const urls = files.map((file) =>
       folder === 'buildings' && schoolId
@@ -143,7 +173,7 @@ app.post('/upload', requireToken, upload.array('files', MAX_FILES), (req, res) =
 });
 
 // ── School 3D model lookup ────────────────────────────────────────────────
-app.get('/files/schools/:schoolId/3d', (req, res) => {
+app.get('/files/schools/:schoolId/3d', rejectBadSchoolId, (req, res) => {
   const dir = path.join(STORAGE_DIR, 'schools', req.params.schoolId, '3d');
   if (!fs.existsSync(dir))
     return res.status(404).json({ error: 'No 3D folder found' });
@@ -158,8 +188,11 @@ app.get('/files/schools/:schoolId/3d', (req, res) => {
   });
 });
 
-// ── School viewer state (home position, annotations, measures) ───────────
-app.get('/files/schools/:schoolId/viewer-state', (req, res) => {
+// ── Legacy school viewer state (read-only) ────────────────────────────────
+// Viewer state now lives in the API (`/api/v1/schools/:id/viewer-state`). This
+// GET remains so the 3D viewer can import a school's old state once; the PUT
+// that let any client overwrite it has been removed.
+app.get('/files/schools/:schoolId/viewer-state', rejectBadSchoolId, (req, res) => {
   const file = path.join(
     STORAGE_DIR,
     'schools',
@@ -174,24 +207,6 @@ app.get('/files/schools/:schoolId/viewer-state', (req, res) => {
     res.json({ home: null, annotations: [], measures: [] });
   }
 });
-
-app.put(
-  '/files/schools/:schoolId/viewer-state',
-  requireToken,
-  (req, res) => {
-    const dir = path.join(STORAGE_DIR, 'schools', req.params.schoolId);
-    fs.mkdirSync(dir, { recursive: true });
-    try {
-      fs.writeFileSync(
-        path.join(dir, 'viewer-state.json'),
-        JSON.stringify(req.body),
-      );
-      res.json({ success: true });
-    } catch (e) {
-      res.status(500).json({ error: e.message });
-    }
-  },
-);
 
 app.use(
   '/files',
@@ -231,7 +246,15 @@ app.use((err, _req, res, _next) => {
 const server = app.listen(PORT, () => {
   console.log(`[file-server] Port:    ${PORT}`);
   console.log(`[file-server] Storage: ${STORAGE_DIR}`);
-  console.log(`[file-server] Auth:    ${UPLOAD_TOKEN ? 'token required' : 'open'}`);
+  console.log(
+    `[file-server] Auth:    ${
+      JWT_SECRET
+        ? 'JWT required for uploads'
+        : ALLOW_ANONYMOUS_UPLOADS
+          ? 'OPEN (FILE_SERVER_ALLOW_ANONYMOUS_UPLOADS=true — dev only)'
+          : 'uploads DISABLED (no JWT_SECRET found)'
+    }`,
+  );
   console.log(
     `[file-server] Limits:  ${MAX_FILE_SIZE_MB}MB per file, ${MAX_FILES} files max`,
   );

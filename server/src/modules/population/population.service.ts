@@ -12,6 +12,7 @@ import {
   ACTIVE_SCHOOL_STATUS,
   whereActiveSchool,
 } from '../../common/school/active-school';
+import { PopulationSummary, summarisePopulation } from './population-summary';
 
 interface ArcGISFeature {
   attributes: {
@@ -120,6 +121,18 @@ export class PopulationService {
     whereActiveSchool(qb, 'school');
     if (scope) applySchoolScope(qb, scope, 'school');
     return qb.getMany();
+  }
+
+  /** Page-level roll-up over active, in-scope schools (population-summary.ts). */
+  async getPopulationSummary(scope?: AccessScope): Promise<PopulationSummary> {
+    const countQb = this.schoolRepository.createQueryBuilder('school');
+    whereActiveSchool(countQb, 'school');
+    if (scope) applySchoolScope(countQb, scope, 'school');
+    const [rows, totalSchools] = await Promise.all([
+      this.getAllPopulation(scope),
+      countQb.getCount(),
+    ]);
+    return summarisePopulation(rows, totalSchools);
   }
 
   private async fetchArcGISPopulation(

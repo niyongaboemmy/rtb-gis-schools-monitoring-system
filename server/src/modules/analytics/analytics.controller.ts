@@ -42,7 +42,10 @@ export class AnalyticsController {
   // ── National overview ─────────────────────────────────────────────────────
 
   @Get('overview')
-  @ApiOperation({ summary: 'Get system-wide analytics overview' })
+  @ApiOperation({
+    summary:
+      'National overview for active, in-scope schools: average School Condition Score and components, Intervention Priority counts, capacity utilisation, coverage and data-gap counts',
+  })
   @RequirePermissions(Permission.VIEW_ANALYTICS)
   getOverview(@CurrentScope() scope?: AccessScope) {
     return this.analyticsService.getOverview(scope);
@@ -71,11 +74,22 @@ export class AnalyticsController {
   @Get('schools/:schoolId/metrics')
   @ApiOperation({
     summary:
-      'Computed decision metrics, facility stats, and issue summary for one school',
+      'School Condition Score, its six components, data-gap flags, derived figures (enrolment, staff, capacity utilisation, land), Issue Report summary and indicative risk for one school',
   })
   @RequirePermissions(Permission.SCHOOL_LEVEL_DASHBOARD)
   getSchoolMetrics(@Param('schoolId') schoolId: string) {
     return this.analyticsService.getSchoolMetrics(schoolId);
+  }
+
+  @Get('schools/:schoolId/risk')
+  @ApiOperation({
+    summary:
+      'Indicative risk heuristics for one school (rules of thumb, not measurements; each factor carries its rule text)',
+  })
+  @RequirePermissions(Permission.SCHOOL_LEVEL_DASHBOARD)
+  async getSchoolRisk(@Param('schoolId') schoolId: string) {
+    return (await this.analyticsService.getSchoolMetrics(schoolId))
+      .riskAssessment;
   }
 
   @Get('schools/:schoolId/history')
@@ -132,7 +146,8 @@ export class AnalyticsController {
 
   @Get('decisions')
   @ApiOperation({
-    summary: 'Get school decision assessments ranked by priority',
+    summary:
+      'School Condition assessments for active, in-scope schools, lowest score (most urgent) first',
   })
   @RequirePermissions(Permission.VIEW_ANALYTICS)
   @ApiQuery({ name: 'province', required: false })
@@ -164,7 +179,9 @@ export class AnalyticsController {
 
   @Post('recalculate')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Re-run decision scoring engine for all schools' })
+  @ApiOperation({
+    summary: 'Recalculate the School Condition Score for all active schools',
+  })
   @RequirePermissions(Permission.MANAGE_DECISIONS)
   @RequireNationalScope()
   recalculate(@Request() req: any) {
@@ -174,7 +191,7 @@ export class AnalyticsController {
   @Post('schools/:schoolId/recalculate')
   @HttpCode(200)
   @ApiOperation({
-    summary: 'Re-run decision scoring engine for a single school',
+    summary: 'Recalculate the School Condition Score for one school',
   })
   @RequirePermissions(Permission.MANAGE_DECISIONS)
   recalculateOne(@Param('schoolId') schoolId: string) {

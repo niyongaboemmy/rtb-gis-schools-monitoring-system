@@ -9,21 +9,28 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { User } from '../users/entities/user.entity';
 import { Role } from '../roles/entities/role.entity';
+import { UserSession } from './entities/user-session.entity';
+import { SessionsService } from './sessions.service';
+import { MfaService } from './mfa.service';
+import { PasswordService } from './password.service';
+import { CsrfHeaderGuard } from './guards/csrf-header.guard';
 import { MailModule } from '../mail/mail.module';
 import { AuditModule } from '../audit/audit.module';
+import { requireSecret } from '../../config/env.validation';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Role]),
+    TypeOrmModule.forFeature([User, Role, UserSession]),
     MailModule,
     AuditModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
-        secret:
-          configService.get<string>('JWT_SECRET') ||
-          'rtb-super-secret-key-2026',
+        secret: requireSecret(
+          (k) => configService.get<string>(k),
+          'JWT_SECRET',
+        ),
         signOptions: {
           expiresIn: configService.get<string>(
             'JWT_ACCESS_EXPIRES_IN',
@@ -35,7 +42,22 @@ import { AuditModule } from '../audit/audit.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard],
-  exports: [AuthService, JwtAuthGuard, JwtModule],
+  providers: [
+    AuthService,
+    SessionsService,
+    MfaService,
+    PasswordService,
+    JwtStrategy,
+    JwtAuthGuard,
+    CsrfHeaderGuard,
+  ],
+  exports: [
+    AuthService,
+    SessionsService,
+    MfaService,
+    PasswordService,
+    JwtAuthGuard,
+    JwtModule,
+  ],
 })
 export class AuthModule {}

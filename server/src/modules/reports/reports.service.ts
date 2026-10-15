@@ -6,7 +6,15 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { IssueReport, ReportStatus } from './entities/issue-report.entity';
+import {
+  ChangeRequestPayload,
+  IssueReport,
+  ReportStatus,
+  ReportType,
+} from './entities/issue-report.entity';
+import { School } from '../schools/entities/school.entity';
+import { User } from '../users/entities/user.entity';
+import { Permission } from '../../common/constants/permissions.constant';
 import { CreateReportDto } from './dto/create-report.dto';
 import { StorageService } from '../storage/storage.service';
 import { EventsGateway } from '../events/events.gateway';
@@ -28,12 +36,97 @@ export class ReportsService {
   async create(
     createReportDto: CreateReportDto,
     userId: string,
+    scope?: AccessScope,
   ): Promise<IssueReport> {
+    if (scope) await this.assertSchoolInScope(createReportDto.schoolId, scope);
     const report = this.reportRepository.create({
       ...createReportDto,
+      type: ReportType.ISSUE,
       reportedBy: userId,
     });
     return this.reportRepository.save(report);
+  }
+
+  /** A caller may only file reports against schools inside their scope. */
+  private async assertSchoolInScope(schoolId: string, scope: AccessScope) {
+    if (!scope.enforced || scope.isNational) return;
+    const school = await this.reportRepository.manager.findOne(School, {
+      where: { id: schoolId },
+      select: ['id', 'province', 'district', 'sector'],
+    });
+    if (!school || !schoolMatchesScope(school, scope)) {
+      throw new ForbiddenException('This school is outside your access scope.');
+    }
+  }
+
+  /**
+   * WS7.7: file a "data change request" against a locked school field. It is
+   * an issue report of type DATA_CHANGE_REQUEST routed to the GIS analysts,
+   * who apply (or reject) the change and update the report status. The
+   * caller (SchoolsService) has already checked scope and field names.
+   */
+  async createChangeRequest(
+    schoolId: string,
+    payload: ChangeRequestPayload,
+    userId: string,
+    assignedRole = 'gis_analyst',
+  ): Promise<IssueReport> {
+    const fieldNames = payload.fields.map((f) => f.field);
+    const summary = payload.fields
+      .map(
+        (f) =>
+          `${f.field}: ${formatValue(f.currentValue)} → ${formatValue(f.proposedValue)}`,
+      )
+      .join('; ');
+    const report = this.reportRepository.create({
+      schoolId,
+      facilityId: ReportType.DATA_CHANGE_REQUEST,
+      itemId: fieldNames.join(',').slice(0, 255),
+      issueCategory: [ReportType.DATA_CHANGE_REQUEST],
+      description: `Change requested: ${summary}\nReason: ${payload.reason}`,
+      status: ReportStatus.PENDING,
+      reportedBy: userId,
+      attachments: [],
+      type: ReportType.DATA_CHANGE_REQUEST,
+      changeRequest: payload,
+      assignedRole,
+    });
+    const saved = await this.reportRepository.save(report);
+    await this.notifyAssignees(saved, assignedRole);
+    return saved;
+  }
+
+  /**
+   * Push a live notification to every active user of the assigned role.
+   * Uses `EventsGateway.emitToUser` when the gateway provides it (see the
+   * WS3.11 handoff); otherwise the report is still listed in Reports.
+   */
+  private async notifyAssignees(report: IssueReport, roleName: string) {
+    const gateway = this.eventsGateway as
+      | (EventsGateway & {
+          emitToUser?: (
+            userId: string,
+            event: string,
+            payload: unknown,
+          ) => void;
+        })
+      | undefined;
+    if (!gateway?.emitToUser) return;
+    const assignees = await this.reportRepository.manager
+      .createQueryBuilder(User, 'u')
+      .innerJoin('u.role', 'r')
+      .where('r.name = :roleName', { roleName })
+      .andWhere('u.isActive = true')
+      .select(['u.id'])
+      .getMany();
+    for (const u of assignees) {
+      gateway.emitToUser(u.id, 'report:assigned', {
+        reportId: report.id,
+        schoolId: report.schoolId,
+        type: report.type,
+        fields: report.changeRequest?.fields.map((f) => f.field) ?? [],
+      });
+    }
   }
 
   async findAll(
@@ -41,6 +134,7 @@ export class ReportsService {
       schoolId?: string;
       buildingId?: string;
       status?: ReportStatus;
+      type?: ReportType;
       facilityId?: string;
       reportedBy?: string;
       startDate?: Date;
@@ -73,6 +167,8 @@ export class ReportsService {
       });
     if (filters.status)
       qb.andWhere('report.status = :status', { status: filters.status });
+    if (filters.type)
+      qb.andWhere('report.type = :type', { type: filters.type });
     if (filters.facilityId)
       qb.andWhere('report.facilityId = :facilityId', {
         facilityId: filters.facilityId,
@@ -134,8 +230,18 @@ export class ReportsService {
     id: string,
     status: ReportStatus,
     scope?: AccessScope,
+    actor?: { role?: { name?: string; permissions?: string[] } | null },
   ): Promise<IssueReport> {
     const report = await this.findOne(id, scope);
+    if (
+      actor &&
+      !canTriage(actor) &&
+      report.type !== ReportType.DATA_CHANGE_REQUEST
+    ) {
+      throw new ForbiddenException(
+        'Only report managers can change the status of issue reports.',
+      );
+    }
     report.status = status;
     if (status === ReportStatus.SOLVED && !report.resolvedAt) {
       report.resolvedAt = new Date();
@@ -171,4 +277,21 @@ export class ReportsService {
 
     await this.reportRepository.remove(report);
   }
+}
+
+function formatValue(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '(empty)';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v as string | number | boolean);
+}
+
+/** MANAGE_REPORTS (or super admin) may triage every report type. */
+function canTriage(actor: {
+  role?: { name?: string; permissions?: string[] } | null;
+}): boolean {
+  const name = (actor.role?.name ?? '').toLowerCase().replace(/\s+/g, '_');
+  return (
+    name === 'super_admin' ||
+    (actor.role?.permissions ?? []).includes(Permission.MANAGE_REPORTS)
+  );
 }

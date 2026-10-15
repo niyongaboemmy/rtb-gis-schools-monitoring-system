@@ -235,6 +235,27 @@ export class School {
   @Column({ type: 'timestamp', nullable: true })
   modelOptimizedAt: Date | null;
 
+  // --- 3D model scale check + georeference (WS6.4 / WS5.3) ------------------
+  // Multiply 3D measurements by this (1 = verified against the KMZ footprint;
+  // null = not checked or could not be judged). Written by processGlbJob.
+  @Column({ type: 'double precision', nullable: true })
+  modelScaleFactor: number | null;
+
+  // Shown by the 3D viewer as a non-blocking banner when set.
+  @Column({ type: 'text', nullable: true })
+  modelScaleWarning: string | null;
+
+  // Origin of the model's local ENU frame (+X East, +Y Up, −Z North). Set when
+  // the optimizer reprojected geographic vertices; null for plain models.
+  @Column({ type: 'double precision', nullable: true })
+  modelOriginLat: number | null;
+
+  @Column({ type: 'double precision', nullable: true })
+  modelOriginLng: number | null;
+
+  @Column({ type: 'double precision', nullable: true })
+  modelOriginAlt: number | null;
+
   // Site-wide annotations for 2D map (measurements, labels)
   @Column({ type: 'jsonb', nullable: true })
   siteAnnotations: {

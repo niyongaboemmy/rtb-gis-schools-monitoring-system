@@ -28,6 +28,12 @@ import {
 import { useAuthorization } from "../hooks/useAuthorization";
 import { Permission, type PermissionType } from "../lib/permissions";
 import { useToast } from "./ui/toast";
+import { RequestChangeDialog } from "./school-form-steps/RequestChangeDialog";
+import { STEP_FIELDS } from "./school-form-steps/change-request-fields";
+import { Lock, MessageSquarePlus } from "lucide-react";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const URL_RE = /^https?:\/\/.+/i;
@@ -273,6 +279,24 @@ const steps: Step[] = [
   },
 ];
 
+/** Payload keys owned by each form step (used to drop locked sections). */
+const STEP_PAYLOAD_KEYS: Record<number, string[]> = {
+  1: ["code", "name", "type", "status", "description", "establishedYear"],
+  2: [
+    "province", "district", "sector", "cell", "village", "latitude", "longitude",
+    "elevation", "address", "kmz2dFilePath", "tifFilePath",
+  ],
+  3: ["phone", "email", "website", "headTeacher"],
+  4: ["educationPrograms"],
+  5: [
+    "maleTeachers", "femaleTeachers", "totalTeachers", "maleStudents", "femaleStudents",
+    "totalStudents", "adminStaff", "maleAdminStaff", "femaleAdminStaff", "supportStaff",
+    "maleSupportStaff", "femaleSupportStaff",
+  ],
+  6: ["numberOfAccessRoads", "roadState", "roadStatusPercentage", "usedLandArea", "unusedLandArea"],
+  7: ["buildings"],
+};
+
 const defaultFormData: SchoolFormData = {
   code: "",
   name: "",
@@ -345,6 +369,53 @@ export function SchoolForm({
       isAuthorized(step.permission) ||
       isAuthorized(Permission.MANAGE_SCHOOLS),
   );
+  // Sections this user may not edit (WS7.7). In edit mode they can ask the
+  // GIS team for a change instead, if they may file reports.
+  const lockedSteps =
+    mode === "edit" ? steps.filter((st) => !visibleSteps.includes(st)) : [];
+  const canRequestChange =
+    mode === "edit" && !!schoolId && isAuthorized(Permission.CREATE_REPORT);
+  const [changeFor, setChangeFor] = useState<string[] | null>(null);
+  // Buildings are only sent when the user edited that step: the server makes
+  // the school's buildings match the list (updating in place by id), so a
+  // stale list would delete buildings added elsewhere since the form opened.
+  const [buildingsDirty, setBuildingsDirty] = useState(false);
+
+  // Start on the first section the user can edit (step 1 may be locked).
+  if (
+    visibleSteps.length > 0 &&
+    !visibleSteps.some((st) => st.id === currentStep)
+  ) {
+    setCurrentStep(visibleSteps[0].id);
+  }
+  const firstStepId = visibleSteps[0]?.id ?? 1;
+
+  const lockedPanel =
+    lockedSteps.length > 0 ? (
+      <div className="rounded-xl border border-border/60 bg-background/70 p-3 space-y-2">
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+          <Lock className="h-3.5 w-3.5" aria-hidden="true" /> Managed by the GIS team
+        </p>
+        <ul className="space-y-1">
+          {lockedSteps.map((st) => (
+            <li key={st.id} className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span>{st.title}</span>
+              {canRequestChange && STEP_FIELDS[st.id] && (
+                <button
+                  type="button"
+                  onClick={() => setChangeFor(STEP_FIELDS[st.id].slice(0, 1))}
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={`Request a change to ${st.title}`}
+                >
+                  <MessageSquarePlus className="h-3.5 w-3.5" aria-hidden="true" />
+                  Request a change
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    ) : null;
 
   const [formData, setFormData] = useState<SchoolFormData>(() => ({
     ...defaultFormData,
@@ -560,6 +631,9 @@ export function SchoolForm({
         buildings: (formData.buildings || [])
           .filter((b) => b.buildingName.trim() !== "")
           .map((b) => ({
+            // Existing buildings keep their id so the server updates them in
+            // place; new ones carry a temporary "building-…" id and are created.
+            ...(UUID_RE.test(b.id) ? { id: b.id } : {}),
             name: b.buildingName,
             code: b.buildingCode || null,
             function: b.buildingFunction || null,
@@ -583,12 +657,21 @@ export function SchoolForm({
       };
 
       if (mode === "edit" && schoolId) {
+        // Send only the sections this user may edit; the server rejects
+        // changes to locked fields (location, buildings…) with 403.
+        if (!isAuthorized(Permission.MANAGE_SCHOOLS)) {
+          for (const st of lockedSteps) {
+            for (const key of STEP_PAYLOAD_KEYS[st.id] ?? []) delete payload[key];
+          }
+        }
+        if (!buildingsDirty) delete payload.buildings;
         await api.patch(`/schools/${schoolId}`, payload);
       } else {
         await api.post("/schools", payload);
       }
 
       setFormData(defaultFormData);
+      setBuildingsDirty(false);
       setCurrentStep(1);
       toast.success(
         mode === "edit"
@@ -624,6 +707,7 @@ export function SchoolForm({
       } as SchoolFormData);
     } else {
       setFormData(defaultFormData);
+      setBuildingsDirty(false);
     }
     setCurrentStep(1);
     onClose();
@@ -717,9 +801,10 @@ export function SchoolForm({
         return (
           <BuildingsStep
             buildings={formData.buildings}
-            onBuildingsChange={(buildings) =>
-              setFormData((prev) => ({ ...prev, buildings }))
-            }
+            onBuildingsChange={(buildings) => {
+              setBuildingsDirty(true);
+              setFormData((prev) => ({ ...prev, buildings }));
+            }}
             schoolLatitude={
               formData.latitude ? parseFloat(formData.latitude) : null
             }
@@ -771,6 +856,7 @@ export function SchoolForm({
               </button>
             ))}
           </div>
+          {lockedPanel && <div className="px-4 pb-3">{lockedPanel}</div>}
         </div>
 
         {/* Desktop: Left Sidebar - Vertical Steps */}
@@ -816,6 +902,7 @@ export function SchoolForm({
               </button>
             ))}
           </div>
+          {lockedPanel && <div className="px-6 pb-3">{lockedPanel}</div>}
           <div className="px-6 py-4 border-t border-border/50">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -860,11 +947,11 @@ export function SchoolForm({
                 type="button"
                 variant="outline"
                 size="lg"
-                onClick={currentStep === 1 ? handleCancel : prevStep}
+                onClick={currentStep === firstStepId ? handleCancel : prevStep}
                 className="rounded-full font-semibold px-4 md:px-8 h-10 md:h-12 text-sm"
               >
                 <ChevronLeft className="w-5 h-5 mr-2" />
-                {currentStep === 1 ? "Cancel" : "Previous"}
+                {currentStep === firstStepId ? "Cancel" : "Previous"}
               </Button>
 
               {currentStep !== visibleSteps[visibleSteps.length - 1]?.id ? (
@@ -918,6 +1005,15 @@ export function SchoolForm({
           </form>
         </div>
       </div>
+      {canRequestChange && changeFor && (
+        <RequestChangeDialog
+          isOpen
+          onClose={() => setChangeFor(null)}
+          schoolId={schoolId!}
+          school={initialData as Record<string, unknown> | undefined}
+          initialFields={changeFor}
+        />
+      )}
     </Modal>
   );
 }

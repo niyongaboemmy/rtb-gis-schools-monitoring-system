@@ -7,10 +7,7 @@ import { PopulationData } from './entities/population-data.entity';
 import { School } from '../schools/entities/school.entity';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([PopulationData, School]),
-    HttpModule,
-  ],
+  imports: [TypeOrmModule.forFeature([PopulationData, School]), HttpModule],
   controllers: [PopulationController],
   providers: [PopulationService],
   exports: [PopulationService],

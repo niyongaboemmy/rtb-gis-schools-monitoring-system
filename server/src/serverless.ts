@@ -11,26 +11,50 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import * as express from 'express';
 import { AppModule } from './app.module';
+import {
+  DEFAULT_BODY_LIMIT,
+  PERMISSIONS_POLICY,
+  helmetOptions,
+  isLargeBodyRoute,
+  largeBodyLimit,
+} from './common/security/http-hardening';
 
 export async function createHandler(): Promise<express.Express> {
   const expressApp = express.default ? express.default() : (express as any)();
 
+  const isProd = process.env.NODE_ENV === 'production';
   const app = await NestFactory.create(
     AppModule,
     new ExpressAdapter(expressApp),
-    { logger: ['error', 'warn'] },
+    { logger: ['error', 'warn'], bodyParser: false },
   );
 
-  app.use(helmet({ contentSecurityPolicy: false }));
+  // Same hardening as main.ts (WS9.6/9.8/9.9/9.13).
+  app.use(helmet(helmetOptions(isProd)));
+  app.use(
+    (
+      _req: express.Request,
+      res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      res.setHeader('Permissions-Policy', PERMISSIONS_POLICY);
+      next();
+    },
+  );
   app.use(compression());
   app.use(cookieParser());
 
   // body-parser required via CJS to avoid ESM interop issues
   const { json, urlencoded } = require('body-parser');
-  // Vercel hard cap is 4.5 MB (Hobby) / ~50 MB (Pro); large KMZ uploads
-  // require either a Pro plan or direct-to-storage uploads.
-  app.use(json({ limit: '50mb' }));
-  app.use(urlencoded({ limit: '50mb', extended: true }));
+  // 1 MB everywhere except the JSON routes that carry geometries or bulk
+  // rows. Vercel itself caps bodies at 4.5 MB (Hobby) / ~50 MB (Pro).
+  const largeJson = json({ limit: largeBodyLimit() });
+  const smallJson = json({ limit: DEFAULT_BODY_LIMIT });
+  app.use(
+    (req: express.Request, res: express.Response, next: express.NextFunction) =>
+      (isLargeBodyRoute(req.path) ? largeJson : smallJson)(req, res, next),
+  );
+  app.use(urlencoded({ limit: DEFAULT_BODY_LIMIT, extended: true }));
 
   const corsOrigins = (process.env.APP_CORS_ORIGINS || '')
     .split(',')
@@ -54,12 +78,14 @@ export async function createHandler(): Promise<express.Express> {
 
   app.setGlobalPrefix('api/v1');
 
-  if (process.env.SWAGGER_ENABLED !== 'false') {
+  // Off in production unless explicitly enabled.
+  const swaggerEnabled = isProd
+    ? process.env.SWAGGER_ENABLED === 'true'
+    : process.env.SWAGGER_ENABLED !== 'false';
+  if (swaggerEnabled) {
     const config = new DocumentBuilder()
       .setTitle('TVET 3D GIS API')
-      .setDescription(
-        'API for the TVET 3D GIS platform (Rwanda TVET Board)',
-      )
+      .setDescription('API for the TVET 3D GIS platform (Rwanda TVET Board)')
       .setVersion('1.0')
       .addBearerAuth()
       .addTag('auth', 'Authentication endpoints')

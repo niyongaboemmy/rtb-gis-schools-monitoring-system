@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/unbound-method -- jest assertions on mocked methods */
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -11,15 +12,18 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
-import { AuthService } from './auth.service';
+import { AuthService, type SessionResult } from './auth.service';
 import { User } from '../users/entities/user.entity';
 import { Role } from '../roles/entities/role.entity';
 import { MailService } from '../mail/mail.service';
 import { AuditService } from '../audit/audit.service';
+import { SessionsService } from './sessions.service';
+import { MfaService } from './mfa.service';
+import { PasswordService } from './password.service';
+import { INVALID_CREDENTIALS, LOCK_MINUTES } from './auth.constants';
 
-// Module-level mock: replaces bcryptjs for every test in this file.
-// This is critical for refreshToken tests (SEC-01) where we need
-// to control bcrypt.compare's return value without real hashing.
+// Module-level mock: replaces bcryptjs for every test in this file so the
+// legacy refresh path can control bcrypt.compare without real hashing.
 jest.mock('bcryptjs');
 const mockedBcrypt = bcrypt as jest.Mocked<typeof bcrypt>;
 
@@ -37,15 +41,17 @@ jest.mock('google-auth-library', () => ({
 // ---------------------------------------------------------------------------
 
 /** Builds a mock query-builder chain whose final `.getOne()` is controllable. */
-function makeQb(resolvedUser: User | null) {
-  const qb = {
+function makeQb(resolvedUser: User | null | (() => Promise<User | null>)) {
+  return {
     leftJoinAndSelect: jest.fn().mockReturnThis(),
     addSelect: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
-    getOne: jest.fn().mockResolvedValue(resolvedUser),
+    getOne:
+      typeof resolvedUser === 'function'
+        ? jest.fn(resolvedUser)
+        : jest.fn().mockResolvedValue(resolvedUser),
   };
-  return qb;
 }
 
 /** Builds a minimal User-shaped object. `validatePassword` is a jest.fn so
@@ -67,6 +73,11 @@ function buildUser(
     department: null as any,
     avatarUrl: null as any,
     lastLoginAt: null as any,
+    failedLoginCount: 0,
+    lockedUntil: null,
+    totpEnabled: false,
+    googleId: null,
+    googleUnlinkedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     validatePassword: jest.fn().mockResolvedValue(true),
@@ -79,56 +90,83 @@ function buildUser(
 /** Assembles the testing module with injectable mocks and returns the service. */
 async function makeService(
   userRepoOverrides: Record<string, jest.Mock> = {},
-  jwtOverrides: Record<string, jest.Mock> = {},
-): Promise<{
-  service: AuthService;
-  userRepo: Record<string, jest.Mock>;
-  jwtService: Record<string, jest.Mock>;
-  configService: Record<string, jest.Mock>;
-  mailService: {
-    send: jest.Mock;
-    sendPasswordResetOtp: jest.Mock;
-    isConfigured: boolean;
-  };
-  auditService: Record<string, jest.Mock>;
-  roleRepo: Record<string, jest.Mock>;
-}> {
-  const userRepo = {
-    createQueryBuilder: jest.fn(),
+  config: Record<string, string> = {},
+) {
+  const userRepo: Record<string, jest.Mock> = {
     findOne: jest.fn().mockResolvedValue(null),
     update: jest.fn().mockResolvedValue({ affected: 1 }),
     save: jest.fn().mockImplementation((entity) => Promise.resolve(entity)),
+    create: jest.fn((dto: Partial<User>) => ({ id: 'new-id', ...dto })),
     ...userRepoOverrides,
   };
+  // By default the query builder resolves like findOne, so tests that only
+  // stub findOne work for both lookup styles.
+  userRepo.createQueryBuilder ??= jest
+    .fn()
+    .mockImplementation(() => makeQb(() => userRepo.findOne()));
 
   const mailService = {
     send: jest.fn().mockResolvedValue(undefined),
     sendPasswordResetOtp: jest.fn().mockResolvedValue(undefined),
+    sendSecurityNotice: jest.fn().mockResolvedValue(undefined),
+    sendLoginCode: jest.fn().mockResolvedValue(undefined),
     isConfigured: true,
   };
 
-  const auditService = { log: jest.fn() };
+  const auditService = { log: jest.fn(), record: jest.fn() };
 
   const roleRepo = {
     findOne: jest.fn().mockResolvedValue({ id: 'role-viewer', name: 'viewer' }),
   };
 
   const jwtService = {
-    signAsync: jest
-      .fn()
-      .mockResolvedValueOnce('access-token-1')
-      .mockResolvedValueOnce('refresh-token-1'),
-    ...jwtOverrides,
+    signAsync: jest.fn().mockResolvedValue('access-token-1'),
+    verifyAsync: jest.fn(),
   };
 
-  // Most keys are secrets whose value is irrelevant; these two are read as
-  // real configuration by the Google flow.
+  const sessionsService = {
+    create: jest.fn().mockResolvedValue({
+      session: { id: 'session-1' },
+      refreshToken: 'refresh-token-1',
+    }),
+    rotate: jest.fn(),
+    peek: jest.fn(),
+    revoke: jest.fn(),
+    revokeAll: jest.fn(),
+    revokeOwn: jest.fn(),
+    listActive: jest.fn().mockResolvedValue([]),
+    refreshTtlMs: 7 * 86400e3,
+  };
+
+  const mfaService = {
+    isRequiredFor: jest.fn().mockReturnValue(false),
+    verify: jest.fn(),
+    sendEmailCode: jest
+      .fn()
+      .mockResolvedValue({ expiresInMinutes: 10, delivered: true }),
+    startEnrolment: jest.fn(),
+    confirmEnrolment: jest.fn(),
+    clear: jest.fn(),
+    status: jest.fn(),
+  };
+
+  const passwordService = {
+    setPassword: jest.fn().mockResolvedValue(undefined),
+    verifyCurrent: jest.fn().mockResolvedValue(true),
+    assertPolicy: jest.fn(),
+  };
+
   const configValues: Record<string, string> = {
     GOOGLE_CLIENT_ID: 'client-id.apps.googleusercontent.com',
     GOOGLE_DEFAULT_ROLE: 'viewer',
+    JWT_SECRET: 'test-access-secret',
+    JWT_REFRESH_SECRET: 'test-refresh-secret',
+    ...config,
   };
   const configService = {
-    get: jest.fn((key: string) => configValues[key] ?? 'test-secret'),
+    get: jest.fn(
+      (key: string, fallback?: unknown) => configValues[key] ?? fallback,
+    ),
   };
 
   const module: TestingModule = await Test.createTestingModule({
@@ -140,6 +178,9 @@ async function makeService(
       { provide: ConfigService, useValue: configService },
       { provide: MailService, useValue: mailService },
       { provide: AuditService, useValue: auditService },
+      { provide: SessionsService, useValue: sessionsService },
+      { provide: MfaService, useValue: mfaService },
+      { provide: PasswordService, useValue: passwordService },
     ],
   }).compile();
 
@@ -151,401 +192,684 @@ async function makeService(
     mailService,
     auditService,
     roleRepo,
+    sessionsService,
+    mfaService,
+    passwordService,
   };
 }
 
+const actions = (audit: { record: jest.Mock }) =>
+  audit.record.mock.calls.map((c) => (c[0] as { action: string }).action);
+
 // ---------------------------------------------------------------------------
-// §1: login — happy path
+// §1: password login
 // ---------------------------------------------------------------------------
 
-describe('AuthService.login – happy path', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockedBcrypt.hash.mockResolvedValue('stored-refresh-hash' as never);
-  });
+describe('AuthService.login', () => {
+  beforeEach(() => jest.clearAllMocks());
 
-  it('returns accessToken + refreshToken + user on valid credentials', async () => {
+  it('issues a session (access token + refresh token for the cookie) on valid credentials', async () => {
     const user = buildUser();
-    const qb = makeQb(user);
-    const { service, userRepo } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(qb),
+    const { service, sessionsService, auditService } = await makeService({
+      findOne: jest.fn().mockResolvedValue(user),
     });
 
-    const result = await service.login({
-      email: 'alice@rtb.gov.rw',
-      password: 'correct-pw',
-    });
+    const result = (await service.login(
+      { email: 'Alice@rtb.gov.rw', password: 'pw' },
+      { ip: '10.0.0.1', userAgent: 'jest' },
+    )) as SessionResult;
 
     expect(result.accessToken).toBe('access-token-1');
     expect(result.refreshToken).toBe('refresh-token-1');
-    expect(result.user).toBeDefined();
-    expect(result.user.email).toBe('alice@rtb.gov.rw');
-    // password must be stripped from the returned user object
-    expect(result.user.password).toBeUndefined();
-  });
-
-  it('calls userRepository.update to stamp lastLoginAt', async () => {
-    const user = buildUser();
-    const { service, userRepo } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(user)),
-    });
-
-    await service.login({ email: 'alice@rtb.gov.rw', password: 'correct-pw' });
-
-    expect(userRepo.update).toHaveBeenCalledWith(
+    expect(result.sessionId).toBe('session-1');
+    expect(sessionsService.create).toHaveBeenCalledWith(
       user.id,
-      expect.objectContaining({ lastLoginAt: expect.any(Date) }),
+      { ip: '10.0.0.1', userAgent: 'jest' },
+      'password',
     );
+    expect(actions(auditService)).toContain('auth.login');
   });
 
-  it('stores a bcrypt hash of the refresh token, not the raw token', async () => {
-    const user = buildUser();
-    const { service, userRepo } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(user)),
-    });
-
-    await service.login({ email: 'alice@rtb.gov.rw', password: 'correct-pw' });
-
-    expect(mockedBcrypt.hash).toHaveBeenCalledWith('refresh-token-1', 10);
-    expect(userRepo.update).toHaveBeenCalledWith(
-      user.id,
-      expect.objectContaining({ refreshToken: 'stored-refresh-hash' }),
-    );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// §2: login — failure paths
-// ---------------------------------------------------------------------------
-
-describe('AuthService.login – failure paths', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockedBcrypt.hash.mockResolvedValue('stored-hash' as never);
-  });
-
-  it('throws 401 when email does not exist (getOne returns null)', async () => {
+  it('never returns secrets on the user object', async () => {
+    const user = buildUser({ googleId: 'g-1', totpSecretEnc: 'x' } as never);
     const { service } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(null)),
+      findOne: jest.fn().mockResolvedValue(user),
     });
 
-    await expect(
-      service.login({ email: 'ghost@rtb.gov.rw', password: 'any' }),
-    ).rejects.toThrow(UnauthorizedException);
+    const result = (await service.login({
+      email: 'alice@rtb.gov.rw',
+      password: 'pw',
+    })) as SessionResult;
 
-    await expect(
-      service.login({ email: 'ghost@rtb.gov.rw', password: 'any' }),
-    ).rejects.toThrow('Invalid credentials');
+    for (const key of ['password', 'refreshToken', 'googleId', 'totpSecretEnc'])
+      expect(result.user[key]).toBeUndefined();
+    expect(result.user.googleLinked).toBe(true);
   });
 
-  it('throws 401 when password is wrong (validatePassword returns false)', async () => {
-    const user = buildUser({
-      validatePassword: jest.fn().mockResolvedValue(false),
-    });
-    const { service } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(user)),
-    });
-
-    await expect(
-      service.login({ email: 'alice@rtb.gov.rw', password: 'wrong-pw' }),
-    ).rejects.toThrow(UnauthorizedException);
-
-    await expect(
-      service.login({ email: 'alice@rtb.gov.rw', password: 'wrong-pw' }),
-    ).rejects.toThrow('Invalid credentials');
-  });
-
-  it('throws 401 when user account is inactive (query filters isActive=true so getOne returns null)', async () => {
-    // The query builder filters `isActive = true` at the DB level;
-    // an inactive user's row is excluded → getOne resolves null.
-    const { service } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(null)),
-    });
-
-    await expect(
-      service.login({ email: 'disabled@rtb.gov.rw', password: 'any' }),
-    ).rejects.toThrow(UnauthorizedException);
-
-    await expect(
-      service.login({ email: 'disabled@rtb.gov.rw', password: 'any' }),
-    ).rejects.toThrow('Invalid credentials');
-  });
-
-  it('does NOT generate tokens or update DB when login fails', async () => {
-    const { service, userRepo, jwtService } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(null)),
-    });
-
-    await expect(
-      service.login({ email: 'x@rtb.gov.rw', password: 'x' }),
-    ).rejects.toThrow();
-
-    expect(jwtService.signAsync).not.toHaveBeenCalled();
-    expect(userRepo.update).not.toHaveBeenCalled();
-    expect(mockedBcrypt.hash).not.toHaveBeenCalled();
-  });
-
-  it('does NOT generate tokens when password validation fails', async () => {
-    const user = buildUser({
-      validatePassword: jest.fn().mockResolvedValue(false),
-    });
-    const { service, userRepo, jwtService } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(user)),
-    });
-
-    await expect(
-      service.login({ email: 'alice@rtb.gov.rw', password: 'wrong' }),
-    ).rejects.toThrow();
-
-    expect(jwtService.signAsync).not.toHaveBeenCalled();
-    expect(userRepo.update).not.toHaveBeenCalled();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// §3: refreshToken — happy path
-// ---------------------------------------------------------------------------
-
-describe('AuthService.refreshToken – happy path', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockedBcrypt.hash.mockResolvedValue('new-stored-hash' as never);
-    // Reset signAsync to produce a fresh pair for each test
-  });
-
-  it('returns a new accessToken + refreshToken when token is valid', async () => {
-    const user = buildUser({ refreshToken: '$2a$10$storedHash' });
-    mockedBcrypt.compare.mockResolvedValue(true as never);
-
-    const { service, jwtService } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(user)),
-    });
-    // Reset the default queue set in makeService, then set the values for this test
-    jwtService.signAsync
-      .mockReset()
-      .mockResolvedValueOnce('new-access-token')
-      .mockResolvedValueOnce('new-refresh-token');
-
-    const result = await service.refreshToken(
-      'user-uuid-1',
-      'raw-refresh-token',
-    );
-
-    expect(result.accessToken).toBe('new-access-token');
-    expect(result.refreshToken).toBe('new-refresh-token');
-  });
-
-  it('compares the provided raw token against the stored hash', async () => {
-    const user = buildUser({ refreshToken: '$2a$10$storedHash' });
-    mockedBcrypt.compare.mockResolvedValue(true as never);
-
-    const { service } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(user)),
-    });
-
-    await service.refreshToken('user-uuid-1', 'raw-refresh-token');
-
-    expect(mockedBcrypt.compare).toHaveBeenCalledWith(
-      'raw-refresh-token',
-      '$2a$10$storedHash',
-    );
-  });
-
-  it('persists a new bcrypt hash of the new refresh token after rotation', async () => {
-    const user = buildUser({ refreshToken: '$2a$10$storedHash' });
-    mockedBcrypt.compare.mockResolvedValue(true as never);
-
-    const { service, userRepo, jwtService } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(user)),
-    });
-    jwtService.signAsync
-      .mockReset()
-      .mockResolvedValueOnce('rotated-access')
-      .mockResolvedValueOnce('rotated-refresh');
-
-    await service.refreshToken('user-uuid-1', 'raw-refresh-token');
-
-    expect(mockedBcrypt.hash).toHaveBeenCalledWith('rotated-refresh', 10);
-    expect(userRepo.update).toHaveBeenCalledWith(
-      'user-uuid-1',
-      expect.objectContaining({ refreshToken: 'new-stored-hash' }),
-    );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// §4: refreshToken — failure paths (SEC-01 regression)
-// ---------------------------------------------------------------------------
-
-describe('AuthService.refreshToken – failure paths (SEC-01)', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('[SEC-01] throws 401 when a wrong/stolen refresh token is supplied', async () => {
-    // SEC-01: an attacker supplies a token that does not match the stored hash.
-    // bcrypt.compare must return false → service must reject.
-    const user = buildUser({ refreshToken: '$2a$10$legitimateHash' });
-    mockedBcrypt.compare.mockResolvedValue(false as never);
-
-    const { service } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(user)),
-    });
-
-    await expect(
-      service.refreshToken('user-uuid-1', 'stolen-or-wrong-token'),
-    ).rejects.toThrow(UnauthorizedException);
-
-    await expect(
-      service.refreshToken('user-uuid-1', 'stolen-or-wrong-token'),
-    ).rejects.toThrow('Access denied');
-  });
-
-  it('[SEC-01] does NOT issue new tokens when bcrypt.compare returns false', async () => {
-    const user = buildUser({ refreshToken: '$2a$10$legitimateHash' });
-    mockedBcrypt.compare.mockResolvedValue(false as never);
-
-    const { service, jwtService, userRepo } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(user)),
-    });
-
-    await expect(
-      service.refreshToken('user-uuid-1', 'bad-token'),
-    ).rejects.toThrow();
-
-    expect(jwtService.signAsync).not.toHaveBeenCalled();
-    expect(userRepo.update).not.toHaveBeenCalled();
-  });
-
-  it('throws 401 when user refreshToken is null (post-logout / cleared token)', async () => {
-    // After logout, refreshToken is set to null.
-    // The service checks `!user.refreshToken` before bcrypt.compare.
-    const user = buildUser({ refreshToken: null as any });
-
-    const { service } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(user)),
-    });
-
-    await expect(
-      service.refreshToken('user-uuid-1', 'any-token'),
-    ).rejects.toThrow(UnauthorizedException);
-
-    await expect(
-      service.refreshToken('user-uuid-1', 'any-token'),
-    ).rejects.toThrow('Access denied');
-  });
-
-  it('skips bcrypt.compare entirely when refreshToken is null (early-exit guard)', async () => {
-    const user = buildUser({ refreshToken: null as any });
-
-    const { service } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(user)),
-    });
-
-    await expect(service.refreshToken('user-uuid-1', 'any')).rejects.toThrow();
-
-    // bcrypt.compare should never be called — the null guard fires first
-    expect(mockedBcrypt.compare).not.toHaveBeenCalled();
-  });
-
-  it('throws 401 when user is inactive (getOne returns null because query filters isActive=true)', async () => {
-    // Query: `andWhere('user.isActive = :isActive', { isActive: true })` excludes inactive users.
-    const { service } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(null)),
-    });
-
-    await expect(
-      service.refreshToken('inactive-user-id', 'any-token'),
-    ).rejects.toThrow(UnauthorizedException);
-
-    await expect(
-      service.refreshToken('inactive-user-id', 'any-token'),
-    ).rejects.toThrow('Access denied');
-  });
-
-  it('throws 401 when user does not exist (getOne returns null)', async () => {
-    const { service } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(null)),
-    });
-
-    await expect(
-      service.refreshToken('nonexistent-id', 'any-token'),
-    ).rejects.toThrow(UnauthorizedException);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// §5: logout
-// ---------------------------------------------------------------------------
-
-describe('AuthService.logout', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('clears the stored refresh token (sets it to null)', async () => {
-    const { service, userRepo } = await makeService();
-
-    const result = await service.logout('user-uuid-1');
-
-    expect(userRepo.update).toHaveBeenCalledWith('user-uuid-1', {
-      refreshToken: null,
-    });
-    expect(result).toEqual({ message: 'Logged out successfully' });
-  });
-
-  it('subsequent refreshToken call fails because token is null (post-logout guard)', async () => {
-    // Simulate logout followed by a refresh attempt: the stored token is now null
-    const user = buildUser({ refreshToken: null as any });
-
-    const { service } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(user)),
-    });
-
-    await expect(
-      service.refreshToken('user-uuid-1', 'old-token'),
-    ).rejects.toThrow(UnauthorizedException);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// §6: validateUser
-// ---------------------------------------------------------------------------
-
-describe('AuthService.validateUser', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('returns the user when found and active', async () => {
-    const user = buildUser();
+  it('clears the failure counter after a successful login', async () => {
+    const user = buildUser({ failedLoginCount: 3 } as never);
     const { service, userRepo } = await makeService({
       findOne: jest.fn().mockResolvedValue(user),
     });
 
-    const result = await service.validateUser('user-uuid-1');
+    await service.login({ email: 'alice@rtb.gov.rw', password: 'pw' });
 
-    expect(result).toBe(user);
-    expect(userRepo.findOne).toHaveBeenCalledWith({
-      where: { id: 'user-uuid-1', isActive: true },
-      relations: ['role', 'role.accessLevel'],
+    expect(userRepo.update).toHaveBeenCalledWith(
+      user.id,
+      expect.objectContaining({ failedLoginCount: 0, lockedUntil: null }),
+    );
+  });
+
+  it('gives an unknown email the same generic error, audited without a password', async () => {
+    const { service, auditService, sessionsService } = await makeService();
+
+    await expect(
+      service.login({ email: 'ghost@rtb.gov.rw', password: 'secret-pw' }),
+    ).rejects.toThrow(INVALID_CREDENTIALS);
+
+    expect(sessionsService.create).not.toHaveBeenCalled();
+    const entry = auditService.record.mock.calls[0][0];
+    expect(entry.action).toBe('auth.login_failed');
+    expect(entry.meta.reason).toBe('unknown_user');
+    expect(JSON.stringify(entry)).not.toContain('secret-pw');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §2: lockout (WS9.5)
+// ---------------------------------------------------------------------------
+
+describe('AuthService.login – lockout', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('counts a wrong password', async () => {
+    const user = buildUser({ failedLoginCount: 1 } as never);
+    (user.validatePassword as jest.Mock).mockResolvedValue(false);
+    const { service, userRepo, auditService } = await makeService({
+      findOne: jest.fn().mockResolvedValue(user),
+    });
+
+    await expect(
+      service.login({ email: 'alice@rtb.gov.rw', password: 'bad' }),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(userRepo.update).toHaveBeenCalledWith(user.id, {
+      failedLoginCount: 2,
+    });
+    expect(auditService.record.mock.calls[0][0].meta.reason).toBe(
+      'bad_password',
+    );
+  });
+
+  it('locks the account for 15 minutes on the 5th failure', async () => {
+    const user = buildUser({ failedLoginCount: 4 } as never);
+    (user.validatePassword as jest.Mock).mockResolvedValue(false);
+    const { service, userRepo, auditService } = await makeService({
+      findOne: jest.fn().mockResolvedValue(user),
+    });
+
+    await expect(
+      service.login({ email: 'alice@rtb.gov.rw', password: 'bad' }),
+    ).rejects.toThrow(INVALID_CREDENTIALS);
+
+    const [, patch] = userRepo.update.mock.calls[0];
+    expect(patch.failedLoginCount).toBe(0);
+    const minutes = (patch.lockedUntil.getTime() - Date.now()) / 60000;
+    expect(minutes).toBeGreaterThan(LOCK_MINUTES - 1);
+    expect(minutes).toBeLessThanOrEqual(LOCK_MINUTES);
+    expect(actions(auditService)).toEqual([
+      'auth.login_failed',
+      'auth.account_locked',
+    ]);
+  });
+
+  it('refuses a locked account even with the right password, without checking it', async () => {
+    const user = buildUser({
+      lockedUntil: new Date(Date.now() + 60_000),
+    } as never);
+    const { service, sessionsService } = await makeService({
+      findOne: jest.fn().mockResolvedValue(user),
+    });
+
+    await expect(
+      service.login({ email: 'alice@rtb.gov.rw', password: 'pw' }),
+    ).rejects.toThrow(INVALID_CREDENTIALS);
+    expect(user.validatePassword).not.toHaveBeenCalled();
+    expect(sessionsService.create).not.toHaveBeenCalled();
+  });
+
+  it('lets the user in once the lock has expired', async () => {
+    const user = buildUser({
+      lockedUntil: new Date(Date.now() - 1000),
+    } as never);
+    const { service } = await makeService({
+      findOne: jest.fn().mockResolvedValue(user),
+    });
+
+    await expect(
+      service.login({ email: 'alice@rtb.gov.rw', password: 'pw' }),
+    ).resolves.toHaveProperty('accessToken');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §3: two-step login (WS10.6 / 10.7)
+// ---------------------------------------------------------------------------
+
+describe('AuthService – second factor', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns an mfaToken instead of a session when 2FA is on', async () => {
+    const user = buildUser({ totpEnabled: true } as never);
+    const { service, sessionsService, jwtService } = await makeService({
+      findOne: jest.fn().mockResolvedValue(user),
+    });
+    jwtService.signAsync.mockResolvedValueOnce('mfa-token');
+
+    const result = await service.login({
+      email: 'alice@rtb.gov.rw',
+      password: 'pw',
+    });
+
+    expect(result).toEqual({
+      mfaRequired: true,
+      mfaToken: 'mfa-token',
+      methods: ['totp', 'recovery', 'email'],
+    });
+    expect(sessionsService.create).not.toHaveBeenCalled();
+    // Purpose-scoped, short-lived, and NOT signed with the access-token secret.
+    const [payload, options] = jwtService.signAsync.mock.calls[0];
+    expect(payload).toMatchObject({
+      sub: user.id,
+      purpose: 'mfa',
+      stage: 'verify',
+    });
+    expect(options.expiresIn).toBe(300);
+    expect(options.secret).not.toBe('test-access-secret');
+  });
+
+  it('requires enrolment for a privileged user without 2FA when enforced', async () => {
+    const user = buildUser();
+    const { service, mfaService, jwtService } = await makeService({
+      findOne: jest.fn().mockResolvedValue(user),
+    });
+    mfaService.isRequiredFor.mockReturnValue(true);
+    jwtService.signAsync.mockResolvedValueOnce('enrol-token');
+
+    await expect(
+      service.login({ email: 'alice@rtb.gov.rw', password: 'pw' }),
+    ).resolves.toEqual({
+      mfaEnrollmentRequired: true,
+      mfaToken: 'enrol-token',
     });
   });
 
-  it('throws 401 when user is not found', async () => {
-    const { service } = await makeService({
-      findOne: jest.fn().mockResolvedValue(null),
+  it('issues the session after a valid code, and the mfaToken cannot be replayed', async () => {
+    const user = buildUser({ totpEnabled: true } as never);
+    const { service, mfaService, jwtService, sessionsService } =
+      await makeService({
+        findOne: jest.fn().mockResolvedValue(user),
+      });
+    jwtService.verifyAsync.mockResolvedValue({
+      sub: user.id,
+      purpose: 'mfa',
+      stage: 'verify',
+      method: 'password',
+      jti: 'j-1',
+      exp: Math.floor(Date.now() / 1000) + 300,
+    });
+    mfaService.verify.mockResolvedValue(true);
+
+    const result = await service.verifyMfa({
+      mfaToken: 't',
+      code: '123456',
+    });
+    expect(result.accessToken).toBe('access-token-1');
+    expect(sessionsService.create).toHaveBeenCalledTimes(1);
+    expect(mfaService.verify).toHaveBeenCalledWith(user.id, {
+      kind: 'totp',
+      code: '123456',
     });
 
-    await expect(service.validateUser('missing-id')).rejects.toThrow(
+    await expect(
+      service.verifyMfa({ mfaToken: 't', code: '123456' }),
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('counts a wrong code toward lockout', async () => {
+    const user = buildUser({ totpEnabled: true, failedLoginCount: 4 } as never);
+    const { service, mfaService, jwtService, userRepo, auditService } =
+      await makeService({
+        findOne: jest.fn().mockResolvedValue(user),
+      });
+    jwtService.verifyAsync.mockResolvedValue({
+      sub: user.id,
+      purpose: 'mfa',
+      stage: 'verify',
+      method: 'password',
+      jti: 'j-2',
+    });
+    mfaService.verify.mockResolvedValue(false);
+
+    await expect(
+      service.verifyMfa({ mfaToken: 't', code: '000000' }),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(userRepo.update.mock.calls[0][1].lockedUntil).toBeInstanceOf(Date);
+    expect(actions(auditService)).toContain('auth.account_locked');
+  });
+
+  it('rejects a token without the mfa purpose (e.g. an access token)', async () => {
+    const { service, jwtService } = await makeService();
+    jwtService.verifyAsync.mockResolvedValue({
+      sub: 'user-uuid-1',
+      email: 'a@b',
+      role: {},
+    });
+
+    await expect(
+      service.verifyMfa({ mfaToken: 'access', code: '123456' }),
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('accepts a recovery code and audits its use', async () => {
+    const user = buildUser({ totpEnabled: true } as never);
+    const { service, mfaService, jwtService, auditService } = await makeService(
+      {
+        findOne: jest.fn().mockResolvedValue(user),
+      },
+    );
+    jwtService.verifyAsync.mockResolvedValue({
+      sub: user.id,
+      purpose: 'mfa',
+      stage: 'verify',
+      method: 'password',
+      jti: 'j-3',
+    });
+    mfaService.verify.mockResolvedValue(true);
+
+    await service.verifyMfa({ mfaToken: 't', recoveryCode: 'abcde-fghjk' });
+    expect(mfaService.verify).toHaveBeenCalledWith(user.id, {
+      kind: 'recovery',
+      code: 'abcde-fghjk',
+    });
+    expect(actions(auditService)).toContain('auth.mfa_recovery_used');
+  });
+
+  it('enrolment tokens cannot be used with an authenticator code before set-up', async () => {
+    const user = buildUser();
+    const { service, jwtService } = await makeService({
+      findOne: jest.fn().mockResolvedValue(user),
+    });
+    jwtService.verifyAsync.mockResolvedValue({
+      sub: user.id,
+      purpose: 'mfa',
+      stage: 'enroll',
+      method: 'password',
+      jti: 'j-4',
+    });
+
+    await expect(
+      service.verifyMfa({ mfaToken: 't', code: '123456' }),
+    ).rejects.toThrow(BadRequestException);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §4: refresh / logout (WS9.11, WS9.15)
+// ---------------------------------------------------------------------------
+
+describe('AuthService.refresh', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('rotates the cookie session and returns a new access token', async () => {
+    const user = buildUser();
+    const { service, sessionsService } = await makeService({
+      findOne: jest.fn().mockResolvedValue(user),
+    });
+    sessionsService.rotate.mockResolvedValue({
+      userId: user.id,
+      sessionId: 's-1',
+      refreshToken: 'rt-2',
+    });
+
+    const result = await service.refresh('rt-1', {}, { ip: '1.1.1.1' });
+
+    expect(sessionsService.rotate).toHaveBeenCalledWith('rt-1', {
+      ip: '1.1.1.1',
+    });
+    expect(result).toMatchObject({
+      accessToken: 'access-token-1',
+      refreshToken: 'rt-2',
+      sessionId: 's-1',
+    });
+  });
+
+  it('revokes the session when its user was deactivated', async () => {
+    const { service, sessionsService } = await makeService();
+    sessionsService.rotate.mockResolvedValue({
+      userId: 'u',
+      sessionId: 's-1',
+      refreshToken: 'rt-2',
+    });
+
+    await expect(service.refresh('rt-1')).rejects.toThrow(
       UnauthorizedException,
     );
-    await expect(service.validateUser('missing-id')).rejects.toThrow(
-      'User not found or inactive',
+    expect(sessionsService.revoke).toHaveBeenCalledWith('s-1', 'inactive');
+  });
+
+  it('migrates a valid legacy (localStorage) token into a session once', async () => {
+    const user = buildUser();
+    const { service, userRepo, sessionsService } = await makeService({
+      findOne: jest.fn().mockResolvedValue(user),
+    });
+    mockedBcrypt.compare.mockResolvedValue(true as never);
+
+    const result = await service.refresh(undefined, {
+      userId: user.id,
+      refreshToken: 'old',
+    });
+
+    expect(result.refreshToken).toBe('refresh-token-1');
+    expect(userRepo.update).toHaveBeenCalledWith(user.id, {
+      refreshToken: null,
+    });
+    expect(sessionsService.create).toHaveBeenCalledWith(user.id, {}, 'legacy');
+  });
+
+  it('[SEC-01] refuses a wrong legacy token', async () => {
+    const { service, sessionsService } = await makeService({
+      findOne: jest.fn().mockResolvedValue(buildUser()),
+    });
+    mockedBcrypt.compare.mockResolvedValue(false as never);
+
+    await expect(
+      service.refresh(undefined, {
+        userId: 'user-uuid-1',
+        refreshToken: 'stolen',
+      }),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(sessionsService.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses when neither a cookie nor a legacy token is given', async () => {
+    const { service } = await makeService();
+    await expect(service.refresh(undefined, {})).rejects.toThrow(
+      UnauthorizedException,
+    );
+  });
+});
+
+describe('AuthService.logout', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('revokes the cookie session and audits', async () => {
+    const { service, sessionsService, auditService } = await makeService();
+    sessionsService.peek.mockResolvedValue({ sub: 'user-uuid-1', sid: 's-9' });
+
+    await service.logout('rt');
+
+    expect(sessionsService.revoke).toHaveBeenCalledWith('s-9', 'logout');
+    expect(actions(auditService)).toEqual(['auth.logout']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §5: change / reset password (WS10.1–10.2)
+// ---------------------------------------------------------------------------
+
+describe('AuthService.changePassword', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('applies the policy, signs out other devices, emails a notice and audits', async () => {
+    const user = buildUser();
+    const {
+      service,
+      passwordService,
+      sessionsService,
+      mailService,
+      auditService,
+    } = await makeService();
+
+    await service.changePassword(user, 'old', 'New-Pass@2026', 's-current', {
+      ip: '1.2.3.4',
+    });
+
+    expect(passwordService.setPassword).toHaveBeenCalledWith(
+      user.id,
+      'New-Pass@2026',
+    );
+    expect(sessionsService.revokeAll).toHaveBeenCalledWith(
+      user.id,
+      'password_change',
+      's-current',
+    );
+    expect(mailService.sendSecurityNotice).toHaveBeenCalledWith(
+      user.email,
+      'Alice',
+      'Your password was changed',
+      expect.any(Array),
+    );
+    expect(actions(auditService)).toEqual(['auth.password_changed']);
+  });
+
+  it('refuses a wrong current password', async () => {
+    const { service, passwordService } = await makeService();
+    passwordService.verifyCurrent.mockResolvedValue(false);
+
+    await expect(
+      service.changePassword(buildUser(), 'bad', 'New-Pass@2026'),
+    ).rejects.toThrow(BadRequestException);
+    expect(passwordService.setPassword).not.toHaveBeenCalled();
+  });
+
+  it('still succeeds when the notice email fails', async () => {
+    const { service, mailService } = await makeService();
+    mailService.sendSecurityNotice.mockRejectedValue(new Error('SMTP down'));
+
+    await expect(
+      service.changePassword(buildUser(), 'old', 'New-Pass@2026'),
+    ).resolves.toMatchObject({
+      success: true,
+    });
+  });
+});
+
+describe('AuthService.resetPassword', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const withOtp = (otp: string) =>
+    buildUser({
+      passwordResetToken: crypto.createHash('sha256').update(otp).digest('hex'),
+      passwordResetExpiresAt: new Date(Date.now() + 60_000),
+      passwordResetAttempts: 0,
+    } as never);
+
+  it('sets the password through the policy, clears the code and every session', async () => {
+    const { service, userRepo, passwordService, sessionsService } =
+      await makeService({
+        createQueryBuilder: jest
+          .fn()
+          .mockReturnValue(makeQb(withOtp('123456'))),
+      });
+
+    await expect(
+      service.resetPassword('alice@rtb.gov.rw', '123456', 'New-Pass@2026'),
+    ).resolves.toEqual({
+      message: 'Password updated. You can now sign in.',
+    });
+    expect(passwordService.setPassword).toHaveBeenCalledWith(
+      'user-uuid-1',
+      'New-Pass@2026',
+    );
+    expect(userRepo.update).toHaveBeenCalledWith(
+      'user-uuid-1',
+      expect.objectContaining({ passwordResetToken: null, refreshToken: null }),
+    );
+    expect(sessionsService.revokeAll).toHaveBeenCalledWith(
+      'user-uuid-1',
+      'password_reset',
     );
   });
 
-  it('throws 401 when user is inactive (findOne returns null because isActive filter)', async () => {
-    // TypeORM `where: { isActive: true }` excludes inactive users → null result
-    const { service } = await makeService({
-      findOne: jest.fn().mockResolvedValue(null),
+  it('does not change the password when the code is wrong', async () => {
+    const { service, passwordService } = await makeService({
+      createQueryBuilder: jest.fn().mockReturnValue(makeQb(withOtp('123456'))),
     });
 
-    await expect(service.validateUser('inactive-id')).rejects.toThrow(
+    await expect(
+      service.resetPassword('alice@rtb.gov.rw', '000000', 'New-Pass@2026'),
+    ).rejects.toThrow(BadRequestException);
+    expect(passwordService.setPassword).not.toHaveBeenCalled();
+  });
+});
+
+describe('AuthService.forgotPassword – generic mode (WS9.10)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('answers identically for unknown and known addresses', async () => {
+    const env = { FORGOT_PASSWORD_GENERIC_RESPONSE: 'true' };
+    const unknown = await makeService({}, env);
+    const known = await makeService(
+      { findOne: jest.fn().mockResolvedValue(buildUser()) },
+      env,
+    );
+
+    const a = await unknown.service.forgotPassword('ghost@rtb.gov.rw');
+    const b = await known.service.forgotPassword('ghost@rtb.gov.rw');
+
+    expect(a).toEqual(b);
+    expect(unknown.mailService.sendPasswordResetOtp).not.toHaveBeenCalled();
+    expect(known.mailService.sendPasswordResetOtp).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §6: Google hardening (WS10.9)
+// ---------------------------------------------------------------------------
+
+describe('AuthService.loginWithGoogle – hardening', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockVerifyIdToken.mockResolvedValue({
+      getPayload: () => ({
+        sub: 'g-1',
+        email: 'new@gmail.com',
+        email_verified: true,
+      }),
+    });
+  });
+
+  it('refuses self-registration outside GOOGLE_ALLOWED_DOMAINS', async () => {
+    const { service, userRepo, auditService } = await makeService(
+      {},
+      { GOOGLE_ALLOWED_DOMAINS: 'rtb.gov.rw' },
+    );
+
+    await expect(service.loginWithGoogle('t')).rejects.toThrow(
+      /limited to @rtb\.gov\.rw/,
+    );
+    expect(userRepo.save).not.toHaveBeenCalled();
+    expect(auditService.record.mock.calls[0][0]).toMatchObject({
+      action: 'auth.google_register_denied',
+      meta: { reason: 'domain_not_allowed' },
+    });
+  });
+
+  it('allows self-registration inside an allowed domain', async () => {
+    mockVerifyIdToken.mockResolvedValue({
+      getPayload: () => ({
+        sub: 'g-1',
+        email: 'x@rtb.gov.rw',
+        email_verified: true,
+      }),
+    });
+    const { service, userRepo } = await makeService(
+      {},
+      { GOOGLE_ALLOWED_DOMAINS: 'rtb.gov.rw, other.rw' },
+    );
+
+    await expect(service.loginWithGoogle('t')).resolves.toHaveProperty(
+      'accessToken',
+    );
+    expect(userRepo.save).toHaveBeenCalled();
+  });
+
+  it('refuses any self-registration when GOOGLE_ALLOW_SELF_REGISTER=false', async () => {
+    const { service } = await makeService(
+      {},
+      { GOOGLE_ALLOW_SELF_REGISTER: 'false' },
+    );
+    await expect(service.loginWithGoogle('t')).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('still lets pre-provisioned accounts in when self-registration is off', async () => {
+    const user = buildUser({ email: 'new@gmail.com' });
+    const { service } = await makeService(
+      { findOne: jest.fn().mockResolvedValue(user) },
+      { GOOGLE_ALLOW_SELF_REGISTER: 'false' },
+    );
+    await expect(service.loginWithGoogle('t')).resolves.toHaveProperty(
+      'accessToken',
+    );
+  });
+
+  it('sends a 2FA user through the second factor', async () => {
+    const user = buildUser({
+      email: 'new@gmail.com',
+      totpEnabled: true,
+    } as never);
+    const { service, sessionsService } = await makeService({
+      findOne: jest.fn().mockResolvedValue(user),
+    });
+
+    await expect(service.loginWithGoogle('t')).resolves.toMatchObject({
+      mfaRequired: true,
+    });
+    expect(sessionsService.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses an account that unlinked Google', async () => {
+    const user = buildUser({
+      email: 'new@gmail.com',
+      googleUnlinkedAt: new Date(),
+    } as never);
+    const { service } = await makeService({
+      findOne: jest.fn().mockResolvedValue(user),
+    });
+    await expect(service.loginWithGoogle('t')).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('refuses a different Google identity for an already-linked account', async () => {
+    const user = buildUser({
+      email: 'new@gmail.com',
+      googleId: 'g-other',
+    } as never);
+    const { service } = await makeService({
+      findOne: jest.fn().mockResolvedValue(user),
+    });
+    await expect(service.loginWithGoogle('t')).rejects.toThrow(
+      UnauthorizedException,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §7: validateUser (used by JwtStrategy and the WebSocket gateway)
+// ---------------------------------------------------------------------------
+
+describe('AuthService.validateUser', () => {
+  it('returns an active user and rejects a missing one', async () => {
+    const user = buildUser();
+    const found = await makeService({
+      findOne: jest.fn().mockResolvedValue(user),
+    });
+    await expect(found.service.validateUser(user.id)).resolves.toBe(user);
+    const missing = await makeService();
+    await expect(missing.service.validateUser('x')).rejects.toThrow(
       UnauthorizedException,
     );
   });
@@ -582,12 +906,12 @@ describe('AuthService.loginWithGoogle', () => {
       findOne: jest.fn().mockResolvedValue(user),
     });
 
-    const result = await service.loginWithGoogle('id-token');
+    const result = (await service.loginWithGoogle('id-token')) as SessionResult;
 
     expect(result.accessToken).toBe('access-token-1');
     expect(result.refreshToken).toBe('refresh-token-1');
-    expect(result.user.email).toBe('alice@rtb.gov.rw');
-    expect((result.user as Record<string, unknown>).password).toBeUndefined();
+    expect((result.user as { email: string }).email).toBe('alice@rtb.gov.rw');
+    expect(result.user.password).toBeUndefined();
   });
 
   it('verifies the token against our client id', async () => {
@@ -610,7 +934,7 @@ describe('AuthService.loginWithGoogle', () => {
       save: jest.fn((entity: User) => Promise.resolve(entity)),
     });
 
-    const result = await service.loginWithGoogle('id-token');
+    const result = (await service.loginWithGoogle('id-token')) as SessionResult;
 
     expect(roleRepo.findOne).toHaveBeenCalledWith({
       where: { name: 'viewer' },
@@ -687,7 +1011,7 @@ describe('AuthService.loginWithGoogle', () => {
 });
 
 // ---------------------------------------------------------------------------
-// §7: forgotPassword — OTP issuance
+// §9: forgotPassword / verifyResetOtp (unchanged behaviour)
 // ---------------------------------------------------------------------------
 
 /** Mirrors the service's private OTP hashing so tests can assert on it. */
@@ -941,140 +1265,4 @@ describe('AuthService.verifyResetOtp', () => {
       expect(createQueryBuilder).not.toHaveBeenCalled();
     },
   );
-});
-
-describe('AuthService.resetPassword', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('sets the new password and clears the code and live sessions', async () => {
-    const { service, userRepo } = await makeService({
-      createQueryBuilder: jest
-        .fn()
-        .mockReturnValue(makeQb(buildUserWithOtp('123456'))),
-    });
-
-    const result = await service.resetPassword(
-      'alice@rtb.gov.rw',
-      '123456',
-      'NewPass@123',
-    );
-
-    expect(result).toEqual({
-      message: 'Password updated. You can now sign in.',
-    });
-
-    const saved = userRepo.save.mock.calls[0][0];
-    // Plain password handed to save() — the entity's @BeforeUpdate hook hashes it.
-    expect(saved.password).toBe('NewPass@123');
-    expect(saved.passwordResetToken).toBeNull();
-    expect(saved.passwordResetExpiresAt).toBeNull();
-    expect(saved.passwordResetAttempts).toBe(0);
-    // A reset must log every existing session out.
-    expect(saved.refreshToken).toBeNull();
-  });
-
-  it('does not change the password when the code is wrong', async () => {
-    const { service, userRepo } = await makeService({
-      createQueryBuilder: jest
-        .fn()
-        .mockReturnValue(makeQb(buildUserWithOtp('123456'))),
-    });
-
-    await expect(
-      service.resetPassword('alice@rtb.gov.rw', '000000', 'NewPass@123'),
-    ).rejects.toThrow(BadRequestException);
-
-    expect(userRepo.save).not.toHaveBeenCalled();
-  });
-
-  it('cannot replay a code that has already been redeemed', async () => {
-    // After a successful reset the stored hash is null, so the second
-    // attempt loads a user with no pending code.
-    const { service } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(buildUser())),
-    });
-
-    await expect(
-      service.resetPassword('alice@rtb.gov.rw', '123456', 'NewPass@123'),
-    ).rejects.toThrow(INVALID_OTP_MESSAGE);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// §9: token generation — JWT payload and config wiring
-// ---------------------------------------------------------------------------
-
-describe('AuthService – JWT token generation wiring', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockedBcrypt.hash.mockResolvedValue('stored-hash' as never);
-  });
-
-  it('signs access token with JWT_SECRET and refresh token with JWT_REFRESH_SECRET', async () => {
-    const user = buildUser();
-    const configValues: Record<string, string> = {
-      JWT_SECRET: 'my-access-secret',
-      JWT_REFRESH_SECRET: 'my-refresh-secret',
-      JWT_ACCESS_EXPIRES_IN: '15m',
-      JWT_REFRESH_EXPIRES_IN: '7d',
-    };
-
-    const { service, jwtService, configService } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(user)),
-    });
-
-    configService.get.mockImplementation(
-      (key: string, fallback?: string) => configValues[key] ?? fallback,
-    );
-    jwtService.signAsync
-      .mockReset()
-      .mockResolvedValueOnce('signed-access')
-      .mockResolvedValueOnce('signed-refresh');
-
-    const result = await service.login({
-      email: 'alice@rtb.gov.rw',
-      password: 'pw',
-    });
-
-    expect(jwtService.signAsync).toHaveBeenCalledTimes(2);
-
-    const [accessCall, refreshCall] = jwtService.signAsync.mock.calls;
-
-    // First call: access token
-    expect(accessCall[1]).toMatchObject({
-      secret: 'my-access-secret',
-      expiresIn: '15m',
-    });
-    // Second call: refresh token
-    expect(refreshCall[1]).toMatchObject({
-      secret: 'my-refresh-secret',
-      expiresIn: '7d',
-    });
-
-    expect(result.accessToken).toBe('signed-access');
-    expect(result.refreshToken).toBe('signed-refresh');
-  });
-
-  it('JWT payload contains sub (userId), email, and role', async () => {
-    const user = buildUser({
-      id: 'u-42',
-      email: 'bob@rtb.gov.rw',
-      role: { name: 'gis_analyst' } as any,
-    });
-    const { service, jwtService } = await makeService({
-      createQueryBuilder: jest.fn().mockReturnValue(makeQb(user)),
-    });
-    jwtService.signAsync
-      .mockResolvedValueOnce('access')
-      .mockResolvedValueOnce('refresh');
-
-    await service.login({ email: 'bob@rtb.gov.rw', password: 'pw' });
-
-    const payload = jwtService.signAsync.mock.calls[0][0];
-    expect(payload).toMatchObject({
-      sub: 'u-42',
-      email: 'bob@rtb.gov.rw',
-      role: { name: 'gis_analyst' },
-    });
-  });
 });

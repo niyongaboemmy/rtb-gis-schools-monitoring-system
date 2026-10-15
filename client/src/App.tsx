@@ -1,4 +1,11 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useParams,
+  useLocation,
+} from "react-router-dom";
 import { ProtectedRoute, AppLayout } from "./layouts/AppLayout";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -13,6 +20,8 @@ import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Welcome from "./pages/Welcome";
 import { Permission } from "./lib/permissions";
+import { useAuthStore } from "./store/authStore";
+import { homePathFor } from "./hooks/useScope";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { ToastProvider } from "./components/ui/toast";
 import Profile from "./pages/Profile";
@@ -20,8 +29,21 @@ import SchoolDecisionDashboard from "./pages/SchoolDecisionDashboard";
 import School3DViewPage from "./pages/School3DViewPage";
 import SchoolLevelDashboard from "./pages/SchoolLevelDashboard";
 import SchoolReporting from "./pages/SchoolReporting";
-import GlbViewer from "./pages/GlbViewer";
 import School3DView from "./components/School3DView";
+import { AuthGate } from "./components/auth/AuthGate";
+
+function HomeRoute() {
+  const user = useAuthStore((st) => st.user);
+  const home = homePathFor(user);
+  if (home !== "/") return <Navigate to={home} replace />;
+  return <Dashboard />;
+}
+
+function GlbViewerRedirect() {
+  const { id } = useParams();
+  const { search } = useLocation();
+  return <Navigate to={`/schools/${id}/3d-explorer${search}`} replace />;
+}
 
 export default function App() {
   return (
@@ -33,13 +55,14 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
 
           {/* Stand-alone viewers (own full-screen chrome, still auth-gated) */}
+          {/* GlbViewer was retired; old links land on the 3D explorer. */}
           <Route
             path="/schools/:id/glb-viewer"
             element={
               <ProtectedRoute
                 requiredPermission={Permission.SCHOOL_VIEW_2D3D_MAP}
               >
-                <GlbViewer />
+                <GlbViewerRedirect />
               </ProtectedRoute>
             }
           />
@@ -49,11 +72,13 @@ export default function App() {
               <ProtectedRoute
                 requiredPermission={Permission.SCHOOL_VIEW_2D3D_MAP}
               >
-                <School3DView
-                  schoolId=""
-                  schoolName=""
-                  onClose={() => window.close()}
-                />
+                <AuthGate>
+                  <School3DView
+                    schoolId=""
+                    schoolName=""
+                    onClose={() => window.close()}
+                  />
+                </AuthGate>
               </ProtectedRoute>
             }
           />
@@ -61,19 +86,16 @@ export default function App() {
           <Route
             element={
               <ProtectedRoute>
-                <AppLayout />
+                <AuthGate>
+                  <AppLayout />
+                </AuthGate>
               </ProtectedRoute>
             }
           >
             <Route path="/welcome" element={<Welcome />} />
 
-            <Route
-              element={
-                <ProtectedRoute requiredPermission={Permission.VIEW_DASHBOARD} />
-              }
-            >
-              <Route path="/" element={<Dashboard />} />
-            </Route>
+            {/* Role-based home (WS3.6): school leaders → their school. */}
+            <Route path="/" element={<HomeRoute />} />
 
             <Route
               element={
@@ -197,9 +219,11 @@ export default function App() {
             <Route
               element={
                 <ProtectedRoute
-                  requiredPermission={
-                    Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD
-                  }
+                  requiredAnyPermission={[
+                    Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD,
+                    // GIS analysts work the change requests routed to them (WS7.7)
+                    Permission.EDIT_SCHOOL_LOCATION,
+                  ]}
                 />
               }
             >

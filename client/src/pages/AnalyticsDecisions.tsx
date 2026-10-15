@@ -31,29 +31,36 @@ import {
   TriangleAlert,
   Timer,
 } from "lucide-react";
-import { format } from "date-fns";
 import { motion } from "framer-motion";
 import { PageHeader } from "../components/ui/page-header";
 import { cn } from "../lib/utils";
+import { formatCurrency, formatDate, formatNumber, formatScore } from "../lib/format";
+import { label, titleCase } from "../lib/labels";
+import { useToast } from "../components/ui/toast";
+import { MetricInfo } from "../components/metric-help/MetricInfo";
+import { DataGapBadge } from "../components/metric-help/DataGapBadge";
+import type { MetricId } from "../components/metric-help/metrics";
+import { DashboardError } from "../components/dashboard/DashboardStates";
+import type { ComponentDataGaps, NationalOverview } from "../components/dashboard/types";
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * Model — mirrors server/src/modules/analytics/scoring.constants.ts
  * ────────────────────────────────────────────────────────────────────────── */
 
 const WEIGHTS = [
-  { key: "infrastructureScore", label: "Infrastructure State", value: 35, icon: Building2, color: "#3b82f6" },
-  { key: "buildingAgeScore", label: "Building Age Matrix", value: 25, icon: Clock, color: "#8b5cf6" },
-  { key: "facilityComplianceScore", label: "Facility Compliance", value: 15, icon: ClipboardCheck, color: "#06b6d4" },
-  { key: "populationPressureScore", label: "Capacity Resilience", value: 10, icon: Users, color: "#10b981" },
-  { key: "accessibilityScore", label: "Accessibility Index", value: 10, icon: Route, color: "#f59e0b" },
-  { key: "resolutionRateScore", label: "Issue Resolution", value: 5, icon: CheckCircle2, color: "#ec4899" },
-] as const;
+  { key: "infrastructureScore", gap: "infrastructure", metricId: "component.infrastructure", label: "Infrastructure", value: 35, icon: Building2, color: "#3b82f6" },
+  { key: "buildingAgeScore", gap: "buildingAge", metricId: "component.buildingAge", label: "Building Age Score", value: 25, icon: Clock, color: "#8b5cf6" },
+  { key: "facilityComplianceScore", gap: "facilityCompliance", metricId: "component.facilityCompliance", label: "Facility Compliance", value: 15, icon: ClipboardCheck, color: "#06b6d4" },
+  { key: "populationPressureScore", gap: "population", metricId: "component.population", label: "Population Pressure", value: 10, icon: Users, color: "#10b981" },
+  { key: "accessibilityScore", gap: "accessibility", metricId: "component.accessibility", label: "Accessibility", value: 10, icon: Route, color: "#f59e0b" },
+  { key: "resolutionRateScore", gap: "resolution", metricId: "component.resolution", label: "Resolution Rate", value: 5, icon: CheckCircle2, color: "#ec4899" },
+] as const satisfies ReadonlyArray<{ key: string; gap: keyof ComponentDataGaps; metricId: MetricId; label: string; value: number; icon: unknown; color: string }>;
 
 const PRIORITY_BANDS = [
   { level: "critical", label: "Critical", range: "0–34", dot: "bg-rose-500", text: "text-rose-500" },
   { level: "high", label: "High", range: "35–54", dot: "bg-orange-500", text: "text-orange-500" },
   { level: "medium", label: "Medium", range: "55–74", dot: "bg-amber-500", text: "text-amber-500" },
-  { level: "low", label: "Optimal", range: "75–100", dot: "bg-emerald-500", text: "text-emerald-500" },
+  { level: "low", label: "Low", range: "75–100", dot: "bg-emerald-500", text: "text-emerald-500" },
 ] as const;
 
 /** 4-tier tone aligned exactly to the priority bands. */
@@ -73,7 +80,7 @@ function priorityStyle(level?: string) {
     case "medium":
       return { badge: "secondary" as const, rail: "bg-amber-500", glow: "bg-amber-500/10", label: "Medium" };
     default:
-      return { badge: "success" as const, rail: "bg-emerald-500", glow: "bg-emerald-500/10", label: "Optimal" };
+      return { badge: "success" as const, rail: "bg-emerald-500", glow: "bg-emerald-500/10", label: level ? label("priority", level) : "Not assessed" };
   }
 }
 
@@ -102,14 +109,15 @@ const int = (v: unknown): number => {
 const rwfCompact = (v: unknown): string => {
   const n = Number(v);
   if (!Number.isFinite(n) || n <= 0) return "—";
-  return `${new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n)} RWF`;
+  return formatCurrency(n, { compact: true });
 };
 
 const urgencyLabel = (months: unknown): string => {
+  if (months === null || months === undefined) return "Not scheduled";
   const m = Number(months);
   if (!Number.isFinite(m)) return "Not scheduled";
-  if (m <= 0) return "Immediate action";
-  return `Intervene within ${m} mo`;
+  if (m <= 0) return "Act now";
+  return `Act within ${formatNumber(m)} months`;
 };
 
 const parseRec = (rec: string): { tag: string | null; text: string } => {
@@ -129,8 +137,8 @@ function ScoreRing({ score, size = 76 }: { score: number; size?: number }) {
   const pct = Math.min(Math.max(score, 0), 100) / 100;
 
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+    <div className="relative shrink-0" style={{ width: size, height: size }} role="img" aria-label={`School Condition Score ${formatScore(score)} out of 100`}>
+      <svg aria-hidden="true" width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} className="stroke-muted/40" />
         <circle
           cx={size / 2}
@@ -146,8 +154,8 @@ function ScoreRing({ score, size = 76 }: { score: number; size?: number }) {
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={cn("text-lg font-black font-mono leading-none", tone.text)}>{int(score)}</span>
-        <span className="text-[8px] uppercase tracking-widest text-muted-foreground font-black mt-0.5">Score</span>
+        <span className={cn("text-lg font-black font-mono leading-none", tone.text)}>{formatScore(score)}</span>
+        <span className="text-[9px] uppercase tracking-widest text-muted-foreground font-black mt-0.5">of 100</span>
       </div>
     </div>
   );
@@ -155,19 +163,22 @@ function ScoreRing({ score, size = 76 }: { score: number; size?: number }) {
 
 function SubScore({
   icon: Icon,
-  label,
+  label: title,
   value,
   weight,
   gap,
+  metricId,
 }: {
   icon: typeof Building2;
   label: string;
   value: unknown;
   weight: number;
   gap?: boolean;
+  metricId: MetricId;
 }) {
-  const v = int(value);
-  const tone = scoreTone(v);
+  const has = value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+  const v = has ? int(value) : 0;
+  const tone = has ? scoreTone(v) : { text: "text-muted-foreground", bar: "bg-muted-foreground/30", ring: "" };
   // Points this factor adds to the 0–100 overall index = score × weight.
   const contribution = (v * weight) / 100;
   return (
@@ -175,10 +186,11 @@ function SubScore({
       <div className="flex items-center justify-between mb-2 gap-2">
         <div className="flex items-center gap-1.5 text-muted-foreground min-w-0">
           <Icon className="w-3.5 h-3.5 shrink-0" />
-          <span className="text-[10px] font-black uppercase tracking-wide truncate">{label}</span>
+          <span className="text-[11px] font-bold uppercase tracking-wide truncate">{title}</span>
+          <MetricInfo id={metricId} size="xs" />
         </div>
-        <span className="text-[8px] font-black text-muted-foreground/50 tabular-nums uppercase tracking-wider shrink-0">
-          weight {weight}%
+        <span className="text-[10px] font-bold text-muted-foreground tabular-nums uppercase tracking-wider shrink-0">
+          {weight}%
         </span>
       </div>
       <div className="flex items-center gap-2">
@@ -186,20 +198,14 @@ function SubScore({
           <div className={cn("h-full rounded-full transition-all", tone.bar)} style={{ width: `${Math.min(v, 100)}%` }} />
         </div>
         <span className={cn("text-xs font-black font-mono text-right tabular-nums", tone.text)}>
-          {v}
-          <span className="text-muted-foreground/40 font-bold text-[9px]">/100</span>
+          {has ? v : "—"}
+          <span className="text-muted-foreground font-bold text-[9px]">/100</span>
         </span>
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-2">
-        {gap ? (
-          <span className="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
-            <TriangleAlert className="w-2.5 h-2.5" /> Data gap
-          </span>
-        ) : (
-          <span />
-        )}
-        <span className="text-[8px] font-bold tabular-nums text-muted-foreground/50">
-          adds {contribution.toFixed(1)} to overall
+        {gap ? <DataGapBadge metricId={metricId} text="Estimated" /> : <span />}
+        <span className="text-[10px] font-semibold tabular-nums text-muted-foreground">
+          {has ? `+${formatNumber(contribution, 1)} pts` : "Not scored"}
         </span>
       </div>
     </div>
@@ -208,14 +214,16 @@ function SubScore({
 
 function StatTile({
   icon: Icon,
-  label,
+  label: title,
   value,
   tone,
+  metricId,
 }: {
   icon: typeof Building2;
   label: string;
   value: string | number;
   tone: string;
+  metricId: MetricId;
 }) {
   return (
     <Card className="border border-border/50 bg-card/60 backdrop-blur-xl rounded-2xl shadow-none">
@@ -225,7 +233,10 @@ function StatTile({
         </div>
         <div className="min-w-0">
           <div className="text-xl font-black font-mono leading-none tabular-nums truncate">{value}</div>
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-black mt-1">{label}</div>
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold mt-1 flex items-center gap-1">
+            {title}
+            <MetricInfo id={metricId} size="xs" />
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -252,6 +263,7 @@ interface DecisionRow {
   estimatedBudgetRwf?: number | string | null;
   hasInfraDataGap?: boolean;
   hasPopDataGap?: boolean;
+  dataGaps?: ComponentDataGaps;
   recommendations?: string[];
   createdAt?: string;
   school?: { name?: string; district?: string; province?: string };
@@ -259,10 +271,13 @@ interface DecisionRow {
 
 export default function AnalyticsDecisions() {
   const { user } = useAuthStore();
+  const toast = useToast();
   const canExport = hasPermission(user, Permission.EXPORT_REPORTS);
 
   const [decisions, setDecisions] = useState<DecisionRow[]>([]);
+  const [overview, setOverview] = useState<NationalOverview | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [filter, setFilter] = useState<string>("all");
@@ -277,11 +292,19 @@ export default function AnalyticsDecisions() {
 
   const fetchDecisions = async () => {
     setLoading(true);
+    setLoadError(false);
     try {
-      const response = await api.get("/analytics/decisions");
+      // KPI tiles come from the server overview (same numbers as the national
+      // dashboard); the queue itself is the decisions list.
+      const [response, overviewRes] = await Promise.all([
+        api.get("/analytics/decisions"),
+        api.get("/analytics/overview"),
+      ]);
       setDecisions(Array.isArray(response.data) ? response.data : []);
+      setOverview(overviewRes.data ?? null);
     } catch (err) {
       console.error("Failed to load decisions", err);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -294,6 +317,7 @@ export default function AnalyticsDecisions() {
       await fetchDecisions();
     } catch (err) {
       console.error("Failed to recalculate", err);
+      toast.error("Recalculation failed. Please try again.");
     } finally {
       setRecalculating(false);
     }
@@ -311,29 +335,25 @@ export default function AnalyticsDecisions() {
       URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Export failed", err);
+      toast.error("Export failed. Please try again.");
     } finally {
       setExporting(false);
     }
   };
 
+  // Filter-chip counts reflect the list being filtered; the KPI tiles use the
+  // server overview so they match the national dashboard exactly.
   const stats = useMemo(() => {
-    const total = decisions.length;
     const byLevel = (lvl: string) => decisions.filter((d) => d.priorityLevel === lvl).length;
-    const avg =
-      total > 0
-        ? Math.round(decisions.reduce((s, d) => s + (Number(d.overallScore) || 0), 0) / total)
-        : 0;
-    const budget = decisions.reduce((s, d) => s + (Number(d.estimatedBudgetRwf) || 0), 0);
     return {
-      total,
+      total: decisions.length,
       critical: byLevel("critical"),
       high: byLevel("high"),
       medium: byLevel("medium"),
       low: byLevel("low"),
-      avg,
-      budget,
     };
   }, [decisions]);
+  const avgScore = overview && overview.scoredSchoolCount > 0 ? Number(overview.nationalAvgScore) : null;
 
   const visible = useMemo(() => {
     const rows = filter === "all" ? decisions : decisions.filter((d) => d.priorityLevel === filter);
@@ -347,8 +367,8 @@ export default function AnalyticsDecisions() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Decision Engineering"
-        description="Automated infrastructure scoring, intervention queue & cost estimates"
+        title="Intervention Priorities"
+        description="School Condition Scores, the intervention queue and indicative cost estimates"
         icon={Layers}
         actions={
           <>
@@ -376,12 +396,16 @@ export default function AnalyticsDecisions() {
       />
 
       {/* KPI strip */}
+      {loadError && (
+        <DashboardError title="We couldn't load the intervention queue" onRetry={fetchDecisions} retrying={loading} />
+      )}
+
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
-        <StatTile icon={Gauge} label="Assessed Schools" value={stats.total} tone="bg-primary/10 text-primary" />
-        <StatTile icon={ShieldAlert} label="Critical Priority" value={stats.critical} tone="bg-rose-500/10 text-rose-500" />
-        <StatTile icon={TriangleAlert} label="High Priority" value={stats.high} tone="bg-orange-500/10 text-orange-500" />
-        <StatTile icon={Sparkles} label="Average Score" value={stats.avg} tone="bg-emerald-500/10 text-emerald-500" />
-        <StatTile icon={Wallet} label="Est. Rehab Budget" value={rwfCompact(stats.budget)} tone="bg-violet-500/10 text-violet-500" />
+        <StatTile icon={Gauge} label="Assessed schools" value={formatNumber(overview?.scoredSchoolCount ?? null)} tone="bg-primary/10 text-primary" metricId="national.scoredSchools" />
+        <StatTile icon={ShieldAlert} label="Critical priority" value={formatNumber(overview?.byPriority?.critical ?? (overview ? 0 : null))} tone="bg-rose-500/10 text-rose-500" metricId="national.priorityCount" />
+        <StatTile icon={TriangleAlert} label="High priority" value={formatNumber(overview?.byPriority?.high ?? (overview ? 0 : null))} tone="bg-orange-500/10 text-orange-500" metricId="national.priorityCount" />
+        <StatTile icon={Sparkles} label="Average score" value={formatScore(avgScore)} tone="bg-emerald-500/10 text-emerald-500" metricId="national.avgConditionScore" />
+        <StatTile icon={Wallet} label="Est. budget" value={rwfCompact(overview?.totalEstimatedBudgetRwf)} tone="bg-violet-500/10 text-violet-500" metricId="national.estimatedBudget" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-4">
@@ -389,7 +413,8 @@ export default function AnalyticsDecisions() {
         <Card className="lg:col-span-1 h-fit lg:sticky lg:top-24 border border-border/20 bg-card/60 backdrop-blur-xl rounded-3xl shadow-none">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-black uppercase tracking-wide flex items-center gap-2">
-              <Layers className="w-4 h-4 text-primary" /> Scoring Model
+              <Layers className="w-4 h-4 text-primary" /> How the score works
+              <MetricInfo id="school.conditionScore" size="xs" />
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -401,22 +426,24 @@ export default function AnalyticsDecisions() {
                 ))}
               </div>
               <p className="mt-2 text-[10px] font-medium text-muted-foreground leading-relaxed">
-                A single 0–100 index. Each factor is scored 0–100, then multiplied
-                by its weight below; the weighted parts sum to the overall score.
-                Higher = healthier school = lower intervention priority.
+                The School Condition Score is 0–100. Each component is scored
+                0–100, multiplied by its weight, and the parts are added up.
+                Higher means a school in better condition and a lower
+                Intervention Priority.
               </p>
             </div>
 
             <div className="space-y-3">
               <div className="flex items-center gap-2.5 pb-1 border-b border-border/20">
-                <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60 flex-1">Factor</span>
-                <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/60">Weight</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex-1">Component</span>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Weight</span>
               </div>
               {WEIGHTS.map((w) => (
                 <div key={w.key} className="flex items-center gap-2.5">
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: w.color }} />
                   <w.icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   <span className="text-xs font-medium flex-1 truncate">{w.label}</span>
+                  <MetricInfo id={w.metricId} size="xs" />
                   <span className="text-[11px] font-black font-mono tabular-nums text-muted-foreground">{w.value}%</span>
                 </div>
               ))}
@@ -428,7 +455,7 @@ export default function AnalyticsDecisions() {
 
             {/* Priority bands */}
             <div className="pt-4 border-t border-border/20 space-y-2">
-              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Priority Bands</p>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Intervention Priority bands</p>
               <div className="grid grid-cols-2 gap-1.5">
                 {PRIORITY_BANDS.map((b) => (
                   <div key={b.level} className="flex items-center gap-1.5 rounded-lg bg-muted/30 px-2 py-1.5">
@@ -443,8 +470,9 @@ export default function AnalyticsDecisions() {
             <div className="flex items-start gap-2.5 p-3 bg-primary/5 border border-primary/10 rounded-xl">
               <Info className="w-4 h-4 shrink-0 text-primary/70 mt-0.5" />
               <p className="text-[11px] leading-relaxed text-muted-foreground">
-                Inputs: building-condition surveys, construction age, facility-compliance audits, catchment demographics,
-                road access and issue-resolution history. Recalculate after updating school records.
+                Inputs: building condition, building age, facility surveys, population within 2 km, road access and
+                Issue Report resolution. Missing data uses a neutral 50 and is marked “Estimated”. Scores update
+                when school records change; use Recalculate after bulk imports.
               </p>
             </div>
           </CardContent>
@@ -458,9 +486,9 @@ export default function AnalyticsDecisions() {
                 <CardTitle className="text-base">Intervention Queue</CardTitle>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {sortMode === "urgent"
-                    ? "Most urgent first — lowest decision score at the top"
+                    ? "Most urgent first: lowest School Condition Score at the top"
                     : sortMode === "score"
-                      ? "Highest decision score first"
+                      ? "Highest School Condition Score first"
                       : "Highest estimated cost first"}
                 </p>
               </div>
@@ -483,11 +511,12 @@ export default function AnalyticsDecisions() {
                   { key: "critical", label: "Critical", count: stats.critical },
                   { key: "high", label: "High", count: stats.high },
                   { key: "medium", label: "Medium", count: stats.medium },
-                  { key: "low", label: "Optimal", count: stats.low },
+                  { key: "low", label: "Low", count: stats.low },
                 ].map((chip) => (
                   <button
                     key={chip.key}
                     onClick={() => setFilter(chip.key)}
+                    aria-pressed={filter === chip.key}
                     className={cn(
                       "flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider transition-colors border",
                       filter === chip.key
@@ -529,7 +558,7 @@ export default function AnalyticsDecisions() {
                   </div>
                   <p className="text-muted-foreground text-sm max-w-xs">
                     {decisions.length === 0
-                      ? "No assessments found. Run a recalculation to generate the intervention queue."
+                      ? "No schools have been scored yet. Scores appear once school data is entered — or run Recalculate to score existing schools now."
                       : "No schools in this priority band."}
                   </p>
                   {decisions.length === 0 && (
@@ -554,7 +583,7 @@ export default function AnalyticsDecisions() {
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.25, delay: Math.min(idx * 0.03, 0.25) }}
-                      className="relative p-6 pl-7 hover:bg-muted/20 transition-colors"
+                      className="relative p-4 pl-6 sm:p-6 sm:pl-7 hover:bg-muted/20 transition-colors"
                     >
                       <span className={cn("absolute left-0 top-4 bottom-4 w-1 rounded-full", style.rail)} />
 
@@ -578,7 +607,7 @@ export default function AnalyticsDecisions() {
                             )}
                             <span className="flex items-center gap-1">
                               <Calendar className="w-3.5 h-3.5" />
-                              {d.createdAt ? `Assessed ${format(new Date(d.createdAt), "MMM d, yyyy")}` : "—"}
+                              {d.createdAt ? `Assessed ${formatDate(d.createdAt)}` : "—"}
                             </span>
                           </div>
                         </div>
@@ -597,13 +626,21 @@ export default function AnalyticsDecisions() {
                       </div>
 
                       {/* Sub-scores */}
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5 mb-4">
-                        <SubScore icon={Building2} label="Infrastructure" value={d.infrastructureScore} weight={35} gap={d.hasInfraDataGap} />
-                        <SubScore icon={Clock} label="Building Age" value={d.buildingAgeScore} weight={25} />
-                        <SubScore icon={ClipboardCheck} label="Facility Compliance" value={d.facilityComplianceScore} weight={15} />
-                        <SubScore icon={Users} label="Capacity Resilience" value={d.populationPressureScore} weight={10} gap={d.hasPopDataGap} />
-                        <SubScore icon={Route} label="Accessibility" value={d.accessibilityScore} weight={10} />
-                        <SubScore icon={CheckCircle2} label="Issue Resolution" value={d.resolutionRateScore} weight={5} />
+                      <div className="grid grid-cols-1 min-[420px]:grid-cols-2 md:grid-cols-3 gap-2.5 mb-4">
+                        {WEIGHTS.map((w) => (
+                          <SubScore
+                            key={w.key}
+                            icon={w.icon}
+                            label={w.label}
+                            value={d[w.key]}
+                            weight={w.value}
+                            metricId={w.metricId}
+                            gap={
+                              d.dataGaps?.[w.gap] ??
+                              (w.gap === "infrastructure" ? d.hasInfraDataGap : w.gap === "population" ? d.hasPopDataGap : false)
+                            }
+                          />
+                        ))}
                       </div>
 
                       {/* Recommendations */}
@@ -611,7 +648,7 @@ export default function AnalyticsDecisions() {
                         <div className={cn("rounded-2xl p-4 border border-border/20", style.glow)}>
                           <h4 className="text-[11px] font-black uppercase tracking-wider mb-3 flex items-center gap-1.5">
                             <Sparkles className="w-3.5 h-3.5 text-primary" />
-                            System Recommendations
+                            Recommendations
                           </h4>
                           <ul className="space-y-2">
                             {d.recommendations.map((rec: string, i: number) => {
@@ -628,7 +665,7 @@ export default function AnalyticsDecisions() {
                                       )}
                                     >
                                       <TagIcon className="w-2.5 h-2.5" />
-                                      {tag}
+                                      {titleCase(tag)}
                                     </span>
                                   )}
                                   <span className="pt-0.5">{text}</span>

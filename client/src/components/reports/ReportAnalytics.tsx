@@ -29,13 +29,26 @@ import { Badge } from "../ui/badge";
 import { PeriodFilter } from "../ui/period-filter";
 import type { PeriodRange } from "../ui/period-filter";
 import { cn } from "../../lib/utils";
+import { formatDate, formatPercent } from "../../lib/format";
+import { label } from "../../lib/labels";
 import { AnimatePresence } from "framer-motion";
 import { ReportDetailsModal } from "./ReportDetailsModal";
 
+/** Issue Report fields read here (reports arrive in several shapes upstream). */
+interface AnalyticsReport {
+  id: string;
+  status: string;
+  buildingId?: string | null;
+  facilityId: string;
+  itemId?: string | null;
+  description?: string | null;
+  createdAt: string;
+}
+
 interface ReportAnalyticsProps {
-  reports: any[];
-  buildings: any[];
-  facilities: any[];
+  reports: AnalyticsReport[];
+  buildings: Array<{ id: string; name?: string | null }>;
+  facilities: Array<{ facilityId: string; title?: string | null }>;
   loading: boolean;
   range: PeriodRange;
   onRangeChange: (r: PeriodRange) => void;
@@ -58,7 +71,7 @@ export function ReportAnalytics({
   onRangeChange,
   onUpdateStatus,
 }: ReportAnalyticsProps) {
-  const [selectedReport, setSelectedReport] = useState<any | null>(null);
+  const [selectedReport, setSelectedReport] = useState<AnalyticsReport | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
   // Safety: cast reports specifically as array for all memoized calculations
@@ -96,15 +109,15 @@ export function ReportAnalytics({
     () =>
       [
         { name: "Pending", value: stats.PENDING, color: COLORS.PENDING },
-        { name: "Solved", value: stats.SOLVED, color: COLORS.SOLVED },
-        { name: "Needs Intervention", value: stats.NEED_INTERVENTION, color: COLORS.NEED_INTERVENTION },
-        { name: "Failed / Invalid", value: stats.FAILED, color: COLORS.FAILED },
+        { name: label("reportStatus", "SOLVED"), value: stats.SOLVED, color: COLORS.SOLVED },
+        { name: label("reportStatus", "NEED_INTERVENTION"), value: stats.NEED_INTERVENTION, color: COLORS.NEED_INTERVENTION },
+        { name: label("reportStatus", "FAILED"), value: stats.FAILED, color: COLORS.FAILED },
       ].filter((d) => d.value > 0),
     [stats],
   );
 
   const resolutionRate = useMemo(
-    () => (stats.TOTAL > 0 ? Math.round((stats.SOLVED / stats.TOTAL) * 100) : 0),
+    () => (stats.TOTAL > 0 ? Math.round((stats.SOLVED / stats.TOTAL) * 100) : null),
     [stats],
   );
 
@@ -144,7 +157,7 @@ export function ReportAnalytics({
     return buildings
       .map((b) => {
         const bReports = safeReports.filter((r) => r.buildingId === b.id);
-        const facMap: Record<string, any[]> = {};
+        const facMap: Record<string, AnalyticsReport[]> = {};
         bReports.forEach((r) => {
           if (!facMap[r.facilityId]) facMap[r.facilityId] = [];
           facMap[r.facilityId].push(r);
@@ -184,10 +197,10 @@ export function ReportAnalytics({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h3 className="text-xl font-bold tracking-tighter leading-none mb-2">
-            School Intelligence
+            Issue Report analytics
           </h3>
-          <p className="text-muted-foreground text-[10px] font-normal tracking-widest">
-            Cumulative Report Analytics
+          <p className="text-muted-foreground text-[11px] font-normal tracking-wide">
+            Reports filed in the selected period
           </p>
         </div>
         <PeriodFilter onRangeChange={onRangeChange} />
@@ -203,32 +216,32 @@ export function ReportAnalytics({
             color: "text-primary",
           },
           {
-            label: "Pending Review",
+            label: label("reportStatus", "PENDING"),
             value: stats.PENDING,
             icon: AlertCircle,
             color: "text-amber-500",
           },
           {
-            label: "Solved",
+            label: label("reportStatus", "SOLVED"),
             value: stats.SOLVED,
             icon: TrendingUp,
             color: "text-emerald-500",
           },
           {
-            label: "Needs Intervention",
+            label: label("reportStatus", "NEED_INTERVENTION"),
             value: stats.NEED_INTERVENTION,
             icon: AlertCircle,
             color: "text-rose-500",
           },
           {
-            label: "Failed / Invalid",
+            label: label("reportStatus", "FAILED"),
             value: stats.FAILED,
             icon: AlertCircle,
             color: "text-slate-500",
           },
           {
             label: "Resolution Rate",
-            value: `${resolutionRate}%`,
+            value: formatPercent(resolutionRate),
             icon: TrendingUp,
             color: "text-blue-500",
           },
@@ -486,7 +499,7 @@ export function ReportAnalytics({
                   </div>
 
                   <div className="p-4 flex-1 space-y-3 max-h-100 overflow-y-auto no-scrollbar">
-                    {building.facilities.map((fac: any) => (
+                    {building.facilities.map((fac) => (
                       <div
                         key={fac.id}
                         className="bg-muted/30 p-4 rounded-xl border border-border/10 group cursor-default hover:border-primary/20 transition-all"
@@ -506,7 +519,7 @@ export function ReportAnalytics({
                         </div>
 
                         <div className="space-y-2.5">
-                          {fac.reports.map((report: any) => (
+                          {fac.reports.map((report) => (
                             <div
                               key={report.id}
                               onClick={() => setSelectedReport(report)}
@@ -520,7 +533,7 @@ export function ReportAnalytics({
                                   {report.description}
                                 </div>
                                 <div className="text-[8px] font-black text-primary uppercase opacity-50">
-                                  {new Date(report.createdAt).toLocaleDateString()}
+                                  {formatDate(report.createdAt)}
                                 </div>
                               </div>
                               <div
@@ -528,8 +541,11 @@ export function ReportAnalytics({
                                   "w-3 h-3 rounded-full shrink-0",
                                 )}
                                 style={{
-                                  backgroundColor: (COLORS as any)[report.status],
+                                  backgroundColor: COLORS[report.status as keyof typeof COLORS],
                                 }}
+                                role="img"
+                                aria-label={label("reportStatus", report.status)}
+                                title={label("reportStatus", report.status)}
                               />
                             </div>
                           ))}

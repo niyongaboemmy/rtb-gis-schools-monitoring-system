@@ -37,9 +37,21 @@ export class PopulationController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Get all population data' })
+  @ApiOperation({
+    summary:
+      'Population records for active, in-scope schools (1 km and 500 m figures are estimated as 50% and 15% of the 2 km value)',
+  })
   getAll(@CurrentScope() scope?: AccessScope) {
     return this.populationService.getAllPopulation(scope);
+  }
+
+  @Get('summary')
+  @ApiOperation({
+    summary:
+      'Population KPIs over active, in-scope schools: schools with data, Σ 2 km population, average density, average students per resident, per-province roll-up',
+  })
+  getSummary(@CurrentScope() scope?: AccessScope) {
+    return this.populationService.getPopulationSummary(scope);
   }
 
   @Get(':schoolId')

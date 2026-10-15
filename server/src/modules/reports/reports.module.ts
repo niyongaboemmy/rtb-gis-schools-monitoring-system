@@ -7,7 +7,11 @@ import { StorageModule } from '../storage/storage.module';
 import { EventsModule } from '../events/events.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([IssueReport]), StorageModule, EventsModule],
+  imports: [
+    TypeOrmModule.forFeature([IssueReport]),
+    StorageModule,
+    EventsModule,
+  ],
   controllers: [ReportsController],
   providers: [ReportsService],
   exports: [ReportsService],

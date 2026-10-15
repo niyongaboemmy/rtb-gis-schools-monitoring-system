@@ -1,8 +1,15 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import OLMap from "ol/Map";
 import Draw from "ol/interaction/Draw";
 import Snap from "ol/interaction/Snap";
-import { getLength, getArea } from "ol/sphere";
+import {
+  areaOf3857,
+  lengthOf3857,
+  perimeterOf3857,
+} from "../../../lib/measure/geodesic";
+import { validatePolygon } from "../../../lib/measure/geometry3d";
+import { wgs84ToEnu } from "../../../lib/geo-bridge";
+import { accuracyLabel, isTypingTarget } from "../../../lib/viewer-tools";
 import { LineString, Polygon, Point as OLPoint } from "ol/geom";
 import { toLonLat } from "ol/proj";
 import {
@@ -20,10 +27,12 @@ interface UseMapInteractionsProps {
   mapReady: boolean;
   activeTool: string;
   setActiveTool: (tool: any) => void;
-  measurementMode: "none" | "distance" | "area";
+  measurementMode: "none" | "distance" | "area" | "perimeter";
   setMeasurementMode: React.Dispatch<
-    React.SetStateAction<"none" | "distance" | "area">
+    React.SetStateAction<"none" | "distance" | "area" | "perimeter">
   >;
+  /** Number of placed points while sketching (drives undo / finish UI). */
+  onSketchPoints?: (n: number) => void;
   setMeasureResult: (res: string | null) => void;
   tooltipOverlayRef: React.MutableRefObject<any>;
   measureSourceRef: React.MutableRefObject<any>;
@@ -67,6 +76,7 @@ export function useMapInteractions({
   placesLayerRef,
   annotationLayerRef,
   isDrawingRef,
+  onSketchPoints,
 }: UseMapInteractionsProps) {
   const activeDrawRef = useRef<Draw | null>(null);
   const snapRef = useRef<Snap | null>(null);
@@ -94,6 +104,7 @@ export function useMapInteractions({
       type = "LineString";
     if (
       measurementMode === "area" ||
+      measurementMode === "perimeter" ||
       activeTool === "annotate_poly" ||
       isCreatingBlock
     )
@@ -132,17 +143,24 @@ export function useMapInteractions({
       let output = "";
       let coord: any;
       if (geom instanceof LineString) {
-        output = formatLength(getLength(geom));
+        output = formatLength(lengthOf3857(geom));
         coord = geom.getLastCoordinate();
+        onSketchPoints?.(Math.max(0, geom.getCoordinates().length - 1));
       } else if (geom instanceof Polygon) {
-        output = formatArea(getArea(geom));
+        output =
+          measurementMode === "perimeter"
+            ? formatLength(perimeterOf3857(geom))
+            : formatArea(areaOf3857(geom));
         coord = geom.getInteriorPoint().getCoordinates();
+        onSketchPoints?.(Math.max(0, (geom.getCoordinates()[0]?.length ?? 2) - 2));
       }
 
       // Update HUD if it's a measurement or block creation
       if (isMeasurement || isCreatingBlock) {
         setMeasureResult(output);
       }
+      // Tooltip carries the stated (provisional) accuracy (WS6.5).
+      const accuracy = isMeasurement && output ? accuracyLabel("2d") : "";
 
       // Update Tooltip for Measurements or Area/Path Annotations
       const needsTooltip =
@@ -154,7 +172,14 @@ export function useMapInteractions({
         tooltipOverlayRef.current.setPosition(coord);
         const element = tooltipOverlayRef.current.getElement();
         if (element) {
-          element.innerHTML = output;
+          // Built from text nodes, never innerHTML.
+          element.textContent = output;
+          if (accuracy) {
+            const note = document.createElement("span");
+            note.style.opacity = ".7";
+            note.textContent = ` ${accuracy}`;
+            element.appendChild(note);
+          }
           element.style.display = "block";
         }
       }
@@ -187,6 +212,8 @@ export function useMapInteractions({
       let initialDescription = "";
       let areaSquareMeters = 0;
       let lengthMeters = 0;
+      let perimeterMeters = 0;
+      let warning: string | null = null;
 
       if (geom instanceof OLPoint) {
         const [lon, la] = toLonLat(rawCoords);
@@ -198,7 +225,7 @@ export function useMapInteractions({
         lng = first[0];
         lat = first[1];
         annoCoords = rawCoords.map((c: any) => toLonLat(c)).flat();
-        lengthMeters = getLength(geom);
+        lengthMeters = lengthOf3857(geom);
         initialDescription = `Length: ${formatLength(lengthMeters)}`;
       } else if (geom instanceof Polygon) {
         const interior = geom.getInteriorPoint().getCoordinates();
@@ -207,25 +234,47 @@ export function useMapInteractions({
         lat = interiorLonLat[1];
         footprintCoords = rawCoords[0].map((c: any) => toLonLat(c)).flat();
         annoCoords = footprintCoords;
-        areaSquareMeters = getArea(geom);
-        initialDescription = `Area: ${formatArea(areaSquareMeters)}`;
+        areaSquareMeters = areaOf3857(geom);
+        perimeterMeters = perimeterOf3857(geom);
+        initialDescription =
+          measurementMode === "perimeter"
+            ? `Perimeter: ${formatLength(perimeterMeters)}`
+            : `Area: ${formatArea(areaSquareMeters)}`;
+        // Same validity rules as 3D: warn on a self-crossing outline.
+        const ring: number[][] = rawCoords[0].map((c: number[]) => toLonLat(c));
+        if (ring.length > 3) {
+          const o = { lng: ring[0][0], lat: ring[0][1], alt: 0 };
+          const v = validatePolygon(
+            ring.slice(0, -1).map((p) => {
+              const e = wgs84ToEnu({ lng: p[0], lat: p[1], alt: 0 }, o);
+              return { x: e.e, y: 0, z: -e.n };
+            }),
+          );
+          warning = v.message;
+        }
       }
 
       // ── Finish Logic ────────────────────────────────────────────────────────
       if (isMeasurement) {
         setMeasureResult(null);
+        onSketchPoints?.(0);
         onAnnotationReady({
           id: `meas-${Date.now()}`,
+          measureKind: `measure_${measurementMode}`,
           type: measurementMode === "distance" ? "line" : "polygon",
           coordinates: annoCoords,
-          activeBlock,
+          activeBlock: null,
           initialDescription,
           title:
             measurementMode === "distance"
-              ? "Distance Measurement"
-              : "Area Measurement",
+              ? "Distance"
+              : measurementMode === "perimeter"
+                ? "Perimeter"
+                : "Area",
           areaSquareMeters,
-          lengthMeters,
+          lengthMeters: measurementMode === "perimeter" ? perimeterMeters : lengthMeters,
+          perimeterMeters,
+          warning,
         });
         setMeasurementMode("none");
       } else if (isCreatingBlock) {
@@ -297,6 +346,48 @@ export function useMapInteractions({
     };
   }, [measurementMode, activeTool, mapReady, activeBlock]);
 
+  // ── Shared drawing controls: undo / finish / cancel (WS4.3) ──────────────
+  const undoLastPoint = useCallback(() => {
+    activeDrawRef.current?.removeLastPoint();
+  }, []);
+  const finishDrawing = useCallback(() => {
+    activeDrawRef.current?.finishDrawing();
+  }, []);
+  const cancelDrawing = useCallback(() => {
+    activeDrawRef.current?.abortDrawing();
+    tooltipOverlayRef.current?.setPosition(undefined);
+    setMeasureResult(null);
+    onSketchPoints?.(0);
+    if (measurementMode !== "none") {
+      measureSourceRef.current?.clear();
+      setMeasurementMode("none");
+    } else if (activeTool !== "none" && activeTool !== "select") {
+      setActiveTool("none");
+    }
+  }, [measurementMode, activeTool, setMeasurementMode, setActiveTool, setMeasureResult, onSketchPoints, tooltipOverlayRef, measureSourceRef]);
+
+  // Keyboard: Backspace / Ctrl+Z undo, Enter finish, Esc cancel.
+  useEffect(() => {
+    if (measurementMode === "none" && (activeTool === "none" || activeTool === "select")) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cancelDrawing();
+      } else if (e.key === "Backspace" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z")) {
+        if (!activeDrawRef.current) return;
+        e.preventDefault();
+        undoLastPoint();
+      } else if (e.key === "Enter") {
+        if (!activeDrawRef.current) return;
+        e.preventDefault();
+        finishDrawing();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [measurementMode, activeTool, cancelDrawing, undoLastPoint, finishDrawing]);
+
   // ── Hover Highlighting ─────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
@@ -364,5 +455,5 @@ export function useMapInteractions({
     findAndAdd(annotationLayerRef);
   }, [activeBlock, blocksLayerRef, annotationLayerRef, selectedLayerRef]);
 
-  return { activeDrawRef };
+  return { activeDrawRef, undoLastPoint, finishDrawing, cancelDrawing };
 }

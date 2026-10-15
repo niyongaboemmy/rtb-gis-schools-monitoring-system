@@ -1,5 +1,6 @@
-import { IsEmail, IsString, Matches, MinLength } from 'class-validator';
+import { IsEmail, IsString, Matches } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { IsStrongPassword } from '../../../common/security/password-policy';
 
 export class ResetPasswordDto {
   @ApiProperty({ example: 'admin@rtb.gov.rw' })
@@ -13,12 +14,8 @@ export class ResetPasswordDto {
   @Matches(/^\d{6}$/, { message: 'Code must be 6 digits' })
   otp: string;
 
-  @ApiProperty({ example: 'NewPass@123' })
+  @ApiProperty({ example: 'New-Pass@2026' })
   @IsString()
-  @MinLength(8, { message: 'Password must be at least 8 characters' })
-  @Matches(/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
-    message:
-      'Password must contain an uppercase letter, a lowercase letter and a number',
-  })
+  @IsStrongPassword({ emailField: 'email' })
   password: string;
 }

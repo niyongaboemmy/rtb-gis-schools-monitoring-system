@@ -15,6 +15,7 @@ import {
 import { format } from "date-fns";
 import { useState } from "react";
 import { cn } from "../../lib/utils";
+import { label } from "../../lib/labels";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { FilePreview } from "../ui/file-preview";
@@ -22,6 +23,7 @@ import { Modal } from "../ui/modal";
 import SchoolMap from "../SchoolMap";
 
 interface ReportDetailsModalProps {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- reports arrive in several shapes (pre-existing)
   report: any;
   onClose: () => void;
   onUpdateStatus?: (reportId: string, status: string) => Promise<void>;
@@ -30,15 +32,29 @@ interface ReportDetailsModalProps {
 
 const STATUS_CONFIG = {
   PENDING: { label: "Pending Review", color: "bg-amber-500/10 text-amber-500 border-amber-500/20", icon: <Clock className="w-3.5 h-3.5" /> },
-  SOLVED: { label: "Solved", color: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20", icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
-  NEED_INTERVENTION: { label: "Critical Priority", color: "bg-rose-500/10 text-rose-500 border-rose-500/20", icon: <AlertTriangle className="w-3.5 h-3.5" /> },
+  SOLVED: { label: "Resolved", color: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20", icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
+  NEED_INTERVENTION: { label: label("reportStatus", "NEED_INTERVENTION"), color: "bg-rose-500/10 text-rose-500 border-rose-500/20", icon: <AlertTriangle className="w-3.5 h-3.5" /> },
   FAILED: { label: "Failed/Invalid", color: "bg-slate-500/10 text-slate-500 border-slate-500/12", icon: <Info className="w-3.5 h-3.5" /> },
 };
 
-export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating }: ReportDetailsModalProps) {
-  if (!report) return null;
+/** Display value for a change-request field value. */
+function showValue(v: unknown): string {
+  if (v === null || v === undefined || v === "") return "(empty)";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
 
+function fieldName(field: string): string {
+  return field.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
+}
+
+export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating }: ReportDetailsModalProps) {
+  // Hooks must run before any early return (rules of hooks).
   const [isMapOpen, setIsMapOpen] = useState(false);
+  if (!report) return null;
+  const isChangeRequest = report.type === "data_change_request";
+  const changeFields: { field: string; currentValue: unknown; proposedValue: unknown }[] =
+    report.changeRequest?.fields ?? [];
 
   const handleStatusChange = async (status: string) => {
     if (onUpdateStatus) {
@@ -63,11 +79,14 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
           <Badge className={cn("rounded-full font-black text-[10px] px-3 py-1 border tracking-widest uppercase", status.color)}>
             {status.icon} <span className="ml-2">{status.label}</span>
           </Badge>
-          <span className="text-xl font-black uppercase tracking-tighter">Incident Profile</span>
+          <span className="text-xl font-black uppercase tracking-tighter">
+            {isChangeRequest ? label("reportType", "data_change_request") : "Incident Profile"}
+          </span>
         </div>
       }
       description={`Permanent ID: ${report.id.split("-").pop()}`}
       footer={
+        onUpdateStatus && (
         <div className="w-full space-y-4">
           <div className="flex items-center justify-between">
             <div className="text-left">
@@ -104,9 +123,51 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
             ))}
           </div>
         </div>
+        )
       }
     >
       <div className="space-y-8 py-2">
+        {isChangeRequest && (
+          <section aria-labelledby="cr-heading" className="rounded-2xl border border-primary/25 bg-primary/5 p-4 space-y-3">
+            <h4 id="cr-heading" className="text-sm font-semibold text-foreground">
+              Requested change{changeFields.length === 1 ? "" : "s"}
+              {report.assignedRole && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                  Routed to: {fieldName(String(report.assignedRole).replace(/_/g, " "))}
+                </span>
+              )}
+            </h4>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted-foreground">
+                    <th scope="col" className="py-1 pr-3 font-medium">Field</th>
+                    <th scope="col" className="py-1 pr-3 font-medium">Current value</th>
+                    <th scope="col" className="py-1 font-medium">Proposed value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {changeFields.map((f) => (
+                    <tr key={f.field} className="border-t border-border/40 align-top">
+                      <td className="py-1.5 pr-3 font-medium text-foreground">{fieldName(f.field)}</td>
+                      <td className="py-1.5 pr-3 text-muted-foreground break-all">{showValue(f.currentValue)}</td>
+                      <td className="py-1.5 font-semibold text-foreground break-all">{showValue(f.proposedValue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {report.changeRequest?.reason && (
+              <p className="text-sm text-foreground">
+                <span className="font-medium">Reason: </span>
+                {report.changeRequest.reason}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              A GIS analyst applies the change in the school record, then marks this request Resolved (or Failed if rejected).
+            </p>
+          </section>
+        )}
         {/* Core Metadata Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-4">

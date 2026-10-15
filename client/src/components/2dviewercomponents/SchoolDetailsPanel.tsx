@@ -25,6 +25,7 @@ import {
 import { cn } from "../../lib/utils";
 import { rwandaLocation } from "@devrw/rwanda-location";
 import { api } from "../../lib/api";
+import { label } from "../../lib/labels";
 
 interface SchoolDetailsPanelProps {
   school: any;
@@ -359,7 +360,7 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                       "text-slate-400 dark:text-white/50 border-slate-200 dark:border-gray-500/20",
                   )}
                 >
-                  {s.status.replace(/_/g, " ").toLowerCase()}
+                  {label("schoolStatus", s.status)}
                 </span>
               )}
               {s.priorityLevel && (
@@ -370,12 +371,12 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                       "text-slate-400 dark:text-white/50 border-slate-200 dark:border-gray-500/20",
                   )}
                 >
-                  Priority: {s.priorityLevel.toLowerCase()}
+                  Priority: {label("priority", s.priorityLevel)}
                 </span>
               )}
               {s.type && (
                 <span className="text-[10px] font-normal tracking-wide px-3.5 py-1.5 rounded-xl bg-primary/10 text-primary/80 border-2 border-primary/20">
-                  {s.type.toLowerCase()} school
+                  {label("schoolTypeShort", s.type)} school
                 </span>
               )}
             </div>
@@ -813,8 +814,8 @@ export const SchoolDetailsPanel: React.FC<SchoolDetailsPanelProps> = ({
                             )}
                           >
                             {b.condition
-                              ? b.condition.toLowerCase()
-                              : "unknown"}
+                              ? label("buildingCondition", b.condition)
+                              : "Unknown"}
                           </span>
                         </div>
                         <div className="grid grid-cols-3 gap-2">

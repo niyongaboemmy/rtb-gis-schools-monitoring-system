@@ -4,6 +4,7 @@ import {
   BadRequestException,
   Logger,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -35,9 +36,23 @@ import {
   deriveCoordinateFromGlb,
   isPlausibleLatLng,
   type DerivedCoordinate,
+  deriveGlbGeoInfo,
+  compareModelScale,
+  lonLatExtentMeters,
+  collectGeoJsonPositions,
 } from './geo-derive';
+import {
+  SiteFeaturesService,
+  type ActingUser,
+} from '../site-features/site-features.service';
+import type { LegacySiteAnnotationDto } from '../site-features/dto/site-feature.dto';
 import { Readable } from 'stream';
 import unzipper from 'unzipper';
+import {
+  ExtractionBudget,
+  assertSafeZip,
+  kmzZipLimits,
+} from '../../common/security/upload-validation';
 import * as path from 'path';
 import archiver from 'archiver';
 import type { Response } from 'express';
@@ -82,6 +97,7 @@ export class KmzService implements OnModuleInit {
     private readonly buildingRepository: Repository<SchoolBuilding>,
     private readonly storageService: StorageService,
     @InjectQueue(KMZ_QUEUE) private readonly kmzQueue: Queue,
+    @Optional() private readonly siteFeatures?: SiteFeaturesService,
   ) {
     // Warm the GLB optimizer (installs its deps once if the deploy didn't).
     void ensureGlbTools();
@@ -229,12 +245,25 @@ export class KmzService implements OnModuleInit {
       //    geometry); otherwise fall back to a JSON-chunk read (CESIUM_RTC /
       //    ECEF node / geographic POSITION bounds).
       const derivedCoord: DerivedCoordinate | null =
-        optResult?.reprojected &&
-        optResult.lat != null &&
-        optResult.lng != null
-          ? { lat: optResult.lat, lng: optResult.lng, source: 'glb:reprojected' }
+        optResult?.reprojected && optResult.lat != null && optResult.lng != null
+          ? {
+              lat: optResult.lat,
+              lng: optResult.lng,
+              source: 'glb:reprojected',
+            }
           : deriveCoordinateFromGlb(fileBuffer);
       await this.syncSchoolCoordinate(schoolId, derivedCoord).catch(() => {});
+
+      // 3b. Georeference origin + model scale check (WS5.3 / WS6.4).
+      await this.writeModelGeoref(
+        schoolId,
+        fileBuffer,
+        effective.optimized,
+      ).catch((err: any) =>
+        this.logger.warn(
+          `Model scale check skipped for ${schoolId}: ${err?.message || err}`,
+        ),
+      );
 
       // A bare GLB upload no longer creates a `school_buildings` row. The 3D
       // viewer resolves the model from the file server + `kmzFilePath`, not from
@@ -310,6 +339,57 @@ export class KmzService implements OnModuleInit {
    * tell an optimized build from a raw multi-GB one, and surface the reason it
    * failed. Best-effort — never throws into the job.
    */
+  /**
+   * Store the model's georeference origin (when its vertices were geographic
+   * and the served build is the reprojected one) and compare its horizontal
+   * extent with the KMZ footprint: ground-overlay bounds first, else the
+   * stored boundary polygons. Best-effort; never throws into the job.
+   */
+  private async writeModelGeoref(
+    schoolId: string,
+    rawGlb: Buffer,
+    servedIsOptimized: boolean,
+  ): Promise<void> {
+    const info = deriveGlbGeoInfo(rawGlb);
+    const origin = info?.geographic && servedIsOptimized ? info.origin : null;
+
+    let scaleFactor: number | null = null;
+    let warning: string | null = null;
+    if (info) {
+      const school = await this.schoolRepository.findOne({
+        where: { id: schoolId },
+        select: ['id', 'kmz2dManifest'],
+      });
+      const boxes = school?.kmz2dManifest?.groundOverlays ?? [];
+      let positions: number[][] = boxes.flatMap((b) => [
+        [b.west, b.south],
+        [b.east, b.north],
+      ]);
+      if (!positions.length) {
+        const boundaries = await this.boundaryRepository.find({
+          where: { schoolId },
+          select: ['id', 'geojson'],
+        });
+        positions = collectGeoJsonPositions(boundaries.map((b) => b.geojson));
+      }
+      const footprint = lonLatExtentMeters(positions);
+      const check = footprint ? compareModelScale(info, footprint) : null;
+      if (check) {
+        scaleFactor = check.scaleFactor;
+        warning = check.warning;
+        if (warning) this.logger.warn(`Model scale (${schoolId}): ${warning}`);
+      }
+    }
+
+    await this.schoolRepository.update(schoolId, {
+      modelScaleFactor: scaleFactor,
+      modelScaleWarning: warning,
+      modelOriginLat: origin?.lat ?? null,
+      modelOriginLng: origin?.lng ?? null,
+      modelOriginAlt: origin?.alt ?? null,
+    });
+  }
+
   private async writeModelTelemetry(
     schoolId: string,
     o: { optimized: boolean; bytes: number; error: string | null },
@@ -458,6 +538,10 @@ export class KmzService implements OnModuleInit {
       if (fileName.toLowerCase().endsWith('.kmz')) {
         let zipFile: JSZip;
         let kmlFiles: string[];
+
+        // Zip-bomb / path-traversal guard (WS9.7). Outside the try below so
+        // a rejected archive never falls through to the unzipper fallback.
+        assertSafeZip(fileBuffer, kmzZipLimits());
 
         try {
           // 1. Load JSZip
@@ -786,6 +870,8 @@ export class KmzService implements OnModuleInit {
     let thumbnailUrl: string | null = null;
 
     const files = Object.keys(zip.files).filter((f) => !f.endsWith('/'));
+    // Header sizes can lie; count what is really decompressed.
+    const budget = new ExtractionBudget(kmzZipLimits());
 
     // Batch processing to avoid overhead but some concurrency
     const BATCH_SIZE = 50;
@@ -795,6 +881,7 @@ export class KmzService implements OnModuleInit {
         batch.map(async (fileName) => {
           const file = zip.files[fileName];
           const buffer = await file.async('nodebuffer');
+          budget.add(fileName, buffer.length);
           const contentType = this.getContentType(fileName);
 
           const publicPath = await this.storageService.uploadFile(
@@ -926,6 +1013,18 @@ export class KmzService implements OnModuleInit {
       modelBytes: school.modelBytes == null ? null : Number(school.modelBytes),
       modelOptimizeError: school.modelOptimizeError ?? null,
       modelOptimizedAt: school.modelOptimizedAt ?? null,
+      // Scale check vs the KMZ footprint (WS6.4) and the model-frame origin
+      // the viewers use to convert model ↔ WGS84 (WS5.3).
+      modelScaleFactor: school.modelScaleFactor ?? null,
+      modelScaleWarning: school.modelScaleWarning ?? null,
+      modelOrigin:
+        school.modelOriginLat != null && school.modelOriginLng != null
+          ? {
+              lat: Number(school.modelOriginLat),
+              lng: Number(school.modelOriginLng),
+              alt: Number(school.modelOriginAlt ?? 0),
+            }
+          : null,
     };
   }
 
@@ -1231,10 +1330,14 @@ export class KmzService implements OnModuleInit {
     // Create a Readable stream from the buffer
     const readable = Readable.from(fileBuffer);
     const directory = readable.pipe(unzipper.Parse({ forceStream: true }));
+    const limits = kmzZipLimits();
+    const budget = new ExtractionBudget(limits);
 
     for await (const entry of directory) {
       const fileName = entry.path;
       const type = entry.type; // 'Directory' or 'File'
+      // Rejects traversal names and counts entries before any bytes are read.
+      budget.add(fileName, 0);
 
       if (type === 'Directory') {
         entry.autodrain();
@@ -1243,9 +1346,15 @@ export class KmzService implements OnModuleInit {
 
       try {
         const chunks: Buffer[] = [];
+        let entryBytes = 0;
         for await (const chunk of entry) {
+          entryBytes += chunk.length;
+          // Stop mid-entry rather than buffering a bomb in memory.
+          if (budget.bytes + entryBytes > limits.maxTotalUncompressed)
+            budget.add(fileName, entryBytes);
           chunks.push(chunk);
         }
+        budget.add(fileName, entryBytes);
         const buffer = Buffer.concat(chunks);
         const contentType = this.getContentType(fileName);
 
@@ -1449,6 +1558,7 @@ export class KmzService implements OnModuleInit {
       const geojsonFeatures: any[] = [];
 
       if (fileName.toLowerCase().endsWith('.kmz')) {
+        assertSafeZip(fileBuffer, kmzZipLimits());
         const jszipInstance = await JSZip.loadAsync(fileBuffer);
         const kmlFiles = Object.keys(jszipInstance.files).filter(
           (name: string) => name.toLowerCase().endsWith('.kml'),
@@ -1540,6 +1650,7 @@ export class KmzService implements OnModuleInit {
     const modelMap: Record<string, string> = {};
 
     const files = Object.keys(zip.files).filter((f) => !f.endsWith('/'));
+    const budget = new ExtractionBudget(kmzZipLimits());
 
     const BATCH_SIZE = 50;
     for (let i = 0; i < files.length; i += BATCH_SIZE) {
@@ -1548,6 +1659,7 @@ export class KmzService implements OnModuleInit {
         batch.map(async (fileName) => {
           const file = zip.files[fileName];
           const buffer = await file.async('nodebuffer');
+          budget.add(fileName, buffer.length);
           const contentType = this.getContentType(fileName);
 
           const publicPath = await this.storageService.uploadFile(
@@ -1700,40 +1812,69 @@ export class KmzService implements OnModuleInit {
     return tempPath;
   }
 
-  async uploadKmz2dFromUrl(schoolId: string, fileUrl: string, fileName: string) {
-    const school = await this.schoolRepository.findOne({ where: { id: schoolId } });
+  async uploadKmz2dFromUrl(
+    schoolId: string,
+    fileUrl: string,
+    fileName: string,
+  ) {
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+    });
     if (!school) throw new NotFoundException(`School ${schoolId} not found`);
 
-    const name = (fileName || fileUrl.split('/').pop() || 'upload.kmz').toLowerCase();
+    const name = (
+      fileName ||
+      fileUrl.split('/').pop() ||
+      'upload.kmz'
+    ).toLowerCase();
     if (!name.endsWith('.kmz') && !name.endsWith('.kml')) {
       throw new BadRequestException('File must be a .kmz or .kml file');
     }
 
     const tempFilePath = await this.downloadToTemp(fileUrl, name);
-    await this.schoolRepository.update(schoolId, { kmzStatus: KmzProcessingStatus.PROCESSING });
+    await this.schoolRepository.update(schoolId, {
+      kmzStatus: KmzProcessingStatus.PROCESSING,
+    });
 
     const job = await this.kmzQueue.add('process-kmz2d', {
       schoolId,
       tempFilePath,
       originalName: name,
-      mimetype: name.endsWith('.kml') ? 'application/vnd.google-earth.kml+xml' : 'application/vnd.google-earth.kmz',
+      mimetype: name.endsWith('.kml')
+        ? 'application/vnd.google-earth.kml+xml'
+        : 'application/vnd.google-earth.kmz',
     } satisfies Kmz2dJobData);
 
-    this.logger.log(`Enqueued process-kmz2d (from-url) job ${job.id} for school ${schoolId}`);
-    return { message: '2D KMZ file accepted for processing', schoolId, jobId: job.id, statusUrl: `/api/v1/schools/${schoolId}/kmz/status` };
+    this.logger.log(
+      `Enqueued process-kmz2d (from-url) job ${job.id} for school ${schoolId}`,
+    );
+    return {
+      message: '2D KMZ file accepted for processing',
+      schoolId,
+      jobId: job.id,
+      statusUrl: `/api/v1/schools/${schoolId}/kmz/status`,
+    };
   }
 
   async uploadGlbFromUrl(schoolId: string, fileUrl: string, fileName: string) {
-    const school = await this.schoolRepository.findOne({ where: { id: schoolId } });
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+    });
     if (!school) throw new NotFoundException(`School ${schoolId} not found`);
 
-    const name = (fileName || fileUrl.split('/').pop() || 'model.glb').toLowerCase();
+    const name = (
+      fileName ||
+      fileUrl.split('/').pop() ||
+      'model.glb'
+    ).toLowerCase();
     if (!name.endsWith('.glb')) {
       throw new BadRequestException('File must be a .glb file');
     }
 
     const tempFilePath = await this.downloadToTemp(fileUrl, name);
-    await this.schoolRepository.update(schoolId, { kmzStatus: KmzProcessingStatus.PROCESSING });
+    await this.schoolRepository.update(schoolId, {
+      kmzStatus: KmzProcessingStatus.PROCESSING,
+    });
 
     const job = await this.kmzQueue.add('process-glb', {
       schoolId,
@@ -1742,8 +1883,15 @@ export class KmzService implements OnModuleInit {
       mimetype: 'model/gltf-binary',
     } satisfies GlbJobData);
 
-    this.logger.log(`Enqueued process-glb (from-url) job ${job.id} for school ${schoolId}`);
-    return { message: 'GLB file accepted for processing', schoolId, jobId: job.id, statusUrl: `/api/v1/schools/${schoolId}/kmz/status` };
+    this.logger.log(
+      `Enqueued process-glb (from-url) job ${job.id} for school ${schoolId}`,
+    );
+    return {
+      message: 'GLB file accepted for processing',
+      schoolId,
+      jobId: job.id,
+      statusUrl: `/api/v1/schools/${schoolId}/kmz/status`,
+    };
   }
 
   async uploadKmz2d(schoolId: string, file: Express.Multer.File) {
@@ -1907,13 +2055,21 @@ export class KmzService implements OnModuleInit {
         kmlUrls,
         groundOverlays,
         initialView,
-        derivedCenter: pickKmlCoordinate({ initialView, groundOverlays, points }),
+        derivedCenter: pickKmlCoordinate({
+          initialView,
+          groundOverlays,
+          points,
+        }),
       };
     }
 
     // ── KMZ (zip) extraction ───────────────────────────────────────────────
     // Relative, same-origin path (matches StorageService.urlPrefix).
     const assetBaseUrl = `/files/schools/${schoolId}/kmz_2d_content`;
+
+    // Zip-bomb / path-traversal guard (WS9.7) before anything is inflated.
+    assertSafeZip(fileBuffer, kmzZipLimits());
+    const budget = new ExtractionBudget(kmzZipLimits());
 
     let jszipInstance: any;
     try {
@@ -1966,6 +2122,7 @@ export class KmzService implements OnModuleInit {
         batch.map(async (zipPath: string) => {
           const fileBuf =
             await jszipInstance.files[zipPath].async('nodebuffer');
+          budget.add(zipPath, fileBuf.length);
           const contentType = this.getContentType(zipPath);
 
           let isTiled = false;
@@ -2023,7 +2180,7 @@ export class KmzService implements OnModuleInit {
           if (!isTiled) {
             const publicPath = await this.storageService.uploadFile(
               `schools/${schoolId}/kmz_2d_content/${zipPath}`,
-              fileBuf as any,
+              fileBuf,
               contentType,
             );
             if (publicPath) {
@@ -2161,7 +2318,8 @@ export class KmzService implements OnModuleInit {
         const coords = this.parseKmlCoordinates(raw);
         if (coords && coords.length) {
           const [lng, lat] = coords[0];
-          if (Number.isFinite(lng) && Number.isFinite(lat)) out.push([lng, lat]);
+          if (Number.isFinite(lng) && Number.isFinite(lat))
+            out.push([lng, lat]);
           break;
         }
       }
@@ -2238,7 +2396,15 @@ export class KmzService implements OnModuleInit {
     };
   }
 
-  async addSiteAnnotation(schoolId: string, annotation: any) {
+  /** Legacy 2D endpoint, now backed by `site_features` (WS5.2 / WS9.4). */
+  async addSiteAnnotation(
+    schoolId: string,
+    annotation: LegacySiteAnnotationDto,
+    user?: ActingUser,
+  ) {
+    if (this.siteFeatures) {
+      return this.siteFeatures.addLegacyAnnotation(schoolId, annotation, user);
+    }
     const school = await this.schoolRepository.findOne({
       where: { id: schoolId },
     });
@@ -2261,6 +2427,9 @@ export class KmzService implements OnModuleInit {
   }
 
   async removeSiteAnnotation(schoolId: string, id: string) {
+    if (this.siteFeatures) {
+      return this.siteFeatures.removeLegacy(schoolId, id);
+    }
     const school = await this.schoolRepository.findOne({
       where: { id: schoolId },
     });

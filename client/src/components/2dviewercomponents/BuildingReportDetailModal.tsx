@@ -22,6 +22,7 @@ import { format } from "date-fns";
 import { cn } from "../../lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../../lib/api";
+import { label } from "../../lib/labels";
 
 export type ReportStatus = "PENDING" | "SOLVED" | "NEED_INTERVENTION" | "FAILED";
 
@@ -71,7 +72,7 @@ export const STATUS_CONFIG: Record<
   },
   SOLVED: {
     label: "Resolved",
-    short: "Solved",
+    short: "Resolved",
     icon: <CheckCircle className="w-3 h-3" />,
     color: "text-emerald-500",
     accent: "bg-emerald-500",
@@ -117,7 +118,7 @@ export function BuildingReportDetailModal({
       onReportUpdated({ ...report, status });
       onReportStatusChange?.();
       showToast(
-        `Status set to ${status.replace(/_/g, " ").toLowerCase()}`,
+        `Status set to ${label("reportStatus", status)}`,
         "success",
       );
     } catch {

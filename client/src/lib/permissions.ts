@@ -28,10 +28,13 @@ export const Permission = {
   UPLOAD_KMZ: "UPLOAD_KMZ",
   EDIT_SITE_ANNOTATIONS: "EDIT_SITE_ANNOTATIONS",
   SYNC_POPULATION: "SYNC_POPULATION",
+  USE_MEASURE_TOOLS: "USE_MEASURE_TOOLS",
+  SAVE_SITE_FEATURES: "SAVE_SITE_FEATURES",
+  EXPORT_VIEWER_DATA: "EXPORT_VIEWER_DATA",
 
   // ── Surveys & assessments ────────────────────────────────────────────────
   RUN_FACILITY_SURVEY: "RUN_FACILITY_SURVEY",
-  SCHOOL_SURVERY_EDIT: "SCHOOL_SURVERY_EDIT",
+  SCHOOL_SURVEY_EDIT: "SCHOOL_SURVEY_EDIT",
 
   // ── Decisions & exports ──────────────────────────────────────────────────
   MANAGE_DECISIONS: "MANAGE_DECISIONS",
@@ -73,7 +76,7 @@ export const PERMISSION_CATALOG: Record<PermissionType, PermissionMeta> = {
   VIEW_DASHBOARD: {
     key: "VIEW_DASHBOARD",
     label: "View national dashboard",
-    description: "Open the main dashboard and national intelligence summaries.",
+    description: "Open the main dashboard and national School Condition Score summaries.",
     group: PermissionGroup.NAVIGATION,
   },
   VIEW_MAP: {
@@ -98,9 +101,9 @@ export const PERMISSION_CATALOG: Record<PermissionType, PermissionMeta> = {
   },
   VIEW_INTELLIGENCE: {
     key: "VIEW_INTELLIGENCE",
-    label: "View intelligence scores",
+    label: "View school condition scores",
     description:
-      "See AI-driven priority scores and the per-school decision dashboard.",
+      "See School Condition Scores, intervention priorities and the per-school decision dashboard.",
     group: PermissionGroup.NAVIGATION,
   },
   SCHOOL_LEVEL_DASHBOARD: {
@@ -221,6 +224,24 @@ export const PERMISSION_CATALOG: Record<PermissionType, PermissionMeta> = {
     description: "Trigger the ArcGIS population-density synchronisation job.",
     group: PermissionGroup.GEOSPATIAL,
   },
+  USE_MEASURE_TOOLS: {
+    key: "USE_MEASURE_TOOLS",
+    label: "Use measuring tools",
+    description: "Measure distances, areas and heights in the 2D and 3D viewers (not saved).",
+    group: PermissionGroup.GEOSPATIAL,
+  },
+  SAVE_SITE_FEATURES: {
+    key: "SAVE_SITE_FEATURES",
+    label: "Save measurements & notes",
+    description: "Save measurements, notes and pins on a school site so others can see them.",
+    group: PermissionGroup.GEOSPATIAL,
+  },
+  EXPORT_VIEWER_DATA: {
+    key: "EXPORT_VIEWER_DATA",
+    label: "Export viewer data",
+    description: "Download measurement lists and site features from the 2D/3D viewers (CSV).",
+    group: PermissionGroup.GEOSPATIAL,
+  },
 
   RUN_FACILITY_SURVEY: {
     key: "RUN_FACILITY_SURVEY",
@@ -228,8 +249,8 @@ export const PERMISSION_CATALOG: Record<PermissionType, PermissionMeta> = {
     description: "Initiate infrastructure-compliance assessments for a school.",
     group: PermissionGroup.SURVEYS,
   },
-  SCHOOL_SURVERY_EDIT: {
-    key: "SCHOOL_SURVERY_EDIT",
+  SCHOOL_SURVEY_EDIT: {
+    key: "SCHOOL_SURVEY_EDIT",
     label: "Edit survey responses",
     description: "Update compliance answers and notes on an in-progress survey.",
     group: PermissionGroup.SURVEYS,
@@ -238,7 +259,7 @@ export const PERMISSION_CATALOG: Record<PermissionType, PermissionMeta> = {
   MANAGE_DECISIONS: {
     key: "MANAGE_DECISIONS",
     label: "Manage decision engine",
-    description: "Re-run priority algorithms, edit weights and manage actions.",
+    description: "Recalculate School Condition Scores and manage intervention actions.",
     group: PermissionGroup.DECISIONS,
   },
   EXPORT_REPORTS: {

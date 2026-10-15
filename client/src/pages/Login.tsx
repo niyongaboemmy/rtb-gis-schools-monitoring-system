@@ -1,29 +1,83 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { homePathFor } from "../hooks/useScope";
 import { useAuthStore, type User } from "../store/authStore";
-import { api } from "../lib/api";
-import { Mail, Loader2, ArrowRight } from "lucide-react";
+import { api, apiErrorMessage } from "../lib/api";
+import { Mail, Loader2, ArrowRight, ShieldCheck } from "lucide-react";
 import { motion } from "framer-motion";
 import { PasswordInput } from "../components/ui/password-input";
 import { ImigongoPattern } from "../components/ui/ImigongoPattern";
 import { GoogleSignInButton } from "../components/ui/GoogleSignInButton";
+import { MfaChallenge } from "../components/auth/MfaChallenge";
+import { MfaEnrollment, type EnrolmentStart } from "../components/auth/MfaEnrollment";
+import { ForcePasswordChange } from "../components/auth/ForcePasswordChange";
+import { PrivacyAcceptancePrompt, PrivacyNoticeModal } from "../components/auth/PrivacyNotice";
+import { needsPrivacyAcceptance } from "../components/auth/privacy";
+
+/** A completed sign-in. The refresh token arrives as an httpOnly cookie. */
+interface SessionPayload {
+  accessToken: string;
+  user: User;
+  recoveryCodes?: string[];
+}
+
+/** /auth/login and /auth/google answer with one of these. */
+type LoginResponse =
+  | SessionPayload
+  | { mfaRequired: true; mfaToken: string; methods: string[] }
+  | { mfaEnrollmentRequired: true; mfaToken: string };
+
+type Step = "credentials" | "mfa" | "enroll" | "enroll-email" | "change-password" | "privacy";
+
+// Demo credentials are a local-development convenience only.
+const DEV_EMAIL = import.meta.env.DEV ? "admin@rtb.gov.rw" : "";
+const DEV_PASSWORD = import.meta.env.DEV ? "Admin@123" : "";
 
 export default function Login() {
-  const [email, setEmail] = useState("admin@rtb.gov.rw");
-  const [password, setPassword] = useState("Admin@123");
+  const [email, setEmail] = useState(DEV_EMAIL);
+  const [password, setPassword] = useState(DEV_PASSWORD);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { setAuth } = useAuthStore();
+  const [step, setStep] = useState<Step>("credentials");
+  const [mfaToken, setMfaToken] = useState("");
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const { setSession } = useAuthStore();
   const navigate = useNavigate();
 
+  const goHome = (user: User) => navigate(homePathFor(user));
+
+  /** Runs the post-sign-in steps the account still owes, then enters the app. */
+  const continueAfterSession = (user: User) => {
+    if (user.mustChangePassword) return setStep("change-password");
+    if (needsPrivacyAcceptance(user)) return setStep("privacy");
+    goHome(user);
+  };
+
   /** Shared by password and Google sign-in — both return the same payload. */
-  const completeLogin = (data: {
-    accessToken: string;
-    refreshToken: string;
-    user: User;
-  }) => {
-    setAuth(data.accessToken, data.refreshToken, data.user);
-    navigate(data.user.location?.schoolId ? "/school-dashboard" : "/welcome");
+  const handleLoginResponse = (data: LoginResponse) => {
+    setPassword("");
+    if ("mfaRequired" in data) {
+      setMfaToken(data.mfaToken);
+      setStep("mfa");
+      return;
+    }
+    if ("mfaEnrollmentRequired" in data) {
+      setMfaToken(data.mfaToken);
+      setStep("enroll");
+      return;
+    }
+    completeSession(data);
+  };
+
+  const completeSession = (data: SessionPayload) => {
+    setSession(data.accessToken, data.user);
+    continueAfterSession(data.user);
+  };
+
+  const backToCredentials = () => {
+    setMfaToken("");
+    setError("");
+    setStep("credentials");
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -32,14 +86,10 @@ export default function Login() {
     setError("");
 
     try {
-      const response = await api.post("/auth/login", { email, password });
-      completeLogin(response.data);
+      const response = await api.post<LoginResponse>("/auth/login", { email, password });
+      handleLoginResponse(response.data);
     } catch (err) {
-      const axiosError = err as { response?: { data?: { message?: string } } };
-      setError(
-        axiosError.response?.data?.message ||
-          "Login failed. Please verify credentials.",
-      );
+      setError(apiErrorMessage(err, "Login failed. Please verify credentials."));
     } finally {
       setIsLoading(false);
     }
@@ -50,18 +100,80 @@ export default function Login() {
     setError("");
 
     try {
-      const response = await api.post("/auth/google", { idToken });
-      completeLogin(response.data);
+      const response = await api.post<LoginResponse>("/auth/google", { idToken });
+      handleLoginResponse(response.data);
     } catch (err) {
-      const axiosError = err as { response?: { data?: { message?: string } } };
-      setError(
-        axiosError.response?.data?.message ||
-          "Google sign-in failed. Please try again.",
-      );
+      setError(apiErrorMessage(err, "Google sign-in failed. Please try again."));
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Mandatory-2FA enrolment during sign-in: the confirm call also returns the
+  // session, which is held until the user has saved the recovery codes.
+  const [pendingSession, setPendingSession] = useState<SessionPayload | null>(null);
+
+  if (step === "change-password") {
+    return (
+      <ForcePasswordChange
+        onDone={() => {
+          const user = useAuthStore.getState().user;
+          if (user && needsPrivacyAcceptance(user)) setStep("privacy");
+          else if (user) goHome(user);
+        }}
+      />
+    );
+  }
+
+  if (step === "privacy") {
+    return (
+      <div className="min-h-dvh bg-background">
+        <PrivacyAcceptancePrompt
+          onAccepted={() => {
+            const user = useAuthStore.getState().user;
+            if (user) goHome(user);
+          }}
+        />
+      </div>
+    );
+  }
+
+  const stepPanel =
+    step === "mfa" || step === "enroll-email" ? (
+      <MfaChallenge<SessionPayload>
+        mfaToken={mfaToken}
+        initialMode={step === "enroll-email" ? "email" : "totp"}
+        emailOnly={step === "enroll-email"}
+        onSuccess={completeSession}
+        onCancel={backToCredentials}
+      />
+    ) : step === "enroll" ? (
+      <div className="space-y-4">
+        <MfaEnrollment
+          start={async () =>
+            (await api.post<EnrolmentStart>("/auth/2fa/enroll/start", { mfaToken })).data
+          }
+          confirm={async (code) => {
+            const { data } = await api.post<SessionPayload & { recoveryCodes: string[] }>(
+              "/auth/2fa/enroll/confirm",
+              { mfaToken, code },
+            );
+            setPendingSession(data);
+            return data;
+          }}
+          onDone={() => pendingSession && completeSession(pendingSession)}
+          onCancel={backToCredentials}
+          cancelLabel="Back to sign in"
+        />
+        <button
+          type="button"
+          onClick={() => setStep("enroll-email")}
+          className="w-full text-center text-sm font-bold text-primary hover:underline"
+        >
+          No smartphone? Email me a one-time code instead
+        </button>
+      </div>
+    ) : null;
 
   return (
     <div className="min-h-screen w-full flex bg-background overflow-hidden font-sans">
@@ -170,16 +282,25 @@ export default function Login() {
                 SYSTEM ACCESS PORTAL
               </motion.div>
               <h2 className="text-5xl lg:text-6xl font-black tracking-tight text-foreground leading-[1.1]">
-                Authentification
+                {step === "credentials"
+                  ? "Sign in"
+                  : step === "enroll"
+                    ? "Set up two-factor"
+                    : "Verify it's you"}
               </h2>
               <p className="text-muted-foreground font-medium text-lg lg:text-xl">
-                Enter secure credentials to monitor the national TVET
-                infrastructure
+                {step === "credentials"
+                  ? "Enter secure credentials to monitor the national TVET infrastructure"
+                  : step === "enroll"
+                    ? "Your role requires two-factor authentication. Link an authenticator app to continue."
+                    : "Two-factor authentication is on for this account."}
               </p>
             </div>
           </div>
 
-          {error && (
+          {stepPanel}
+
+          {step === "credentials" && error && (
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -189,6 +310,8 @@ export default function Login() {
             </motion.div>
           )}
 
+          {step === "credentials" && (
+          <>
           <form onSubmit={handleLogin} className="space-y-6">
             <motion.div
               initial={{ opacity: 0 }}
@@ -203,14 +326,16 @@ export default function Login() {
                 className="space-y-2.5"
               >
                 <div className="pb-1">
-                  <label className="text-sm font-bold text-foreground/80 ml-1">
+                  <label htmlFor="login-email" className="text-sm font-bold text-foreground/80 ml-1">
                     Email Address
                   </label>
                 </div>
                 <div className="relative group">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
                   <input
+                    id="login-email"
                     type="email"
+                    autoComplete="username"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="flex h-12 w-full rounded-xl border border-input dark:border-blue-700/20 bg-background/50 backdrop-blur-sm pl-12 pr-4 py-2 text-sm transition-all focus:bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
@@ -226,7 +351,7 @@ export default function Login() {
                 className="space-y-2.5"
               >
                 <div className="flex items-center justify-between ml-1">
-                  <label className="text-sm font-bold text-foreground/80">
+                  <label htmlFor="login-password" className="text-sm font-bold text-foreground/80">
                     Password
                   </label>
                   <Link
@@ -237,6 +362,8 @@ export default function Login() {
                   </Link>
                 </div>
                 <PasswordInput
+                  id="login-password"
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
@@ -271,13 +398,24 @@ export default function Login() {
             onError={setError}
             disabled={isLoading}
           />
+          </>
+          )}
 
-          <div className="pt-6 border-t border-border/20 dark:border-blue-700/20 text-center">
+          <div className="pt-6 border-t border-border/20 dark:border-blue-700/20 text-center space-y-2">
             <p className="text-xs text-muted-foreground leading-relaxed">
               TVET 3D GIS &mdash; Rwanda TVET Board &copy; 2026. <br />
               Authorized personnel only. Data usage is monitored.
             </p>
+            <button
+              type="button"
+              onClick={() => setShowPrivacy(true)}
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+            >
+              <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+              Privacy notice &amp; terms of use
+            </button>
           </div>
+          <PrivacyNoticeModal isOpen={showPrivacy} onClose={() => setShowPrivacy(false)} />
         </motion.div>
       </div>
     </div>

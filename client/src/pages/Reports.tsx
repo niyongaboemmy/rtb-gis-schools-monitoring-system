@@ -45,6 +45,14 @@ import { ReportDetailsModal } from "../components/reports/ReportDetailsModal";
 import { useSchoolsStore } from "../store/schoolsStore";
 import { api } from "../lib/api";
 import { cn } from "../lib/utils";
+import { label } from "../lib/labels";
+import { useSearchParams } from "react-router-dom";
+import { useAuthorization } from "../hooks/useAuthorization";
+import { Permission } from "../lib/permissions";
+import { EmptyState } from "../components/ui/empty-state";
+import { ErrorState } from "../components/ui/error-state";
+import { errorMessage } from "../components/ui/error-message";
+import { SkeletonTable } from "../components/ui/skeleton";
 
 /* ───────────────────────────── model ───────────────────────────── */
 
@@ -62,6 +70,21 @@ interface Report {
   updatedAt?: string;
   resolvedAt?: string | null;
   school?: { name?: string; district?: string; province?: string };
+  /** "issue" (default) or "data_change_request" (WS7.7). */
+  type?: "issue" | "data_change_request";
+  changeRequest?: {
+    fields: { field: string; currentValue: unknown; proposedValue: unknown }[];
+    reason: string;
+  } | null;
+}
+
+type TypeFilter = "ALL" | "issue" | "data_change_request";
+
+/** Human name for a school field in a change request. */
+function fieldLabel(field: string): string {
+  return field
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/^./, (c) => c.toUpperCase());
 }
 
 const STATUS_META: Record<
@@ -69,7 +92,7 @@ const STATUS_META: Record<
   { label: string; short: string; color: string; chip: string; dot: string; icon: typeof Clock }
 > = {
   PENDING: {
-    label: "Pending",
+    label: label("reportStatus", "PENDING"),
     short: "Pending",
     color: "#f59e0b",
     chip: "bg-amber-500/12 text-amber-600 dark:text-amber-400 border-amber-500/25",
@@ -77,7 +100,7 @@ const STATUS_META: Record<
     icon: Clock,
   },
   NEED_INTERVENTION: {
-    label: "Needs Intervention",
+    label: label("reportStatus", "NEED_INTERVENTION"),
     short: "Intervention",
     color: "#f43f5e",
     chip: "bg-rose-500/12 text-rose-600 dark:text-rose-400 border-rose-500/25",
@@ -85,16 +108,16 @@ const STATUS_META: Record<
     icon: TriangleAlert,
   },
   SOLVED: {
-    label: "Solved",
-    short: "Solved",
+    label: label("reportStatus", "SOLVED"),
+    short: label("reportStatus", "SOLVED"),
     color: "#10b981",
     chip: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400 border-emerald-500/25",
     dot: "bg-emerald-500",
     icon: CheckCircle2,
   },
   FAILED: {
-    label: "Failed / Invalid",
-    short: "Failed",
+    label: `${label("reportStatus", "FAILED")} / Invalid`,
+    short: label("reportStatus", "FAILED"),
     color: "#94a3b8",
     chip: "bg-slate-500/12 text-slate-500 dark:text-slate-400 border-slate-500/20",
     dot: "bg-slate-500",
@@ -110,15 +133,22 @@ type SortKey = "school" | "status" | "createdAt";
 const catLabel = (c: Report["issueCategory"]): string =>
   Array.isArray(c) ? c.filter(Boolean).join(", ") : (c ?? "—");
 
+/** Category column text: change requests list the requested fields. */
+const reportCategory = (r: Report): string =>
+  r.type === "data_change_request"
+    ? `Change request: ${(r.changeRequest?.fields ?? []).map((f) => fieldLabel(f.field)).join(", ") || "—"}`
+    : catLabel(r.issueCategory);
+
 function downloadReportsCsv(rows: Report[]) {
-  const head = ["School", "Province", "District", "Category", "Status", "Description", "Reported", "Resolved"];
+  const head = ["School", "Province", "District", "Type", "Category", "Status", "Description", "Reported", "Resolved"];
   const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const body = rows.map((r) =>
     [
       r.school?.name ?? "",
       r.school?.province ?? "",
       r.school?.district ?? "",
-      catLabel(r.issueCategory),
+      label("reportType", r.type ?? "issue"),
+      reportCategory(r),
       STATUS_META[r.status]?.label ?? r.status,
       r.description ?? "",
       r.createdAt ? new Date(r.createdAt).toISOString() : "",
@@ -214,6 +244,20 @@ function ExportCard({
 
 export default function Reports() {
   const { allSchools, fetchAllSchools } = useSchoolsStore();
+  const { isAuthorized } = useAuthorization();
+  const canExport = isAuthorized(Permission.EXPORT_REPORTS);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const canManageReports = isAuthorized(Permission.MANAGE_REPORTS);
+  // GIS analysts (no org-wide reporting oversight) come here for change requests.
+  const changeRequestDesk =
+    !isAuthorized(Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD) &&
+    isAuthorized(Permission.EDIT_SCHOOL_LOCATION);
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>(
+    searchParams.get("type") === "data_change_request" || changeRequestDesk
+      ? "data_change_request"
+      : "ALL",
+  );
 
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
@@ -242,6 +286,7 @@ export default function Reports() {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     setLoading(true);
+    setLoadError(null);
     try {
       const first = await api.get("/reports", {
         params: { page: 1, limit: 1000 },
@@ -267,6 +312,7 @@ export default function Reports() {
       if (name !== "CanceledError" && name !== "AbortError") {
         console.error("Failed to load reports", err);
         setReports([]);
+        setLoadError(errorMessage(err, "The reports could not be loaded."));
       }
     } finally {
       setLoading(false);
@@ -279,6 +325,29 @@ export default function Reports() {
   }, [load]);
 
   useEffect(() => () => { if (doneTimer.current) clearTimeout(doneTimer.current); }, []);
+
+  // Deep link from notifications: /reports?report=<id> opens that report.
+  const deepLinkId = searchParams.get("report");
+  useEffect(() => {
+    if (!deepLinkId) return;
+    let cancelled = false;
+    api
+      .get(`/reports/${deepLinkId}`)
+      .then((res) => !cancelled && setSelected(res.data as Report))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [deepLinkId]);
+
+  const closeSelected = () => {
+    setSelected(null);
+    if (searchParams.get("report")) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("report");
+      setSearchParams(next, { replace: true });
+    }
+  };
 
   const schoolMap = useMemo(
     () => new Map(allSchools.map((s) => [s.id, s])),
@@ -355,13 +424,14 @@ export default function Reports() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const rows = withSchool.filter((r) => {
+      if (typeFilter !== "ALL" && (r.type ?? "issue") !== typeFilter) return false;
       if (statusFilter !== "ALL" && r.status !== statusFilter) return false;
       if (province && r.school?.province !== province) return false;
       if (!q) return true;
       return (
         r.school?.name?.toLowerCase().includes(q) ||
         r.school?.district?.toLowerCase().includes(q) ||
-        catLabel(r.issueCategory).toLowerCase().includes(q) ||
+        reportCategory(r).toLowerCase().includes(q) ||
         r.description?.toLowerCase().includes(q)
       );
     });
@@ -375,7 +445,7 @@ export default function Reports() {
         (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * dir
       );
     });
-  }, [withSchool, search, statusFilter, province, sort]);
+  }, [withSchool, search, statusFilter, province, sort, typeFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageClamped = Math.min(page, totalPages);
@@ -383,7 +453,12 @@ export default function Reports() {
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, province, sort]);
+  }, [search, statusFilter, province, sort, typeFilter]);
+
+  const changeRequestCount = useMemo(
+    () => withSchool.filter((r) => r.type === "data_change_request").length,
+    [withSchool],
+  );
 
   const runExport = async (key: string, fn: () => Promise<void>) => {
     setBusy(key);
@@ -428,25 +503,34 @@ export default function Reports() {
     setSearch("");
     setStatusFilter("ALL");
     setProvince("");
+    setTypeFilter("ALL");
   };
-  const filtersActive = search !== "" || statusFilter !== "ALL" || province !== "";
+  const filtersActive =
+    search !== "" || statusFilter !== "ALL" || province !== "" || typeFilter !== "ALL";
 
   const SortTh = ({ label, k, className }: { label: string; k: SortKey; className?: string }) => (
     <TableHead
-      onClick={() => toggleSort(k)}
+      aria-sort={sort.key === k ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
       className={cn(
-        "text-[10px] font-black uppercase tracking-wider cursor-pointer select-none hover:text-foreground transition-colors",
+        "text-[10px] font-black uppercase tracking-wider select-none hover:text-foreground transition-colors",
         className,
       )}
     >
-      <span className={cn("inline-flex items-center gap-1", className?.includes("text-right") && "flex-row-reverse")}>
+      <button
+        type="button"
+        onClick={() => toggleSort(k)}
+        className={cn(
+          "inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring uppercase",
+          className?.includes("text-right") && "flex-row-reverse",
+        )}
+      >
         {label}
         {sort.key === k ? (
           sort.dir === "asc" ? <ChevronUp className="w-3 h-3 text-primary" /> : <ChevronDown className="w-3 h-3 text-primary" />
         ) : (
           <ChevronDown className="w-3 h-3 opacity-20" />
         )}
-      </span>
+      </button>
     </TableHead>
   );
 
@@ -515,7 +599,7 @@ export default function Reports() {
           />
           <MetricCard
             icon={CheckCircle2}
-            label="Solved"
+            label="Resolved"
             value={loading ? "—" : stats.solved}
             spark={sparks.solved}
             sparkColor={STATUS_META.SOLVED.color}
@@ -537,7 +621,8 @@ export default function Reports() {
           />
         </div>
 
-        {/* Export hub */}
+        {/* Export hub — needs EXPORT_REPORTS (server enforces it too) */}
+        {canExport && (
         <div>
           <h2 className="text-[11px] font-black uppercase tracking-widest text-muted-foreground mb-3">
             Bulk Exports
@@ -582,6 +667,7 @@ export default function Reports() {
             />
           </div>
         </div>
+        )}
 
         {/* Report browser */}
         <Card className="border border-border/30 bg-card/60 backdrop-blur-xl rounded-3xl shadow-none overflow-hidden">
@@ -589,8 +675,9 @@ export default function Reports() {
             <div className="p-4 border-b border-border/25 space-y-3">
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative flex-1 min-w-50">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
                   <Input
+                    aria-label="Search reports"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search school, district, category, description…"
@@ -615,18 +702,44 @@ export default function Reports() {
                   </Button>
                 )}
               </div>
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Report type">
+                {(
+                  [
+                    { key: "ALL", label: "All types" },
+                    { key: "issue", label: "Issues" },
+                    { key: "data_change_request", label: `Change requests (${changeRequestCount})` },
+                  ] as const
+                ).map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    aria-pressed={typeFilter === c.key}
+                    onClick={() => setTypeFilter(c.key)}
+                    className={cn(
+                      "rounded-full px-3 py-1 text-[11px] font-semibold border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      typeFilter === c.key
+                        ? "bg-foreground text-background border-foreground"
+                        : "bg-background/50 text-muted-foreground border-border/40 hover:bg-primary/5",
+                    )}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Report status">
                 {(
                   [
                     { key: "ALL", label: "All", count: stats.total },
                     { key: "PENDING", label: "Pending", count: stats.pending },
                     { key: "NEED_INTERVENTION", label: "Intervention", count: stats.intervention },
-                    { key: "SOLVED", label: "Solved", count: stats.solved },
-                    { key: "FAILED", label: "Failed", count: stats.failed },
+                    { key: "SOLVED", label: label("reportStatus", "SOLVED"), count: stats.solved },
+                    { key: "FAILED", label: label("reportStatus", "FAILED"), count: stats.failed },
                   ] as const
                 ).map((c) => (
                   <button
                     key={c.key}
+                    type="button"
+                    aria-pressed={statusFilter === c.key}
                     onClick={() => setStatusFilter(c.key as "ALL" | Status)}
                     className={cn(
                       "flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider border transition-colors",
@@ -646,27 +759,21 @@ export default function Reports() {
             </div>
 
             {loading ? (
-              <div className="p-4 space-y-2">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div key={i} className="h-12 rounded-xl bg-muted animate-pulse" />
-                ))}
-              </div>
+              <SkeletonTable rows={8} columns={4} className="m-4 border-0 p-0" />
+            ) : loadError ? (
+              <ErrorState className="m-4" message={loadError} onRetry={load} />
             ) : pageRows.length === 0 ? (
-              <div className="py-16 flex flex-col items-center gap-3 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
-                  <ClipboardList className="w-7 h-7 text-primary" />
-                </div>
-                <p className="text-sm text-muted-foreground max-w-xs">
-                  {reports.length === 0
-                    ? "No infrastructure issue reports have been filed yet."
-                    : "No reports match these filters."}
-                </p>
-                {filtersActive && reports.length > 0 && (
-                  <Button variant="outline" onClick={resetFilters} className="rounded-xl h-8 text-[10px] font-black uppercase tracking-wider">
-                    Clear filters
-                  </Button>
-                )}
-              </div>
+              <EmptyState
+                className="m-4"
+                icon={ClipboardList}
+                title={reports.length === 0 ? "No reports yet" : "No reports match these filters"}
+                description={
+                  reports.length === 0
+                    ? "Issue reports and change requests filed from schools will appear here. Schools file them from School Reporting."
+                    : "Try a different search, status or type."
+                }
+                secondaryAction={filtersActive && reports.length > 0 ? { label: "Clear filters", onClick: resetFilters } : undefined}
+              />
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -689,7 +796,15 @@ export default function Reports() {
                           animate={{ opacity: 1 }}
                           transition={{ delay: Math.min(i * 0.015, 0.2) }}
                           onClick={() => setSelected(r)}
-                          className="border-border/20 cursor-pointer hover:bg-primary/5 transition-colors"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelected(r);
+                            }
+                          }}
+                          tabIndex={0}
+                          aria-label={`Open report for ${r.school?.name ?? "school"}, ${meta.label}`}
+                          className="border-border/20 cursor-pointer hover:bg-primary/5 transition-colors focus-visible:outline-none focus-visible:bg-primary/10"
                         >
                           <TableCell className="pl-5 py-3">
                             <div className="flex items-center gap-2 min-w-0">
@@ -705,7 +820,7 @@ export default function Reports() {
                           </TableCell>
                           <TableCell className="hidden lg:table-cell">
                             <span className="text-[11px] text-muted-foreground truncate block max-w-45 capitalize">
-                              {catLabel(r.issueCategory)}
+                              {reportCategory(r)}
                             </span>
                           </TableCell>
                           <TableCell>
@@ -752,8 +867,14 @@ export default function Reports() {
         {selected && (
           <ReportDetailsModal
             report={selected}
-            onClose={() => setSelected(null)}
-            onUpdateStatus={handleUpdateStatus}
+            onClose={closeSelected}
+            onUpdateStatus={
+              canManageReports ||
+              (selected.type === "data_change_request" &&
+                isAuthorized(Permission.EDIT_SCHOOL_LOCATION))
+                ? handleUpdateStatus
+                : undefined
+            }
             isUpdating={updating}
           />
         )}

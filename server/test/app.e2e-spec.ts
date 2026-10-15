@@ -11,10 +11,11 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import request from 'supertest';
 import { AppModule } from './../src/app.module';
+import { configureApp } from './../src/app.setup';
 
 // ---------------------------------------------------------------------------
 // Shared test state (populated in beforeAll, used across all describe blocks)
@@ -28,13 +29,26 @@ const ADMIN_CREDS = { email: 'admin@rtb.gov.rw', password: 'Admin@123' };
 /** Viewer user created in beforeAll — unique per test run to avoid conflicts. */
 const VIEWER_EMAIL = `e2e.viewer.${Date.now()}@test.rtb.rw`;
 const VIEWER_PASSWORD = 'Viewer@E2E!1';
+const VIEWER_NEW_PASSWORD = 'Changed#E2E-2026';
 
 /** Unique school code so parallel CI runs don't clash. */
 const TEST_SCHOOL_CODE = `E2E-${Date.now().toString(36).toUpperCase()}`;
 
 let adminToken: string;
 let adminUserId: string;
-let adminRefreshToken: string;
+/** `rtb_rt=<token>` — the refresh token now travels only in an httpOnly cookie. */
+let adminRefreshCookie: string;
+
+/** CSRF header the cookie-authenticated auth routes require. */
+const CSRF = { 'X-Requested-With': 'XMLHttpRequest' };
+
+function refreshCookieFrom(res: request.Response): string {
+  const raw = res.headers['set-cookie'] as string | string[] | undefined;
+  const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  const cookie = list.find((c) => c.startsWith('rtb_rt='));
+  if (!cookie) throw new Error('login did not set the refresh cookie');
+  return cookie.split(';')[0];
+}
 
 let viewerToken: string;
 let viewerUserId: string;
@@ -59,19 +73,9 @@ beforeAll(async () => {
     .useValue({ canActivate: () => true })
     .compile();
 
-  app = moduleFixture.createNestApplication();
-
-  // Mirror main.ts configuration so guards, pipes, and routes work identically.
-  app.setGlobalPrefix('api/v1');
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: { enableImplicitConversion: true },
-    }),
-  );
-
+  // Same middleware, body limits, pipes and prefix as main.ts.
+  app = moduleFixture.createNestApplication({ bodyParser: false });
+  configureApp(app);
   await app.init();
 
   // --- Admin login (needed for all subsequent setup calls) ---------------
@@ -82,7 +86,7 @@ beforeAll(async () => {
 
   adminToken = loginRes.body.accessToken;
   adminUserId = loginRes.body.user.id;
-  adminRefreshToken = loginRes.body.refreshToken;
+  adminRefreshCookie = refreshCookieFrom(loginRes);
 
   // --- Grab the first seeded school for analytics tests ------------------
   const schoolsRes = await request(app.getHttpServer())
@@ -98,9 +102,9 @@ beforeAll(async () => {
     .set('Authorization', `Bearer ${adminToken}`)
     .expect(200);
 
-  const viewerRole = (rolesRes.body as Array<{ id: string; name: string }>).find(
-    (r) => r.name === 'viewer',
-  );
+  const viewerRole = (
+    rolesRes.body as Array<{ id: string; name: string }>
+  ).find((r) => r.name === 'viewer');
 
   // --- Create a viewer user for RBAC tests --------------------------------
   const createViewerRes = await request(app.getHttpServer())
@@ -118,10 +122,26 @@ beforeAll(async () => {
   viewerUserId = createViewerRes.body.id;
 
   // --- Viewer login -------------------------------------------------------
-  const viewerLoginRes = await request(app.getHttpServer())
+  // Admin-created accounts must set their own password first (WS10.3); the
+  // API refuses everything else until they do.
+  let viewerLoginRes = await request(app.getHttpServer())
     .post('/api/v1/auth/login')
     .send({ email: VIEWER_EMAIL, password: VIEWER_PASSWORD })
     .expect(200);
+  if (viewerLoginRes.body.user?.mustChangePassword) {
+    await request(app.getHttpServer())
+      .patch('/api/v1/users/me/password')
+      .set('Authorization', `Bearer ${viewerLoginRes.body.accessToken}`)
+      .send({
+        currentPassword: VIEWER_PASSWORD,
+        newPassword: VIEWER_NEW_PASSWORD,
+      })
+      .expect(200);
+    viewerLoginRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: VIEWER_EMAIL, password: VIEWER_NEW_PASSWORD })
+      .expect(200);
+  }
 
   viewerToken = viewerLoginRes.body.accessToken;
 }, 60_000); // allow up to 60 s for DB startup + seed on cold runs
@@ -142,16 +162,19 @@ afterAll(async () => {
 // ===========================================================================
 
 describe('Auth Flow', () => {
-  it('POST /auth/login with valid credentials → 200 and returns accessToken + refreshToken', async () => {
+  it('POST /auth/login with valid credentials → 200, access token in body, refresh token only in an httpOnly cookie', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send(ADMIN_CREDS)
       .expect(200);
 
-    expect(res.body.accessToken).toBeDefined();
     expect(typeof res.body.accessToken).toBe('string');
-    expect(res.body.refreshToken).toBeDefined();
-    expect(typeof res.body.refreshToken).toBe('string');
+    expect(res.body.refreshToken).toBeUndefined();
+    const cookies = ([] as string[]).concat(res.headers['set-cookie'] ?? []);
+    const rt = cookies.find((c) => c.startsWith('rtb_rt='));
+    expect(rt).toBeDefined();
+    expect(rt).toMatch(/HttpOnly/i);
+    expect(rt).toMatch(/SameSite=Strict/i);
     expect(res.body.user).toBeDefined();
     expect(res.body.user.email).toBe(ADMIN_CREDS.email);
     // password must never be returned
@@ -169,9 +192,7 @@ describe('Auth Flow', () => {
   });
 
   it('GET /auth/me without token → 401 Unauthorized', async () => {
-    await request(app.getHttpServer())
-      .get('/api/v1/auth/me')
-      .expect(401);
+    await request(app.getHttpServer()).get('/api/v1/auth/me').expect(401);
   });
 
   it('GET /auth/me with malformed token → 401 Unauthorized', async () => {
@@ -181,26 +202,34 @@ describe('Auth Flow', () => {
       .expect(401);
   });
 
-  it('POST /auth/refresh with valid refresh token → 200 and returns new token pair', async () => {
+  it('POST /auth/refresh with the refresh cookie → 200, new access token, rotated cookie', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/v1/auth/refresh')
-      .send({ userId: adminUserId, refreshToken: adminRefreshToken })
+      .set('Cookie', adminRefreshCookie)
+      .set(CSRF)
       .expect(200);
 
-    expect(res.body.accessToken).toBeDefined();
-    expect(res.body.refreshToken).toBeDefined();
-    // Rotated tokens must differ from the originals
-    expect(res.body.accessToken).not.toBe(adminToken);
+    expect(typeof res.body.accessToken).toBe('string');
+    const rotated = refreshCookieFrom(res);
+    expect(rotated).not.toBe(adminRefreshCookie);
 
-    // Update shared state so subsequent tests use the fresh tokens
+    // Subsequent tests use the fresh pair
     adminToken = res.body.accessToken;
-    adminRefreshToken = res.body.refreshToken;
+    adminRefreshCookie = rotated;
+  });
+
+  it('POST /auth/refresh without the CSRF header → 403', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .set('Cookie', adminRefreshCookie)
+      .expect(403);
   });
 
   it('POST /auth/refresh with a wrong refresh token → 401 (SEC-01 regression)', async () => {
     await request(app.getHttpServer())
       .post('/api/v1/auth/refresh')
-      .send({ userId: adminUserId, refreshToken: 'completely-wrong-token' })
+      .set('Cookie', 'rtb_rt=completely-wrong-token')
+      .set(CSRF)
       .expect(401);
   });
 
@@ -210,7 +239,8 @@ describe('Auth Flow', () => {
       .send({ email: ADMIN_CREDS.email, password: 'WrongPassword!' })
       .expect(401);
 
-    expect(res.body.message).toMatch(/invalid credentials/i);
+    // Generic on purpose: never reveals whether the email exists.
+    expect(res.body.message).toMatch(/invalid email or password/i);
   });
 
   it('POST /auth/login with non-existent email → 401', async () => {
@@ -283,9 +313,7 @@ describe('Schools Flow', () => {
   });
 
   it('GET /schools without token → 401', async () => {
-    await request(app.getHttpServer())
-      .get('/api/v1/schools')
-      .expect(401);
+    await request(app.getHttpServer()).get('/api/v1/schools').expect(401);
   });
 
   it('PATCH /schools/:id → 200 and reflects the updated field', async () => {
@@ -354,7 +382,9 @@ describe('Analytics Flow', () => {
   it('GET /analytics/schools/:id/metrics → 200 and all scores are numeric and bounded [0, 100]', async () => {
     // Skip gracefully if no seeded schools exist (fresh empty DB)
     if (!seededSchoolId) {
-      console.warn('[e2e] No seeded school found — skipping metrics bounds check');
+      console.warn(
+        '[e2e] No seeded school found — skipping metrics bounds check',
+      );
       return;
     }
 
@@ -382,7 +412,9 @@ describe('Analytics Flow', () => {
     // Structural presence checks
     expect(res.body.schoolId).toBe(seededSchoolId);
     expect(typeof res.body.priorityLevel).toBe('string');
-    expect(['critical', 'high', 'medium', 'low']).toContain(res.body.priorityLevel);
+    expect(['critical', 'high', 'medium', 'low']).toContain(
+      res.body.priorityLevel,
+    );
   });
 
   it('GET /analytics/schools/:id/metrics as viewer role → 200 (viewer has SCHOOL_LEVEL_DASHBOARD)', async () => {

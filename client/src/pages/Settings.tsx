@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Users as UsersIcon, Settings2, Layers, Shield } from "lucide-react";
+import { Users as UsersIcon, Settings2, Layers, Shield, History } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PageHeader } from "../components/ui/page-header";
 import { cn } from "../lib/utils";
@@ -8,12 +8,25 @@ import { cn } from "../lib/utils";
 import { UsersTab } from "../components/settings/UsersTab";
 import { RolesTab } from "../components/settings/RolesTab";
 import { AccessLevelsTab } from "../components/settings/AccessLevelsTab";
+import { AuditTrailTab } from "../components/settings/AuditTrailTab";
 import { ImigongoPattern } from "../components/ui/ImigongoPattern";
+import { useAuthStore } from "../store/authStore";
+import { hasPermission, Permission } from "../lib/permissions";
+
+type SettingsTab = "users" | "roles" | "access-levels" | "audit";
 
 export default function Settings() {
-  const [activeTab, setActiveTab] = useState<
-    "users" | "roles" | "access-levels"
-  >("users");
+  const [activeTab, setActiveTab] = useState<SettingsTab>("users");
+  const user = useAuthStore((s) => s.user);
+  const canViewAudit = hasPermission(user, Permission.VIEW_AUDIT_LOGS);
+  const tabs: { id: SettingsTab; label: string; icon: typeof UsersIcon }[] = [
+    { id: "users", label: "User Directory", icon: UsersIcon },
+    { id: "roles", label: "Roles Management", icon: Shield },
+    { id: "access-levels", label: "Access Levels", icon: Layers },
+    ...(canViewAudit
+      ? [{ id: "audit" as const, label: "Audit Trail", icon: History }]
+      : []),
+  ];
 
   return (
     <div className="relative space-y-8 pb-12 min-h-screen">
@@ -30,19 +43,13 @@ export default function Settings() {
         description="Orchestrate users, define access roles, and monitor permissions."
         icon={Settings2}
         actions={
-          <div className="flex bg-muted/20 p-1 rounded-full border border-border/30 backdrop-blur-md">
-            {[
-              { id: "users", label: "User Directory", icon: UsersIcon },
-              { id: "roles", label: "Roles Management", icon: Shield },
-              { id: "access-levels", label: "Access Levels", icon: Layers },
-            ].map((tab) => (
+          <div className="flex max-w-full overflow-x-auto bg-muted/20 p-1 rounded-full border border-border/30 backdrop-blur-md">
+            {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() =>
-                  setActiveTab(tab.id as "users" | "roles" | "access-levels")
-                }
+                onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  "relative flex items-center gap-2 px-4 py-2.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all duration-300",
+                  "relative flex shrink-0 items-center gap-2 px-4 py-2.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all duration-300",
                   activeTab === tab.id
                     ? "text-blue-600 dark:text-blue-100"
                     : "text-muted-foreground hover:text-foreground",
@@ -78,6 +85,7 @@ export default function Settings() {
           {activeTab === "users" && <UsersTab />}
           {activeTab === "roles" && <RolesTab />}
           {activeTab === "access-levels" && <AccessLevelsTab />}
+          {activeTab === "audit" && canViewAudit && <AuditTrailTab />}
         </motion.div>
       </AnimatePresence>
       </div>

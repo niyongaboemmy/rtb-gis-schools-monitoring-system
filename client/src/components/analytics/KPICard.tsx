@@ -2,6 +2,9 @@ import { type LucideIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { cn } from '../../lib/utils';
+import { MetricInfo } from '../metric-help/MetricInfo';
+import { DataGapBadge } from '../metric-help/DataGapBadge';
+import type { MetricId } from '../metric-help/metrics';
 
 interface KPICardProps {
   title: string;
@@ -13,6 +16,10 @@ interface KPICardProps {
   variant?: 'default' | 'destructive' | 'warning' | 'success' | 'info';
   delay?: number;
   className?: string;
+  /** Metric-help registry id — adds the "What does this mean?" button. */
+  metricId?: MetricId;
+  /** True when the value relies on the neutral 50 for missing data. */
+  estimated?: boolean;
 }
 
 export function KPICard({
@@ -24,7 +31,9 @@ export function KPICard({
   trendIcon: TrendIcon,
   variant = 'default',
   delay = 0,
-  className
+  className,
+  metricId,
+  estimated = false,
 }: KPICardProps) {
   const variantStyles = {
     default: {
@@ -70,24 +79,28 @@ export function KPICard({
       className={cn("h-full", className)}
     >
       <Card className={cn(
-        "h-full transition-all duration-300 border dark:border-blue-700/20 rounded-3xl backdrop-blur-sm shadow-none overflow-hidden group",
+        "relative h-full transition-all duration-300 border dark:border-blue-700/20 rounded-3xl backdrop-blur-sm shadow-none overflow-hidden group",
         style.border,
         style.bg
       )}>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-[10px] font-black uppercase tracking-wider text-muted-foreground/70 group-hover:text-muted-foreground transition-colors">
-            {title}
-          </CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+          <div className="flex min-w-0 items-center gap-1">
+            <CardTitle className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground group-hover:text-foreground/80 transition-colors">
+              {title}
+            </CardTitle>
+            {metricId && <MetricInfo id={metricId} size="xs" />}
+          </div>
           <div className={cn("p-2 rounded-xl bg-background/50 border border-border/10 transition-transform group-hover:scale-110", style.icon)}>
             <Icon className="h-4 w-4" />
           </div>
         </CardHeader>
         <CardContent>
-          <div className={cn("text-3xl font-black tabular-nums tracking-tight", style.value)}>
+          <div className={cn("text-2xl sm:text-3xl font-black tabular-nums tracking-tight break-words", style.value)}>
             {value}
           </div>
+          {estimated && <DataGapBadge metricId={metricId} className="mt-1.5" />}
           {subValue && (
-            <p className={cn("text-[10px] font-bold mt-1 flex items-center gap-1", subColor || "text-muted-foreground")}>
+            <p className={cn("text-[11px] font-semibold mt-1 flex items-center gap-1", subColor || "text-muted-foreground")}>
               {TrendIcon && <TrendIcon className="h-3 w-3" />}
               {subValue}
             </p>
