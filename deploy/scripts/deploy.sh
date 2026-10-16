@@ -11,9 +11,17 @@ cd "$REPO_DIR"
 echo "▶ Deploying from $REPO_DIR"
 
 # ── 1. Sync code ───────────────────────────────────────────────────────────
-git fetch --all --prune
-git reset --hard origin/main
-git submodule update --init --recursive 2>/dev/null || true
+# After syncing, restart this script from the freshly pulled copy. Without
+# this, each deploy would finish running the *previous* deploy.sh (bash keeps
+# reading the file it started with), so script changes only took effect one
+# deploy late.
+if [ "${RTB_DEPLOY_SYNCED:-0}" != "1" ]; then
+  git fetch --all --prune
+  git reset --hard origin/main
+  git submodule update --init --recursive 2>/dev/null || true
+  export RTB_DEPLOY_SYNCED=1
+  exec bash "$REPO_DIR/deploy/scripts/deploy.sh" "$@"
+fi
 COMMIT="$(git rev-parse --short HEAD)"
 echo "▶ Now at $COMMIT"
 
