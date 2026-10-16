@@ -34,7 +34,12 @@ jobs:
 
       - name: Public smoke test
         run: |
-          set -e
-          code=$(curl -s -o /dev/null -w "%{http_code}" https://rtb.aerovyntech.com/api/v1/health || echo 000)
-          echo "https://rtb.aerovyntech.com/api/v1/health -> $code"
-          test "$code" = "200"
+          url=https://rtb.aerovyntech.com/api/v1/health
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$url" || echo 000)
+            echo "attempt $i: $url -> $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 5
+          done
+          echo "::error::API not healthy after 60 s"
+          exit 1

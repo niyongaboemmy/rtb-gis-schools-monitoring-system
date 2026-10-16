@@ -28,6 +28,17 @@ npm --prefix server run build
 # ── 4. Run pending DB migrations (idempotent — only new ones apply) ────────
 set -a; # shellcheck disable=SC1090
 source "$SERVER_ENV"; set +a
+
+# Pre-flight: validate the env with the code we're about to run, BEFORE the
+# migrations and the PM2 reload. A missing/invalid secret then fails the deploy
+# while the old API keeps serving, instead of crash-looping the new one.
+echo "▶ Checking environment..."
+( cd server && node -e '
+  try { require("./dist/config/env.validation").validateEnv(process.env); }
+  catch (e) { console.error(e.message); process.exit(1); }
+' ) || { echo "✗ $SERVER_ENV is missing required settings — nothing was changed."; exit 1; }
+echo "  ✓ environment"
+
 echo "▶ Running migrations..."
 ( cd server && npx typeorm migration:run -d dist/db/data-source.js )
 
@@ -48,8 +59,19 @@ pm2 reload rtb-file-server  --update-env
 pm2 save
 
 # ── 7. Health gate ───────────────────────────────────────────────────────
-sleep 5
+# Retry for up to 60 s (the API takes a few seconds to boot), and fail the
+# deploy for real if a process never comes up.
+wait_healthy() {
+  local name="$1" url="$2" app="$3"
+  for _ in $(seq 1 30); do
+    if curl -fsS "$url" >/dev/null 2>&1; then echo "  ✓ $name"; return 0; fi
+    sleep 2
+  done
+  echo "  ✗ $name not healthy after 60 s — last log lines:"
+  pm2 logs "$app" --nostream --lines 40 2>&1 | tail -40 || true
+  return 1
+}
 echo "▶ Health checks"
-curl -fsS "http://127.0.0.1:3001/api/v1/health" >/dev/null && echo "  ✓ API"
-curl -fsS "http://127.0.0.1:3002/health" >/dev/null && echo "  ✓ file-server"
+wait_healthy "API" "http://127.0.0.1:3001/api/v1/health" rtb-api
+wait_healthy "file-server" "http://127.0.0.1:3002/health" rtb-file-server
 echo "✅ Deploy $COMMIT complete"
