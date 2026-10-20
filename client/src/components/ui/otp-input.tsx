@@ -8,6 +8,10 @@ interface OtpInputProps {
   disabled?: boolean;
   /** Fired when the last box is filled, so the form can auto-submit. */
   onComplete?: (value: string) => void;
+  /** Focus the first empty box on mount (default true). */
+  autoFocus?: boolean;
+  /** Accessible name for the group, e.g. "Code from your authenticator app". */
+  label?: string;
 }
 
 /**
@@ -20,8 +24,16 @@ export function OtpInput({
   length = 6,
   disabled,
   onComplete,
+  autoFocus = true,
+  label = "Verification code",
 }: OtpInputProps) {
   const refs = React.useRef<(HTMLInputElement | null)[]>([]);
+
+  React.useEffect(() => {
+    if (autoFocus) refs.current[Math.min(value.length, length - 1)]?.focus();
+    // Mount only — refocusing on every keystroke would fight the user.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const commit = (next: string) => {
     onChange(next);
@@ -70,7 +82,7 @@ export function OtpInput({
   };
 
   return (
-    <div className="flex gap-2 sm:gap-3" onPaste={handlePaste}>
+    <div className="flex justify-between gap-2" onPaste={handlePaste} role="group" aria-label={label}>
       {Array.from({ length }).map((_, index) => (
         <input
           key={index}
@@ -79,6 +91,7 @@ export function OtpInput({
           }}
           type="text"
           inputMode="numeric"
+          aria-label={`Digit ${index + 1} of ${length}`}
           autoComplete={index === 0 ? "one-time-code" : "off"}
           maxLength={length}
           value={value[index] ?? ""}
@@ -87,11 +100,11 @@ export function OtpInput({
           onKeyDown={(e) => handleKeyDown(index, e)}
           onFocus={(e) => e.target.select()}
           className={cn(
-            "h-14 w-full min-w-0 rounded-xl border border-input dark:border-blue-700/20",
-            "bg-background/50 backdrop-blur-sm text-center text-xl font-black",
-            "transition-all outline-none focus:bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary",
+            "h-12 w-full max-w-12 min-w-0 rounded-lg border border-input bg-background",
+            "text-center text-lg font-semibold tabular-nums text-foreground",
+            "transition-colors outline-none focus:border-primary focus:ring-3 focus:ring-primary/15",
             "disabled:opacity-50",
-            value[index] && "border-primary/40",
+            value[index] && "border-primary/50",
           )}
         />
       ))}

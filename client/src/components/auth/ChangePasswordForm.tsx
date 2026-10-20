@@ -14,10 +14,12 @@ export function ChangePasswordForm({
   onDone,
   submitLabel = "Update password",
   currentLabel = "Current password",
+  submitClassName = "w-full sm:w-auto",
 }: {
   onDone?: () => void;
   submitLabel?: string;
   currentLabel?: string;
+  submitClassName?: string;
 }) {
   const { user, updateUser } = useAuthStore();
   const ids = { current: useId(), next: useId(), confirm: useId(), rules: useId() };
@@ -96,7 +98,7 @@ export function ChangePasswordForm({
           {error}
         </p>
       )}
-      <Button type="submit" isLoading={saving} disabled={!valid} className="w-full sm:w-auto">
+      <Button type="submit" isLoading={saving} disabled={!valid} className={submitClassName}>
         {submitLabel}
       </Button>
     </form>

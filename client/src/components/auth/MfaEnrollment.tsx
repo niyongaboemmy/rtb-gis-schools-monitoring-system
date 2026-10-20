@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { Copy, Download, KeyRound, Loader2, ShieldCheck, Smartphone } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, Copy, Download, ExternalLink, Loader2, Smartphone } from "lucide-react";
 import { Button } from "../ui/button";
 import { OtpInput } from "../ui/otp-input";
+import { AuthAlert } from "../ui/AuthShell";
 import { apiErrorMessage } from "../../lib/api";
 import { useToast } from "../ui/toast";
+import { cn } from "../../lib/utils";
 
 export interface EnrolmentStart {
   otpauthUrl: string;
@@ -16,24 +18,45 @@ interface Props {
   start: () => Promise<EnrolmentStart>;
   /** Confirms a code; must resolve with the one-time recovery codes. */
   confirm: (code: string) => Promise<{ recoveryCodes: string[] }>;
-  /** After the user has saved their recovery codes. */
+  /** After the backup-codes screen. */
   onDone: () => void;
   onCancel?: () => void;
   cancelLabel?: string;
 }
 
-type Step = "scan" | "codes";
+type Step = "app" | "scan" | "verify" | "codes";
+
+const STEPS: { id: Exclude<Step, "codes">; label: string }[] = [
+  { id: "app", label: "Get the app" },
+  { id: "scan", label: "Add your account" },
+  { id: "verify", label: "Confirm" },
+];
+
+const APPS = [
+  {
+    name: "Google Authenticator",
+    ios: "https://apps.apple.com/app/google-authenticator/id388497605",
+    android: "https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2",
+  },
+  {
+    name: "Microsoft Authenticator",
+    ios: "https://apps.apple.com/app/microsoft-authenticator/id983156458",
+    android: "https://play.google.com/store/apps/details?id=com.azure.authenticator",
+  },
+];
 
 /**
- * Authenticator-app enrolment wizard (WS10.5): scan the QR (or copy the key),
- * confirm a code, then save the recovery codes shown once.
+ * Authenticator-app set-up wizard (WS10.5), one action per screen:
+ * get an app → add the account (QR, tap-to-add on a phone, or key) →
+ * confirm a code → optionally keep the backup codes.
  */
 export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = "Cancel" }: Props) {
   const toast = useToast();
-  const [step, setStep] = useState<Step>("scan");
+  const [step, setStep] = useState<Step>("app");
   const [setup, setSetup] = useState<EnrolmentStart | null>(null);
   const [code, setCode] = useState("");
   const [codes, setCodes] = useState<string[]>([]);
+  const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -61,7 +84,9 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
       setStep("codes");
     } catch (err) {
       setCode("");
-      setError(apiErrorMessage(err, "That code is not valid. Check your device clock and try again."));
+      setError(
+        apiErrorMessage(err, "That code didn't match. Type the code currently shown in the app — it changes every 30 seconds."),
+      );
     } finally {
       setLoading(false);
     }
@@ -71,23 +96,25 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
     try {
       await navigator.clipboard.writeText(text);
       toast.success(`${what} copied`);
+      return true;
     } catch {
       toast.error("Copy failed — select and copy it manually.");
+      return false;
     }
   };
 
   const download = () => {
     const body = [
-      "RTB GIS — two-factor recovery codes",
+      "TVET 3D GIS — two-factor backup codes",
       `Generated ${new Date().toISOString()}`,
-      "Each code works once. Keep them somewhere safe and private.",
+      "Each code signs you in once if you lose your phone. Keep them private.",
       "",
       ...codes,
     ].join("\n");
     const url = URL.createObjectURL(new Blob([body], { type: "text/plain" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = "rtb-gis-recovery-codes.txt";
+    a.download = "tvet-gis-backup-codes.txt";
     a.click();
     URL.revokeObjectURL(url);
     setSaved(true);
@@ -96,21 +123,20 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
   if (step === "codes") {
     return (
       <div className="space-y-5">
-        <div className="flex items-start gap-3">
-          <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
-            <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-hidden />
-          </div>
-          <div>
-            <h3 className="font-bold text-foreground">Two-factor authentication is on</h3>
-            <p className="text-sm text-muted-foreground">
-              Save these recovery codes now. Each one signs you in once if you lose
-              your phone. They will not be shown again.
-            </p>
-          </div>
+        <AuthAlert tone="success">
+          <p className="font-medium">Two-factor authentication is on.</p>
+        </AuthAlert>
+        <div className="space-y-1.5">
+          <h3 className="text-base font-semibold text-foreground">Keep these backup codes (optional)</h3>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            If you lose your phone, each code signs you in once. You can also
+            always ask for a sign-in code by email, so this is just an extra
+            safety net. They won't be shown again.
+          </p>
         </div>
         <ul
-          aria-label="Recovery codes"
-          className="grid grid-cols-2 gap-2 rounded-xl border border-border bg-muted/40 p-4 font-mono text-sm"
+          aria-label="Backup codes"
+          className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border border-border bg-muted/40 px-4 py-3 font-mono text-sm"
         >
           {codes.map((c) => (
             <li key={c} className="text-center tracking-wider select-all">
@@ -118,115 +144,214 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
             </li>
           ))}
         </ul>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            onClick={() => {
-              void copy(codes.join("\n"), "Recovery codes");
-              setSaved(true);
+            className="h-10 rounded-lg"
+            onClick={async () => {
+              if (await copy(codes.join("\n"), "Backup codes")) setSaved(true);
             }}
           >
-            <Copy className="h-4 w-4 mr-1.5" aria-hidden /> Copy
+            <Copy className="h-4 w-4 mr-2" aria-hidden /> Copy
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={download}>
-            <Download className="h-4 w-4 mr-1.5" aria-hidden /> Download
+          <Button type="button" variant="outline" className="h-10 rounded-lg" onClick={download}>
+            <Download className="h-4 w-4 mr-2" aria-hidden /> Download
           </Button>
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={saved}
-            onChange={(e) => setSaved(e.target.checked)}
-            className="h-4 w-4 rounded border-input accent-primary"
-          />
-          I have saved my recovery codes somewhere safe
-        </label>
-        <Button type="button" className="w-full" disabled={!saved} onClick={onDone}>
-          Continue
+        <Button type="button" className="w-full h-11 rounded-lg font-semibold" onClick={onDone}>
+          {saved ? "Done — continue" : "Continue"}
         </Button>
       </div>
     );
   }
 
+  if (!setup) {
+    return (
+      <div className="space-y-4">
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground" role="status">
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+            Preparing set-up…
+          </div>
+        ) : (
+          error && <AuthAlert>{error}</AuthAlert>
+        )}
+        {!loading && onCancel && (
+          <Button type="button" variant="ghost" className="w-full h-10 rounded-lg" onClick={onCancel}>
+            {cancelLabel}
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  const index = STEPS.findIndex((s) => s.id === step);
+  const back = () => {
+    setError("");
+    if (index === 0) onCancel?.();
+    else setStep(STEPS[index - 1].id);
+  };
+
   return (
     <div className="space-y-5">
-      {loading && !setup ? (
-        <div className="flex items-center justify-center py-10 text-muted-foreground" role="status">
-          <Loader2 className="h-6 w-6 animate-spin" aria-hidden />
-          <span className="sr-only">Preparing set-up…</span>
+      <ol className="flex gap-1.5" aria-label="Set-up progress">
+        {STEPS.map((s, i) => (
+          <li key={s.id} className="flex-1 space-y-1.5" aria-current={i === index ? "step" : undefined}>
+            <span className={cn("block h-1 rounded-full transition-colors", i <= index ? "bg-primary" : "bg-muted")} />
+            <span
+              className={cn(
+                "flex items-center gap-1 text-xs",
+                i === index ? "font-medium text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {i < index && <Check className="h-3 w-3 text-primary" aria-hidden />}
+              <span className="truncate">{s.label}</span>
+            </span>
+          </li>
+        ))}
+      </ol>
+
+      {step === "app" && (
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <h3 className="text-base font-semibold text-foreground">Install a free authenticator app</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              It shows a new 6-digit code every 30 seconds. Any app works —
+              these are the most common. Already have one? Just continue.
+            </p>
+          </div>
+          <ul className="space-y-2">
+            {APPS.map((app) => (
+              <li
+                key={app.name}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border px-3.5 py-3"
+              >
+                <span className="flex items-center gap-2.5 min-w-0 text-sm font-medium text-foreground">
+                  <Smartphone className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="truncate">{app.name}</span>
+                </span>
+                <span className="flex shrink-0 gap-3 text-xs font-medium">
+                  <a href={app.ios} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                    iPhone
+                  </a>
+                  <a href={app.android} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                    Android
+                  </a>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <Button type="button" className="w-full h-11 rounded-lg font-semibold" onClick={() => setStep("scan")}>
+            I have the app — continue
+          </Button>
         </div>
-      ) : setup ? (
-        <>
-          <ol className="space-y-2 text-sm text-muted-foreground list-decimal pl-5">
-            <li>
-              Install an authenticator app (Google Authenticator, Microsoft
-              Authenticator, Authy…) on your phone.
-            </li>
-            <li>Scan this QR code, or enter the key manually.</li>
-            <li>Type the 6-digit code the app shows.</li>
-          </ol>
-          <div className="flex flex-col sm:flex-row items-center gap-4">
+      )}
+
+      {step === "scan" && (
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <h3 className="text-base font-semibold text-foreground">Add your account to the app</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              In the app, tap <strong className="font-medium text-foreground">+</strong> or{" "}
+              <strong className="font-medium text-foreground">Add account</strong>, then point your
+              phone's camera at this code.
+            </p>
+          </div>
+          <div className="flex justify-center">
             <img
               src={setup.qrDataUrl}
-              alt="QR code for your authenticator app"
-              className="h-44 w-44 rounded-xl border border-border bg-white p-2"
+              alt="QR code to add TVET 3D GIS to your authenticator app"
+              className="h-44 w-44 rounded-lg border border-border bg-white p-2"
             />
-            <div className="w-full min-w-0 space-y-2">
-              <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                <KeyRound className="h-3.5 w-3.5" aria-hidden /> Manual key
-              </p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 min-w-0 break-all rounded-lg bg-muted px-3 py-2 text-xs font-mono select-all">
-                  {setup.secret.replace(/(.{4})/g, "$1 ").trim()}
-                </code>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Copy key"
-                  onClick={() => void copy(setup.secret, "Key")}
-                >
-                  <Copy className="h-4 w-4" aria-hidden />
-                </Button>
-              </div>
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Smartphone className="h-3.5 w-3.5" aria-hidden /> Account: RTB GIS
-              </p>
-            </div>
           </div>
-          <form
-            className="space-y-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void submit();
-            }}
+          {/* On a phone the camera can't scan its own screen — open the app directly. */}
+          <a
+            href={setup.otpauthUrl}
+            className="flex items-center justify-center gap-2 rounded-lg border border-border h-10 text-sm font-medium text-foreground hover:bg-muted transition-colors sm:hidden"
           >
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-bold text-foreground/80">Code from the app</legend>
-              <OtpInput value={code} onChange={setCode} disabled={loading} onComplete={(v) => void submit(v)} />
-            </fieldset>
-            <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
-              {onCancel && (
-                <Button type="button" variant="ghost" onClick={onCancel} disabled={loading}>
-                  {cancelLabel}
-                </Button>
-              )}
-              <Button type="submit" isLoading={loading} disabled={code.length !== 6}>
-                Turn on two-factor
-              </Button>
-            </div>
-          </form>
-        </>
-      ) : null}
-      {error && (
-        <p role="alert" className="text-sm font-semibold text-destructive">
-          {error}
-        </p>
+            <ExternalLink className="h-4 w-4" aria-hidden /> On this phone? Tap to add the account
+          </a>
+          <div className="rounded-lg border border-border">
+            <button
+              type="button"
+              aria-expanded={showKey}
+              onClick={() => setShowKey((v) => !v)}
+              className="flex w-full items-center justify-between px-3.5 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+            >
+              Can't scan? Type a set-up key instead
+              <ChevronDown className={cn("h-4 w-4 transition-transform", showKey && "rotate-180")} aria-hidden />
+            </button>
+            {showKey && (
+              <div className="space-y-2 border-t border-border px-3.5 py-3">
+                <p className="text-xs text-muted-foreground">
+                  Choose “Enter a set-up key”, use <strong className="font-medium">TVET 3D GIS</strong> as
+                  the account name, and type:
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 min-w-0 break-all rounded-md bg-muted px-3 py-2 text-sm font-mono tracking-wide select-all">
+                    {setup.secret.replace(/(.{4})/g, "$1 ").trim()}
+                  </code>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 rounded-md shrink-0"
+                    aria-label="Copy set-up key"
+                    onClick={() => void copy(setup.secret, "Set-up key")}
+                  >
+                    <Copy className="h-4 w-4" aria-hidden />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="grid grid-cols-[auto_1fr] gap-2">
+            <Button type="button" variant="outline" className="h-11 rounded-lg" onClick={back} aria-label="Back">
+              <ArrowLeft className="h-4 w-4" aria-hidden />
+            </Button>
+            <Button type="button" className="h-11 rounded-lg font-semibold" onClick={() => setStep("verify")}>
+              I've added it — continue
+            </Button>
+          </div>
+        </div>
       )}
-      {!setup && !loading && onCancel && (
-        <Button type="button" variant="ghost" onClick={onCancel}>
+
+      {step === "verify" && (
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submit();
+          }}
+        >
+          <div className="space-y-1.5">
+            <h3 className="text-base font-semibold text-foreground">Enter the code from the app</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Type the 6-digit code shown under <strong className="font-medium text-foreground">TVET 3D GIS</strong>.
+            </p>
+          </div>
+          <OtpInput
+            value={code}
+            onChange={setCode}
+            disabled={loading}
+            label="Code from your authenticator app"
+            onComplete={(v) => void submit(v)}
+          />
+          {error && <AuthAlert>{error}</AuthAlert>}
+          <div className="grid grid-cols-[auto_1fr] gap-2">
+            <Button type="button" variant="outline" className="h-11 rounded-lg" onClick={back} disabled={loading} aria-label="Back">
+              <ArrowLeft className="h-4 w-4" aria-hidden />
+            </Button>
+            <Button type="submit" className="h-11 rounded-lg font-semibold" isLoading={loading} disabled={code.length !== 6}>
+              Turn on two-factor
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {step === "app" && onCancel && (
+        <Button type="button" variant="ghost" className="w-full h-10 rounded-lg text-muted-foreground" onClick={onCancel}>
           {cancelLabel}
         </Button>
       )}
