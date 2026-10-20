@@ -1,8 +1,11 @@
-import { useState } from "react";
-import { ArrowLeft, KeyRound, Loader2, Mail, Smartphone } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, KeyRound, Mail, Smartphone } from "lucide-react";
 import { OtpInput } from "../ui/otp-input";
 import { Button } from "../ui/button";
+import { AuthAlert } from "../ui/AuthShell";
 import { api, apiErrorMessage } from "../../lib/api";
+import { authInputClass, authLabelClass, authPrimaryButtonClass, authSubtleLinkClass } from "./auth-styles";
+import { cn } from "../../lib/utils";
 
 export type MfaMode = "totp" | "recovery" | "email";
 
@@ -15,19 +18,43 @@ interface Props<T> {
   initialMode?: MfaMode;
   /** Hide the authenticator / recovery options (enrolment-required users). */
   emailOnly?: boolean;
+  /** In email mode, send the code straight away instead of waiting for a click. */
+  autoSend?: boolean;
+  /** Extra option shown under "Other ways to verify". */
+  extraOption?: { label: string; onClick: () => void };
 }
 
+// Matches the server's throttle on /auth/2fa/email.
+const RESEND_SECONDS = 60;
+
 /**
- * Second sign-in step (WS10.6 / 10.8): authenticator code, a recovery code,
- * or a code emailed on request.
+ * Second sign-in step (WS10.6 / 10.8): authenticator code, a backup code,
+ * or a code sent by email.
  */
-export function MfaChallenge<T>({ mfaToken, onSuccess, onCancel, initialMode = "totp", emailOnly }: Props<T>) {
+export function MfaChallenge<T>({
+  mfaToken,
+  onSuccess,
+  onCancel,
+  initialMode = "totp",
+  emailOnly,
+  autoSend,
+  extraOption,
+}: Props<T>) {
   const [mode, setMode] = useState<MfaMode>(initialMode);
   const [code, setCode] = useState("");
   const [recovery, setRecovery] = useState("");
-  const [emailSent, setEmailSent] = useState<string>("");
+  const [emailSent, setEmailSent] = useState("");
+  const [resendIn, setResendIn] = useState(0);
+  const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const autoSent = useRef(false);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
 
   const switchMode = (next: MfaMode) => {
     setMode(next);
@@ -37,22 +64,32 @@ export function MfaChallenge<T>({ mfaToken, onSuccess, onCancel, initialMode = "
   };
 
   const sendEmail = async () => {
-    setLoading(true);
+    setSending(true);
     setError("");
     try {
       const { data } = await api.post<{ message: string; delivered: boolean }>("/auth/2fa/email", { mfaToken });
       setEmailSent(
         data.delivered
-          ? data.message
+          ? `${data.message} It expires in 10 minutes — check your spam folder if you don't see it.`
           : "Email sending is disabled on this server. The code was written to the server log.",
       );
+      setResendIn(RESEND_SECONDS);
       switchMode("email");
     } catch (err) {
       setError(apiErrorMessage(err, "Could not send the email. Try again in a minute."));
     } finally {
-      setLoading(false);
+      setSending(false);
     }
   };
+
+  // Ref guard: StrictMode mounts twice and a second email would hit the throttle.
+  useEffect(() => {
+    if (autoSend && initialMode === "email" && !autoSent.current) {
+      autoSent.current = true;
+      void sendEmail();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const verify = async (value?: string) => {
     const body =
@@ -77,96 +114,119 @@ export function MfaChallenge<T>({ mfaToken, onSuccess, onCancel, initialMode = "
     }
   };
 
-  const heading =
+  const waitingForEmail = mode === "email" && !emailSent;
+
+  const hint =
     mode === "totp"
-      ? "Enter the 6-digit code from your authenticator app."
-      : mode === "email"
-        ? emailSent || "We can email you a one-time sign-in code."
-        : "Enter one of the recovery codes you saved when you set up two-factor.";
+      ? "Open your authenticator app and enter the 6-digit code for TVET 3D GIS."
+      : mode === "recovery"
+        ? "Enter one of the backup codes you saved when you turned on two-factor."
+        : emailSent || (sending ? "Sending a code to your email…" : "We'll email you a 6-digit sign-in code.");
+
+  const options: { key: string; label: string; icon: typeof Mail; onClick: () => void; disabled?: boolean }[] = [];
+  if (!emailOnly && mode !== "totp")
+    options.push({ key: "totp", label: "Use my authenticator app", icon: Smartphone, onClick: () => switchMode("totp") });
+  if (mode !== "email")
+    options.push({ key: "email", label: "Email me a code", icon: Mail, onClick: () => void sendEmail(), disabled: sending });
+  if (!emailOnly && mode !== "recovery")
+    options.push({ key: "recovery", label: "Use a backup code", icon: KeyRound, onClick: () => switchMode("recovery") });
+  if (extraOption)
+    options.push({ key: "extra", label: extraOption.label, icon: Smartphone, onClick: extraOption.onClick });
 
   return (
     <div className="space-y-6">
-      <p className="text-muted-foreground font-medium" aria-live="polite">
-        {heading}
-      </p>
-
       <form
-        className="space-y-5"
+        className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
           void verify();
         }}
       >
+        <p className="text-sm text-muted-foreground leading-relaxed" aria-live="polite">
+          {hint}
+        </p>
+
         {mode === "recovery" ? (
-          <div className="space-y-2">
-            <label htmlFor="recovery-code" className="text-sm font-bold text-foreground/80 ml-1">
-              Recovery code
+          <div className="space-y-1.5">
+            <label htmlFor="recovery-code" className={authLabelClass}>
+              Backup code
             </label>
-            <div className="relative">
-              <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden />
-              <input
-                id="recovery-code"
-                value={recovery}
-                onChange={(e) => setRecovery(e.target.value)}
-                autoComplete="one-time-code"
-                autoFocus
-                placeholder="abcde-23456"
-                className="flex h-12 w-full rounded-xl border border-input dark:border-blue-700/20 bg-background/50 pl-12 pr-4 text-sm font-mono tracking-wider focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-              />
-            </div>
+            <input
+              id="recovery-code"
+              value={recovery}
+              onChange={(e) => setRecovery(e.target.value)}
+              autoComplete="one-time-code"
+              autoFocus
+              placeholder="abcde-23456"
+              className={cn(authInputClass, "font-mono tracking-wider")}
+            />
           </div>
-        ) : mode === "email" && !emailSent ? null : (
-          <fieldset className="space-y-2">
-            <legend className="sr-only">Verification code</legend>
-            <OtpInput value={code} onChange={setCode} disabled={loading} onComplete={(v) => void verify(v)} />
-          </fieldset>
+        ) : waitingForEmail ? null : (
+          <OtpInput
+            key={mode}
+            value={code}
+            onChange={setCode}
+            disabled={loading}
+            label={mode === "email" ? "Code from your email" : "Code from your authenticator app"}
+            onComplete={(v) => void verify(v)}
+          />
         )}
 
-        {error && (
-          <p role="alert" className="p-3 rounded-xl bg-destructive/10 text-destructive text-sm font-semibold border border-destructive/20">
-            {error}
-          </p>
-        )}
+        {error && <AuthAlert>{error}</AuthAlert>}
 
-        {mode === "email" && !emailSent ? (
-          <Button type="button" className="w-full h-12" onClick={() => void sendEmail()} isLoading={loading}>
-            <Mail className="h-4 w-4 mr-2" aria-hidden /> Email me a code
+        {waitingForEmail ? (
+          <Button type="button" className={authPrimaryButtonClass} onClick={() => void sendEmail()} isLoading={sending}>
+            {!sending && <Mail className="h-4 w-4 mr-2" aria-hidden />}
+            {sending ? "Sending…" : "Email me a code"}
           </Button>
         ) : (
           <Button
             type="submit"
-            className="w-full h-12"
+            className={authPrimaryButtonClass}
             isLoading={loading}
             disabled={mode === "recovery" ? !recovery.trim() : code.length !== 6}
           >
             Verify and sign in
           </Button>
         )}
+
+        {mode === "email" && emailSent && (
+          <p className="text-center text-sm text-muted-foreground">
+            Didn't get it?{" "}
+            <button
+              type="button"
+              disabled={resendIn > 0 || sending}
+              onClick={() => void sendEmail()}
+              className="font-medium text-primary hover:underline underline-offset-4 disabled:text-muted-foreground disabled:no-underline disabled:cursor-not-allowed"
+            >
+              {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
+            </button>
+          </p>
+        )}
       </form>
 
-      <div className="flex flex-col items-center gap-2 text-sm">
-        {!emailOnly && mode !== "totp" && (
-          <button type="button" onClick={() => switchMode("totp")} className="font-bold text-primary hover:underline inline-flex items-center gap-1.5">
-            <Smartphone className="h-4 w-4" aria-hidden /> Use my authenticator app
-          </button>
-        )}
-        {!emailOnly && mode !== "recovery" && (
-          <button type="button" onClick={() => switchMode("recovery")} className="font-bold text-primary hover:underline inline-flex items-center gap-1.5">
-            <KeyRound className="h-4 w-4" aria-hidden /> Use a recovery code
-          </button>
-        )}
-        {(mode !== "email" || emailSent) && (
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => void sendEmail()}
-            className="font-bold text-primary hover:underline inline-flex items-center gap-1.5 disabled:opacity-50"
-          >
-            {loading && mode === "email" ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Mail className="h-4 w-4" aria-hidden />}
-            {emailSent ? "Send a new email code" : "Email me a code instead"}
-          </button>
-        )}
-        <button type="button" onClick={onCancel} className="mt-2 font-bold text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5">
+      {options.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Other ways to verify</p>
+          <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
+            {options.map(({ key, label, icon: Icon, onClick, disabled }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={onClick}
+                disabled={disabled}
+                className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-sm font-medium text-foreground hover:bg-muted/60 transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:bg-muted"
+              >
+                <Icon className="h-4 w-4 text-muted-foreground" aria-hidden />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-center">
+        <button type="button" onClick={onCancel} className={authSubtleLinkClass}>
           <ArrowLeft className="h-4 w-4" aria-hidden /> Back to sign in
         </button>
       </div>

@@ -63,13 +63,35 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
   });
 
   useEffect(() => {
-    if (!clientId || !containerRef.current) return;
+    const container = containerRef.current;
+    if (!clientId || !container) return;
     let cancelled = false;
+    let renderedWidth = 0;
+
+    // Google renders a fixed-width iframe (200–400px), so size it to the
+    // column and re-render when the column changes (rotation, resize).
+    const render = () => {
+      const id = window.google?.accounts?.id;
+      const width = Math.round(Math.min(400, Math.max(200, container.parentElement?.clientWidth ?? 400)));
+      if (!id || Math.abs(width - renderedWidth) < 8) return;
+      renderedWidth = width;
+      container.innerHTML = "";
+      id.renderButton(container, {
+        theme: document.documentElement.classList.contains("dark") ? "filled_black" : "outline",
+        size: "large",
+        shape: "rectangular",
+        text: "continue_with",
+        logo_alignment: "center",
+        locale: "en",
+        width,
+      });
+    };
+    const observer = new ResizeObserver(() => render());
 
     loadGoogleScript()
       .then(() => {
         const id = window.google?.accounts?.id;
-        if (cancelled || !id || !containerRef.current) return;
+        if (cancelled || !id) return;
 
         id.initialize({
           client_id: clientId,
@@ -78,14 +100,8 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
             else handlers.current.onError("Google did not return a credential.");
           },
         });
-        id.renderButton(containerRef.current, {
-          theme: "outline",
-          size: "large",
-          shape: "pill",
-          text: "continue_with",
-          logo_alignment: "center",
-          width: 380,
-        });
+        render();
+        if (container.parentElement) observer.observe(container.parentElement);
         setReady(true);
       })
       .catch(() => {
@@ -97,6 +113,7 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
 
     return () => {
       cancelled = true;
+      observer.disconnect();
     };
   }, [clientId]);
 
@@ -104,13 +121,11 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
   if (!clientId) return null;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-4">
-        <div className="h-px flex-1 bg-border/60 dark:bg-blue-700/20" />
-        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-          or
-        </span>
-        <div className="h-px flex-1 bg-border/60 dark:bg-blue-700/20" />
+    <div className="space-y-5">
+      <div className="flex items-center gap-3">
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-xs text-muted-foreground">or</span>
+        <div className="h-px flex-1 bg-border" />
       </div>
 
       <div
@@ -120,7 +135,7 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
       >
         <div ref={containerRef} />
         {!ready && (
-          <div className="h-10 w-full max-w-[380px] animate-pulse rounded-full bg-muted/50" />
+          <div className="h-10 w-full animate-pulse rounded-md bg-muted/60" />
         )}
       </div>
     </div>

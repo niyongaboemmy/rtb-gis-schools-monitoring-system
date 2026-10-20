@@ -1,20 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
-import {
-  Mail,
-  Loader2,
-  ArrowRight,
-  ArrowLeft,
-  CheckCircle2,
-  ShieldCheck,
-  AlertCircle,
-  MailCheck,
-} from "lucide-react";
-import { motion } from "framer-motion";
+import { ArrowLeft, CheckCircle2, KeyRound, Lock, MailCheck } from "lucide-react";
 import { PasswordInput } from "../components/ui/password-input";
 import { OtpInput } from "../components/ui/otp-input";
-import { AuthShell } from "../components/ui/AuthShell";
+import { Button } from "../components/ui/button";
+import { AuthAlert, AuthShell } from "../components/ui/AuthShell";
+import {
+  authInputClass,
+  authLabelClass,
+  authPrimaryButtonClass,
+  authSubtleLinkClass,
+} from "../components/auth/auth-styles";
 import { PasswordStrengthMeter } from "../components/auth/PasswordStrengthMeter";
 import { isPasswordAcceptable } from "../components/auth/password-policy";
 
@@ -109,7 +106,7 @@ export default function ForgotPassword() {
     try {
       await api.post("/auth/reset-password", { email, otp, password });
       setStep("done");
-      setTimeout(() => navigate("/login"), 2500);
+      setTimeout(() => navigate("/login"), 3000);
     } catch (err) {
       setError(
         errorMessage(err, "Could not reset the password. Request a new code."),
@@ -124,64 +121,32 @@ export default function ForgotPassword() {
     isPasswordAcceptable(password, email) && !mismatch && confirm.length > 0;
 
   const banner = error ? (
-    <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="flex items-start gap-3 p-4 rounded-xl bg-destructive/10 text-destructive text-sm font-semibold border border-destructive/20"
-    >
-      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-      <span className="text-left">{error}</span>
-    </motion.div>
+    <AuthAlert>{error}</AuthAlert>
   ) : notice ? (
-    <motion.div
-      initial={{ opacity: 0, y: -6 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex items-start gap-3 p-4 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-sm font-semibold border border-emerald-500/20"
-    >
-      <MailCheck className="h-4 w-4 shrink-0 mt-0.5" />
-      <span className="text-left">{notice}</span>
-    </motion.div>
+    <AuthAlert tone="success">{notice}</AuthAlert>
   ) : null;
 
   const backToSignIn = (
-    <Link
-      to="/login"
-      className="flex items-center justify-center gap-2 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors"
-    >
-      <ArrowLeft className="h-4 w-4" />
-      Back to sign in
-    </Link>
+    <div className="flex justify-center">
+      <Link to="/login" className={authSubtleLinkClass}>
+        <ArrowLeft className="h-4 w-4" aria-hidden />
+        Back to sign in
+      </Link>
+    </div>
   );
 
   // ── Step 4: done ──────────────────────────────────────────────────────────
   if (step === "done") {
     return (
-      <AuthShell>
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-6"
-        >
-          <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
-            <CheckCircle2 className="h-7 w-7 text-primary" />
-          </div>
-          <div className="space-y-3">
-            <h2 className="text-4xl lg:text-5xl font-black tracking-tight text-foreground leading-[1.1]">
-              Password updated
-            </h2>
-            <p className="text-muted-foreground font-medium text-lg">
-              You can now sign in with your new password. Redirecting you to the
-              sign-in page...
-            </p>
-          </div>
-          <Link
-            to="/login"
-            className="w-full h-14 rounded-2xl bg-primary px-6 text-base font-bold text-primary-foreground hover:bg-primary/90 transition-all flex items-center justify-center gap-3"
-          >
-            Go to sign in
-            <ArrowRight className="h-5 w-5" />
-          </Link>
-        </motion.div>
+      <AuthShell
+        stepKey={step}
+        icon={<CheckCircle2 />}
+        title="Password updated"
+        description="You can now sign in with your new password. Taking you to the sign-in page…"
+      >
+        <Button asChild className={authPrimaryButtonClass}>
+          <Link to="/login">Go to sign in</Link>
+        </Button>
       </AuthShell>
     );
   }
@@ -189,88 +154,73 @@ export default function ForgotPassword() {
   // ── Step 3: new password ──────────────────────────────────────────────────
   if (step === "password") {
     return (
-      <AuthShell>
-        <div className="space-y-3">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest mb-2 border border-primary/10">
-            <ShieldCheck className="w-3 h-3" />
-            IDENTITY VERIFIED
-          </div>
-          <h2 className="text-4xl lg:text-5xl font-black tracking-tight text-foreground leading-[1.1]">
-            Set a new password
-          </h2>
-          <p className="text-muted-foreground font-medium text-lg">
+      <AuthShell
+        stepKey={step}
+        icon={<Lock />}
+        progress={{ current: 3, total: 3, label: "New password" }}
+        title="Set a new password"
+        description={
+          <>
             Choose a new password for{" "}
-            <span className="text-foreground font-bold">{email}</span>.
-          </p>
-        </div>
-
+            <span className="font-medium text-foreground">{email}</span>.
+          </>
+        }
+      >
         {banner}
 
-        <form onSubmit={submitPassword} className="space-y-6">
-          <div className="space-y-2.5">
-            <label className="text-sm font-bold text-foreground/80 ml-1 block">
-              New Password
+        <form onSubmit={submitPassword} className="space-y-4">
+          <div className="space-y-1.5">
+            <label htmlFor="reset-new" className={authLabelClass}>
+              New password
             </label>
             <PasswordInput
+              id="reset-new"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
               autoComplete="new-password"
-              aria-label="New password"
               aria-describedby="reset-password-rules"
               autoFocus
               required
             />
           </div>
 
-          <div className="space-y-2.5">
-            <label className="text-sm font-bold text-foreground/80 ml-1 block">
-              Confirm Password
+          <PasswordStrengthMeter
+            id="reset-password-rules"
+            password={password}
+            email={email}
+            className="rounded-lg bg-muted/40 p-3.5"
+          />
+
+          <div className="space-y-1.5">
+            <label htmlFor="reset-confirm" className={authLabelClass}>
+              Confirm new password
             </label>
             <PasswordInput
+              id="reset-confirm"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              placeholder="••••••••"
+              autoComplete="new-password"
+              aria-invalid={mismatch || undefined}
               required
             />
             {mismatch && (
-              <p className="text-xs font-semibold text-destructive ml-1">
+              <p className="text-xs font-medium text-destructive">
                 Passwords do not match.
               </p>
             )}
           </div>
 
-          <PasswordStrengthMeter
-            id="reset-password-rules"
-            password={password}
-            email={email}
-            className="rounded-xl bg-muted/40 p-4"
-          />
-
-          <motion.button
-            whileHover={
-              canSubmitPassword ? { scale: 1.02, translateY: -2 } : undefined
-            }
-            whileTap={canSubmitPassword ? { scale: 0.98 } : undefined}
+          <Button
             type="submit"
-            disabled={isLoading || !canSubmitPassword}
-            className="w-full h-14 rounded-2xl bg-primary px-6 text-base font-bold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 group"
+            isLoading={isLoading}
+            disabled={!canSubmitPassword}
+            className={`${authPrimaryButtonClass} mt-2`}
           >
-            {isLoading ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                Updating password...
-              </>
-            ) : (
-              <>
-                Update password
-                <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
-              </>
-            )}
-          </motion.button>
-
-          {backToSignIn}
+            {isLoading ? "Updating password…" : "Update password"}
+          </Button>
         </form>
+
+        {backToSignIn}
       </AuthShell>
     );
   }
@@ -278,22 +228,19 @@ export default function ForgotPassword() {
   // ── Step 2: verification code ─────────────────────────────────────────────
   if (step === "code") {
     return (
-      <AuthShell>
-        <div className="space-y-3">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest mb-2 border border-primary/10">
-            <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-            VERIFICATION CODE
-          </div>
-          <h2 className="text-4xl lg:text-5xl font-black tracking-tight text-foreground leading-[1.1]">
-            Enter the code
-          </h2>
-          <p className="text-muted-foreground font-medium text-lg">
-            We sent a 6-digit code to{" "}
-            <span className="text-foreground font-bold">{email}</span>. It
+      <AuthShell
+        stepKey={step}
+        icon={<MailCheck />}
+        progress={{ current: 2, total: 3, label: "Verify" }}
+        title="Check your email"
+        description={
+          <>
+            Enter the 6-digit code we sent to{" "}
+            <span className="font-medium text-foreground">{email}</span>. It
             expires in 10 minutes.
-          </p>
-        </div>
-
+          </>
+        }
+      >
         {banner}
 
         <form
@@ -301,80 +248,66 @@ export default function ForgotPassword() {
             e.preventDefault();
             void verifyCode(otp);
           }}
-          className="space-y-6"
+          className="space-y-4"
         >
           <OtpInput
             value={otp}
             onChange={setOtp}
             disabled={isLoading}
+            label="Code from your email"
             onComplete={(code) => void verifyCode(code)}
           />
 
-          <motion.button
-            whileHover={otp.length === 6 ? { scale: 1.02, translateY: -2 } : undefined}
-            whileTap={otp.length === 6 ? { scale: 0.98 } : undefined}
+          <Button
             type="submit"
-            disabled={isLoading || otp.length !== 6}
-            className="w-full h-14 rounded-2xl bg-primary px-6 text-base font-bold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 group"
+            isLoading={isLoading}
+            disabled={otp.length !== 6}
+            className={authPrimaryButtonClass}
           >
-            {isLoading ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                Verifying...
-              </>
-            ) : (
-              <>
-                Verify code
-                <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
-              </>
-            )}
-          </motion.button>
+            {isLoading ? "Verifying…" : "Verify code"}
+          </Button>
 
-          <div className="flex flex-col items-center gap-3">
+          <p className="text-center text-sm text-muted-foreground">
+            Didn't get it? Check spam, or{" "}
             <button
               type="button"
               disabled={resendIn > 0 || isLoading}
               onClick={() => void sendCode(true)}
-              className="text-sm font-bold text-primary hover:text-primary/70 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="font-medium text-primary hover:underline underline-offset-4 disabled:text-muted-foreground disabled:no-underline disabled:cursor-not-allowed"
             >
-              {resendIn > 0 ? `Resend code in ${resendIn}s` : "Resend code"}
+              {resendIn > 0 ? `resend in ${resendIn}s` : "resend the code"}
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setStep("email");
-                setOtp("");
-                setError("");
-                setNotice("");
-              }}
-              className="flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Use a different address
-            </button>
-          </div>
+          </p>
         </form>
+
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => {
+              setStep("email");
+              setOtp("");
+              setError("");
+              setNotice("");
+            }}
+            className={authSubtleLinkClass}
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            Use a different email
+          </button>
+        </div>
       </AuthShell>
     );
   }
 
   // ── Step 1: email ─────────────────────────────────────────────────────────
   return (
-    <AuthShell>
-      <div className="space-y-3">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest mb-2 border border-primary/10">
-          <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-          ACCOUNT RECOVERY
-        </div>
-        <h2 className="text-4xl lg:text-5xl font-black tracking-tight text-foreground leading-[1.1]">
-          Forgot password
-        </h2>
-        <p className="text-muted-foreground font-medium text-lg">
-          Enter the email tied to your account and we will send you a
-          verification code.
-        </p>
-      </div>
-
+    <AuthShell
+      stepKey={step}
+      icon={<KeyRound />}
+      progress={{ current: 1, total: 3, label: "Your email" }}
+      title="Reset your password"
+      description="Enter the email you use to sign in. We'll send you a 6-digit code to confirm it's you."
+    >
       {banner}
 
       <form
@@ -382,50 +315,34 @@ export default function ForgotPassword() {
           e.preventDefault();
           void sendCode();
         }}
-        className="space-y-6"
+        className="space-y-4"
       >
-        <div className="space-y-2.5">
-          <div className="pb-1">
-            <label className="text-sm font-bold text-foreground/80 ml-1">
-              Email Address
-            </label>
-          </div>
-          <div className="relative group">
-            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="flex h-12 w-full rounded-xl border border-input dark:border-blue-700/20 bg-background/50 backdrop-blur-sm pl-12 pr-4 py-2 text-sm transition-all focus:bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-              placeholder="you@rtb.gov.rw"
-              autoFocus
-              required
-            />
-          </div>
+        <div className="space-y-1.5">
+          <label htmlFor="reset-email" className={authLabelClass}>
+            Work email
+          </label>
+          <input
+            id="reset-email"
+            type="email"
+            inputMode="email"
+            autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className={authInputClass}
+            placeholder="name@rtb.gov.rw"
+            autoFocus
+            required
+          />
         </div>
 
-        <motion.button
-          whileHover={{ scale: 1.02, translateY: -2 }}
-          whileTap={{ scale: 0.98 }}
-          type="submit"
-          disabled={isLoading}
-          className="w-full h-14 rounded-2xl bg-primary px-6 text-base font-bold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center justify-center gap-3 group"
-        >
-          {isLoading ? (
-            <>
-              <Loader2 className="h-5 w-5 animate-spin" />
-              Sending code...
-            </>
-          ) : (
-            <>
-              Send verification code
-              <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
-            </>
-          )}
-        </motion.button>
-
-        {backToSignIn}
+        <Button type="submit" isLoading={isLoading} className={`${authPrimaryButtonClass} mt-2`}>
+          {isLoading ? "Sending code…" : "Send code"}
+        </Button>
       </form>
+
+      {backToSignIn}
     </AuthShell>
   );
 }

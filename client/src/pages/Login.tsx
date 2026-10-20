@@ -3,15 +3,22 @@ import { Link, useNavigate } from "react-router-dom";
 import { homePathFor } from "../hooks/useScope";
 import { useAuthStore, type User } from "../store/authStore";
 import { api, apiErrorMessage } from "../lib/api";
-import { Mail, Loader2, ArrowRight, ShieldCheck } from "lucide-react";
-import { motion } from "framer-motion";
+import { ArrowLeft, ChevronRight, Mail, ShieldCheck, Smartphone } from "lucide-react";
 import { PasswordInput } from "../components/ui/password-input";
-import { ImigongoPattern } from "../components/ui/ImigongoPattern";
+import { Button } from "../components/ui/button";
+import { AuthAlert, AuthShell } from "../components/ui/AuthShell";
 import { GoogleSignInButton } from "../components/ui/GoogleSignInButton";
+import {
+  authInputClass,
+  authLabelClass,
+  authLinkClass,
+  authPrimaryButtonClass,
+  authSubtleLinkClass,
+} from "../components/auth/auth-styles";
 import { MfaChallenge } from "../components/auth/MfaChallenge";
 import { MfaEnrollment, type EnrolmentStart } from "../components/auth/MfaEnrollment";
 import { ForcePasswordChange } from "../components/auth/ForcePasswordChange";
-import { PrivacyAcceptancePrompt, PrivacyNoticeModal } from "../components/auth/PrivacyNotice";
+import { PrivacyAcceptancePrompt } from "../components/auth/PrivacyNotice";
 import { needsPrivacyAcceptance } from "../components/auth/privacy";
 
 /** A completed sign-in. The refresh token arrives as an httpOnly cookie. */
@@ -27,7 +34,36 @@ type LoginResponse =
   | { mfaRequired: true; mfaToken: string; methods: string[] }
   | { mfaEnrollmentRequired: true; mfaToken: string };
 
-type Step = "credentials" | "mfa" | "enroll" | "enroll-email" | "change-password" | "privacy";
+type Step =
+  | "credentials"
+  | "mfa"
+  | "enroll-choose"
+  | "enroll"
+  | "enroll-email"
+  | "change-password"
+  | "privacy";
+
+/**
+ * For accounts that must use 2FA but haven't linked an app, the server also
+ * accepts an emailed code. Remember the choice on this device so people who
+ * picked email go straight to the code next time.
+ */
+const MFA_METHOD_KEY = "rtb-gis-mfa-method";
+function readMfaMethod(): "email" | "app" | null {
+  try {
+    const v = localStorage.getItem(MFA_METHOD_KEY);
+    return v === "email" || v === "app" ? v : null;
+  } catch {
+    return null;
+  }
+}
+function rememberMfaMethod(method: "email" | "app") {
+  try {
+    localStorage.setItem(MFA_METHOD_KEY, method);
+  } catch {
+    /* private mode — just ask again next time */
+  }
+}
 
 // Demo credentials are a local-development convenience only.
 const DEV_EMAIL = import.meta.env.DEV ? "admin@rtb.gov.rw" : "";
@@ -40,7 +76,6 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<Step>("credentials");
   const [mfaToken, setMfaToken] = useState("");
-  const [showPrivacy, setShowPrivacy] = useState(false);
   const { setSession } = useAuthStore();
   const navigate = useNavigate();
 
@@ -63,7 +98,7 @@ export default function Login() {
     }
     if ("mfaEnrollmentRequired" in data) {
       setMfaToken(data.mfaToken);
-      setStep("enroll");
+      setStep(readMfaMethod() === "email" ? "enroll-email" : "enroll-choose");
       return;
     }
     completeSession(data);
@@ -89,7 +124,7 @@ export default function Login() {
       const response = await api.post<LoginResponse>("/auth/login", { email, password });
       handleLoginResponse(response.data);
     } catch (err) {
-      setError(apiErrorMessage(err, "Login failed. Please verify credentials."));
+      setError(apiErrorMessage(err, "Sign-in failed. Check your email and password."));
     } finally {
       setIsLoading(false);
     }
@@ -138,17 +173,70 @@ export default function Login() {
     );
   }
 
-  const stepPanel =
-    step === "mfa" || step === "enroll-email" ? (
-      <MfaChallenge<SessionPayload>
-        mfaToken={mfaToken}
-        initialMode={step === "enroll-email" ? "email" : "totp"}
-        emailOnly={step === "enroll-email"}
-        onSuccess={completeSession}
-        onCancel={backToCredentials}
-      />
-    ) : step === "enroll" ? (
-      <div className="space-y-4">
+  if (step === "mfa" || step === "enroll-email") {
+    return (
+      <AuthShell
+        stepKey={step}
+        icon={step === "mfa" ? <ShieldCheck /> : <Mail />}
+        title={step === "mfa" ? "Verify it's you" : "Check your email"}
+      >
+        <MfaChallenge<SessionPayload>
+          mfaToken={mfaToken}
+          initialMode={step === "enroll-email" ? "email" : "totp"}
+          emailOnly={step === "enroll-email"}
+          autoSend={step === "enroll-email"}
+          extraOption={
+            step === "enroll-email"
+              ? { label: "Set up an authenticator app instead", onClick: () => setStep("enroll") }
+              : undefined
+          }
+          onSuccess={completeSession}
+          onCancel={backToCredentials}
+        />
+      </AuthShell>
+    );
+  }
+
+  if (step === "enroll-choose") {
+    const choose = (method: "email" | "app") => {
+      rememberMfaMethod(method);
+      setStep(method === "email" ? "enroll-email" : "enroll");
+    };
+    return (
+      <AuthShell
+        stepKey={step}
+        icon={<ShieldCheck />}
+        title="Add a second sign-in check"
+        description="Your role can view and change sensitive school data, so each sign-in needs one more check besides your password. Choose what works best for you."
+      >
+        <div className="space-y-3">
+          <MethodOption
+            icon={<Mail />}
+            title="Email me a code"
+            badge="Easiest"
+            text="We send a 6-digit code to your work email each time you sign in. Nothing to install."
+            onClick={() => choose("email")}
+          />
+          <MethodOption
+            icon={<Smartphone />}
+            title="Use an authenticator app"
+            badge="Most secure"
+            text="Get codes from a free phone app — works without email or internet. Takes about 2 minutes."
+            onClick={() => choose("app")}
+          />
+        </div>
+        <div className="flex justify-center">
+          <button type="button" onClick={backToCredentials} className={authSubtleLinkClass}>
+            <ArrowLeft className="h-4 w-4" aria-hidden /> Back to sign in
+          </button>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (step === "enroll") {
+    return (
+      <AuthShell stepKey={step} icon={<Smartphone />} title="Set up your authenticator app">
         <MfaEnrollment
           start={async () =>
             (await api.post<EnrolmentStart>("/auth/2fa/enroll/start", { mfaToken })).data
@@ -159,265 +247,116 @@ export default function Login() {
               { mfaToken, code },
             );
             setPendingSession(data);
+            rememberMfaMethod("app");
             return data;
           }}
           onDone={() => pendingSession && completeSession(pendingSession)}
-          onCancel={backToCredentials}
-          cancelLabel="Back to sign in"
+          onCancel={() => setStep("enroll-choose")}
+          cancelLabel="Choose a different method"
         />
-        <button
-          type="button"
-          onClick={() => setStep("enroll-email")}
-          className="w-full text-center text-sm font-bold text-primary hover:underline"
-        >
-          No smartphone? Email me a one-time code instead
-        </button>
-      </div>
-    ) : null;
+      </AuthShell>
+    );
+  }
 
   return (
-    <div className="min-h-screen w-full flex bg-background overflow-hidden font-sans">
-      {/* Left panel - Branding with Imigongo */}
-      <div className="hidden lg:flex w-1/2 bg-[#001D3D] relative overflow-hidden items-center justify-center p-12 border-r border-white/4">
-        {/* Imigongo Background Pattern */}
-        <ImigongoPattern
-          className="absolute inset-0 text-white mask-[linear-gradient(to_bottom_right,black_0%,transparent_40%,transparent_60%,black_100%)]"
-          opacity={0.05}
-          scale={1.5}
-        />
-        {/* Animated Background Elements */}
-        <div className="absolute inset-0">
-          <div className="absolute top-[-20%] left-[-20%] w-[60%] h-[60%] bg-blue-600/30 blur-[150px] rounded-full animate-pulse" />
-          <div className="absolute bottom-[-20%] right-[-20%] w-[60%] h-[60%] bg-indigo-600/20 blur-[150px] rounded-full animate-pulse delay-1000" />
-          <div className="absolute top-[30%] right-[10%] w-[150px] h-[150px] bg-primary/20 blur-[80px] rounded-full animate-bounce-slow" />
-        </div>
+    <AuthShell
+      stepKey={step}
+      title="Sign in"
+      description="Use your RTB work account to access the TVET 3D GIS platform."
+    >
+      {error && <AuthAlert>{error}</AuthAlert>}
 
-        <div className="relative z-10 text-white max-w-lg">
-          <motion.div
-            initial={{ opacity: 0, y: -30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1, type: "spring" }}
-            className="w-32 h-32 bg-white/10 backdrop-blur-2xl rounded-[2.5rem] flex items-center justify-center mb-12 relative group"
-          >
-            <div className="absolute inset-0 bg-white/5 rounded-[2.5rem] opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            <img
-              src="/logortb.png"
-              alt="RTB Logo"
-              className="w-20 h-20 object-contain brightness-110"
-            />
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, x: -30 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-          >
-            <h1 className="text-7xl font-black tracking-tighter mb-10 leading-none text-transparent bg-clip-text bg-linear-to-br from-white via-white to-blue-300">
-              TVET 3D GIS <br />
-              <span className="text-primary-foreground/90 font-bold italic text-5xl">
-                Infrastructure
-              </span>
-            </h1>
-            <p className="text-xl text-blue-100/70 font-medium leading-relaxed mb-14 max-w-md border-l-2 border-primary/40 pl-6">
-              Empowering TVET transformation through advanced geospatial
-              intelligence and data-driven infrastructure monitoring.
-            </p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 1 }}
-            className="flex items-center gap-6"
-          >
-            <div className="flex -space-x-3">
-              {[1, 2, 3, 4].map((i) => (
-                <div
-                  key={i}
-                  className="w-10 h-10 rounded-full border-2 border-white/6 bg-white/5 backdrop-blur-md flex items-center justify-center text-[10px] font-bold"
-                >
-                  JS
-                </div>
-              ))}
-            </div>
-            <p className="text-sm text-blue-200/60 font-medium">
-              More than 500+ <br />
-              schools monitored
-            </p>
-          </motion.div>
-        </div>
-
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-linear-to-t from-black/40 to-transparent pointer-events-none" />
-      </div>
-
-      {/* Right panel - Login form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-background relative overflow-hidden">
-        {/* Subtle background pattern for light mode */}
-        <div className="absolute inset-0 opacity-[0.02] pointer-events-none bg-size-[40px_40px] bg-[radial-gradient(#000_1px,transparent_1px)]" />
-
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-          className="w-full max-w-md space-y-8 relative z-10"
-        >
-          <div className="flex flex-col items-center lg:items-start space-y-6">
-            <motion.img
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: 0.2, type: "spring" }}
-              src="/logortb.png"
-              alt="RTB Logo"
-              className="w-24 h-24 object-contain lg:hidden mb-2"
-            />
-
-            <div className="space-y-3">
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.3 }}
-                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest mb-2 border border-primary/10"
-              >
-                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                SYSTEM ACCESS PORTAL
-              </motion.div>
-              <h2 className="text-5xl lg:text-6xl font-black tracking-tight text-foreground leading-[1.1]">
-                {step === "credentials"
-                  ? "Sign in"
-                  : step === "enroll"
-                    ? "Set up two-factor"
-                    : "Verify it's you"}
-              </h2>
-              <p className="text-muted-foreground font-medium text-lg lg:text-xl">
-                {step === "credentials"
-                  ? "Enter secure credentials to monitor the national TVET infrastructure"
-                  : step === "enroll"
-                    ? "Your role requires two-factor authentication. Link an authenticator app to continue."
-                    : "Two-factor authentication is on for this account."}
-              </p>
-            </div>
-          </div>
-
-          {stepPanel}
-
-          {step === "credentials" && error && (
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="p-4 rounded-xl bg-destructive/10 text-destructive text-sm font-semibold border border-destructive/20 text-center"
-            >
-              {error}
-            </motion.div>
-          )}
-
-          {step === "credentials" && (
-          <>
-          <form onSubmit={handleLogin} className="space-y-6">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.4, staggerChildren: 0.1 }}
-              className="space-y-5"
-            >
-              <motion.div
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.5 }}
-                className="space-y-2.5"
-              >
-                <div className="pb-1">
-                  <label htmlFor="login-email" className="text-sm font-bold text-foreground/80 ml-1">
-                    Email Address
-                  </label>
-                </div>
-                <div className="relative group">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground transition-colors group-focus-within:text-primary" />
-                  <input
-                    id="login-email"
-                    type="email"
-                    autoComplete="username"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="flex h-12 w-full rounded-xl border border-input dark:border-blue-700/20 bg-background/50 backdrop-blur-sm pl-12 pr-4 py-2 text-sm transition-all focus:bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                    placeholder="admin@rtb.gov.rw"
-                    required
-                  />
-                </div>
-              </motion.div>
-              <motion.div
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.6 }}
-                className="space-y-2.5"
-              >
-                <div className="flex items-center justify-between ml-1">
-                  <label htmlFor="login-password" className="text-sm font-bold text-foreground/80">
-                    Password
-                  </label>
-                  <Link
-                    to="/forgot-password"
-                    className="text-[11px] text-primary font-black uppercase tracking-wider hover:text-primary/70 transition-colors"
-                  >
-                    Forgot Password?
-                  </Link>
-                </div>
-                <PasswordInput
-                  id="login-password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                />
-              </motion.div>
-            </motion.div>
-
-            <motion.button
-              whileHover={{ scale: 1.02, translateY: -2 }}
-              whileTap={{ scale: 0.98 }}
-              type="submit"
-              disabled={isLoading}
-              className="w-full h-14 rounded-2xl bg-primary px-6 text-base font-bold text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center justify-center gap-3 group"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Authenticating...
-                </>
-              ) : (
-                <>
-                  Access GIS Dashboard
-                  <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
-                </>
-              )}
-            </motion.button>
-          </form>
-
-          <GoogleSignInButton
-            onCredential={(idToken) => void handleGoogleCredential(idToken)}
-            onError={setError}
-            disabled={isLoading}
+      <form onSubmit={handleLogin} className="space-y-4">
+        <div className="space-y-1.5">
+          <label htmlFor="login-email" className={authLabelClass}>
+            Work email
+          </label>
+          <input
+            id="login-email"
+            type="email"
+            inputMode="email"
+            autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
+            autoFocus={!email}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className={authInputClass}
+            placeholder="name@rtb.gov.rw"
+            aria-invalid={!!error || undefined}
+            required
           />
-          </>
-          )}
-
-          <div className="pt-6 border-t border-border/20 dark:border-blue-700/20 text-center space-y-2">
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              TVET 3D GIS &mdash; Rwanda TVET Board &copy; 2026. <br />
-              Authorized personnel only. Data usage is monitored.
-            </p>
-            <button
-              type="button"
-              onClick={() => setShowPrivacy(true)}
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-            >
-              <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
-              Privacy notice &amp; terms of use
-            </button>
+        </div>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label htmlFor="login-password" className={authLabelClass}>
+              Password
+            </label>
+            <Link to="/forgot-password" className={authLinkClass}>
+              Forgot password?
+            </Link>
           </div>
-          <PrivacyNoticeModal isOpen={showPrivacy} onClose={() => setShowPrivacy(false)} />
-        </motion.div>
-      </div>
-    </div>
+          <PasswordInput
+            id="login-password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter your password"
+            aria-invalid={!!error || undefined}
+            required
+          />
+        </div>
+
+        <Button type="submit" isLoading={isLoading} className={`${authPrimaryButtonClass} mt-2`}>
+          {isLoading ? "Signing in…" : "Sign in"}
+        </Button>
+      </form>
+
+      <GoogleSignInButton
+        onCredential={(idToken) => void handleGoogleCredential(idToken)}
+        onError={setError}
+        disabled={isLoading}
+      />
+    </AuthShell>
+  );
+}
+
+/** One selectable 2FA method on the enrolment chooser. */
+function MethodOption({
+  icon,
+  title,
+  badge,
+  text,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  badge: string;
+  text: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex w-full items-start gap-3.5 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-primary/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <span className="h-9 w-9 shrink-0 rounded-lg bg-primary/10 text-primary flex items-center justify-center [&_svg]:h-4.5 [&_svg]:w-4.5">
+        {icon}
+      </span>
+      <span className="flex-1 min-w-0 space-y-1">
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold text-foreground">{title}</span>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+            {badge}
+          </span>
+        </span>
+        <span className="block text-sm text-muted-foreground leading-relaxed">{text}</span>
+      </span>
+      <ChevronRight
+        className="h-4 w-4 mt-2.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
+        aria-hidden
+      />
+    </button>
   );
 }
