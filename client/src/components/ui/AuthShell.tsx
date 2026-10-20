@@ -3,12 +3,14 @@ import { motion } from "framer-motion";
 import { AlertCircle, Box, CheckCircle2, Info, LineChart, Map as MapIcon, ShieldCheck } from "lucide-react";
 import { ImigongoPattern } from "./ImigongoPattern";
 import { PrivacyNoticeModal } from "../auth/PrivacyNotice";
+import { AuthGlobe } from "../auth/AuthGlobe";
+import { ThemeToggle } from "../ThemeToggle";
 import { cn } from "../../lib/utils";
 
 const FEATURES = [
-  { icon: MapIcon, text: "National map of every TVET school" },
-  { icon: Box, text: "3D models of campuses and buildings" },
-  { icon: LineChart, text: "Condition scores to plan investment" },
+  { icon: MapIcon, text: "National school map" },
+  { icon: Box, text: "3D campus models" },
+  { icon: LineChart, text: "Condition scores" },
 ];
 
 interface AuthShellProps {
@@ -34,65 +36,70 @@ export function AuthShell({ title, description, icon, progress, stepKey, childre
   return (
     <div className="min-h-dvh w-full flex bg-background font-sans">
       {/* Brand panel — wide screens only */}
-      <aside className="hidden lg:flex lg:w-[44%] xl:w-1/2 sticky top-0 h-dvh bg-[#001D3D] overflow-hidden text-white">
+      <aside className="hidden lg:flex lg:w-[46%] xl:w-1/2 sticky top-0 h-dvh overflow-hidden text-white bg-brand bg-linear-to-br from-brand-2 via-brand to-brand">
         <ImigongoPattern
-          className="absolute inset-0 text-white mask-[linear-gradient(to_bottom_right,black_0%,transparent_45%,transparent_65%,black_100%)]"
-          opacity={0.05}
+          className="absolute inset-0 text-brand-soft mask-[linear-gradient(to_bottom,black_0%,transparent_35%)]"
+          opacity={0.04}
           scale={1.3}
         />
-        <div className="absolute -top-1/4 -left-1/4 w-3/4 h-3/4 bg-blue-600/25 blur-[140px] rounded-full pointer-events-none" />
-        <div className="absolute -bottom-1/4 -right-1/4 w-2/3 h-2/3 bg-indigo-600/15 blur-[140px] rounded-full pointer-events-none" />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[70%] aspect-square bg-brand-accent/15 blur-[120px] rounded-full pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col justify-between w-full p-10 xl:p-14">
+        <div className="relative z-10 flex flex-col w-full p-10 xl:p-12 gap-6">
           <div className="flex items-center gap-3">
-            <div className="h-11 w-11 rounded-xl bg-white/10 ring-1 ring-white/10 flex items-center justify-center">
-              <img src="/logortb.png" alt="" className="h-7 w-7 object-contain" />
+            <div className="h-10 w-10 rounded-lg bg-white/10 ring-1 ring-white/10 flex items-center justify-center">
+              <img src="/logortb.png" alt="" className="h-6 w-6 object-contain" />
             </div>
             <div className="leading-tight">
               <p className="text-sm font-semibold">TVET 3D GIS</p>
-              <p className="text-xs text-blue-100/60">Rwanda TVET Board</p>
+              <p className="text-xs text-brand-soft/60">Rwanda TVET Board</p>
             </div>
           </div>
 
-          <div className="max-w-md space-y-8">
-            <div className="space-y-4">
-              <h1 className="text-3xl xl:text-4xl font-bold tracking-tight leading-tight">
-                School infrastructure,
-                <span className="block text-blue-300">mapped in 3D.</span>
+          <AuthGlobe className="flex-1 min-h-0 -mx-4" />
+
+          <div className="max-w-md space-y-5">
+            <div className="space-y-3">
+              <h1 className="text-2xl xl:text-3xl font-semibold tracking-tight leading-tight">
+                School infrastructure,{" "}
+                <span className="text-brand-soft whitespace-nowrap">mapped in 3D.</span>
               </h1>
-              <p className="text-base text-blue-100/70 leading-relaxed">
+              <p className="text-sm text-brand-soft/70 leading-relaxed">
                 Monitor, plan and improve technical and vocational training
                 schools across Rwanda with geospatial data you can trust.
               </p>
             </div>
-            <ul className="space-y-3">
+            <ul className="flex flex-wrap gap-2">
               {FEATURES.map(({ icon: Icon, text }) => (
-                <li key={text} className="flex items-center gap-3 text-sm text-blue-50/85">
-                  <span className="h-8 w-8 rounded-lg bg-white/8 ring-1 ring-white/10 flex items-center justify-center shrink-0">
-                    <Icon className="h-4 w-4 text-blue-200" aria-hidden />
-                  </span>
+                <li
+                  key={text}
+                  className="inline-flex items-center gap-2 rounded-full bg-white/6 ring-1 ring-white/10 px-3 py-1.5 text-xs font-medium text-white/85"
+                >
+                  <Icon className="h-3.5 w-3.5 text-brand-soft" aria-hidden />
                   {text}
                 </li>
               ))}
             </ul>
           </div>
-
-          <p className="text-xs text-blue-100/50">Republic of Rwanda · Rwanda TVET Board</p>
         </div>
       </aside>
 
       {/* Form column */}
       <main className="flex-1 min-w-0 flex flex-col">
-        {/* Compact brand row — small screens */}
-        <header className="lg:hidden flex items-center gap-2.5 px-5 sm:px-8 pt-5">
-          <img src="/logortb.png" alt="" className="h-8 w-8 object-contain" />
-          <div className="leading-tight">
-            <p className="text-sm font-semibold text-foreground">TVET 3D GIS</p>
-            <p className="text-xs text-muted-foreground">Rwanda TVET Board</p>
+        <header className="flex items-center justify-between gap-3 px-5 sm:px-8 pt-5">
+          {/* Compact brand row — small screens */}
+          <div className="lg:hidden flex items-center gap-2.5">
+            <img src="/logortb.png" alt="" className="h-8 w-8 object-contain" />
+            <div className="leading-tight">
+              <p className="text-sm font-semibold text-foreground">TVET 3D GIS</p>
+              <p className="text-xs text-muted-foreground">Rwanda TVET Board</p>
+            </div>
+          </div>
+          <div className="ml-auto">
+            <ThemeToggle />
           </div>
         </header>
 
-        <div className="flex-1 flex items-center justify-center px-5 sm:px-8 py-10">
+        <div className="flex-1 flex items-center justify-center px-5 sm:px-8 py-8">
           <motion.div
             key={stepKey}
             initial={{ opacity: 0, y: 8 }}

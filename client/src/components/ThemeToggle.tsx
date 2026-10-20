@@ -21,7 +21,11 @@ export function ThemeToggle() {
       {/* Trigger */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        aria-label="Toggle theme menu"
+        type="button"
+        aria-label="Change theme"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        title="Theme"
         className={cn(
           "flex items-center justify-center w-9 h-9 rounded-full transition-colors duration-200 border",
           isOpen
