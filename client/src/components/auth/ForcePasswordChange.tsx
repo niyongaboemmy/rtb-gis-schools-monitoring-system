@@ -9,18 +9,11 @@ import { authPrimaryButtonClass, authSubtleLinkClass } from "./auth-styles";
  * (WS10.3). The server refuses every other API call until this is done.
  */
 export function ForcePasswordChange({ onDone }: { onDone?: () => void }) {
-  const { user, logout } = useAuthStore();
+  const { logout } = useAuthStore();
   return (
     <AuthShell
       art="password"
       title="Choose your own password"
-      description={
-        <>
-          {user?.firstName ? `Welcome, ${user.firstName}. ` : ""}
-          Your account was set up by an administrator. Replace the temporary
-          password you were given before continuing.
-        </>
-      }
     >
       <ChangePasswordForm
         currentLabel="Temporary password"
