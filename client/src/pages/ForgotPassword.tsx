@@ -143,7 +143,6 @@ export default function ForgotPassword() {
         stepKey={step}
         art="success"
         title="Password updated"
-        description="You can now sign in with your new password. Taking you to the sign-in page…"
       >
         <Button asChild className={authPrimaryButtonClass}>
           <Link to="/login">Go to sign in</Link>
@@ -161,12 +160,6 @@ export default function ForgotPassword() {
         busy={isLoading}
         progress={{ current: 3, total: 3, label: "New password" }}
         title="Set a new password"
-        description={
-          <>
-            Choose a new password for{" "}
-            <span className="font-medium text-foreground dark:text-white">{email}</span>.
-          </>
-        }
       >
         {banner}
 
@@ -236,13 +229,6 @@ export default function ForgotPassword() {
         busy={isLoading}
         progress={{ current: 2, total: 3, label: "Verify" }}
         title="Check your email"
-        description={
-          <>
-            Enter the 6-digit code we sent to{" "}
-            <span className="font-medium text-foreground dark:text-white">{email}</span>. It
-            expires in 10 minutes.
-          </>
-        }
       >
         {banner}
 
@@ -310,7 +296,6 @@ export default function ForgotPassword() {
       busy={isLoading}
       progress={{ current: 1, total: 3, label: "Your email" }}
       title="Reset your password"
-      description="Enter the email you use to sign in. We'll send you a 6-digit code to confirm it's you."
     >
       {banner}
 

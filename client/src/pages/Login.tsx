@@ -215,7 +215,6 @@ export default function Login() {
         stepKey={step}
         art="choose"
         title="Add a second sign-in check"
-        description="Your role can view and change sensitive school data, so each sign-in needs one more check besides your password. Choose what works best for you."
       >
         <div className="space-y-3">
           <MethodOption
@@ -272,7 +271,6 @@ export default function Login() {
       art="signin"
       busy={isLoading}
       title="Sign in"
-      description="Welcome back. Use your RTB work account to continue to TVET 3D GIS."
     >
       {error && <AuthAlert key={errorCount}>{error}</AuthAlert>}
 

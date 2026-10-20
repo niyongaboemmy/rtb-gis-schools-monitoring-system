@@ -17,7 +17,6 @@ const FEATURES = [
 
 interface AuthShellProps {
   title: ReactNode;
-  description?: ReactNode;
   /** Animated illustration above the title, chosen per step. */
   art?: AuthArtVariant;
   /** A request is running — the illustration shows a spinner ring. */
@@ -34,7 +33,7 @@ interface AuthShellProps {
  * reset, forced change): a brand panel on wide screens, a compact brand row
  * on small ones, and one consistent title + form column.
  */
-export function AuthShell({ title, description, art, busy, progress, stepKey, children }: AuthShellProps) {
+export function AuthShell({ title, art, busy, progress, stepKey, children }: AuthShellProps) {
   const [showPrivacy, setShowPrivacy] = useState(false);
 
   return (
@@ -104,12 +103,13 @@ export function AuthShell({ title, description, art, busy, progress, stepKey, ch
         </header>
 
         <div className="flex-1 flex items-center justify-center px-5 sm:px-8 py-8">
+          {/* 400px = Google's maximum button width, so it lines up with ours. */}
           <motion.div
             key={stepKey}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
-            className="w-full max-w-[420px] space-y-7"
+            className="w-full max-w-[400px] space-y-7"
           >
             <div className="space-y-2.5">
               {art && <AuthArt variant={art} busy={busy} />}
@@ -117,9 +117,6 @@ export function AuthShell({ title, description, art, busy, progress, stepKey, ch
               <h2 className="text-[1.75rem] sm:text-[2rem] leading-tight font-bold tracking-tight text-foreground dark:text-white">
                 {title}
               </h2>
-              {description && (
-                <p className={cn("text-[15px] leading-relaxed", authMutedClass)}>{description}</p>
-              )}
             </div>
             {children}
           </motion.div>

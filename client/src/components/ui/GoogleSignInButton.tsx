@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { cn } from "../../lib/utils";
 
 const GOOGLE_SCRIPT_SRC = "https://accounts.google.com/gsi/client?hl=en";
 
@@ -77,7 +78,10 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
       renderedWidth = width;
       container.innerHTML = "";
       id.renderButton(container, {
-        theme: document.documentElement.classList.contains("dark") ? "filled_black" : "outline",
+        // Google's clean white pill in both themes: it reads as the
+        // recognisable Google button on light and dark alike, and can't get
+        // stuck in the wrong style when the theme changes.
+        theme: "outline",
         size: "large",
         shape: "pill",
         text: "continue_with",
@@ -87,11 +91,6 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
       });
     };
     const observer = new ResizeObserver(() => render());
-    // Re-render in the matching style when the app theme flips.
-    const themeObserver = new MutationObserver(() => {
-      renderedWidth = 0;
-      render();
-    });
 
     loadGoogleScript()
       .then(() => {
@@ -107,7 +106,6 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
         });
         render();
         if (container.parentElement) observer.observe(container.parentElement);
-        themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
         setReady(true);
       })
       .catch(() => {
@@ -120,7 +118,6 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
     return () => {
       cancelled = true;
       observer.disconnect();
-      themeObserver.disconnect();
     };
   }, [clientId]);
 
@@ -135,14 +132,18 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
         <div className="h-px flex-1 bg-gray-200 dark:bg-white/10" />
       </div>
 
+      {/* Fixed-height slot so the form doesn't jump when Google's iframe
+          arrives; :hover still reaches this wrapper over the iframe. */}
       <div
-        className={`flex justify-center transition-opacity ${
-          disabled ? "pointer-events-none opacity-50" : ""
-        }`}
+        className={cn(
+          "relative flex h-10 justify-center rounded-full transition-all duration-200",
+          "hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/5 dark:hover:shadow-black/40",
+          disabled && "pointer-events-none opacity-50",
+        )}
       >
-        <div ref={containerRef} />
+        <div ref={containerRef} className={cn("transition-opacity duration-300", ready ? "opacity-100" : "opacity-0")} />
         {!ready && (
-          <div className="h-10 w-full animate-pulse rounded-full bg-muted/60" />
+          <div className="absolute inset-0 animate-pulse rounded-full bg-gray-200/70 dark:bg-white/10" />
         )}
       </div>
     </div>
