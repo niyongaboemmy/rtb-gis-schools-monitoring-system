@@ -30,9 +30,11 @@ const mockedBcrypt = bcrypt as jest.Mocked<typeof bcrypt>;
 // Google token verification hits Google's public keys over the network;
 // stub the client so tests control the decoded payload.
 const mockVerifyIdToken = jest.fn();
+const mockGetTokenInfo = jest.fn();
 jest.mock('google-auth-library', () => ({
   OAuth2Client: jest.fn().mockImplementation(() => ({
     verifyIdToken: (...args: unknown[]) => mockVerifyIdToken(...args),
+    getTokenInfo: (...args: unknown[]) => mockGetTokenInfo(...args),
   })),
 }));
 
@@ -765,7 +767,7 @@ describe('AuthService.loginWithGoogle – hardening', () => {
       { GOOGLE_ALLOWED_DOMAINS: 'rtb.gov.rw' },
     );
 
-    await expect(service.loginWithGoogle('t')).rejects.toThrow(
+    await expect(service.loginWithGoogle({ idToken: 't' })).rejects.toThrow(
       /limited to @rtb\.gov\.rw/,
     );
     expect(userRepo.save).not.toHaveBeenCalled();
@@ -788,9 +790,9 @@ describe('AuthService.loginWithGoogle – hardening', () => {
       { GOOGLE_ALLOWED_DOMAINS: 'rtb.gov.rw, other.rw' },
     );
 
-    await expect(service.loginWithGoogle('t')).resolves.toHaveProperty(
-      'accessToken',
-    );
+    await expect(
+      service.loginWithGoogle({ idToken: 't' }),
+    ).resolves.toHaveProperty('accessToken');
     expect(userRepo.save).toHaveBeenCalled();
   });
 
@@ -799,7 +801,7 @@ describe('AuthService.loginWithGoogle – hardening', () => {
       {},
       { GOOGLE_ALLOW_SELF_REGISTER: 'false' },
     );
-    await expect(service.loginWithGoogle('t')).rejects.toThrow(
+    await expect(service.loginWithGoogle({ idToken: 't' })).rejects.toThrow(
       ForbiddenException,
     );
   });
@@ -810,9 +812,9 @@ describe('AuthService.loginWithGoogle – hardening', () => {
       { findOne: jest.fn().mockResolvedValue(user) },
       { GOOGLE_ALLOW_SELF_REGISTER: 'false' },
     );
-    await expect(service.loginWithGoogle('t')).resolves.toHaveProperty(
-      'accessToken',
-    );
+    await expect(
+      service.loginWithGoogle({ idToken: 't' }),
+    ).resolves.toHaveProperty('accessToken');
   });
 
   it('sends a 2FA user through the second factor', async () => {
@@ -824,7 +826,9 @@ describe('AuthService.loginWithGoogle – hardening', () => {
       findOne: jest.fn().mockResolvedValue(user),
     });
 
-    await expect(service.loginWithGoogle('t')).resolves.toMatchObject({
+    await expect(
+      service.loginWithGoogle({ idToken: 't' }),
+    ).resolves.toMatchObject({
       mfaRequired: true,
     });
     expect(sessionsService.create).not.toHaveBeenCalled();
@@ -838,7 +842,7 @@ describe('AuthService.loginWithGoogle – hardening', () => {
     const { service } = await makeService({
       findOne: jest.fn().mockResolvedValue(user),
     });
-    await expect(service.loginWithGoogle('t')).rejects.toThrow(
+    await expect(service.loginWithGoogle({ idToken: 't' })).rejects.toThrow(
       ForbiddenException,
     );
   });
@@ -851,7 +855,7 @@ describe('AuthService.loginWithGoogle – hardening', () => {
     const { service } = await makeService({
       findOne: jest.fn().mockResolvedValue(user),
     });
-    await expect(service.loginWithGoogle('t')).rejects.toThrow(
+    await expect(service.loginWithGoogle({ idToken: 't' })).rejects.toThrow(
       UnauthorizedException,
     );
   });
@@ -906,7 +910,9 @@ describe('AuthService.loginWithGoogle', () => {
       findOne: jest.fn().mockResolvedValue(user),
     });
 
-    const result = (await service.loginWithGoogle('id-token')) as SessionResult;
+    const result = (await service.loginWithGoogle({
+      idToken: 'id-token',
+    })) as SessionResult;
 
     expect(result.accessToken).toBe('access-token-1');
     expect(result.refreshToken).toBe('refresh-token-1');
@@ -919,7 +925,7 @@ describe('AuthService.loginWithGoogle', () => {
       findOne: jest.fn().mockResolvedValue(buildUser()),
     });
 
-    await service.loginWithGoogle('id-token');
+    await service.loginWithGoogle({ idToken: 'id-token' });
 
     expect(mockVerifyIdToken).toHaveBeenCalledWith({
       idToken: 'id-token',
@@ -934,7 +940,9 @@ describe('AuthService.loginWithGoogle', () => {
       save: jest.fn((entity: User) => Promise.resolve(entity)),
     });
 
-    const result = (await service.loginWithGoogle('id-token')) as SessionResult;
+    const result = (await service.loginWithGoogle({
+      idToken: 'id-token',
+    })) as SessionResult;
 
     expect(roleRepo.findOne).toHaveBeenCalledWith({
       where: { name: 'viewer' },
@@ -958,9 +966,9 @@ describe('AuthService.loginWithGoogle', () => {
     const { service, userRepo } = await makeService();
 
     // Otherwise anyone could claim an address they do not control.
-    await expect(service.loginWithGoogle('id-token')).rejects.toThrow(
-      UnauthorizedException,
-    );
+    await expect(
+      service.loginWithGoogle({ idToken: 'id-token' }),
+    ).rejects.toThrow(UnauthorizedException);
     expect(userRepo.save).not.toHaveBeenCalled();
   });
 
@@ -968,9 +976,9 @@ describe('AuthService.loginWithGoogle', () => {
     mockVerifyIdToken.mockRejectedValue(new Error('bad signature'));
     const { service } = await makeService();
 
-    await expect(service.loginWithGoogle('forged')).rejects.toThrow(
-      'Invalid or expired Google sign-in.',
-    );
+    await expect(
+      service.loginWithGoogle({ idToken: 'forged' }),
+    ).rejects.toThrow('Invalid or expired Google sign-in.');
   });
 
   it('refuses a deactivated account', async () => {
@@ -978,9 +986,9 @@ describe('AuthService.loginWithGoogle', () => {
       findOne: jest.fn().mockResolvedValue(buildUser({ isActive: false })),
     });
 
-    await expect(service.loginWithGoogle('id-token')).rejects.toThrow(
-      ForbiddenException,
-    );
+    await expect(
+      service.loginWithGoogle({ idToken: 'id-token' }),
+    ).rejects.toThrow(ForbiddenException);
   });
 
   it('backfills the google link on an admin-created account', async () => {
@@ -989,7 +997,7 @@ describe('AuthService.loginWithGoogle', () => {
       findOne: jest.fn().mockResolvedValue(user),
     });
 
-    await service.loginWithGoogle('id-token');
+    await service.loginWithGoogle({ idToken: 'id-token' });
 
     expect(userRepo.update).toHaveBeenCalledWith(user.id, {
       googleId: 'google-sub-123',
@@ -1003,9 +1011,9 @@ describe('AuthService.loginWithGoogle', () => {
     });
     roleRepo.findOne.mockResolvedValue(null);
 
-    await expect(service.loginWithGoogle('id-token')).rejects.toThrow(
-      /Default role "viewer" is missing/,
-    );
+    await expect(
+      service.loginWithGoogle({ idToken: 'id-token' }),
+    ).rejects.toThrow(/Default role "viewer" is missing/);
     expect(userRepo.save).not.toHaveBeenCalled();
   });
 });
@@ -1265,4 +1273,125 @@ describe('AuthService.verifyResetOtp', () => {
       expect(createQueryBuilder).not.toHaveBeenCalled();
     },
   );
+});
+
+// ---------------------------------------------------------------------------
+// Google access tokens (custom-styled button, OAuth token client)
+// ---------------------------------------------------------------------------
+
+describe('AuthService.loginWithGoogle with an access token', () => {
+  const CLIENT = 'client-id.apps.googleusercontent.com';
+  const fetchMock = jest.fn();
+  const realFetch = global.fetch;
+
+  const userinfo = (body: Record<string, unknown>, ok = true) =>
+    fetchMock.mockResolvedValue({
+      ok,
+      status: ok ? 200 : 401,
+      json: () => Promise.resolve(body),
+    });
+
+  beforeAll(() => {
+    global.fetch = fetchMock as unknown as typeof fetch;
+  });
+  afterAll(() => {
+    global.fetch = realFetch;
+  });
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedBcrypt.hash.mockResolvedValue('stored-refresh-hash' as never);
+    mockGetTokenInfo.mockResolvedValue({
+      aud: CLIENT,
+      azp: CLIENT,
+      sub: 'google-sub-123',
+      email: 'alice@rtb.gov.rw',
+      email_verified: true,
+      expiry_date: Date.now() + 3_600_000,
+      scopes: ['openid', 'email', 'profile'],
+    });
+    userinfo(GOOGLE_PAYLOAD);
+  });
+
+  it('signs in when the token was issued to our client', async () => {
+    const user = buildUser({ googleId: 'google-sub-123' } as never);
+    const { service } = await makeService({
+      findOne: jest.fn().mockResolvedValue(user),
+    });
+
+    const result = (await service.loginWithGoogle({
+      accessToken: 'at',
+    })) as SessionResult;
+
+    expect(mockGetTokenInfo).toHaveBeenCalledWith('at');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://openidconnect.googleapis.com/v1/userinfo',
+      { headers: { Authorization: 'Bearer at' } },
+    );
+    expect(mockVerifyIdToken).not.toHaveBeenCalled();
+    expect(result.accessToken).toBe('access-token-1');
+  });
+
+  it('refuses a token issued to another app (replay)', async () => {
+    mockGetTokenInfo.mockResolvedValue({
+      aud: 'other-app.apps.googleusercontent.com',
+      azp: 'other-app.apps.googleusercontent.com',
+      sub: 'google-sub-123',
+      expiry_date: Date.now() + 3_600_000,
+      scopes: [],
+    });
+    const { service, userRepo } = await makeService();
+
+    await expect(
+      service.loginWithGoogle({ accessToken: 'at' }),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(userRepo.createQueryBuilder).not.toHaveBeenCalled();
+  });
+
+  it('refuses an invalid or expired token', async () => {
+    mockGetTokenInfo.mockRejectedValue(new Error('invalid_token'));
+    const { service } = await makeService();
+
+    await expect(
+      service.loginWithGoogle({ accessToken: 'at' }),
+    ).rejects.toThrow('Invalid or expired Google sign-in.');
+  });
+
+  it('refuses when the profile belongs to a different account', async () => {
+    userinfo({ ...GOOGLE_PAYLOAD, sub: 'someone-else' });
+    const { service } = await makeService();
+
+    await expect(
+      service.loginWithGoogle({ accessToken: 'at' }),
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('refuses when the profile cannot be read', async () => {
+    userinfo({}, false);
+    const { service } = await makeService();
+
+    await expect(
+      service.loginWithGoogle({ accessToken: 'at' }),
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('still refuses an unverified email', async () => {
+    userinfo({ ...GOOGLE_PAYLOAD, email_verified: false });
+    const { service } = await makeService();
+
+    await expect(
+      service.loginWithGoogle({ accessToken: 'at' }),
+    ).rejects.toThrow('Your Google email address is not verified.');
+  });
+
+  it('requires exactly one credential', async () => {
+    const { service } = await makeService();
+
+    await expect(service.loginWithGoogle({})).rejects.toThrow(
+      BadRequestException,
+    );
+    await expect(
+      service.loginWithGoogle({ idToken: 'a', accessToken: 'b' }),
+    ).rejects.toThrow(BadRequestException);
+  });
 });

@@ -72,7 +72,8 @@ import {
   TableRow,
 } from "../ui/table";
 import { useSchoolsStore } from "../../store/schoolsStore";
-import { api } from "../../lib/api";
+import { api, apiErrorMessage } from "../../lib/api";
+import { useToast, notify } from "../ui/toast";
 import { cn } from "../../lib/utils";
 import { Skeleton } from "../ui/skeleton";
 import { MetricCard } from "../ui/metric-card";
@@ -246,6 +247,7 @@ export function AdminReportingDashboard() {
   const [sortField, setSortField] = useState<SortField>("needsIntervention");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const abortRef = useRef<AbortController | null>(null);
+  const toast = useToast();
 
   const { allSchools, fetchAllSchools, facilities } = useSchoolsStore();
 
@@ -284,6 +286,7 @@ export function AdminReportingDashboard() {
       const name = (err as { name?: string })?.name;
       if (name !== "CanceledError" && name !== "AbortError") {
         console.error("[AdminReportingDashboard] load error", err);
+        notify.error(apiErrorMessage(err, "Could not load reports."));
         setAllReports([]);
       }
     } finally {
@@ -643,6 +646,13 @@ export function AdminReportingDashboard() {
     }
   };
 
+  const STATUS_TOAST: Record<string, string> = {
+    PENDING: "Report reset to pending review",
+    SOLVED: "Report marked resolved",
+    NEED_INTERVENTION: "Report flagged as needing intervention",
+    FAILED: "Report marked invalid",
+  };
+
   const handleUpdateStatus = async (id: string, status: string) => {
     setIsUpdating(true);
     try {
@@ -661,6 +671,9 @@ export function AdminReportingDashboard() {
           : r;
       setAllReports((prev) => prev.map(patch));
       setSelectedReport((prev) => (prev ? patch(prev) : prev));
+      toast.success(STATUS_TOAST[status] ?? "Report status updated");
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not update the report status."));
     } finally {
       setIsUpdating(false);
     }
@@ -731,6 +744,14 @@ export function AdminReportingDashboard() {
         className,
       )}
       onClick={() => handleSort(field)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleSort(field);
+        }
+      }}
+      tabIndex={0}
+      aria-sort={sortField === field ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
     >
       <div className={cn("flex items-center gap-1", className?.includes("text-right") && "justify-end")}>
         {children}
@@ -782,6 +803,7 @@ export function AdminReportingDashboard() {
           <div className="flex flex-wrap items-center gap-2">
             <PeriodFilter onRangeChange={setRange} />
             <button
+              type="button"
               onClick={load}
               className="inline-flex items-center gap-1.5 rounded-xl border border-border/30 bg-card/60 px-3 h-9 text-[10px] font-black uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-primary/5 transition-colors"
             >
@@ -789,6 +811,8 @@ export function AdminReportingDashboard() {
             </button>
             {statusFilter && (
               <button
+                type="button"
+                aria-label={`Clear status filter: ${STATUS[statusFilter].label}`}
                 onClick={() => setStatusFilter(null)}
                 className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/30 px-3 h-9 text-[10px] font-black uppercase tracking-wider text-primary"
               >

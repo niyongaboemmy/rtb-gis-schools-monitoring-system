@@ -37,7 +37,7 @@ export const ViewerMovementControls: React.FC<ViewerMovementControlsProps> = ({
 
   return (
     <TooltipProvider delayDuration={0}>
-      <div className="fixed bottom-6 right-6 z-30 flex flex-col items-end gap-3 pointer-events-none">
+      <div className="fixed bottom-16 right-2 md:bottom-6 md:right-6 z-30 flex flex-col items-end gap-3 pointer-events-none">
         
         {/* Sprint Toggle */}
         <div className="pointer-events-auto">
@@ -53,6 +53,8 @@ export const ViewerMovementControls: React.FC<ViewerMovementControlsProps> = ({
                     : "bg-background/80 backdrop-blur-2xl hover:bg-white/10"
                 )}
                 onClick={() => setIsSprinting(!isSprinting)}
+                aria-label={isSprinting ? "Switch to walking speed" : "Switch to sprint speed"}
+                aria-pressed={isSprinting}
               >
                 {isSprinting ? <Zap className="w-5 h-5 fill-current" /> : <Footprints className="w-5 h-5" />}
               </Button>
@@ -74,6 +76,7 @@ export const ViewerMovementControls: React.FC<ViewerMovementControlsProps> = ({
                     variant="ghost"
                     size="icon"
                     className="h-9 w-9 hover:bg-white/10"
+                    aria-label="Move up (Space)"
                     onPointerDown={() => handleStart(" ")}
                     onPointerUp={() => handleEnd(" ")}
                     onPointerLeave={() => handleEnd(" ")}
@@ -89,6 +92,7 @@ export const ViewerMovementControls: React.FC<ViewerMovementControlsProps> = ({
                     variant="ghost"
                     size="icon"
                     className="h-9 w-9 hover:bg-white/10"
+                    aria-label="Move down (Q)"
                     onPointerDown={() => handleStart("q")}
                     onPointerUp={() => handleEnd("q")}
                     onPointerLeave={() => handleEnd("q")}
@@ -111,6 +115,7 @@ export const ViewerMovementControls: React.FC<ViewerMovementControlsProps> = ({
                     variant="ghost"
                     size="icon"
                     className="h-9 w-9 hover:bg-white/10 text-amber-400/80"
+                    aria-label="Rotate left"
                     onPointerDown={() => handleStart("rotateLeft")}
                     onPointerUp={() => handleEnd("rotateLeft")}
                     onPointerLeave={() => handleEnd("rotateLeft")}
@@ -126,6 +131,7 @@ export const ViewerMovementControls: React.FC<ViewerMovementControlsProps> = ({
                     variant="ghost"
                     size="icon"
                     className="h-9 w-9 hover:bg-white/10 text-amber-400/80"
+                    aria-label="Rotate right"
                     onPointerDown={() => handleStart("rotateRight")}
                     onPointerUp={() => handleEnd("rotateRight")}
                     onPointerLeave={() => handleEnd("rotateRight")}
@@ -145,6 +151,7 @@ export const ViewerMovementControls: React.FC<ViewerMovementControlsProps> = ({
                 variant="ghost"
                 size="icon"
                 className="h-10 w-10 hover:bg-white/10"
+                aria-label="Move forward (W)"
                 onPointerDown={() => handleStart("w")}
                 onPointerUp={() => handleEnd("w")}
                 onPointerLeave={() => handleEnd("w")}
@@ -157,6 +164,7 @@ export const ViewerMovementControls: React.FC<ViewerMovementControlsProps> = ({
                 variant="ghost"
                 size="icon"
                 className="h-10 w-10 hover:bg-white/10"
+                aria-label="Move left (A)"
                 onPointerDown={() => handleStart("a")}
                 onPointerUp={() => handleEnd("a")}
                 onPointerLeave={() => handleEnd("a")}
@@ -170,6 +178,7 @@ export const ViewerMovementControls: React.FC<ViewerMovementControlsProps> = ({
                 variant="ghost"
                 size="icon"
                 className="h-10 w-10 hover:bg-white/10"
+                aria-label="Move right (D)"
                 onPointerDown={() => handleStart("d")}
                 onPointerUp={() => handleEnd("d")}
                 onPointerLeave={() => handleEnd("d")}
@@ -182,6 +191,7 @@ export const ViewerMovementControls: React.FC<ViewerMovementControlsProps> = ({
                 variant="ghost"
                 size="icon"
                 className="h-10 w-10 hover:bg-white/10"
+                aria-label="Move backward (S)"
                 onPointerDown={() => handleStart("s")}
                 onPointerUp={() => handleEnd("s")}
                 onPointerLeave={() => handleEnd("s")}

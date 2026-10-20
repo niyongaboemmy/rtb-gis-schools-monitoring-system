@@ -5,7 +5,7 @@ import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { api, FILE_SERVER_URL } from "../lib/api";
+import { api, apiErrorMessage, FILE_SERVER_URL } from "../lib/api";
 import { useAuthorization } from "../hooks/useAuthorization";
 import { Permission } from "../lib/permissions";
 
@@ -1152,22 +1152,37 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const deleteItem = useCallback(async (id: string) => {
     if (tempMeasures.some(m => m.id === id)) { setTempMeasures(p => p.filter(m => m.id !== id)); return; }
     if (tempAnnotations.some(a => a.id === id)) { setTempAnnotations(p => p.filter(a => a.id !== id)); return; }
-    try { await removeFeature(id); }
-    catch { notify.error("Could not delete it. You may only delete your own measurements."); }
-  }, [tempMeasures, tempAnnotations, removeFeature, notify]);
+    const measure = serverScene.measures.find(m => m.id === id);
+    const label = measure
+      ? (measure.name ? `Measurement "${measure.name}"` : "Measurement")
+      : `Note "${serverScene.annotations.find(a => a.id === id)?.text || "Untitled"}"`;
+    try {
+      await removeFeature(id);
+      notify.success(`${label} deleted`);
+    } catch (err) {
+      notify.error(apiErrorMessage(err, "Could not delete it. You may only delete your own measurements."));
+    }
+  }, [tempMeasures, tempAnnotations, removeFeature, notify, serverScene]);
 
   const renameItem = useCallback(async (id: string, name: string) => {
     if (tempMeasures.some(m => m.id === id)) { setTempMeasures(p => p.map(m => m.id === id ? { ...m, name } : m)); return; }
     if (tempAnnotations.some(a => a.id === id)) { setTempAnnotations(p => p.map(a => a.id === id ? { ...a, text: name } : a)); return; }
-    try { await updateFeature(id, { label: name }); }
-    catch { notify.error("Could not rename it."); }
+    try {
+      await updateFeature(id, { label: name });
+      notify.success(`Renamed to "${name}"`);
+    } catch (err) {
+      notify.error(apiErrorMessage(err, "Could not rename it."));
+    }
   }, [tempMeasures, tempAnnotations, updateFeature, notify]);
 
   const exportCsv = useCallback(async () => {
     try {
       const slug = schoolName ? schoolName.replace(/[^a-zA-Z0-9]+/g, "_") : schoolId;
       await downloadSiteFeaturesCsv(schoolId, `${slug}_site_features.csv`);
-    } catch { notify.error("Export failed. Please try again."); }
+      notify.success("Site features exported as CSV");
+    } catch (err) {
+      notify.error(apiErrorMessage(err, "Export failed. Please try again."));
+    }
   }, [schoolId, schoolName, notify]);
 
   const cycleVisibility = useCallback(() => {
@@ -1191,6 +1206,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     const results = await Promise.allSettled(deletable.map(it => removeFeature(it.id)));
     const failed = results.filter(r => r.status === "rejected").length;
     if (failed) notify.error(`${failed} item(s) could not be deleted.`);
+    else notify.success("Measurements cleared");
   }, [serverScene, canChangeItem, removeFeature, notify]);
 
   const drawOverlay = useCallback(() => {
@@ -1692,7 +1708,9 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     const frame = getSceneFrame();
     if (canSaveViewerStateRef.current && origin && frame) {
       // Saved for everyone; the list refreshes live in both viewers.
-      createFeature(measureToFeature(m, origin, frame, approximate)).catch(() => {
+      createFeature(measureToFeature(m, origin, frame, approximate)).then(() => {
+        notify.success("Measurement saved");
+      }, () => {
         notify.error("Could not save the measurement — kept on this screen only.");
         setTempMeasures(prev => [...prev, m]);
       });
@@ -1763,6 +1781,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       let camHome: CameraHome | undefined;
       if (cam && ctrl) camHome = { position: { ...cam.position }, target: { ...ctrl.target }, near: cam.near, far: cam.far };
       setBuildingPins(prev => ({ ...prev, [bId]: { ...ptAccurate, camera: camHome } }));
+      notify.success(`Pin placed for "${dbBuildingsRef.current.find(b => b.id === bId)?.buildingName || "building"}"`);
       return;
     }
 
@@ -1851,7 +1870,8 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     cameraHomeRef.current = home; saveJson(LS_HOME_KEY, home);
     if (loadedFileNameRef.current) saveJson(getHomeKey(loadedFileNameRef.current, modelSigRef.current), home);
     scheduleSave(); setSaveFlash(true); setTimeout(() => setSaveFlash(false), 1200);
-  }, [scheduleSave]);
+    notify.success("Home view saved");
+  }, [scheduleSave, notify]);
 
   const speedUp = useCallback(() => { setSpeedIdx(p => { const n = Math.min(p + 1, SPEED_STEPS.length - 1); moveSpeedRef.current = SPEED_STEPS[n]; return n; }); }, []);
   const speedDown = useCallback(() => { setSpeedIdx(p => { const n = Math.max(p - 1, 0); moveSpeedRef.current = SPEED_STEPS[n]; return n; }); }, []);
@@ -1882,9 +1902,16 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     const ctx = out.getContext("2d"); if (!ctx) return;
     ctx.drawImage(renderer.domElement, 0, 0); ctx.drawImage(overlay, 0, 0, out.width, out.height);
     const slug = schoolName ? schoolName.replace(/[^a-zA-Z0-9]+/g, "_") : "rtb_3d_viewer";
-    const link = document.createElement("a"); link.href = out.toDataURL("image/png"); link.download = `${slug}_3d.png`; link.click();
+    try {
+      const link = document.createElement("a"); link.href = out.toDataURL("image/png"); link.download = `${slug}_3d.png`; link.click();
+    } catch (err) {
+      console.error("Screenshot failed:", err);
+      notify.error("Could not save the screenshot.");
+      return;
+    }
     setScreenshotFlash(true); setTimeout(() => setScreenshotFlash(false), 1200);
-  }, [schoolName]);
+    notify.success("Screenshot saved");
+  }, [schoolName, notify]);
 
   // ── Asset Loading ───────────────────────────────────────────────────────────
   // ── Asset Loading ───────────────────────────────────────────────────────────
@@ -1904,7 +1931,9 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     const { origin, approximate } = effectiveOriginRef.current;
     const frame = getSceneFrame();
     if (canSaveViewerStateRef.current && origin && frame) {
-      createFeature(annotationToFeature(a, origin, frame, approximate)).catch(() => {
+      createFeature(annotationToFeature(a, origin, frame, approximate)).then(() => {
+        notify.success(`Note "${title || "Note"}" saved`);
+      }, () => {
         notify.error("Could not save the note — kept on this screen only.");
         setTempAnnotations(prev => [...prev, a]);
       });
@@ -2066,7 +2095,9 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   }, [measures, annotations, flyToPoint]);
 
   // ── API Operations ──────────────────────────────────────────────────────────
-  const handleUpdateBuilding = async (data: BuildingData) => {
+  /** `quiet`: the caller (e.g. the media tab) reports the outcome itself, so
+   *  skip the toast and re-throw failures. */
+  const handleUpdateBuilding = async (data: BuildingData, { quiet = false } = {}) => {
     try {
       setIsSaving(true); setSaveError(null);
       const isNew = typeof data.id === "string" && data.id.startsWith("new-");
@@ -2098,18 +2129,31 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       }
       if (selectedBuilding?.id === updated.id || isNew) setSelectedBuilding(updated);
       setDrawerOpen(false);
-    } catch (err: any) { setSaveError(err.response?.data?.message || "Operation failed"); }
+      if (!quiet) {
+        const name = updated.buildingName || data.buildingName || "Building";
+        notify.success(isNew ? `Building "${name}" added` : `Building "${name}" saved`);
+      }
+    } catch (err: any) {
+      if (quiet) throw err;
+      // Shown inline in the error bar / drawer.
+      setSaveError(apiErrorMessage(err, "Operation failed"));
+    }
     finally { setIsSaving(false); }
   };
 
+  // BuildingsListPanel (the only caller) already asks for confirmation.
   const handleDeleteBuilding = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this building?")) return;
+    const name = dbBuildings.find(b => b.id === id)?.buildingName || "Building";
     try {
       await api.delete(`/schools/buildings/${id}`);
       setDbBuildings(prev => prev.filter(b => b.id !== id));
       setBuildingPins(prev => { const n = { ...prev }; delete n[id]; return n; });
       if (selectedBuilding?.id === id) setSelectedBuilding(null);
-    } catch (e) { console.error(e); }
+      notify.success(`Building "${name}" deleted`);
+    } catch (e) {
+      console.error(e);
+      notify.error(apiErrorMessage(e, "Could not delete the building."));
+    }
   };
 
   return (
@@ -2208,7 +2252,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
                   <div className="inspector-container">
                     <BlockInspector
                       building={selectedBuilding as BuildingData} schoolId={schoolId}
-                      onClose={() => setSelectedBuilding(null)} onUpdateBuilding={handleUpdateBuilding}
+                      onClose={() => setSelectedBuilding(null)} onUpdateBuilding={(b) => handleUpdateBuilding(b, { quiet: true })}
                       onEdit={() => { setDrawerBuilding(selectedBuilding); setDrawerOpen(true); }}
                     />
                   </div>
@@ -2217,7 +2261,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
               {pinBuildingId && (
                 <div className="pin-indicator">
                   <span>📍</span> Click model to pin <em>{dbBuildings.find(b => b.id === pinBuildingId)?.buildingName || "building"}</em>
-                  <button onClick={() => setPinBuildingId(null)}>✕</button>
+                  <button type="button" onClick={() => setPinBuildingId(null)} aria-label="Cancel pin placement">✕</button>
                 </div>
               )}
               {showBuildingsList && (
@@ -2252,7 +2296,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
               />
               <BuildingFormDrawer
                 isOpen={drawerOpen} building={drawerBuilding} buildingIndex={drawerBuilding?.id.startsWith("new-") ? -1 : 0}
-                onSave={handleUpdateBuilding} onClose={() => setDrawerOpen(false)}
+                onSave={(b) => handleUpdateBuilding(b)} onClose={() => setDrawerOpen(false)}
                 availableFacilities={availableFacilities} facilitiesLoading={facilitiesLoading}
                 isSaving={isSaving} errorMessage={saveError}
               />

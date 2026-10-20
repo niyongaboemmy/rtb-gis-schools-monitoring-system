@@ -57,8 +57,12 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
     report.changeRequest?.fields ?? [];
 
   const handleStatusChange = async (status: string) => {
-    if (onUpdateStatus) {
+    if (!onUpdateStatus) return;
+    try {
       await onUpdateStatus(report.id, status);
+    } catch {
+      // The caller already showed an error toast; just don't leave the
+      // rejection unhandled.
     }
   };
 
@@ -75,7 +79,7 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
       onClose={onClose}
       maxWidth="max-w-3xl"
       title={
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
           <Badge className={cn("rounded-full font-black text-[10px] px-3 py-1 border tracking-widest uppercase", status.color)}>
             {status.icon} <span className="ml-2">{status.label}</span>
           </Badge>
@@ -175,8 +179,8 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
               <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
                 <MapPin className="w-4 h-4" />
               </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="text-[9px] font-black uppercase text-muted-foreground opacity-60">Building / Asset</p>
                     <p className="text-sm font-black uppercase tracking-tight">{report.building?.name || "Main Structure"} · {report.itemId}</p>

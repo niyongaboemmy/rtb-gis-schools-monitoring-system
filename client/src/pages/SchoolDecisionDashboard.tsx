@@ -15,7 +15,7 @@ import {
   CheckCircle,
   CheckCircle2,
 } from "lucide-react";
-import { api } from "../lib/api";
+import { api, apiErrorMessage } from "../lib/api";
 import { Modal } from "../components/ui/modal";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -76,6 +76,12 @@ interface SchoolDecisionDashboardProps {
   onUpdateSchool?: (update: Partial<SchoolRecord>) => void;
   onBuildingClick?: (building: FacilityBuilding) => void;
 }
+
+const ACTION_STATUS_LABEL: Record<string, string> = {
+  open: "Open",
+  in_progress: "In Progress",
+  done: "Done",
+};
 
 export default function SchoolDecisionDashboard({
   id: propId,
@@ -162,6 +168,7 @@ export default function SchoolDecisionDashboard({
             recommendation,
           });
           setActions((prev) => [...prev, res.data]);
+          toast.success(`Recommendation marked ${ACTION_STATUS_LABEL[res.data?.status] ?? "Open"}`);
         } else {
           const nextStatus =
             existing.status === "open"
@@ -175,9 +182,10 @@ export default function SchoolDecisionDashboard({
           setActions((prev) =>
             prev.map((a) => (a.id === existing.id ? res.data : a)),
           );
+          toast.success(`Recommendation marked ${ACTION_STATUS_LABEL[nextStatus]}`);
         }
-      } catch {
-        toast.error("Could not update this recommendation. Please try again.");
+      } catch (err) {
+        toast.error(apiErrorMessage(err, "Could not update this recommendation. Please try again."));
       }
     },
     [id, actions, toast],
@@ -342,7 +350,7 @@ export default function SchoolDecisionDashboard({
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      className="container mx-auto space-y-8 pb-12 px-2 md:px-6 pt-8 md:pt-16 bg-transparent"
+      className="container mx-auto space-y-8 pb-12 px-2 md:px-6 pt-16 bg-transparent"
     >
       {/* Tab Navigation */}
       <div role="tablist" aria-label="School dashboard sections" className="flex gap-2 p-1 bg-slate-50 dark:bg-white/5 rounded-full border border-slate-200 dark:border-blue-500/12 mb-8 overflow-x-auto">
@@ -617,12 +625,12 @@ export default function SchoolDecisionDashboard({
                           className={`p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12 hover:bg-slate-100 dark:hover:bg-white/10 transition-all ${onBuildingClick ? "cursor-pointer" : ""}`}
                         >
                           <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <div className="shrink-0 w-8 h-8 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
                                 <Building2 className="w-4 h-4 text-red-500" />
                               </div>
-                              <div>
-                                <h4 className="text-sm font-medium text-slate-900 dark:text-white">
+                              <div className="min-w-0">
+                                <h4 className="text-sm font-medium text-slate-900 dark:text-white truncate">
                                   {row.name}
                                 </h4>
                                 <p className="text-xs text-slate-500 dark:text-white/60">
@@ -711,9 +719,7 @@ export default function SchoolDecisionDashboard({
                   in_progress: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
                   done:        "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
                 };
-                const statusLabel: Record<string, string> = {
-                  open: "Open", in_progress: "In Progress", done: "Done",
-                };
+                const statusLabel = ACTION_STATUS_LABEL;
 
                 return (
                   <motion.div
@@ -797,7 +803,7 @@ export default function SchoolDecisionDashboard({
           }
           maxWidth="max-w-md"
         >
-          <div className="p-8 text-center space-y-6">
+          <div className="p-5 sm:p-8 text-center space-y-6">
             <div className="w-16 h-16 rounded-full bg-white/2 flex items-center justify-center mx-auto border border-blue-500/12">
               <GraduationCap className="w-8 h-8 text-white/20" />
             </div>

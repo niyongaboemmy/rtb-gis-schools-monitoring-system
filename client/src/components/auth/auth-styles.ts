@@ -1,15 +1,19 @@
 /**
  * One size scale for every sign-in screen (login, 2FA, password reset,
  * forced change) so fields, buttons and links line up across steps.
- * Matches the app's <Input> (rounded-xl, white/20 border in dark) and
- * <Button> (rounded-full).
+ * Rounded like the app's <Input> (rounded-xl) and <Button> (rounded-full);
+ * in dark mode fields are tinted blue to match the brand.
  */
 export const authInputClass =
-  "flex h-11 w-full rounded-xl border border-gray-300 dark:border-white/20 bg-background dark:bg-white/[0.03] " +
-  "px-4 text-sm text-foreground dark:text-white placeholder:text-muted-foreground/70 dark:placeholder:text-white/35 " +
-  "transition-colors outline-none hover:border-gray-400 dark:hover:border-white/30 " +
-  "focus:border-primary dark:focus:border-primary focus:ring-4 focus:ring-primary/15 disabled:opacity-50 " +
-  "aria-[invalid=true]:border-destructive aria-[invalid=true]:focus:ring-destructive/15";
+  "flex h-11 w-full rounded-xl border px-4 text-sm outline-none transition-[border-color,background-color,box-shadow] duration-200 " +
+  // Light
+  "border-gray-300 bg-background text-foreground placeholder:text-muted-foreground/70 hover:border-gray-400 " +
+  "focus:border-primary focus:ring-4 focus:ring-primary/15 " +
+  // Dark: a quiet blue field that lights up on focus
+  "dark:border-blue-400/20 dark:bg-blue-500/[0.06] dark:text-white dark:placeholder:text-blue-100/35 " +
+  "dark:hover:border-blue-400/35 dark:focus:border-blue-400 dark:focus:bg-blue-500/[0.1] dark:focus:ring-blue-500/20 " +
+  "disabled:opacity-50 aria-[invalid=true]:border-destructive aria-[invalid=true]:focus:ring-destructive/15 " +
+  "dark:aria-[invalid=true]:border-red-400/70";
 
 export const authLabelClass = "block text-sm font-medium text-foreground dark:text-white";
 

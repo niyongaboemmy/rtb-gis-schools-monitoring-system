@@ -164,7 +164,9 @@ export const ViewerAddBuildingModal: React.FC<ViewerAddBuildingModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={onCancel}
+            aria-label="Close new building form"
             style={{
               width: 24,
               height: 24,

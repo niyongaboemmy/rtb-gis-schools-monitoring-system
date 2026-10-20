@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { api, apiErrorMessage } from "../../lib/api";
-import { useToast } from "../ui/toast";
+import { useToast, notify } from "../ui/toast";
 import {
   Card,
   CardContent,
@@ -23,6 +23,7 @@ import { SearchInput } from "../ui/search-input";
 import { RichDropdown } from "../ui/rich-dropdown";
 import { UserFormModal } from "../users/UserFormModal";
 import { BulkUploadModal } from "../users/BulkUploadModal";
+import { DeleteConfirmationModal } from "../ui/delete-confirmation-modal";
 import { useAuthStore } from "../../store/authStore";
 import { useSchoolsStore } from "../../store/schoolsStore";
 import { resolveDistrictName, resolveProvinceName } from "../../lib/rwanda-locations";
@@ -67,6 +68,7 @@ export function UsersTab() {
   const [editingUser, setEditingUser] = useState<any | null>(null);
   const [previewUser, setPreviewUser] = useState<any | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [pendingDeactivate, setPendingDeactivate] = useState<{ id: string; name: string } | null>(null);
 
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>(
     {},
@@ -97,6 +99,7 @@ export function UsersTab() {
       setRoles(rolesRes.data);
     }).catch(err => {
       console.error("Failed to load initial data", err);
+      notify.error(apiErrorMessage(err, "Could not load users."));
     }).finally(() => {
       setLoading(false);
       fetchPromise.current = null;
@@ -106,15 +109,15 @@ export function UsersTab() {
   };
 
   const handleDeleteUser = async (id: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to deactivate ${name}?`)) return;
     const key = `del-user-${id}`;
     setAL(key, true);
     try {
       await api.delete(`/users/${id}`);
+      setPendingDeactivate(null);
       fetchInitialData();
-      toast.success(`${name} was deactivated and signed out.`);
+      toast.success(`User "${name}" deactivated and signed out`);
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Failed to deactivate user"));
+      toast.error(apiErrorMessage(err, `Could not deactivate ${name}.`));
     } finally {
       setAL(key, false);
     }
@@ -197,7 +200,7 @@ export function UsersTab() {
       </div>
 
       <Card className="border border-border/20 dark:border-gray-900 bg-card/60 backdrop-blur-xl rounded-3xl overflow-hidden">
-        <CardHeader className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4 xl:gap-6 p-6 py-4 pr-4 border-b border-border/40">
+        <CardHeader className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4 xl:gap-6 p-4 sm:p-6 sm:py-4 sm:pr-4 border-b border-border/40">
           <div>
             <CardTitle className="text-lg font-bold tracking-tight">
               Administrative Directory
@@ -207,7 +210,7 @@ export function UsersTab() {
             </CardDescription>
           </div>
           <div className="flex flex-col sm:flex-row sm:flex-wrap items-center gap-4 w-full xl:w-auto xl:justify-end">
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               <Button
                 size="sm"
                 variant="outline"
@@ -228,7 +231,7 @@ export function UsersTab() {
               </Button>
             </div>
 
-            <div className="flex flex-row items-center gap-3 w-full sm:w-auto">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
               <SearchInput
                 placeholder="Search identities..."
                 value={searchTerm}
@@ -379,25 +382,27 @@ export function UsersTab() {
                         {format(new Date(u.createdAt), "dd.MM.yy")}
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover/row:opacity-100 focus-within:opacity-100 transition-opacity">
+                        <div className="flex items-center justify-end gap-1.5 md:opacity-0 md:group-hover/row:opacity-100 focus-within:opacity-100 transition-opacity">
                           <Button
                             variant="outline"
                             size="icon"
                             className="h-8 w-8 rounded-full border-border/20 hover:bg-accent hover:text-primary transition-all shadow-none"
+                            aria-label={`View ${u.firstName} ${u.lastName}`}
                             onClick={() => setPreviewUser(u)}
                           >
-                            <Eye className="w-3.5 h-3.5" />
+                            <Eye className="w-3.5 h-3.5" aria-hidden />
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
+                            aria-label={`Edit ${u.firstName} ${u.lastName}`}
                             onClick={() => {
                               setEditingUser(u);
                               setIsModalOpen(true);
                             }}
                             className="h-8 w-8 p-0 text-muted-foreground hover:text-primary rounded-lg"
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            <Edit2 className="w-3.5 h-3.5" aria-hidden />
                           </Button>
                           <Button
                             variant="ghost"
@@ -424,7 +429,12 @@ export function UsersTab() {
                               !u.isActive ||
                               isAL(`del-user-${u.id}`)
                             }
-                            onClick={() => handleDeleteUser(u.id, u.firstName)}
+                            onClick={() =>
+                              setPendingDeactivate({
+                                id: u.id,
+                                name: `${u.firstName} ${u.lastName}`.trim(),
+                              })
+                            }
                           >
                             {isAL(`del-user-${u.id}`) ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -442,7 +452,7 @@ export function UsersTab() {
           </div>
 
           {!loading && totalPages > 1 && (
-            <div className="p-1 mx-6 my-4 border border-border/20 flex items-center justify-between text-[10px] font-bold text-muted-foreground bg-muted/20 rounded-xl backdrop-blur-sm">
+            <div className="p-1 mx-4 sm:mx-6 my-4 border border-border/20 flex flex-wrap items-center justify-between gap-1 text-[10px] font-bold text-muted-foreground bg-muted/20 rounded-xl backdrop-blur-sm">
               <div className="px-3 uppercase tracking-wider">
                 Index {(currentPage - 1) * itemsPerPage + 1} —{" "}
                 {Math.min(currentPage * itemsPerPage, filteredUsers.length)} of{" "}
@@ -453,6 +463,7 @@ export function UsersTab() {
                   variant="ghost"
                   size="icon"
                   className="w-7 h-7 rounded-lg hover:bg-background"
+                  aria-label="Previous page"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
                 >
@@ -465,6 +476,7 @@ export function UsersTab() {
                   variant="ghost"
                   size="icon"
                   className="w-7 h-7 rounded-lg hover:bg-background"
+                  aria-label="Next page"
                   onClick={() =>
                     setCurrentPage((p) => Math.min(totalPages, p + 1))
                   }
@@ -560,7 +572,7 @@ export function UsersTab() {
             </div>
 
             <Button
-              className="mt-6 h-10 rounded-xl font-black uppercase text-[10px] tracking-wider w-full bg-linear-to-r from-primary to-primary/80"
+              className="mt-6 h-10 rounded-full font-black uppercase text-[10px] tracking-wider w-full bg-linear-to-r from-primary to-primary/80 text-primary-foreground"
               onClick={() => setPreviewUser(null)}
             >
               Close Record
@@ -582,6 +594,19 @@ export function UsersTab() {
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onSuccess={fetchInitialData}
+      />
+
+      <DeleteConfirmationModal
+        isOpen={pendingDeactivate !== null}
+        onClose={() => setPendingDeactivate(null)}
+        onConfirm={() =>
+          pendingDeactivate &&
+          handleDeleteUser(pendingDeactivate.id, pendingDeactivate.name)
+        }
+        title="Deactivate user"
+        description={`Deactivate ${pendingDeactivate?.name ?? "this user"}? They will be signed out and can no longer sign in.`}
+        confirmLabel="Deactivate"
+        isLoading={pendingDeactivate ? isAL(`del-user-${pendingDeactivate.id}`) : false}
       />
     </motion.div>
   );

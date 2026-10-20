@@ -812,6 +812,7 @@ export function AppLayout() {
                     onClick={() => {
                       setIsProfileOpen(false);
                       logout();
+                      toast.info("You have signed out");
                     }}
                     className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-destructive hover:bg-destructive/8 rounded-lg transition-colors text-left"
                   >

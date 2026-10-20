@@ -43,7 +43,8 @@ import { ImigongoPattern } from "../components/ui/ImigongoPattern";
 import { MetricCard } from "../components/ui/metric-card";
 import { ReportDetailsModal } from "../components/reports/ReportDetailsModal";
 import { useSchoolsStore } from "../store/schoolsStore";
-import { api } from "../lib/api";
+import { api, apiErrorMessage } from "../lib/api";
+import { useToast } from "../components/ui/toast";
 import { cn } from "../lib/utils";
 import { label } from "../lib/labels";
 import { useSearchParams } from "react-router-dom";
@@ -164,6 +165,12 @@ function downloadReportsCsv(rows: Report[]) {
   URL.revokeObjectURL(url);
 }
 
+const EXPORT_NAMES: Record<string, string> = {
+  schools: "Schools master dataset",
+  assessments: "Decision assessments",
+  issues: "Issue reports log",
+};
+
 async function downloadBlob(path: string, filename: string) {
   const res = await api.get(path, { responseType: "blob" });
   const url = URL.createObjectURL(new Blob([res.data as BlobPart]));
@@ -245,6 +252,7 @@ function ExportCard({
 export default function Reports() {
   const { allSchools, fetchAllSchools } = useSchoolsStore();
   const { isAuthorized } = useAuthorization();
+  const toast = useToast();
   const canExport = isAuthorized(Permission.EXPORT_REPORTS);
   const [searchParams, setSearchParams] = useSearchParams();
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -461,14 +469,17 @@ export default function Reports() {
   );
 
   const runExport = async (key: string, fn: () => Promise<void>) => {
+    const what = EXPORT_NAMES[key] ?? "Export";
     setBusy(key);
     try {
       await fn();
+      toast.success(`${what} exported`);
       setDone(key);
       if (doneTimer.current) clearTimeout(doneTimer.current);
       doneTimer.current = setTimeout(() => setDone(null), 2500);
     } catch (err) {
       console.error("Export failed", err);
+      toast.error(apiErrorMessage(err, `Could not export ${what.toLowerCase()}. Please try again.`));
     } finally {
       setBusy(null);
     }
@@ -489,6 +500,13 @@ export default function Reports() {
           : r;
       setReports((prev) => prev.map(patch));
       setSelected((prev) => (prev ? patch(prev) : prev));
+      const school = reports.find((r) => r.id === id)?.school?.name;
+      const statusText = STATUS_META[status as Status]?.label ?? label("reportStatus", status);
+      toast.success(
+        school ? `Report for "${school}" marked ${statusText}` : `Report marked ${statusText}`,
+      );
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not update the report status. Please try again."));
     } finally {
       setUpdating(false);
     }
@@ -684,7 +702,7 @@ export default function Reports() {
                     className="h-9 pl-9 rounded-xl border-border/25 bg-background/50 text-xs shadow-none"
                   />
                 </div>
-                <div className="w-44">
+                <div className="w-full sm:w-44">
                   <RichDropdown
                     options={provinceOptions}
                     value={province}
@@ -844,17 +862,17 @@ export default function Reports() {
             )}
 
             {!loading && filtered.length > PAGE_SIZE && (
-              <div className="flex items-center justify-between p-4 border-t border-border/25">
+              <div className="flex flex-wrap items-center justify-between gap-2 p-4 border-t border-border/25">
                 <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground tabular-nums">
                   {(pageClamped - 1) * PAGE_SIZE + 1}–{Math.min(pageClamped * PAGE_SIZE, filtered.length)} of {filtered.length}
                 </span>
                 <div className="flex items-center gap-1">
-                  <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg border-border/25" disabled={pageClamped <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-                    <ChevronLeft className="w-4 h-4" />
+                  <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg border-border/25" aria-label="Previous page" disabled={pageClamped <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                    <ChevronLeft className="w-4 h-4" aria-hidden />
                   </Button>
                   <span className="text-[11px] font-black tabular-nums px-2">{pageClamped} / {totalPages}</span>
-                  <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg border-border/25" disabled={pageClamped >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
-                    <ChevronRight className="w-4 h-4" />
+                  <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg border-border/25" aria-label="Next page" disabled={pageClamped >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+                    <ChevronRight className="w-4 h-4" aria-hidden />
                   </Button>
                 </div>
               </div>

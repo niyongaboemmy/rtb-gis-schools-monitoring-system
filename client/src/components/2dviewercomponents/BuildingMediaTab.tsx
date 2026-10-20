@@ -10,7 +10,8 @@ import {
   Upload,
   Shield,
 } from "lucide-react";
-import { fileApi } from "../../lib/api";
+import { fileApi, apiErrorMessage } from "../../lib/api";
+import { useToast } from "../ui/toast";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
@@ -28,6 +29,7 @@ export function BuildingMediaTab({
   schoolId,
   onUpdateBuilding,
 }: BuildingMediaTabProps) {
+  const toast = useToast();
   const [newTitle, setNewTitle] = useState("");
   const [newPath, setNewPath] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -89,6 +91,7 @@ export function BuildingMediaTab({
 
       const updatedMedia = [...(building.media || []), newMediaItem];
       await onUpdateBuilding({ ...building, media: updatedMedia });
+      toast.success(`Media "${newMediaItem.title}" added`);
 
       setNewTitle("");
       setNewPath("");
@@ -97,18 +100,21 @@ export function BuildingMediaTab({
       setIsAdding(false);
     } catch (err) {
       console.error("Failed to add media:", err);
-      alert("Asset capture failed. Please retry.");
+      toast.error(apiErrorMessage(err, "Could not add the media file. Please retry."));
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleRemoveMedia = async (index: number) => {
+    const removed = building.media?.[index];
     const updatedMedia = building.media?.filter((_, i) => i !== index);
     try {
       await onUpdateBuilding({ ...building, media: updatedMedia });
+      toast.success(`Media "${removed?.title || "Untitled"}" removed`);
     } catch (err) {
       console.error("Failed to remove media:", err);
+      toast.error(apiErrorMessage(err, "Could not remove the media file."));
     }
   };
 
@@ -226,7 +232,7 @@ export function BuildingMediaTab({
                     ) : selectedFile ? (
                       <div className="flex flex-col items-center p-4">
                         <Video className="w-8 h-8 text-primary/60 mb-2" />
-                        <p className="text-xs font-bold text-white/90 truncate max-w-[200px]">
+                        <p className="text-xs font-bold text-white/90 truncate max-w-full">
                           {selectedFile.name}
                         </p>
                         <p className="text-[9px] text-white/40 uppercase mt-1">
@@ -270,7 +276,7 @@ export function BuildingMediaTab({
             disabled={
               isSaving || (uploadMode === "local" ? !selectedFile : !newPath)
             }
-            className="w-full py-6 rounded-2xl bg-linear-to-r from-primary to-blue-600 hover:from-blue-600 hover:to-primary text-white font-black text-[10px] uppercase tracking-[0.2em] mt-2 border-none transition-all duration-500 active:scale-[0.98]"
+            className="w-full py-6 rounded-full font-black text-[10px] uppercase tracking-[0.2em] mt-2 border-none"
           >
             {isSaving ? (
               <div className="flex items-center gap-3">
@@ -322,6 +328,8 @@ export function BuildingMediaTab({
                   ) : (
                     <div
                       className="w-full h-full relative cursor-pointer"
+                      role="button"
+                      aria-label={`Open ${m.title || "image"} in a new tab`}
                       onClick={() => window.open(m.path, "_blank")}
                     >
                       <img
@@ -365,7 +373,7 @@ export function BuildingMediaTab({
                       className="text-[9px] font-black text-primary/60 hover:text-primary uppercase tracking-widest transition-colors flex items-center gap-1"
                     >
                       View Source
-                      <ExternalLink className="w-2.5 h-2.5" />
+                      <ExternalLink className="w-2.5 h-2.5" aria-hidden />
                     </button>
                     <div className="w-1 h-1 rounded-full bg-white/5" />
                     <span className="text-[9px] text-white/10 font-bold uppercase tracking-widest">
@@ -376,10 +384,12 @@ export function BuildingMediaTab({
 
                 {/* Actions */}
                 <button
+                  type="button"
                   onClick={() => handleRemoveMedia(idx)}
-                  className="absolute top-3 right-3 p-1.5 rounded-lg text-white/10 hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all scale-75 group-hover:scale-100"
+                  aria-label={`Remove media "${m.title || "Untitled"}"`}
+                  className="absolute top-3 right-3 p-1.5 rounded-lg text-white/10 hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all scale-75 group-hover:scale-100"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash2 className="w-3.5 h-3.5" aria-hidden />
                 </button>
               </div>
             );

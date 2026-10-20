@@ -81,10 +81,12 @@ export const MapHud: React.FC<MapHudProps> = ({
                 </div>
               </div>
               <button
+                type="button"
                 onClick={onCloseInfo}
+                aria-label="Close feature info"
                 className="text-slate-400 dark:text-muted-foreground hover:text-slate-900 dark:hover:text-white transition-colors shrink-0 bg-slate-100 dark:bg-white/5 rounded-full p-1 border border-slate-200 dark:border-white/6"
               >
-                <X className="h-3.5 w-3.5" />
+                <X className="h-3.5 w-3.5" aria-hidden />
               </button>
             </div>
           </div>
@@ -92,7 +94,7 @@ export const MapHud: React.FC<MapHudProps> = ({
       )}
 
       {/* ── Coordinates HUD ───────────────────────────────────────────────────── */}
-      <div className="absolute bottom-20 md:bottom-4 right-4 z-20">
+      <div className="absolute bottom-20 right-4 md:bottom-16 md:right-20 xl:bottom-4 z-20">
         <div className="rounded-xl bg-white/90 dark:bg-card/95 backdrop-blur-md border border-slate-200 dark:border-white/6 px-2.5 md:px-3 py-1.5 text-[9px] md:text-[10px] font-mono text-slate-500 dark:text-white/50 space-x-2 md:space-x-3">
           <span>
             {currentLat >= 0 ? "N" : "S"} {Math.abs(currentLat).toFixed(6)}°
@@ -104,8 +106,8 @@ export const MapHud: React.FC<MapHudProps> = ({
       </div>
 
       {/* ── 2D/3D Navigation ────────────────────────────────────────────────── */}
-      <div className="absolute bottom-20 md:bottom-4 left-4 z-20 flex gap-2">
-        <div className="flex items-center gap-1.5 rounded-xl bg-blue-50 dark:bg-primary/20 border border-blue-200 dark:border-primary/20 px-2.5 md:px-3 py-1.5">
+      <div className="absolute bottom-20 md:bottom-16 left-4 z-20 flex gap-2">
+        <div className="hidden sm:flex items-center gap-1.5 rounded-xl bg-blue-50 dark:bg-primary/20 border border-blue-200 dark:border-primary/20 px-2.5 md:px-3 py-1.5">
           <Globe className="h-3 w-3 text-blue-600 dark:text-blue-400" />
           <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-blue-700 dark:text-blue-300">
             2D · Map

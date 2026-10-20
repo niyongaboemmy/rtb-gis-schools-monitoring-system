@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
-import { api } from "../../lib/api";
+import { api, apiErrorMessage } from "../../lib/api";
+import { useToast, notify } from "../ui/toast";
+import { DeleteConfirmationModal } from "../ui/delete-confirmation-modal";
 import {
   Card,
   CardContent,
@@ -29,6 +31,7 @@ import {
 import { motion } from "framer-motion";
 
 export function AccessLevelsTab() {
+  const toast = useToast();
   const [accessLevels, setAccessLevels] = useState<any[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +54,8 @@ export function AccessLevelsTab() {
     setActionLoading((prev) => ({ ...prev, [key]: val }));
   const isAL = (key: string) => actionLoading[key] === true;
 
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+
   const fetchPromise = useRef<Promise<any> | null>(null);
 
   useEffect(() => {
@@ -72,6 +77,7 @@ export function AccessLevelsTab() {
       setRoles(rolesRes.data);
     }).catch(err => {
       console.error("Failed to load access levels data", err);
+      notify.error(apiErrorMessage(err, "Could not load access levels."));
     }).finally(() => {
       setLoading(false);
       fetchPromise.current = null;
@@ -93,6 +99,9 @@ export function AccessLevelsTab() {
       } else {
         await api.post("/access-levels", accessLevelFormData);
       }
+      toast.success(
+        `Access level "${accessLevelFormData.name}" ${editingAccessLevel ? "updated" : "created"}`,
+      );
       setIsAccessLevelModalOpen(false);
       setEditingAccessLevel(null);
       setAccessLevelFormData({ name: "" });
@@ -108,14 +117,16 @@ export function AccessLevelsTab() {
   };
 
   const handleDeleteAccessLevel = async (id: string, name: string) => {
-    if (!window.confirm(`Dissolve geographic scope level "${name}"?`)) return;
     const key = `del-al-${id}`;
     setAL(key, true);
     try {
       await api.delete(`/access-levels/${id}`);
+      toast.success(`Access level "${name}" deleted`);
+      setPendingDelete(null);
       fetchInitialData();
     } catch (err) {
       console.error("Failed to delete access level", err);
+      toast.error(apiErrorMessage(err, `Could not delete access level "${name}".`));
     } finally {
       setAL(key, false);
     }
@@ -203,11 +214,12 @@ export function AccessLevelsTab() {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                      <div className="flex items-center justify-end gap-1.5 md:opacity-0 md:group-hover/row:opacity-100 focus-within:opacity-100 transition-opacity">
                         <Button
                           variant="outline"
                           size="icon"
                           className="h-8 w-8 rounded-full border-border/20 hover:bg-accent hover:text-primary transition-all shadow-none"
+                          aria-label={`Edit access level ${al.name}`}
                           onClick={() => {
                             setEditingAccessLevel(al);
                             setAccessLevelFormData({ name: al.name });
@@ -215,15 +227,16 @@ export function AccessLevelsTab() {
                             setIsAccessLevelModalOpen(true);
                           }}
                         >
-                          <Pencil className="w-3.5 h-3.5" />
+                          <Pencil className="w-3.5 h-3.5" aria-hidden />
                         </Button>
                         <Button
                           variant="outline"
                           size="icon"
                           className="h-8 w-8 rounded-full border-border/20 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/20 transition-all shadow-none"
                           disabled={isAL(`del-al-${al.id}`)}
+                          aria-label={`Delete access level ${al.name}`}
                           onClick={() =>
-                            handleDeleteAccessLevel(al.id, al.name)
+                            setPendingDelete({ id: al.id, name: al.name })
                           }
                         >
                           {isAL(`del-al-${al.id}`) ? (
@@ -328,6 +341,19 @@ export function AccessLevelsTab() {
           </div>
         </form>
       </Modal>
+
+      <DeleteConfirmationModal
+        isOpen={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={() =>
+          pendingDelete &&
+          handleDeleteAccessLevel(pendingDelete.id, pendingDelete.name)
+        }
+        title="Delete access level"
+        description={`Dissolve geographic scope level "${pendingDelete?.name ?? ""}"?`}
+        confirmLabel="Delete level"
+        isLoading={pendingDelete ? isAL(`del-al-${pendingDelete.id}`) : false}
+      />
     </motion.div>
   );
 }

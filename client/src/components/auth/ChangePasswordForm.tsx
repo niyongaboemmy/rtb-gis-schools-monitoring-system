@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { Lock } from "lucide-react";
 import { PasswordInput } from "../ui/password-input";
 import { Button } from "../ui/button";
 import { api, apiErrorMessage } from "../../lib/api";
@@ -59,6 +60,7 @@ export function ChangePasswordForm({
         </label>
         <PasswordInput
           id={ids.current}
+          leadingIcon={<Lock />}
           value={current}
           onChange={(e) => setCurrent(e.target.value)}
           autoComplete="current-password"
@@ -71,6 +73,7 @@ export function ChangePasswordForm({
         </label>
         <PasswordInput
           id={ids.next}
+          leadingIcon={<Lock />}
           value={next}
           onChange={(e) => setNext(e.target.value)}
           autoComplete="new-password"
@@ -85,6 +88,7 @@ export function ChangePasswordForm({
         </label>
         <PasswordInput
           id={ids.confirm}
+          leadingIcon={<Lock />}
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           autoComplete="new-password"

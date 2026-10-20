@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from "react";
-import { api } from "../lib/api";
+import { useState, useEffect } from "react";
+import { api, apiErrorMessage } from "../lib/api";
+import { useToast } from "./ui/toast";
 import { Modal } from "./ui/modal";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -76,11 +77,8 @@ export function FacilitySurveyForm({
   const [inspectedBy, setInspectedBy] = useState("");
   const [initialized, setInitialized] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
-  const [scoreToast, setScoreToast] = useState(false);
-  const [errorToast, setErrorToast] = useState<string | null>(null);
+  const toast = useToast();
   const [inspectorError, setInspectorError] = useState<string | null>(null);
-  const scoreToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const errorToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Map facility IDs to step icons
   const getStepIcon = (facilityId: string) => {
@@ -150,8 +148,10 @@ export function FacilitySurveyForm({
       setSurveyData(res.data);
       setInitialized(true);
       setCurrentStep(1);
+      toast.success(`Facility survey started for ${schoolName || "this school"}`);
     } catch (error) {
       console.error("Error initializing survey:", error);
+      toast.error(apiErrorMessage(error, "Could not start the survey. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -178,18 +178,6 @@ export function FacilitySurveyForm({
     );
   };
 
-  const showScoreToast = () => {
-    if (scoreToastTimerRef.current) clearTimeout(scoreToastTimerRef.current);
-    setScoreToast(true);
-    scoreToastTimerRef.current = setTimeout(() => setScoreToast(false), 3000);
-  };
-
-  const showErrorToast = (message: string) => {
-    if (errorToastTimerRef.current) clearTimeout(errorToastTimerRef.current);
-    setErrorToast(message);
-    errorToastTimerRef.current = setTimeout(() => setErrorToast(null), 4000);
-  };
-
   const saveSurvey = async () => {
     try {
       setSaving(true);
@@ -201,16 +189,17 @@ export function FacilitySurveyForm({
       }));
 
       await api.patch(`/schools/${schoolId}/survey`, updates);
+      toast.success("Facility survey saved");
 
       // Recalculate scores in the background after a successful save
       api.post(`/analytics/schools/${schoolId}/recalculate`).then(() => {
-        showScoreToast();
+        toast.info("Condition scores updated");
       }).catch(() => {
         // best-effort; don't block the user if recalculate fails
       });
     } catch (error) {
       console.error("Error saving survey:", error);
-      showErrorToast("Failed to save survey — please try again.");
+      toast.error(apiErrorMessage(error, "Failed to save survey — please try again."));
     } finally {
       setSaving(false);
     }
@@ -351,7 +340,7 @@ export function FacilitySurveyForm({
       <div className="flex h-full -m-6">
         {/* Left Sidebar */}
         <div
-          className="w-80 min-w-[280px] bg-linear-to-b from-primary/10 via-primary/5 to-background border-r border-border/50 flex flex-col"
+          className="hidden md:flex w-80 min-w-[280px] bg-linear-to-b from-primary/10 via-primary/5 to-background border-r border-border/50 flex flex-col"
           style={{ height: "calc(100vh - 100px)" }}
         >
           <div className="p-6 pb-4">
@@ -361,9 +350,10 @@ export function FacilitySurveyForm({
                 variant="ghost"
                 size="icon"
                 onClick={handleClose}
+                aria-label="Close survey"
                 className="h-8 w-8"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" aria-hidden />
               </Button>
             </div>
             <p className="text-sm text-muted-foreground">{schoolName}</p>
@@ -456,7 +446,7 @@ export function FacilitySurveyForm({
         {/* Right Content Area */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <div
-            className="overflow-y-auto p-8"
+            className="overflow-y-auto p-4 md:p-8"
             style={{ height: "calc(100vh - 170px)" }}
           >
             <AnimatePresence mode="wait">
@@ -471,8 +461,8 @@ export function FacilitySurveyForm({
                 {currentFacility && (
                   <Card className="border-2 border-border/50 shadow-lg">
                     <CardHeader className="bg-muted/30 border-b border-border/50">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-4 min-w-0">
                           <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
                             {getStepIcon(currentFacility.facilityId)}
                           </div>
@@ -517,7 +507,7 @@ export function FacilitySurveyForm({
                             animate={{ opacity: 1, y: 0 }}
                             className={`p-4 rounded-2xl border-2 ${getComplianceColor(surveyItem.compliance)}`}
                           >
-                            <div className="flex items-start justify-between gap-4">
+                            <div className="flex flex-col lg:flex-row items-start justify-between gap-3 lg:gap-4">
                               <div className="flex-1">
                                 <div className="flex items-center gap-3">
                                   <div
@@ -535,7 +525,7 @@ export function FacilitySurveyForm({
                                     {item.label}
                                   </span>
                                 </div>
-                                <div className="flex gap-1 mt-2 ml-11">
+                                <div className="flex flex-wrap gap-1 mt-2 ml-11">
                                   {item.tags.map((tag) => (
                                     <Badge
                                       key={tag}
@@ -554,28 +544,32 @@ export function FacilitySurveyForm({
                                   onClick={() =>
                                     updateCompliance(surveyItem, "compliant")
                                   }
+                                  aria-label="Compliant"
+                                  aria-pressed={surveyItem.compliance === "compliant"}
                                   className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all ${
                                     surveyItem.compliance === "compliant"
                                       ? "bg-green-600 text-white"
                                       : "bg-background hover:bg-green-50 text-muted-foreground hover:text-green-600"
                                   }`}
                                 >
-                                  <CheckCircle2 className="h-4 w-4" />
-                                  Compliant
+                                  <CheckCircle2 className="h-4 w-4" aria-hidden />
+                                  <span className="hidden sm:inline">Compliant</span>
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() =>
                                     updateCompliance(surveyItem, "partial")
                                   }
+                                  aria-label="Partially compliant"
+                                  aria-pressed={surveyItem.compliance === "partial"}
                                   className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all border-l ${
                                     surveyItem.compliance === "partial"
                                       ? "bg-yellow-500 text-white"
                                       : "bg-background hover:bg-yellow-50 text-muted-foreground hover:text-yellow-600 border-l-border/30"
                                   }`}
                                 >
-                                  <MinusCircle className="h-4 w-4" />
-                                  Partial
+                                  <MinusCircle className="h-4 w-4" aria-hidden />
+                                  <span className="hidden sm:inline">Partial</span>
                                 </button>
                                 <button
                                   type="button"
@@ -585,19 +579,21 @@ export function FacilitySurveyForm({
                                       "non_compliant",
                                     )
                                   }
+                                  aria-label="Non-compliant"
+                                  aria-pressed={surveyItem.compliance === "non_compliant"}
                                   className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-all border-l ${
                                     surveyItem.compliance === "non_compliant"
                                       ? "bg-red-600 text-white"
                                       : "bg-background hover:bg-red-50 text-muted-foreground hover:text-red-600 border-l-border/30"
                                   }`}
                                 >
-                                  <AlertCircle className="h-4 w-4" />
-                                  Non Compliant
+                                  <AlertCircle className="h-4 w-4" aria-hidden />
+                                  <span className="hidden sm:inline">Non Compliant</span>
                                 </button>
                               </div>
                             </div>
 
-                            <div className="mt-3 ml-11">
+                            <div className="mt-3 sm:ml-11">
                               <Textarea
                                 placeholder="Add notes..."
                                 value={surveyItem.notes || ""}
@@ -618,14 +614,14 @@ export function FacilitySurveyForm({
           </div>
 
           {/* Bottom Navigation */}
-          <div className="px-8 py-4 pb-0 -mb-2 bg-background border-t border-border/50 flex justify-between items-center shrink-0">
+          <div className="px-4 md:px-8 py-4 pb-0 -mb-2 bg-background border-t border-border/50 flex justify-between items-center shrink-0">
             <Button
               type="button"
               variant="outline"
               size="lg"
               onClick={() => setCurrentStep((prev) => Math.max(1, prev - 1))}
               disabled={currentStep === 1}
-              className="rounded-full font-semibold px-8"
+              className="rounded-full font-semibold px-5 md:px-8"
             >
               <ChevronLeft className="w-5 h-5 mr-2" />
               Previous
@@ -638,7 +634,7 @@ export function FacilitySurveyForm({
                 setCurrentStep((prev) => Math.min(facilities.length, prev + 1))
               }
               disabled={currentStep === facilities.length}
-              className="rounded-full font-semibold px-10 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25"
+              className="rounded-full font-semibold px-5 md:px-10 shadow-lg shadow-primary/25"
             >
               Continue
               <ChevronRight className="w-5 h-5 ml-2" />
@@ -647,37 +643,6 @@ export function FacilitySurveyForm({
         </div>
       </div>
 
-      {/* Scores-updated toast */}
-      <AnimatePresence>
-        {scoreToast && (
-          <motion.div
-            initial={{ opacity: 0, y: 16, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 16, scale: 0.95 }}
-            transition={{ duration: 0.22 }}
-            className="fixed bottom-6 right-6 z-200 flex items-center gap-3 px-5 py-3 rounded-2xl bg-emerald-600 text-white shadow-xl shadow-emerald-900/30 pointer-events-none"
-          >
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span className="text-[13px] font-medium">Scores updated</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Save-error toast */}
-      <AnimatePresence>
-        {errorToast && (
-          <motion.div
-            initial={{ opacity: 0, y: 16, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 16, scale: 0.95 }}
-            transition={{ duration: 0.22 }}
-            className="fixed bottom-6 left-6 z-200 flex items-center gap-3 px-5 py-3 rounded-2xl bg-red-600 text-white shadow-xl shadow-red-900/30 pointer-events-none"
-          >
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span className="text-[13px] font-medium">{errorToast}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </Modal>
   );
 }

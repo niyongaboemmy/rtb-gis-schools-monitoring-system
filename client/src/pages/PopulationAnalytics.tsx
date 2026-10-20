@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   BarChart,
   Bar,
@@ -23,7 +23,8 @@ import { PageHeader } from "../components/ui/page-header";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
-import { api } from "../lib/api";
+import { api, apiErrorMessage } from "../lib/api";
+import { useToast } from "../components/ui/toast";
 import { useAuthStore } from "../store/authStore";
 import { hasPermission, Permission } from "../lib/permissions";
 import { cn } from "../lib/utils";
@@ -286,8 +287,7 @@ export default function PopulationAnalytics() {
   const [loadError, setLoadError] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ synced: number; errors: string[] } | null>(null);
-  const [syncToast, setSyncToast] = useState<"success" | "error" | null>(null);
-  const syncToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toast = useToast();
 
   const fetchData = async () => {
     setLoading(true);
@@ -318,14 +318,16 @@ export default function PopulationAnalytics() {
     try {
       const res = await api.post("/population/sync");
       setSyncResult(res.data);
-      setSyncToast("success");
+      const synced = Number(res.data?.synced ?? 0);
+      const errors = res.data?.errors?.length ?? 0;
+      const msg = `Population data synced for ${formatNumber(synced)} school${synced === 1 ? "" : "s"}`;
+      if (errors > 0) toast.warning(`${msg} · ${formatNumber(errors)} failed`);
+      else toast.success(msg);
       await fetchData();
-    } catch {
-      setSyncToast("error");
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not sync population data. Please try again."));
     } finally {
       setSyncing(false);
-      if (syncToastTimer.current) clearTimeout(syncToastTimer.current);
-      syncToastTimer.current = setTimeout(() => setSyncToast(null), 4000);
     }
   };
 
@@ -387,7 +389,7 @@ export default function PopulationAnalytics() {
         description="ArcGIS demographic buffers and catchment intelligence for TVET institutions"
         icon={Users}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {canSync && (
               <Button
                 onClick={handleSync}
@@ -602,32 +604,6 @@ export default function PopulationAnalytics() {
         </>
       )}
 
-      {/* ── Fixed toast ────────────────────────────────────────────────────── */}
-      <AnimatePresence>
-        {syncToast && (
-          <motion.div
-            initial={{ opacity: 0, y: 16, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 16, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className={cn(
-              "fixed bottom-6 right-6 z-200 flex items-center gap-3 px-5 py-3 rounded-2xl shadow-xl pointer-events-none",
-              syncToast === "success"
-                ? "bg-emerald-600 text-white"
-                : "bg-red-600 text-white",
-            )}
-          >
-            {syncToast === "success" ? (
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-            ) : (
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-            )}
-            <span className="text-[13px] font-medium">
-              {syncToast === "success" ? "Population data synced" : "Sync failed — check logs"}
-            </span>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

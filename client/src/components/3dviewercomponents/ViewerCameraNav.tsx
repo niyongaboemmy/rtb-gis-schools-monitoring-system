@@ -10,7 +10,7 @@ interface ViewerCameraNavProps {
 export const ViewerCameraNav: React.FC<ViewerCameraNavProps> = ({ setView }) => {
   return (
     <TooltipProvider delayDuration={0}>
-      <div className="fixed bottom-6 left-6 z-30 flex flex-col gap-2">
+      <div className="fixed bottom-20 left-2 md:bottom-6 md:left-6 z-30 flex flex-col gap-2">
         <Card className="bg-background/80 backdrop-blur-2xl rounded-2xl border border-white/6 p-1.5 flex flex-col gap-1 shadow-2xl pointer-events-auto">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -19,6 +19,7 @@ export const ViewerCameraNav: React.FC<ViewerCameraNavProps> = ({ setView }) => 
                 size="sm" 
                 className="h-8 px-2 text-[10px] font-black uppercase tracking-widest hover:bg-white/10"
                 onClick={() => setView("top")}
+                aria-label="Top view"
               >
                 TOP
               </Button>
@@ -34,6 +35,7 @@ export const ViewerCameraNav: React.FC<ViewerCameraNavProps> = ({ setView }) => 
                   size="sm" 
                   className="h-8 w-10 text-[9px] font-black uppercase tracking-tight hover:bg-white/10"
                   onClick={() => setView("front")}
+                  aria-label="Front view"
                 >
                   FRT
                 </Button>
@@ -47,6 +49,7 @@ export const ViewerCameraNav: React.FC<ViewerCameraNavProps> = ({ setView }) => 
                   size="sm" 
                   className="h-8 w-10 text-[9px] font-black uppercase tracking-tight hover:bg-white/10"
                   onClick={() => setView("back")}
+                  aria-label="Back view"
                 >
                   BCK
                 </Button>
@@ -63,6 +66,7 @@ export const ViewerCameraNav: React.FC<ViewerCameraNavProps> = ({ setView }) => 
                   size="sm" 
                   className="h-8 w-10 text-[9px] font-black uppercase tracking-tight hover:bg-white/10"
                   onClick={() => setView("left")}
+                  aria-label="Left view"
                 >
                   LFT
                 </Button>
@@ -76,6 +80,7 @@ export const ViewerCameraNav: React.FC<ViewerCameraNavProps> = ({ setView }) => 
                   size="sm" 
                   className="h-8 w-10 text-[9px] font-black uppercase tracking-tight hover:bg-white/10"
                   onClick={() => setView("right")}
+                  aria-label="Right view"
                 >
                   RGT
                 </Button>

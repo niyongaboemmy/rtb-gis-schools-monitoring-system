@@ -96,8 +96,10 @@
     --popover: 224 71% 7%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%; /* WCAG AA: 4.9:1 on the lighter dark-mode primary (white was 3.5:1) */
+    /* Brand blue with WHITE text: 4.6:1 (WCAG AA). As text on the dark
+       background it's 4.4:1, so plain .text-primary is lifted below. */
+    --primary: 217 91% 53%;
+    --primary-foreground: 0 0% 100%;
 
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
@@ -273,6 +275,16 @@
   color: #e2e8f0;
 }
 
+/* OpenLayers scale bar (School 2D viewer): on phones the bottom edge belongs
+   to the map toolbar, so lift the scale bar under the back button instead. */
+@media (max-width: 767px) {
+  .ol-scale-bar,
+  .ol-scale-line {
+    top: 64px;
+    bottom: auto;
+  }
+}
+
 /* Glass tooltip */
 .leaflet-tooltip.scm-tip {
   background: rgba(255, 255, 255, 0.9);
@@ -389,12 +401,18 @@
   }
 }
 
-/* Auth: a digit landing in an OTP box */
-@keyframes otp-pop {
-  0% { transform: scale(0.92); }
-  60% { transform: scale(1.06); }
-  100% { transform: scale(1); }
+/* Auth: blinking caret in the active OTP slot */
+@keyframes otp-caret {
+  0%, 45% { opacity: 1; }
+  55%, 100% { opacity: 0; }
 }
-@media (prefers-reduced-motion: reduce) {
-  [class*="otp-pop"] { animation: none !important; }
+
+/* Dark mode: blue used as text (links, icons, active tabs) gets the lighter
+   tint — 8:1 on the dark background — while fills keep the solid brand blue
+   that carries white text. :where() keeps it at plain-utility specificity, so
+   hover:/group-hover:text-white still win. */
+@layer utilities {
+  :where(.dark) .text-primary {
+    color: hsl(213 94% 68%);
+  }
 }

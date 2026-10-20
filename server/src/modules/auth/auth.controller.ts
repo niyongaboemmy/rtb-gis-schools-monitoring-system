@@ -73,7 +73,7 @@ export class AuthController {
   @Post('google')
   @HttpCode(200)
   @Throttle({ default: { ttl: 60000, limit: 10 } })
-  @ApiOperation({ summary: 'Sign in with a Google ID token' })
+  @ApiOperation({ summary: 'Sign in with Google (ID token or access token)' })
   async googleLogin(
     @Body() dto: GoogleLoginDto,
     @Req() req: ExpressRequest,
@@ -81,7 +81,7 @@ export class AuthController {
   ) {
     return this.respond(
       res,
-      await this.authService.loginWithGoogle(dto.idToken, requestMeta(req)),
+      await this.authService.loginWithGoogle(dto, requestMeta(req)),
     );
   }
 
@@ -306,7 +306,7 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Link your Google account' })
   linkGoogle(@Request() req: AuthedRequest, @Body() dto: GoogleLoginDto) {
-    return this.authService.linkGoogle(req.user, dto.idToken, requestMeta(req));
+    return this.authService.linkGoogle(req.user, dto, requestMeta(req));
   }
 
   @Delete('google/link')

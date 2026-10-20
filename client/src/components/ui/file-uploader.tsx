@@ -142,7 +142,8 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
                 <button
                   type="button"
                   onClick={() => removeFile(index)}
-                  className="absolute top-1 right-1 p-1 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                  aria-label={`Remove ${file.name}`}
+                  className="absolute top-1 right-1 p-1 bg-destructive text-destructive-foreground rounded-full sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                 >
                   <X className="w-3 h-3" />
                 </button>

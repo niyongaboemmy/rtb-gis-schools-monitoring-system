@@ -3,6 +3,7 @@ import { geoDistance, geoGraticule10, geoOrthographic, geoPath, type GeoPermissi
 import { feature, mesh } from "topojson-client";
 import type { GeometryCollection, Topology } from "topojson-specification";
 import { cn } from "../../lib/utils";
+import { GlobeDrone, type Country, type DroneFrame, type GlobeDroneHandle } from "./GlobeDrone";
 
 /** Kigali — the globe settles here and the beacon pulses here. */
 const KIGALI: [number, number] = [30.06, -1.95];
@@ -49,7 +50,13 @@ const LIGHT: typeof DARK = {
 };
 const isDark = () => document.documentElement.classList.contains("dark");
 
-type Land = { countries: GeoPermissibleObjects; borders: GeoPermissibleObjects; rwanda: GeoPermissibleObjects };
+type Land = {
+  countries: GeoPermissibleObjects;
+  /** Same shapes as a list, for point-in-country lookups (drone waypoints). */
+  countryList: Country[];
+  borders: GeoPermissibleObjects;
+  rwanda: GeoPermissibleObjects;
+};
 
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 
@@ -57,11 +64,13 @@ const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
  * Interactive orthographic globe for the sign-in brand panel: spins in to
  * Rwanda, highlights it with a beacon over Kigali, and can be dragged (or
  * rotated with the arrow keys). Drifts back home after a few idle seconds.
+ * A survey drone (GlobeDrone) patrols it, capturing imagery at waypoints.
  */
 export function AuthGlobe({ className }: { className?: string }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
+  const droneRef = useRef<GlobeDroneHandle>(null);
   const [interacted, setInteracted] = useState(false);
 
   useEffect(() => {
@@ -100,6 +109,8 @@ export function AuthGlobe({ className }: { className?: string }) {
     let last: [number, number] = [0, 0];
     let velocity: [number, number] = [0, 0];
     let lastInput = 0;
+    /** Camera zoom: 1 = whole globe; the drone asks for more while capturing. */
+    let zoom = 1;
 
     void import("world-atlas/countries-110m.json").then((mod) => {
       if (cancelled) return;
@@ -107,6 +118,7 @@ export function AuthGlobe({ className }: { className?: string }) {
       const countries = feature(topo, topo.objects.countries);
       land = {
         countries,
+        countryList: countries.features as Country[],
         borders: mesh(topo, topo.objects.countries, (a, b) => a !== b),
         rwanda: {
           type: "FeatureCollection",
@@ -137,6 +149,9 @@ export function AuthGlobe({ className }: { className?: string }) {
     io.observe(wrap);
 
     function drawOrbit(r: number, cx: number, cy: number, now: number, front: boolean) {
+      // Fades out as the camera zooms in; it would cut across the close-up.
+      const fade = Math.max(0, 1 - (zoom - 1) / 0.35);
+      if (fade <= 0) return;
       const rx = r * 1.22;
       const ry = r * 0.3;
       const tilt = (-18 * Math.PI) / 180;
@@ -152,6 +167,7 @@ export function AuthGlobe({ className }: { className?: string }) {
       ctx!.stroke();
       ctx!.setLineDash([]);
 
+      ctx!.globalAlpha = fade;
       const t = reduceMotion ? 0.6 : (now / 9000) * Math.PI * 2;
       const sin = Math.sin(t);
       if (sin > 0 === front) {
@@ -173,7 +189,28 @@ export function AuthGlobe({ className }: { className?: string }) {
       const cx = s / 2;
       const cy = s / 2;
       ctx!.clearRect(0, 0, s, s);
-      projection.scale(r).translate([cx, cy]).rotate([rot[0], rot[1], 0]);
+      projection.scale(r * zoom).translate([cx, cy]).rotate([rot[0], rot[1], 0]);
+      const centre: [number, number] = [-rot[0], -rot[1]];
+      const drone = droneRef.current;
+      const droneFrame: DroneFrame = {
+        now,
+        projection,
+        centre,
+        offsetX: canvas!.offsetLeft,
+        offsetY: canvas!.offsetTop,
+        dpr,
+        radius: r / dpr,
+        zoom,
+        canvasSize: size,
+        cx: cx / dpr,
+        wrapWidth: wrap!.clientWidth,
+        wrapHeight: wrap!.clientHeight,
+        countries: land?.countryList ?? null,
+        // A patrolling drone is pure decoration: off for reduced motion.
+        active: introDone && !reduceMotion,
+        dark: C === DARK,
+        avoid: null,
+      };
 
       // Atmosphere glow
       const glow = ctx!.createRadialGradient(cx, cy, r * 0.9, cx, cy, r * 1.35);
@@ -223,6 +260,9 @@ export function AuthGlobe({ className }: { className?: string }) {
         ctx!.stroke();
       }
 
+      // Drone route + camera footprint sit on the ground, under the beacon.
+      drone?.drawGround(ctx!, path, droneFrame);
+
       // Rim light
       ctx!.beginPath();
       path({ type: "Sphere" });
@@ -231,7 +271,6 @@ export function AuthGlobe({ className }: { className?: string }) {
       ctx!.stroke();
 
       // Beacon over Kigali, only while it faces us
-      const centre: [number, number] = [-rot[0], -rot[1]];
       const facing = geoDistance(KIGALI, centre) < Math.PI / 2 - 0.08;
       const p = projection(KIGALI);
       if (facing && p) {
@@ -254,16 +293,22 @@ export function AuthGlobe({ className }: { className?: string }) {
         ctx!.fill();
         ctx!.shadowBlur = 0;
 
-        label!.style.opacity = introDone ? "1" : "0";
         // Canvas is centred in a wider wrapper — offset into wrapper space.
         const lx = canvas!.offsetLeft + bx / dpr + 16;
         const ly = canvas!.offsetTop + by / dpr - 58;
         label!.style.transform = `translate(${lx}px, ${ly}px)`;
+        // Hidden during the intro and while the camera is zoomed in.
+        if (introDone && zoom < 1.2)
+          droneFrame.avoid = { x: lx, y: ly, w: label!.offsetWidth, h: label!.offsetHeight };
+        else label!.style.opacity = "0";
       } else {
         label!.style.opacity = "0";
       }
 
       drawOrbit(r, cx, cy, now, true);
+      // The callout steps back while the drone (or its card) passes over it.
+      const covered = drone?.update(droneFrame) ?? false;
+      if (droneFrame.avoid) label!.style.opacity = covered ? "0.15" : "1";
     }
 
     function tick(now: number) {
@@ -277,19 +322,32 @@ export function AuthGlobe({ className }: { className?: string }) {
         rot[1] = introFrom[1] + (HOME[1] - introFrom[1]) * e;
         if (t >= 1) introDone = true;
       } else if (!dragging) {
-        // Inertia after a fling…
-        if (Math.abs(velocity[0]) + Math.abs(velocity[1]) > 0.01) {
-          rot[0] += velocity[0];
-          rot[1] = Math.max(-70, Math.min(70, rot[1] + velocity[1]));
-          velocity = [velocity[0] * 0.94, velocity[1] * 0.94];
-        } else if (now - lastInput > 2500) {
-          // …then drift home with a gentle sway so it never sits dead still.
-          const sway = reduceMotion ? 0 : Math.sin(now / 4000) * 12;
-          const targetL = HOME[0] + sway;
-          let dl = ((targetL - rot[0] + 540) % 360) - 180;
-          if (Math.abs(dl) < 0.001) dl = 0;
-          rot[0] += dl * 0.03;
-          rot[1] += (HOME[1] - rot[1]) * 0.03;
+        // The drone is capturing: glide to the spot and zoom in — unless the
+        // user is handling the globe, which always wins.
+        const cam = now - lastInput > 4000 ? droneRef.current?.camera() : null;
+        if (cam) {
+          const dl = ((-cam.focus[0] - rot[0] + 540) % 360) - 180;
+          rot[0] += dl * 0.07;
+          rot[1] += (-cam.focus[1] - rot[1]) * 0.07;
+          zoom += (cam.zoom - zoom) * 0.05;
+        } else {
+          zoom += (1 - zoom) * 0.05;
+          if (Math.abs(zoom - 1) < 0.002) zoom = 1;
+
+          if (Math.abs(velocity[0]) + Math.abs(velocity[1]) > 0.01) {
+            // Inertia after a fling…
+            rot[0] += velocity[0];
+            rot[1] = Math.max(-70, Math.min(70, rot[1] + velocity[1]));
+            velocity = [velocity[0] * 0.94, velocity[1] * 0.94];
+          } else if (now - lastInput > 2500) {
+            // …then drift home with a gentle sway so it never sits dead still.
+            const sway = reduceMotion ? 0 : Math.sin(now / 4000) * 12;
+            const targetL = HOME[0] + sway;
+            let dl = ((targetL - rot[0] + 540) % 360) - 180;
+            if (Math.abs(dl) < 0.001) dl = 0;
+            rot[0] += dl * 0.03;
+            rot[1] += (HOME[1] - rot[1]) * 0.03;
+          }
         }
       }
 
@@ -300,6 +358,8 @@ export function AuthGlobe({ className }: { className?: string }) {
 
     const nudge = () => {
       lastInput = performance.now();
+      // Grabbing the globe pulls the camera straight back out.
+      zoom = Math.min(zoom, 1.25);
       introDone = true;
       setInteracted(true);
       if (!frame) frame = requestAnimationFrame(tick);
@@ -385,6 +445,7 @@ export function AuthGlobe({ className }: { className?: string }) {
           <p className="text-[11px] text-brand-ink/65 dark:text-brand-soft/70">National TVET school network</p>
         </div>
       </div>
+      <GlobeDrone ref={droneRef} />
       <p
         className={cn(
           "pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 text-[11px] text-brand-ink/50 dark:text-white/40 transition-opacity duration-500",

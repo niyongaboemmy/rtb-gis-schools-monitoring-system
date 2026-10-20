@@ -27,7 +27,7 @@ export const ViewerAnnotationDialog: React.FC<ViewerAnnotationDialogProps> = ({
 
       <div className="ad-colors">
         {annotColors.map(c => (
-          <button key={c} className={`ad-color-btn ${annotColor === c ? 'active' : ''}`} style={{ background: c }} onClick={() => setAnnotColor(c)} />
+          <button key={c} className={`ad-color-btn ${annotColor === c ? 'active' : ''}`} style={{ background: c }} onClick={() => setAnnotColor(c)} aria-label={`Use colour ${c}`} aria-pressed={annotColor === c} />
         ))}
       </div>
 

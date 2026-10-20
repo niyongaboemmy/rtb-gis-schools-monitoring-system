@@ -38,13 +38,16 @@ export function DeleteConfirmationModal({
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="relative bg-card rounded-[40px] border border-border/20 max-w-md w-full z-200 overflow-hidden"
+            role="alertdialog"
+            aria-modal="true"
+            aria-label={title}
+            className="relative bg-card rounded-[40px] border border-border/20 max-w-md w-full max-h-[92dvh] overflow-y-auto z-200"
           >
             <ImigongoPattern className="absolute inset-0 text-rose-500 pointer-events-none opacity-[0.03]" />
             
-            <div className="p-8 text-center space-y-6 relative z-10">
+            <div className="p-6 sm:p-8 text-center space-y-6 relative z-10">
               <div className="w-20 h-20 rounded-[30px] bg-rose-500/10 flex items-center justify-center mx-auto text-rose-500">
-                <AlertTriangle className="w-10 h-10" />
+                <AlertTriangle className="w-10 h-10" aria-hidden />
               </div>
 
               <div className="space-y-2">
@@ -88,10 +91,12 @@ export function DeleteConfirmationModal({
             </div>
 
             <button
+              type="button"
               onClick={onClose}
+              aria-label="Close"
               className="absolute top-6 right-6 p-2 rounded-full hover:bg-muted/50 transition-all"
             >
-              <X className="w-5 h-5 text-muted-foreground" />
+              <X className="w-5 h-5 text-muted-foreground" aria-hidden />
             </button>
           </motion.div>
         </div>

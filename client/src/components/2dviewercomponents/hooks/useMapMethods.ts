@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import Feature from "ol/Feature";
 import { kmlSelectedStyle, getFeatureName } from "../MapUtils";
+import { notify } from "../../ui/toast";
 
 interface UseMapMethodsProps {
   mapRef: React.MutableRefObject<any>;
@@ -52,10 +53,16 @@ export function useMapMethods({
           ctx.drawImage(c, 0, 0);
         }
       });
-      const link = document.createElement("a");
-      link.href = canvas.toDataURL();
-      link.download = `school-map-${Date.now()}.png`;
-      link.click();
+      try {
+        const link = document.createElement("a");
+        link.href = canvas.toDataURL();
+        link.download = `school-map-${Date.now()}.png`;
+        link.click();
+        notify.success("Map image exported");
+      } catch (err) {
+        console.error("Map export failed:", err);
+        notify.error("Could not export the map image. Some map tiles block exporting.");
+      }
     });
     map.renderSync();
   }, [mapRef]);

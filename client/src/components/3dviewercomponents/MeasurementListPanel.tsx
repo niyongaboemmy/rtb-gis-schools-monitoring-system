@@ -121,7 +121,7 @@ export const MeasurementListPanel: React.FC<Props> = ({
           aria-label="Close measurements"
           className={cn("flex h-10 w-10 items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-white/10", focusRing)}
         >
-          <X className="h-4 w-4" />
+          <X className="h-4 w-4" aria-hidden />
         </button>
       </header>
 
@@ -173,7 +173,7 @@ export const MeasurementListPanel: React.FC<Props> = ({
                         )}
                       />
                       <button type="submit" aria-label="Save name" className={cn("flex h-9 w-9 items-center justify-center rounded-md", focusRing)}>
-                        <Check className="h-4 w-4" />
+                        <Check className="h-4 w-4" aria-hidden />
                       </button>
                     </form>
                   ) : (
@@ -224,7 +224,7 @@ export const MeasurementListPanel: React.FC<Props> = ({
                       aria-label={`Rename ${r.name}`}
                       className={cn("flex h-10 w-10 items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-white/10", focusRing)}
                     >
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="h-3.5 w-3.5" aria-hidden />
                     </button>
                   )}
                   {r.canDelete && (
@@ -237,7 +237,7 @@ export const MeasurementListPanel: React.FC<Props> = ({
                         focusRing,
                       )}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
                     </button>
                   )}
                 </div>

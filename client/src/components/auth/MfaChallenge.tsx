@@ -4,8 +4,8 @@ import { OtpInput } from "../ui/otp-input";
 import { Button } from "../ui/button";
 import { AuthAlert } from "../ui/AuthShell";
 import { api, apiErrorMessage } from "../../lib/api";
-import { authInputClass, authLabelClass, authPrimaryButtonClass, authSubtleLinkClass } from "./auth-styles";
-import { cn } from "../../lib/utils";
+import { AuthInput } from "./AuthInput";
+import { authLabelClass, authPrimaryButtonClass, authSubtleLinkClass } from "./auth-styles";
 
 export type MfaMode = "totp" | "recovery" | "email";
 
@@ -151,14 +151,15 @@ export function MfaChallenge<T>({
             <label htmlFor="recovery-code" className={authLabelClass}>
               Backup code
             </label>
-            <input
+            <AuthInput
               id="recovery-code"
+              icon={<KeyRound />}
               value={recovery}
               onChange={(e) => setRecovery(e.target.value)}
               autoComplete="one-time-code"
               autoFocus
               placeholder="abcde-23456"
-              className={cn(authInputClass, "font-mono tracking-wider")}
+              className="font-mono tracking-wider"
             />
           </div>
         ) : waitingForEmail ? null : (
@@ -166,7 +167,8 @@ export function MfaChallenge<T>({
             key={mode}
             value={code}
             onChange={setCode}
-            disabled={loading}
+            busy={loading}
+            invalid={!!error}
             label={mode === "email" ? "Code from your email" : "Code from your authenticator app"}
             onComplete={(v) => void verify(v)}
           />

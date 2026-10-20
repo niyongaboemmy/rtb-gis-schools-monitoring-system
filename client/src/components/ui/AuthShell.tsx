@@ -10,8 +10,8 @@ import { ThemeToggle } from "../ThemeToggle";
 import { cn } from "../../lib/utils";
 
 const FEATURES = [
-  { icon: MapIcon, text: "National school map" },
-  { icon: Box, text: "3D campus models" },
+  { icon: MapIcon, text: "School map" },
+  { icon: Box, text: "3D models" },
   { icon: LineChart, text: "Condition scores" },
 ];
 
@@ -60,15 +60,13 @@ export function AuthShell({ title, art, busy, progress, stepKey, children }: Aut
 
           <AuthGlobe className="flex-1 min-h-0 -mx-4" />
 
-          <div className="max-w-md space-y-5">
-            <div className="space-y-3">
-              <h1 className="text-2xl xl:text-3xl font-semibold tracking-tight leading-tight">
-                School infrastructure,{" "}
-                <span className="text-brand-soft whitespace-nowrap">mapped in 3D.</span>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <h1 className="text-2xl font-semibold tracking-tight leading-tight">
+                TVET schools, <span className="text-brand-soft">mapped in 3D.</span>
               </h1>
-              <p className="text-sm text-brand-ink/75 dark:text-brand-soft/70 leading-relaxed">
-                Monitor, plan and improve technical and vocational training
-                schools across Rwanda with geospatial data you can trust.
+              <p className="text-sm text-brand-ink/75 dark:text-brand-soft/70">
+                Monitor and plan school infrastructure across Rwanda.
               </p>
             </div>
             <ul className="flex flex-wrap gap-2">

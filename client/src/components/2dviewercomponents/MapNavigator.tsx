@@ -34,7 +34,7 @@ export const MapNavigator: React.FC<MapNavigatorProps> = ({
       "md:inset-auto md:right-16 md:top-4 md:w-64", // Desktop floating
       "animate-in slide-in-from-bottom md:slide-in-from-right-4"
     )}>
-      <Card className="bg-background/80 backdrop-blur-2xl rounded-t-[32px] md:rounded-2xl border border-border/10 overflow-hidden h-full">
+      <Card className="bg-background/80 backdrop-blur-2xl rounded-t-[32px] md:rounded-2xl border border-border/10 overflow-hidden h-full flex flex-col">
         <div className="p-3 border-b border-border/10 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Search className="h-4 w-4 text-muted-foreground" />
@@ -47,8 +47,9 @@ export const MapNavigator: React.FC<MapNavigatorProps> = ({
             size="icon"
             className="h-6 w-6 rounded-lg"
             onClick={onClose}
+            aria-label="Close navigator"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-3.5 w-3.5" aria-hidden />
           </Button>
         </div>
 
@@ -64,7 +65,7 @@ export const MapNavigator: React.FC<MapNavigatorProps> = ({
           </div>
         </div>
 
-        <div className="overflow-y-auto max-h-[380px] px-2 pb-3 space-y-0.5 custom-scrollbar">
+        <div className="flex-1 min-h-0 overflow-y-auto md:max-h-[380px] px-2 pb-3 space-y-0.5 custom-scrollbar">
           {filteredFeatures.length === 0 ? (
             <p className="text-center text-xs text-muted-foreground py-6">
               No features found

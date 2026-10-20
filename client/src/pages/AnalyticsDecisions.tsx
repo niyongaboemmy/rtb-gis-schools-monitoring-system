@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { api } from "../lib/api";
+import { api, apiErrorMessage } from "../lib/api";
 import { useAuthStore } from "../store/authStore";
 import { hasPermission, Permission } from "../lib/permissions";
 import {
@@ -227,12 +227,12 @@ function StatTile({
 }) {
   return (
     <Card className="border border-border/50 bg-card/60 backdrop-blur-xl rounded-2xl shadow-none">
-      <CardContent className="p-4 flex items-center gap-3">
+      <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
         <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0", tone)}>
           <Icon className="w-5 h-5" />
         </div>
         <div className="min-w-0">
-          <div className="text-xl font-black font-mono leading-none tabular-nums truncate">{value}</div>
+          <div className="text-lg sm:text-xl font-black font-mono leading-none tabular-nums break-words">{value}</div>
           <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-bold mt-1 flex items-center gap-1">
             {title}
             <MetricInfo id={metricId} size="xs" />
@@ -314,10 +314,11 @@ export default function AnalyticsDecisions() {
     setRecalculating(true);
     try {
       await api.post("/analytics/recalculate");
+      toast.success("School Condition Scores recalculated for all schools");
       await fetchDecisions();
     } catch (err) {
       console.error("Failed to recalculate", err);
-      toast.error("Recalculation failed. Please try again.");
+      toast.error(apiErrorMessage(err, "Could not recalculate scores. Please try again."));
     } finally {
       setRecalculating(false);
     }
@@ -333,9 +334,10 @@ export default function AnalyticsDecisions() {
       a.download = "schools-export.xlsx";
       a.click();
       URL.revokeObjectURL(url);
+      toast.success("Schools exported to Excel");
     } catch (err) {
       console.error("Export failed", err);
-      toast.error("Export failed. Please try again.");
+      toast.error(apiErrorMessage(err, "Could not export schools. Please try again."));
     } finally {
       setExporting(false);
     }
@@ -383,7 +385,7 @@ export default function AnalyticsDecisions() {
             </Button>
             {canExport && (
               <Button
-                className="gap-2 h-10 rounded-xl font-black uppercase text-[10px] tracking-wider px-6 flex-1 md:flex-none bg-linear-to-r from-primary to-primary/80 hover:bg-primary transition-colors"
+                className="gap-2 h-10 rounded-full font-black uppercase text-[10px] tracking-wider px-6 flex-1 md:flex-none"
                 onClick={handleExport}
                 disabled={exporting}
               >
@@ -400,7 +402,7 @@ export default function AnalyticsDecisions() {
         <DashboardError title="We couldn't load the intervention queue" onRetry={fetchDecisions} retrying={loading} />
       )}
 
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
         <StatTile icon={Gauge} label="Assessed schools" value={formatNumber(overview?.scoredSchoolCount ?? null)} tone="bg-primary/10 text-primary" metricId="national.scoredSchools" />
         <StatTile icon={ShieldAlert} label="Critical priority" value={formatNumber(overview?.byPriority?.critical ?? (overview ? 0 : null))} tone="bg-rose-500/10 text-rose-500" metricId="national.priorityCount" />
         <StatTile icon={TriangleAlert} label="High priority" value={formatNumber(overview?.byPriority?.high ?? (overview ? 0 : null))} tone="bg-orange-500/10 text-orange-500" metricId="national.priorityCount" />
@@ -591,7 +593,7 @@ export default function AnalyticsDecisions() {
                       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-4">
                         <div className="min-w-0">
                           <div className="flex items-center flex-wrap gap-2 mb-1.5">
-                            <h3 className="font-black text-base leading-tight tracking-tight">
+                            <h3 className="font-black text-base leading-tight tracking-tight wrap-break-word min-w-0">
                               {d.school?.name ?? "Unknown school"}
                             </h3>
                             <Badge variant={style.badge} className="capitalize font-black text-[10px]">

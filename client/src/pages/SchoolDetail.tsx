@@ -20,7 +20,8 @@ import {
   ChevronRight,
   RefreshCw,
 } from "lucide-react";
-import { api } from "../lib/api";
+import { api, apiErrorMessage } from "../lib/api";
+import { useToast } from "../components/ui/toast";
 import { useAuthStore } from "../store/authStore";
 import { hasPermission, Permission } from "../lib/permissions";
 import { Badge } from "../components/ui/badge";
@@ -228,6 +229,7 @@ function AnalyticsTab({
   onRefresh: () => void;
 }) {
   const [recalculating, setRecalculating] = useState(false);
+  const toast = useToast();
 
   if (!assessment) {
     return (
@@ -249,9 +251,10 @@ function AnalyticsTab({
             setRecalculating(true);
             try {
               await api.post(`/analytics/schools/${schoolId}/recalculate`);
+              toast.success("School Condition Score calculated");
               onRefresh();
-            } catch {
-              // ignore — user can retry
+            } catch (err) {
+              toast.error(apiErrorMessage(err, "Could not calculate the score. Please try again."));
             } finally {
               setRecalculating(false);
             }
@@ -428,8 +431,8 @@ export default function SchoolDetail() {
     <div className="space-y-6 pb-10">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-1">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-white">{school.name}</h1>
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-white wrap-break-word">{school.name}</h1>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-[12px] text-slate-600 dark:text-white/60 font-mono">{school.code}</span>
             {school.type && (

@@ -15,13 +15,14 @@ const TooltipContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-10000 overflow-hidden rounded-xl border border-white/6 bg-[#0f1117]/80 backdrop-blur-2xl px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-white shadow-[0_12px_40px_-8px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        // Same look as GlobalTooltips so every tooltip in the app matches.
+        "z-10000 max-w-64 rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-medium leading-snug text-white shadow-lg shadow-black/20 dark:bg-slate-700 dark:ring-1 dark:ring-white/10 animate-in fade-in zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
         className
       )}
       {...props}
     >
       {props.children}
-      <TooltipPrimitive.Arrow className="fill-[#0f1117]/80" />
+      <TooltipPrimitive.Arrow className="fill-slate-900 dark:fill-slate-700" />
     </TooltipPrimitive.Content>
   </TooltipPrimitive.Portal>
 ))

@@ -58,6 +58,8 @@ export const RichDropdown = ({
         type="button"
         disabled={disabled}
         onClick={() => !disabled && setIsOpen(!isOpen)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
         className={cn(
           "flex h-11 w-full items-center justify-between border border-border/50 bg-background/40 backdrop-blur-md px-4 py-2 text-sm transition-all duration-300",
           "hover:border-primary/20 hover:bg-background/50 outline-none focus:ring-4 focus:ring-primary/5 focus:border-primary/40",
@@ -97,6 +99,7 @@ export const RichDropdown = ({
                 autoFocus
                 type="text"
                 placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder}
                 className="w-full bg-muted/30 border-none h-9 pl-9 pr-4 rounded-xl text-xs focus:ring-0 outline-none placeholder:text-muted-foreground/40"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -105,6 +108,7 @@ export const RichDropdown = ({
                 <button
                   type="button"
                   onClick={() => setSearch("")}
+                  aria-label="Clear search"
                   className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 flex items-center justify-center text-muted-foreground hover:text-foreground"
                 >
                   <X className="h-3 w-3" />
@@ -134,12 +138,12 @@ export const RichDropdown = ({
                         : "hover:bg-muted/50 text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-2 text-left">
                       {option.icon}
-                      <span>{option.label}</span>
+                      <span className="min-w-0 wrap-break-word">{option.label}</span>
                     </div>
                     {value === option.value && (
-                      <Check className="h-3.5 w-3.5" />
+                      <Check className="h-3.5 w-3.5 shrink-0" />
                     )}
                   </button>
                 ))

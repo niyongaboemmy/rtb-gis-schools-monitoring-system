@@ -353,7 +353,7 @@ export function BuildingFormDrawer({
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: "-100%", opacity: 0 }}
               transition={{ type: "spring", damping: 30, stiffness: 220 }}
-              className="fixed left-6 top-6 bottom-6 z-9999 w-full max-w-[380px] bg-background/90 backdrop-blur-3xl border border-white/6 flex flex-col rounded-[32px] overflow-hidden pointer-events-auto"
+              className="fixed left-3 right-3 top-3 bottom-3 sm:right-auto sm:left-6 sm:top-6 sm:bottom-6 z-9999 sm:w-full max-w-[380px] bg-background/90 backdrop-blur-3xl border border-white/6 flex flex-col rounded-[32px] overflow-hidden pointer-events-auto"
             >
               {/* Header */}
               <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/4 shrink-0">
@@ -375,9 +375,10 @@ export function BuildingFormDrawer({
                 <button
                   type="button"
                   onClick={onClose}
+                  aria-label="Close building form"
                   className="p-1.5 rounded-full text-white/20 hover:text-white hover:bg-white/10 transition-all active:scale-90 group"
                 >
-                  <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
+                  <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" aria-hidden />
                 </button>
               </div>
 
@@ -554,7 +555,7 @@ export function BuildingFormDrawer({
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <div className="grid grid-cols-[1fr_90px_32px] gap-2 px-1">
+                      <div className="grid grid-cols-[1fr_72px_32px] sm:grid-cols-[1fr_90px_32px] gap-2 px-1">
                         <span className="text-xs font-medium text-muted-foreground">
                           Facility
                         </span>
@@ -566,7 +567,7 @@ export function BuildingFormDrawer({
                       {draft.facilities.map((f, i) => (
                         <div
                           key={i}
-                          className="grid grid-cols-[1fr_90px_32px] gap-2 items-center"
+                          className="grid grid-cols-[1fr_72px_32px] sm:grid-cols-[1fr_90px_32px] gap-2 items-center"
                         >
                           <RichDropdown
                             options={facilityOptions}
@@ -584,9 +585,10 @@ export function BuildingFormDrawer({
                           <button
                             type="button"
                             onClick={() => removeFacility(i)}
+                            aria-label={`Remove facility ${i + 1}`}
                             className="flex items-center justify-center w-8 h-8 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3.5 h-3.5" aria-hidden />
                           </button>
                         </div>
                       ))}

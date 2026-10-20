@@ -21,7 +21,8 @@ import {
 import { format } from "date-fns";
 import { cn } from "../../lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
-import { api } from "../../lib/api";
+import { api, apiErrorMessage } from "../../lib/api";
+import { useToast } from "../ui/toast";
 import { label } from "../../lib/labels";
 
 export type ReportStatus = "PENDING" | "SOLVED" | "NEED_INTERVENTION" | "FAILED";
@@ -95,7 +96,6 @@ interface BuildingReportDetailModalProps {
   onClose: () => void;
   onReportUpdated: (updated: Report) => void;
   onReportStatusChange?: () => void;
-  showToast: (message: string, type: "success" | "warning") => void;
 }
 
 export function BuildingReportDetailModal({
@@ -103,8 +103,8 @@ export function BuildingReportDetailModal({
   onClose,
   onReportUpdated,
   onReportStatusChange,
-  showToast,
 }: BuildingReportDetailModalProps) {
+  const toast = useToast();
   const [isEditMode, setIsEditMode] = useState(false);
   const [editDescription, setEditDescription] = useState("");
   const [isStatusUpdating, setIsStatusUpdating] = useState(false);
@@ -117,12 +117,9 @@ export function BuildingReportDetailModal({
       await api.patch(`/reports/${report.id}/status`, { status });
       onReportUpdated({ ...report, status });
       onReportStatusChange?.();
-      showToast(
-        `Status set to ${label("reportStatus", status)}`,
-        "success",
-      );
-    } catch {
-      showToast("Failed to update status", "warning");
+      toast.success(`Report status set to ${label("reportStatus", status)}`);
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not update the report status."));
     } finally {
       setIsStatusUpdating(false);
     }
@@ -135,9 +132,9 @@ export function BuildingReportDetailModal({
       await api.patch(`/reports/${report.id}`, { description: editDescription });
       onReportUpdated({ ...report, description: editDescription });
       setIsEditMode(false);
-      showToast("Report updated", "success");
-    } catch {
-      showToast("Failed to save changes", "warning");
+      toast.success("Report description saved");
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not save the report changes."));
     } finally {
       setIsSaving(false);
     }
@@ -203,10 +200,12 @@ export function BuildingReportDetailModal({
                   {isEditMode ? "Cancel" : "Edit"}
                 </button>
                 <button
+                  type="button"
                   onClick={onClose}
+                  aria-label="Close report detail"
                   className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 dark:text-white/65 hover:text-slate-900 dark:hover:text-white transition-all group"
                 >
-                  <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-200" />
+                  <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-200" aria-hidden />
                 </button>
               </div>
             </div>
@@ -288,7 +287,7 @@ export function BuildingReportDetailModal({
                         editDescription.trim() === report.description.trim()
                       }
                       onClick={handleSaveDescription}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-all disabled:opacity-40 active:scale-95"
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-all disabled:opacity-40 active:scale-95"
                     >
                       {isSaving ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />

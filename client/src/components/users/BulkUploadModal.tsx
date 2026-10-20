@@ -18,7 +18,7 @@ import {
   Save,
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import { api } from "../../lib/api";
+import { api, apiErrorMessage } from "../../lib/api";
 import { useToast } from "../ui/toast";
 
 interface BulkUploadModalProps {
@@ -96,6 +96,13 @@ export function BulkUploadModal({
     try {
       const res = await api.post("/users/bulk-json", { rows: parsedData });
       setUploadResult(res.data);
+      const created = Number(res.data?.created ?? 0);
+      const problems =
+        Number(res.data?.skipped ?? 0) + (res.data?.errors?.length ?? 0);
+      const createdText = `${created} user${created === 1 ? "" : "s"} imported`;
+      if (problems > 0)
+        toast.warning(`${createdText}; ${problems} row${problems === 1 ? "" : "s"} skipped or failed.`);
+      else toast.success(createdText);
       setStep("result");
       onSuccess();
     } catch (err: any) {
@@ -122,8 +129,11 @@ export function BulkUploadModal({
         a.click();
         a.remove();
         window.URL.revokeObjectURL(url);
+        toast.success("User import template downloaded");
       })
-      .catch(() => toast.error("Could not download the template."));
+      .catch((err) =>
+        toast.error(apiErrorMessage(err, "Could not download the template.")),
+      );
   };
 
   // Pre-define columns expected based on backend template mapping
@@ -175,7 +185,7 @@ export function BulkUploadModal({
         </div>
       }
       footer={
-        <div className="flex items-center justify-between w-full">
+        <div className="flex flex-wrap items-center justify-between gap-2 w-full">
           {step !== "result" ? (
             <Button
               variant="link"
@@ -226,10 +236,18 @@ export function BulkUploadModal({
       <div className="py-2">
         {step === "upload" && (
           <div
-            className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-border/60 rounded-2xl bg-muted/10 cursor-pointer hover:bg-muted/30 hover:border-primary/40 transition-all duration-300"
+            className="flex flex-col items-center justify-center p-6 sm:p-8 text-center border-2 border-dashed border-border/60 rounded-2xl bg-muted/10 cursor-pointer hover:bg-muted/30 hover:border-primary/40 transition-all duration-300"
+            role="button"
+            tabIndex={0}
             onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
           >
-            <UploadCloud className="w-12 h-12 text-muted-foreground/50 mb-4" />
+            <UploadCloud className="w-12 h-12 text-muted-foreground/50 mb-4" aria-hidden />
             <h4 className="text-sm font-bold text-foreground">
               Click to browse your files
             </h4>
@@ -294,6 +312,7 @@ export function BulkUploadModal({
                               onChange={(
                                 e: React.ChangeEvent<HTMLInputElement>,
                               ) => handleFieldChange(idx, col, e.target.value)}
+                              aria-label={`Row ${idx + 1} ${col.replace(/([A-Z])/g, " $1").trim().toLowerCase()}`}
                               className="h-8 text-xs font-medium bg-transparent border-transparent hover:border-border focus:bg-background shadow-none px-2 rounded-md"
                             />
                           </TableCell>

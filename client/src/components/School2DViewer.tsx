@@ -5,7 +5,6 @@ import VectorSource from "ol/source/Vector";
 import { fromLonLat } from "ol/proj";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  CheckCircle2,
   AlertCircle,
   MapPin,
   X,
@@ -29,7 +28,8 @@ import { FacilitySurveyForm } from "./FacilitySurveyForm";
 import { BuildingFormDrawer } from "./school-form-steps/BuildingFormDrawer";
 import School3DView from "./School3DView";
 import type { BuildingData } from "./school-form-steps/BuildingsStep";
-import { api, FILE_SERVER_URL } from "../lib/api";
+import { api, apiErrorMessage, FILE_SERVER_URL } from "../lib/api";
+import { DeleteConfirmationModal } from "./ui/delete-confirmation-modal";
 import { cn } from "../lib/utils";
 
 // Subcomponents
@@ -254,10 +254,9 @@ export default function School2DViewer({
     x: number;
     y: number;
   } | null>(null);
-  const [toast, setToast] = useState<{
-    message: string;
-    type: "success" | "warning" | null;
-  }>({ message: "", type: null });
+  /** Site feature waiting for the delete confirmation modal. */
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [isDeletingFeature, setIsDeletingFeature] = useState(false);
 
   // Picker mode: selected building before confirming
   const [pickerSelected, setPickerSelected] = useState<any>(null);
@@ -343,17 +342,12 @@ export default function School2DViewer({
   );
   const [savingLocation, setSavingLocation] = useState(false);
 
-  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = useCallback(
     (message: string, type: "success" | "warning") => {
-      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-      setToast({ message, type });
-      toastTimeoutRef.current = setTimeout(
-        () => setToast({ message: "", type: null }),
-        5000,
-      );
+      if (type === "success") notify.success(message);
+      else notify.error(message);
     },
-    [],
+    [notify],
   );
 
   const handleToggleAnnotationGroup = useCallback((iconType: string) => {
@@ -377,12 +371,6 @@ export default function School2DViewer({
       setIsMissingMapModalOpen(true);
     }
   }, [school, tifFilePath, isLoading]);
-
-  useEffect(() => {
-    return () => {
-      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-    };
-  }, []);
 
   // Fetch facilities for the building form
   useEffect(() => {
@@ -512,7 +500,7 @@ export default function School2DViewer({
           },
         });
         showToast(
-          isMeasureKind(kind) ? "Measurement saved." : "Annotation added.",
+          isMeasureKind(kind) ? "Measurement saved" : "Annotation added",
           "success",
         );
       } catch (err: any) {
@@ -520,7 +508,12 @@ export default function School2DViewer({
         showToast(
           err.response?.status === 401
             ? "Your session has expired. Please refresh the page."
-            : "Failed to save.",
+            : apiErrorMessage(
+                err,
+                isMeasureKind(kind)
+                  ? "Could not save the measurement."
+                  : "Could not save the annotation.",
+              ),
           "warning",
         );
       } finally {
@@ -536,17 +529,30 @@ export default function School2DViewer({
         setTempMeasurements((prev) => prev.filter((t) => t.id !== annId));
         return;
       }
-      if (!confirm("Delete this item for everyone?")) return;
-      try {
-        await siteFeatures.remove(annId);
-        showToast("Removed.", "success");
-      } catch (err) {
-        console.error("Failed to delete site feature", err);
-        showToast("You can only delete items you created.", "warning");
-      }
+      setPendingDeleteId(annId);
     },
-    [siteFeatures, showToast, tempMeasurements],
+    [tempMeasurements],
   );
+
+  const confirmDeleteAnnotation = useCallback(async () => {
+    if (!pendingDeleteId) return;
+    const feature = siteFeatures.features.find((f) => f.id === pendingDeleteId);
+    const name = feature?.label || (feature ? KIND_LABELS[feature.kind] : "Item");
+    setIsDeletingFeature(true);
+    try {
+      await siteFeatures.remove(pendingDeleteId);
+      showToast(`"${name}" deleted`, "success");
+      setPendingDeleteId(null);
+    } catch (err) {
+      console.error("Failed to delete site feature", err);
+      showToast(
+        apiErrorMessage(err, "Could not delete it. You can only delete items you created."),
+        "warning",
+      );
+    } finally {
+      setIsDeletingFeature(false);
+    }
+  }, [pendingDeleteId, siteFeatures, showToast]);
 
   /** Measurement finished on the map: name it and save, or keep it local. */
   const handleAnnotationReady = useCallback(
@@ -860,12 +866,14 @@ export default function School2DViewer({
         ? msg.join(", ")
         : msg || "An unexpected error occurred while saving the building.";
       setSaveError(errorMsg);
-      showToast("Failed to save building.", "warning");
+      showToast(apiErrorMessage(err, "Could not save the building."), "warning");
     } finally {
       setIsSaving(false);
     }
   };
   const handleDeleteBuilding = async (id: string) => {
+    const deletedName =
+      schoolBuildings.find((b) => b.id === id)?.buildingName || "Building";
     try {
       await api.delete(`/schools/buildings/${id}`);
       setSchoolBuildings((prev) => prev.filter((b) => b.id !== id));
@@ -874,10 +882,10 @@ export default function School2DViewer({
         setIsBlockInspectorOpen(false);
         setActiveBlock(null);
       }
-      showToast("Building deleted successfully.", "success");
+      showToast(`Building "${deletedName}" deleted`, "success");
     } catch (err: any) {
       console.error("Failed to delete building", err);
-      showToast("Failed to delete building. Check logs.", "warning");
+      showToast(apiErrorMessage(err, "Could not delete the building."), "warning");
     }
   };
 
@@ -1099,8 +1107,9 @@ export default function School2DViewer({
       }
       try {
         await siteFeatures.update(id, { label: name });
-      } catch {
-        notify.error("Could not rename it.");
+        notify.success(`Renamed to "${name}"`);
+      } catch (err) {
+        notify.error(apiErrorMessage(err, "Could not rename it."));
       }
     },
     [siteFeatures, tempMeasurements, notify],
@@ -1112,10 +1121,16 @@ export default function School2DViewer({
         setTempMeasurements((prev) => prev.filter((t) => t.id !== id));
         return;
       }
+      const feature = siteFeatures.features.find((f) => f.id === id);
       try {
         await siteFeatures.remove(id);
-      } catch {
-        notify.error("You can only delete items you created.");
+        notify.success(
+          `"${feature?.label || (feature ? KIND_LABELS[feature.kind] : "Item")}" deleted`,
+        );
+      } catch (err) {
+        notify.error(
+          apiErrorMessage(err, "Could not delete it. You can only delete items you created."),
+        );
       }
     },
     [siteFeatures, tempMeasurements, notify],
@@ -1131,14 +1146,16 @@ export default function School2DViewer({
     );
     const failed = res.filter((r) => r.status === "rejected").length;
     if (failed) notify.error(`${failed} item(s) could not be deleted.`);
+    else notify.success("Measurements cleared");
   }, [siteFeatures, canChangeFeature, notify]);
 
   const exportFeaturesCsv = useCallback(async () => {
     try {
       const slug = (school.name || school.id).replace(/[^a-zA-Z0-9]+/g, "_");
       await downloadSiteFeaturesCsv(school.id, `${slug}_site_features.csv`);
-    } catch {
-      notify.error("Export failed. Please try again.");
+      notify.success("Site features exported as CSV");
+    } catch (err) {
+      notify.error(apiErrorMessage(err, "Export failed. Please try again."));
     }
   }, [school.id, school.name, notify]);
 
@@ -1178,49 +1195,29 @@ export default function School2DViewer({
     }, 80);
   }, [activeTab, mapReady, originalLonLat]);
 
-  const renderToast = () => (
-    <AnimatePresence>
-      {toast.type && (
-        <motion.div
-          initial={{ opacity: 0, y: 50, scale: 0.9 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-          className={cn(
-            "fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-2xl backdrop-blur-xl border flex items-center gap-3",
-            toast.type === "success"
-              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
-              : "bg-amber-500/10 border-amber-500/20 text-amber-500",
-          )}
-        >
-          {toast.type === "success" ? (
-            <CheckCircle2 className="w-5 h-5" />
-          ) : (
-            <AlertCircle className="w-5 h-5" />
-          )}
-          <span className="text-[10px] font-black uppercase tracking-widest leading-none">
-            {toast.message}
-          </span>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-slate-50 dark:bg-[#0f1117] w-full h-full">
-      {renderToast()}
+      <DeleteConfirmationModal
+        isOpen={!!pendingDeleteId}
+        onClose={() => !isDeletingFeature && setPendingDeleteId(null)}
+        onConfirm={confirmDeleteAnnotation}
+        isLoading={isDeletingFeature}
+        title="Delete this item?"
+        description="It will be removed for everyone viewing this school."
+        confirmLabel="Delete"
+      />
 
       {/* ── Back button + school name (top-left, hidden in picker mode) ──── */}
       {!pickerMode && (
         <div className="absolute top-3 left-3 z-[45] flex items-center gap-2 pointer-events-auto">
           <button
             onClick={handleClose}
-            aria-label="Back"
-            title="Back"
+            aria-label="Back to school"
             className="flex items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-card/10 dark:hover:bg-blue-600 border border-slate-200 dark:border-white/6 text-slate-900 dark:text-white hover:bg-slate-50 transition-all group active:scale-95 shadow-none"
           >
-            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
+            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" aria-hidden />
           </button>
-          <div className="flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/40 dark:bg-card/20 backdrop-blur-2xl border border-slate-200 dark:border-white/6 max-w-45">
+          <div className="hidden lg:flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/40 dark:bg-card/20 backdrop-blur-2xl border border-slate-200 dark:border-white/6 max-w-45">
             <span className="text-[13px] font-bold text-slate-600 dark:text-white/60 truncate">
               {school.name}
             </span>
@@ -1248,15 +1245,16 @@ export default function School2DViewer({
               <button
                 key={id}
                 onClick={() => setActiveTab(id)}
+                aria-label={label}
                 className={cn(
-                  "flex items-center gap-1.5 px-3.5 h-7 rounded-full text-[10px] font-bold tracking-wide transition-all",
+                  "flex items-center gap-1.5 px-3 sm:px-3.5 h-7 rounded-full text-[10px] font-bold tracking-wide transition-all",
                   activeTab === id
                     ? "bg-primary text-white"
                     : "text-slate-600 dark:text-white/80 hover:text-primary dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5",
                 )}
               >
-                <Icon className="w-3 h-3 shrink-0" />
-                <span>{label}</span>
+                <Icon className="w-3 h-3 shrink-0" aria-hidden />
+                <span className="hidden sm:inline">{label}</span>
               </button>
             ))}
           </div>
@@ -1265,7 +1263,7 @@ export default function School2DViewer({
 
       {/* ── Dashboard Overlay ─────────────────────────────────────────────── */}
       {activeTab === "dashboard" && (
-        <div className="absolute inset-0 z-40 bg-slate-50/95 dark:bg-gray-950/90 backdrop-blur-sm pointer-events-auto overflow-y-auto custom-scrollbar">
+        <div className="absolute inset-0 z-40 bg-slate-50/95 dark:bg-gray-950/90 backdrop-blur-sm pointer-events-auto overflow-y-auto overflow-x-hidden custom-scrollbar">
           <SchoolDecisionDashboard
             id={school.id}
             standalone={false}
@@ -1307,7 +1305,7 @@ export default function School2DViewer({
 
       {/* ── Details Panel ─────────────────────────────────────────────────── */}
       {activeTab === "details" && (
-        <div className="absolute inset-0 z-40 bg-slate-50/95 dark:bg-gray-950/80 backdrop-blur-sm pointer-events-auto overflow-y-auto custom-scrollbar">
+        <div className="absolute inset-0 z-40 bg-slate-50/95 dark:bg-gray-950/80 backdrop-blur-sm pointer-events-auto overflow-y-auto overflow-x-hidden custom-scrollbar">
           <SchoolDetailsPanel
             school={school}
             onEditProfile={() => setIsEditModalOpen(true)}
@@ -1446,9 +1444,9 @@ export default function School2DViewer({
               <button
                 onClick={onClose}
                 className="p-1.5 md:p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-all text-white shrink-0"
-                title="Cancel"
+                aria-label="Cancel building selection"
               >
-                <X className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                <X className="w-3.5 h-3.5 md:w-4 md:h-4" aria-hidden />
               </button>
             )}
           </div>
@@ -1488,7 +1486,7 @@ export default function School2DViewer({
 
       {/* ── Layer Visibility Toggle Bar ───────────────────────────────────── */}
       {!pickerMode && activeTab === "map" && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+        <div className="absolute bottom-32 md:bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
           <div className="flex items-center gap-1 px-1.5 py-1.5 rounded-full bg-white/80 dark:bg-[#0f1117]/80 backdrop-blur-xl border border-slate-200 dark:border-white/6 shadow-lg">
             {(
               [
@@ -1525,7 +1523,8 @@ export default function School2DViewer({
                 <button
                   key={key}
                   onClick={onToggle}
-                  title={active ? `Hide ${label}` : `Show ${label}`}
+                  aria-label={active ? `Hide ${label}` : `Show ${label}`}
+                  aria-pressed={active}
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-medium transition-all active:scale-95",
                     active
@@ -1533,8 +1532,8 @@ export default function School2DViewer({
                       : "border-transparent text-slate-400 dark:text-white/30 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-600 dark:hover:text-white/50",
                   )}
                 >
-                  <Icon className="w-3 h-3 shrink-0" />
-                  <span>{label}</span>
+                  <Icon className="w-3 h-3 shrink-0" aria-hidden />
+                  <span className="hidden sm:inline">{label}</span>
                 </button>
               ),
             )}
@@ -1787,6 +1786,8 @@ export default function School2DViewer({
                     await api.patch(`/schools/buildings/${b.id}`, dto);
                   } catch (error) {
                     console.error("Failed to persist building update:", error);
+                    // Let the caller (media tab) report the failure.
+                    throw error;
                   }
                 }}
                 onReportStatusChange={() => setReportRefreshKey((k) => k + 1)}

@@ -50,11 +50,12 @@ export function FilePreview({ url, filename, className, showDetails = true }: Fi
             alt={filename || "Preview"} 
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
           />
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center justify-center gap-2">
             <Button 
               variant="secondary" 
               size="sm" 
               className="rounded-full h-8 w-8 p-0"
+              aria-label={`Enlarge ${filename || "image"}`}
               onClick={() => setIsLightboxOpen(true)}
             >
               <Maximize2 className="w-4 h-4" />
@@ -65,7 +66,7 @@ export function FilePreview({ url, filename, className, showDetails = true }: Fi
               className="rounded-full h-8 w-8 p-0"
               asChild
             >
-              <a href={url} download={filename} target="_blank" rel="noopener noreferrer">
+              <a href={url} download={filename} target="_blank" rel="noopener noreferrer" aria-label={`Download ${filename || "file"}`}>
                 <Download className="w-4 h-4" />
               </a>
             </Button>
@@ -97,7 +98,7 @@ export function FilePreview({ url, filename, className, showDetails = true }: Fi
           </div>
           {!isImage && !isPdf && (
             <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full shrink-0" asChild>
-              <a href={url} download={filename} target="_blank" rel="noopener noreferrer">
+              <a href={url} download={filename} target="_blank" rel="noopener noreferrer" aria-label={`Download ${filename || "file"}`}>
                 <Download className="w-3.5 h-3.5" />
               </a>
             </Button>
@@ -120,25 +121,28 @@ export function FilePreview({ url, filename, className, showDetails = true }: Fi
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="relative max-w-5xl w-full max-h-full bg-card rounded-[40px] overflow-hidden border border-border/10 shadow-2xl flex flex-col"
+              role="dialog"
+              aria-modal="true"
+              aria-label={filename || "Document preview"}
+              className="relative max-w-5xl w-full max-h-full bg-card rounded-3xl sm:rounded-[40px] overflow-hidden border border-border/10 shadow-2xl flex flex-col"
             >
-              <div className="p-6 border-b border-border/10 flex items-center justify-between bg-card">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+              <div className="p-4 sm:p-6 border-b border-border/10 flex items-center justify-between gap-3 bg-card">
+                <div className="flex min-w-0 items-center gap-4">
+                  <div className="shrink-0 w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
                     {isImage ? <ImageIcon className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
                   </div>
-                  <div>
-                    <h3 className="text-sm font-black uppercase tracking-tight">{filename || "Document Preview"}</h3>
+                  <div className="min-w-0">
+                    <h3 className="truncate text-sm font-black uppercase tracking-tight">{filename || "Document Preview"}</h3>
                     <p className="text-[10px] font-bold text-muted-foreground uppercase opacity-60">{fileExtension} Document</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                    <Button variant="outline" size="icon" className="rounded-full" asChild>
-                    <a href={url} download={filename} target="_blank" rel="noopener noreferrer">
+                    <a href={url} download={filename} target="_blank" rel="noopener noreferrer" aria-label={`Download ${filename || "file"}`}>
                       <Download className="w-4 h-4" />
                     </a>
                   </Button>
-                  <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setIsLightboxOpen(false)}>
+                  <Button variant="ghost" size="icon" className="rounded-full" aria-label="Close preview" onClick={() => setIsLightboxOpen(false)}>
                     <X className="w-5 h-5" />
                   </Button>
                 </div>

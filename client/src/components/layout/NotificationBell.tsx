@@ -6,6 +6,7 @@ import { cn } from "../../lib/utils";
 import { formatRelative } from "../../lib/format";
 import { useNotifications, type AppNotification } from "./notifications";
 import { useFocusTrap } from "./useFocusTrap";
+import { useToast } from "../ui/toast";
 
 const TONE: Record<AppNotification["tone"], { icon: typeof Info; cls: string }> = {
   success: { icon: CheckCircle2, cls: "text-emerald-600 dark:text-emerald-400" },
@@ -18,6 +19,7 @@ const TONE: Record<AppNotification["tone"], { icon: typeof Info; cls: string }> 
 export function NotificationBell() {
   const { items, markRead, markAllRead, clear } = useNotifications();
   const [open, setOpen] = useState(false);
+  const toast = useToast();
   const panelRef = useRef<HTMLDivElement>(null);
   const unread = items.filter((i) => !i.read).length;
   useFocusTrap(panelRef, open, () => setOpen(false));
@@ -29,7 +31,7 @@ export function NotificationBell() {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
+        aria-label={unread ? `Open notifications (${unread} unread)` : "Open notifications"}
         className="relative flex items-center justify-center w-9 h-9 rounded-full text-muted-foreground border border-transparent hover:text-foreground hover:bg-accent hover:border-border/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <Bell className="w-4 h-4" aria-hidden="true" />
@@ -52,14 +54,17 @@ export function NotificationBell() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.15 }}
-              className="fixed right-2 left-2 top-14 sm:absolute sm:left-auto sm:right-0 sm:top-11 sm:w-96 z-50 rounded-xl border border-border bg-background shadow-xl"
+              className="fixed right-2 left-2 top-14 sm:absolute sm:left-auto sm:right-0 sm:top-11 sm:w-96 sm:max-w-[calc(100vw-1rem)] z-50 rounded-xl border border-border bg-background shadow-xl"
             >
               <div className="flex items-center justify-between gap-2 border-b border-border/50 px-4 py-3">
                 <h2 className="text-sm font-semibold text-foreground">Notifications</h2>
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    onClick={markAllRead}
+                    onClick={() => {
+                      markAllRead();
+                      toast.success("All notifications marked as read");
+                    }}
                     disabled={!unread}
                     className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
@@ -69,7 +74,10 @@ export function NotificationBell() {
                   {items.length > 0 && (
                     <button
                       type="button"
-                      onClick={clear}
+                      onClick={() => {
+                        clear();
+                        toast.success("Notifications cleared");
+                      }}
                       className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       Clear
@@ -90,10 +98,10 @@ export function NotificationBell() {
                         <T.icon className={cn("mt-0.5 h-4 w-4 shrink-0", T.cls)} aria-hidden="true" />
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center gap-2">
-                            <span className={cn("text-sm text-foreground", !n.read && "font-semibold")}>{n.title}</span>
-                            {!n.read && <span className="h-2 w-2 rounded-full bg-primary" aria-label="unread" />}
+                            <span className={cn("min-w-0 wrap-break-word text-sm text-foreground", !n.read && "font-semibold")}>{n.title}</span>
+                            {!n.read && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" role="img" aria-label="unread" />}
                           </span>
-                          <span className="block text-xs text-muted-foreground">{n.body}</span>
+                          <span className="block wrap-break-word text-xs text-muted-foreground">{n.body}</span>
                           <span className="block text-[11px] text-muted-foreground mt-0.5">{formatRelative(n.createdAt)}</span>
                         </span>
                       </>

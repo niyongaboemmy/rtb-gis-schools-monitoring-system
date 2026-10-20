@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "../ui/button";
 import { api } from "../../lib/api";
+import { useToast } from "../ui/toast";
 import { BuildingFormDrawer } from "./BuildingFormDrawer";
 import { BuildingDetailsModal } from "./BuildingDetailsModal";
 import type { AvailableFacility } from "./BuildingFormDrawer";
@@ -135,6 +136,7 @@ export function BuildingsStep({
   buildingStructuralScore,
   buildingNotes,
 }: BuildingsStepProps) {
+  const toast = useToast();
   const [availableFacilities, setAvailableFacilities] = useState<
     AvailableFacility[]
   >([]);
@@ -215,12 +217,29 @@ export function BuildingsStep({
     }
     setBuildings(next);
     onBuildingsChange?.(next);
+    setDrawerOpen(false);
+    const name = data.buildingName.trim() || "Building";
+    // Saved with the school when the form is submitted.
+    toast.success(
+      activeIndex === -1 ? `Building "${name}" added` : `Building "${name}" updated`,
+    );
   };
 
   const handleRemove = (index: number) => {
+    const prev = buildings;
+    const removed = buildings[index];
     const next = buildings.filter((_, i) => i !== index);
     setBuildings(next);
     onBuildingsChange?.(next);
+    toast.success(`Building "${removed?.buildingName.trim() || "Unnamed"}" removed`, {
+      action: {
+        label: "Undo",
+        onClick: () => {
+          setBuildings(prev);
+          onBuildingsChange?.(prev);
+        },
+      },
+    });
   };
 
   const namedCount = buildings.filter(
@@ -372,7 +391,7 @@ export function BuildingsStep({
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 shrink-0 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                   <button
                     type="button"
                     onClick={(e) => {
@@ -380,9 +399,9 @@ export function BuildingsStep({
                       openDetails(building, index);
                     }}
                     className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                    title="View details"
+                    aria-label={`View details of ${building.buildingName || "building"}`}
                   >
-                    <Eye className="w-3.5 h-3.5" />
+                    <Eye className="w-3.5 h-3.5" aria-hidden />
                   </button>
                   <button
                     type="button"
@@ -391,9 +410,9 @@ export function BuildingsStep({
                       openEdit(building, index);
                     }}
                     className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                    title="Edit building"
+                    aria-label={`Edit ${building.buildingName || "building"}`}
                   >
-                    <Pencil className="w-3.5 h-3.5" />
+                    <Pencil className="w-3.5 h-3.5" aria-hidden />
                   </button>
                   <button
                     type="button"
@@ -402,14 +421,14 @@ export function BuildingsStep({
                       handleRemove(index);
                     }}
                     className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                    title="Remove building"
+                    aria-label={`Remove ${building.buildingName || "building"}`}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="w-3.5 h-3.5" aria-hidden />
                   </button>
                 </div>
 
                 {/* Rest state indicator */}
-                <Eye className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:hidden shrink-0" />
+                <Eye className="hidden md:block w-3.5 h-3.5 text-muted-foreground/30 md:group-hover:hidden shrink-0" aria-hidden />
               </div>
             );
           })}

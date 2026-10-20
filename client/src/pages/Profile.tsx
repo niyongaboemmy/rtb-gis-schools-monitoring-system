@@ -22,9 +22,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { PageHeader } from "../components/ui/page-header";
 import { cn } from "../lib/utils";
 import { SecuritySettings } from "../components/auth/SecuritySettings";
+import { useToast } from "../components/ui/toast";
 
 export default function Profile() {
   const { user, updateUser } = useAuthStore();
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ text: "", type: "" });
   const [activeTab, setActiveTab] = useState<"personal" | "security">(
@@ -69,7 +71,8 @@ export default function Profile() {
         department,
       });
       updateUser(data);
-      setMessage({ text: "Profile updated successfully", type: "success" });
+      setMessage({ text: "", type: "" });
+      toast.success("Profile details updated");
     } catch (err) {
       setMessage({
         text: apiErrorMessage(err, "Failed to update profile"),
@@ -91,13 +94,13 @@ export default function Profile() {
       <PageHeader
         className="md:p-12 mb-8"
         customIcon={
-          <div className="relative group mr-4">
-            <div className="w-32 h-32 rounded-3xl bg-linear-to-br from-primary to-blue-600 flex items-center justify-center text-white text-4xl font-black rotate-3 group-hover:rotate-0 transition-transform duration-500">
+          <div className="relative group sm:mr-4">
+            <div className="w-20 h-20 sm:w-32 sm:h-32 rounded-3xl bg-linear-to-br from-primary to-blue-600 flex items-center justify-center text-white text-2xl sm:text-4xl font-black rotate-3 group-hover:rotate-0 transition-transform duration-500">
               {user?.firstName?.[0]}
               {user?.lastName?.[0]}
             </div>
-            <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-2xl bg-white dark:bg-gray-900 border border-border flex items-center justify-center">
-              <Shield className="w-5 h-5 text-primary" />
+            <div className="absolute -bottom-2 -right-2 w-8 h-8 sm:w-10 sm:h-10 rounded-2xl bg-white dark:bg-gray-900 border border-border flex items-center justify-center">
+              <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
             </div>
           </div>
         }
@@ -109,15 +112,15 @@ export default function Profile() {
                 ? user.role.replace("_", " ")
                 : user?.role?.name?.replace("_", " ")}
             </span>
-            <span className="flex items-center gap-1.5 text-sm text-muted-foreground font-medium">
-              <Mail className="w-4 h-4" /> {user?.email}
+            <span className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground font-medium break-all">
+              <Mail className="w-4 h-4 shrink-0" aria-hidden /> {user?.email}
             </span>
           </div>
         }
         description={
           <div className="flex flex-col gap-3 mt-2">
             {(accessLevelName || scopeLabel) && (
-              <div className="flex flex-wrap items-center gap-3 py-2 px-3 bg-card border border-border/40 rounded-xl w-fit">
+              <div className="flex flex-wrap items-center gap-3 py-2 px-3 bg-card border border-border/40 rounded-xl w-fit max-w-full">
                 {accessLevelName && (
                   <span className="flex items-center gap-1.5 text-xs font-bold text-primary">
                     <Layers className="w-3.5 h-3.5" />
@@ -209,7 +212,7 @@ export default function Profile() {
 
               {activeTab === "personal" ? (
                 <Card className="bg-card/60 border border-border/20 backdrop-blur-xl overflow-hidden rounded-3xl shadow-none">
-                  <div className="p-8 space-y-6">
+                  <div className="p-5 sm:p-8 space-y-6">
                     <div className="flex items-center gap-3 pb-4">
                       <div className="p-2 rounded-xl bg-primary/10">
                         <User className="w-5 h-5 text-primary" />

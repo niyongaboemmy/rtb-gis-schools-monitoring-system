@@ -128,7 +128,7 @@ export function Modal({
                       className="-mt-1 -mr-1 flex h-8 w-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
                       aria-label="Close"
                     >
-                      <X className="h-4 w-4" />
+                      <X className="h-4 w-4" aria-hidden />
                     </button>
                   )}
                 </div>
@@ -145,7 +145,7 @@ export function Modal({
 
             {/* Footer — fixed */}
             {footer && (
-              <div className="shrink-0 flex items-center justify-end gap-3 px-6 py-4 border-t border-border/20 bg-muted/20">
+              <div className="shrink-0 flex flex-wrap items-center justify-end gap-3 px-6 py-4 border-t border-border/20 bg-muted/20">
                 {footer}
               </div>
             )}
