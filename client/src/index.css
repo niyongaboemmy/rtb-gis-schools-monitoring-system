@@ -373,3 +373,13 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Auth: a digit landing in an OTP box */
+@keyframes otp-pop {
+  0% { transform: scale(0.92); }
+  60% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [class*="otp-pop"] { animation: none !important; }
+}

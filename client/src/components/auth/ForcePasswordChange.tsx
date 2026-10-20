@@ -1,4 +1,4 @@
-import { KeyRound, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { AuthShell } from "../ui/AuthShell";
 import { ChangePasswordForm } from "./ChangePasswordForm";
@@ -12,7 +12,7 @@ export function ForcePasswordChange({ onDone }: { onDone?: () => void }) {
   const { user, logout } = useAuthStore();
   return (
     <AuthShell
-      icon={<KeyRound />}
+      art="password"
       title="Choose your own password"
       description={
         <>

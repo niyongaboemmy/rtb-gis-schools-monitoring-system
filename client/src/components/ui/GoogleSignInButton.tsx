@@ -79,7 +79,7 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
       id.renderButton(container, {
         theme: document.documentElement.classList.contains("dark") ? "filled_black" : "outline",
         size: "large",
-        shape: "rectangular",
+        shape: "pill",
         text: "continue_with",
         logo_alignment: "center",
         locale: "en",
@@ -123,9 +123,9 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-3">
-        <div className="h-px flex-1 bg-border" />
-        <span className="text-xs text-muted-foreground">or</span>
-        <div className="h-px flex-1 bg-border" />
+        <div className="h-px flex-1 bg-gray-200 dark:bg-white/10" />
+        <span className="text-xs text-muted-foreground dark:text-white/60">or</span>
+        <div className="h-px flex-1 bg-gray-200 dark:bg-white/10" />
       </div>
 
       <div
@@ -135,7 +135,7 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
       >
         <div ref={containerRef} />
         {!ready && (
-          <div className="h-10 w-full animate-pulse rounded-md bg-muted/60" />
+          <div className="h-10 w-full animate-pulse rounded-full bg-muted/60" />
         )}
       </div>
     </div>

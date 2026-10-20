@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
-import { ArrowLeft, CheckCircle2, KeyRound, Lock, MailCheck } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { PasswordInput } from "../components/ui/password-input";
 import { OtpInput } from "../components/ui/otp-input";
 import { Button } from "../components/ui/button";
@@ -9,6 +9,7 @@ import { AuthAlert, AuthShell } from "../components/ui/AuthShell";
 import {
   authInputClass,
   authLabelClass,
+  authMutedClass,
   authPrimaryButtonClass,
   authSubtleLinkClass,
 } from "../components/auth/auth-styles";
@@ -140,7 +141,7 @@ export default function ForgotPassword() {
     return (
       <AuthShell
         stepKey={step}
-        icon={<CheckCircle2 />}
+        art="success"
         title="Password updated"
         description="You can now sign in with your new password. Taking you to the sign-in page…"
       >
@@ -156,13 +157,14 @@ export default function ForgotPassword() {
     return (
       <AuthShell
         stepKey={step}
-        icon={<Lock />}
+        art="password"
+        busy={isLoading}
         progress={{ current: 3, total: 3, label: "New password" }}
         title="Set a new password"
         description={
           <>
             Choose a new password for{" "}
-            <span className="font-medium text-foreground">{email}</span>.
+            <span className="font-medium text-foreground dark:text-white">{email}</span>.
           </>
         }
       >
@@ -188,7 +190,7 @@ export default function ForgotPassword() {
             id="reset-password-rules"
             password={password}
             email={email}
-            className="rounded-lg bg-muted/40 p-3.5"
+            className="rounded-xl bg-muted/40 dark:bg-white/[0.03] p-4"
           />
 
           <div className="space-y-1.5">
@@ -230,13 +232,14 @@ export default function ForgotPassword() {
     return (
       <AuthShell
         stepKey={step}
-        icon={<MailCheck />}
+        art="email"
+        busy={isLoading}
         progress={{ current: 2, total: 3, label: "Verify" }}
         title="Check your email"
         description={
           <>
             Enter the 6-digit code we sent to{" "}
-            <span className="font-medium text-foreground">{email}</span>. It
+            <span className="font-medium text-foreground dark:text-white">{email}</span>. It
             expires in 10 minutes.
           </>
         }
@@ -267,7 +270,7 @@ export default function ForgotPassword() {
             {isLoading ? "Verifying…" : "Verify code"}
           </Button>
 
-          <p className="text-center text-sm text-muted-foreground">
+          <p className={`text-center text-sm ${authMutedClass}`}>
             Didn't get it? Check spam, or{" "}
             <button
               type="button"
@@ -303,7 +306,8 @@ export default function ForgotPassword() {
   return (
     <AuthShell
       stepKey={step}
-      icon={<KeyRound />}
+      art="reset"
+      busy={isLoading}
       progress={{ current: 1, total: 3, label: "Your email" }}
       title="Reset your password"
       description="Enter the email you use to sign in. We'll send you a 6-digit code to confirm it's you."

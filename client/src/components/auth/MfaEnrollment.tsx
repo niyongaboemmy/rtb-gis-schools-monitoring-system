@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { ArrowLeft, Check, ChevronDown, Copy, Download, ExternalLink, Loader2, Smartphone } from "lucide-react";
 import { Button } from "../ui/button";
 import { OtpInput } from "../ui/otp-input";
@@ -52,6 +53,7 @@ const APPS = [
  */
 export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = "Cancel" }: Props) {
   const toast = useToast();
+  const reduce = useReducedMotion();
   const [step, setStep] = useState<Step>("app");
   const [setup, setSetup] = useState<EnrolmentStart | null>(null);
   const [code, setCode] = useState("");
@@ -127,8 +129,8 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
           <p className="font-medium">Two-factor authentication is on.</p>
         </AuthAlert>
         <div className="space-y-1.5">
-          <h3 className="text-base font-semibold text-foreground">Keep these backup codes (optional)</h3>
-          <p className="text-sm text-muted-foreground leading-relaxed">
+          <h3 className="text-base font-semibold text-foreground dark:text-white">Keep these backup codes (optional)</h3>
+          <p className="text-sm text-muted-foreground dark:text-white/70 leading-relaxed">
             If you lose your phone, each code signs you in once. You can also
             always ask for a sign-in code by email, so this is just an extra
             safety net. They won't be shown again.
@@ -136,30 +138,36 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
         </div>
         <ul
           aria-label="Backup codes"
-          className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border border-border bg-muted/40 px-4 py-3 font-mono text-sm"
+          className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-xl border border-gray-300/80 dark:border-white/15 bg-muted/40 dark:bg-white/[0.03] px-4 py-3 font-mono text-sm"
         >
-          {codes.map((c) => (
-            <li key={c} className="text-center tracking-wider select-all">
+          {codes.map((c, i) => (
+            <motion.li
+              key={c}
+              initial={reduce ? false : { opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 + i * 0.04 }}
+              className="text-center tracking-wider select-all text-foreground dark:text-white"
+            >
               {c}
-            </li>
+            </motion.li>
           ))}
         </ul>
         <div className="grid grid-cols-2 gap-2">
           <Button
             type="button"
             variant="outline"
-            className="h-10 rounded-lg"
+            className="border-gray-300 dark:border-white/20 bg-transparent dark:text-white dark:hover:bg-white/5 h-11 rounded-full"
             onClick={async () => {
               if (await copy(codes.join("\n"), "Backup codes")) setSaved(true);
             }}
           >
             <Copy className="h-4 w-4 mr-2" aria-hidden /> Copy
           </Button>
-          <Button type="button" variant="outline" className="h-10 rounded-lg" onClick={download}>
+          <Button type="button" variant="outline" className="border-gray-300 dark:border-white/20 bg-transparent dark:text-white dark:hover:bg-white/5 h-11 rounded-full" onClick={download}>
             <Download className="h-4 w-4 mr-2" aria-hidden /> Download
           </Button>
         </div>
-        <Button type="button" className="w-full h-11 rounded-lg font-semibold" onClick={onDone}>
+        <Button type="button" className="w-full h-11 rounded-full font-semibold" onClick={onDone}>
           {saved ? "Done — continue" : "Continue"}
         </Button>
       </div>
@@ -170,7 +178,7 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
     return (
       <div className="space-y-4">
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground" role="status">
+          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground dark:text-white/70" role="status">
             <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
             Preparing set-up…
           </div>
@@ -178,7 +186,7 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
           error && <AuthAlert>{error}</AuthAlert>
         )}
         {!loading && onCancel && (
-          <Button type="button" variant="ghost" className="w-full h-10 rounded-lg" onClick={onCancel}>
+          <Button type="button" variant="ghost" className="w-full h-10 rounded-full" onClick={onCancel}>
             {cancelLabel}
           </Button>
         )}
@@ -198,11 +206,11 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
       <ol className="flex gap-1.5" aria-label="Set-up progress">
         {STEPS.map((s, i) => (
           <li key={s.id} className="flex-1 space-y-1.5" aria-current={i === index ? "step" : undefined}>
-            <span className={cn("block h-1 rounded-full transition-colors", i <= index ? "bg-primary" : "bg-muted")} />
+            <span className={cn("block h-1 rounded-full transition-colors", i <= index ? "bg-primary" : "bg-gray-200 dark:bg-white/10")} />
             <span
               className={cn(
                 "flex items-center gap-1 text-xs",
-                i === index ? "font-medium text-foreground" : "text-muted-foreground",
+                i === index ? "font-medium text-foreground dark:text-white" : "text-muted-foreground dark:text-white/70",
               )}
             >
               {i < index && <Check className="h-3 w-3 text-primary" aria-hidden />}
@@ -212,11 +220,17 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
         ))}
       </ol>
 
+      <motion.div
+        key={step}
+        initial={reduce ? false : { opacity: 0, x: 16 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.25, ease: "easeOut" }}
+      >
       {step === "app" && (
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <h3 className="text-base font-semibold text-foreground">Install a free authenticator app</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
+            <h3 className="text-base font-semibold text-foreground dark:text-white">Install a free authenticator app</h3>
+            <p className="text-sm text-muted-foreground dark:text-white/70 leading-relaxed">
               It shows a new 6-digit code every 30 seconds. Any app works —
               these are the most common. Already have one? Just continue.
             </p>
@@ -225,10 +239,10 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
             {APPS.map((app) => (
               <li
                 key={app.name}
-                className="flex items-center justify-between gap-3 rounded-lg border border-border px-3.5 py-3"
+                className="flex items-center justify-between gap-3 rounded-xl border border-gray-300/80 dark:border-white/15 px-3.5 py-3"
               >
-                <span className="flex items-center gap-2.5 min-w-0 text-sm font-medium text-foreground">
-                  <Smartphone className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                <span className="flex items-center gap-2.5 min-w-0 text-sm font-medium text-foreground dark:text-white">
+                  <Smartphone className="h-4 w-4 shrink-0 text-muted-foreground dark:text-white/70" aria-hidden />
                   <span className="truncate">{app.name}</span>
                 </span>
                 <span className="flex shrink-0 gap-3 text-xs font-medium">
@@ -242,7 +256,7 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
               </li>
             ))}
           </ul>
-          <Button type="button" className="w-full h-11 rounded-lg font-semibold" onClick={() => setStep("scan")}>
+          <Button type="button" className="w-full h-11 rounded-full font-semibold" onClick={() => setStep("scan")}>
             I have the app — continue
           </Button>
         </div>
@@ -251,10 +265,10 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
       {step === "scan" && (
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <h3 className="text-base font-semibold text-foreground">Add your account to the app</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              In the app, tap <strong className="font-medium text-foreground">+</strong> or{" "}
-              <strong className="font-medium text-foreground">Add account</strong>, then point your
+            <h3 className="text-base font-semibold text-foreground dark:text-white">Add your account to the app</h3>
+            <p className="text-sm text-muted-foreground dark:text-white/70 leading-relaxed">
+              In the app, tap <strong className="font-medium text-foreground dark:text-white">+</strong> or{" "}
+              <strong className="font-medium text-foreground dark:text-white">Add account</strong>, then point your
               phone's camera at this code.
             </p>
           </div>
@@ -262,41 +276,41 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
             <img
               src={setup.qrDataUrl}
               alt="QR code to add TVET 3D GIS to your authenticator app"
-              className="h-44 w-44 rounded-lg border border-border bg-white p-2"
+              className="h-44 w-44 rounded-xl border border-gray-300/80 dark:border-white/15 bg-white p-2"
             />
           </div>
           {/* On a phone the camera can't scan its own screen — open the app directly. */}
           <a
             href={setup.otpauthUrl}
-            className="flex items-center justify-center gap-2 rounded-lg border border-border h-10 text-sm font-medium text-foreground hover:bg-muted transition-colors sm:hidden"
+            className="flex items-center justify-center gap-2 rounded-full border border-gray-300/80 dark:border-white/15 h-11 text-sm font-medium text-foreground dark:text-white hover:bg-muted transition-colors sm:hidden"
           >
             <ExternalLink className="h-4 w-4" aria-hidden /> On this phone? Tap to add the account
           </a>
-          <div className="rounded-lg border border-border">
+          <div className="rounded-xl border border-gray-300/80 dark:border-white/15">
             <button
               type="button"
               aria-expanded={showKey}
               onClick={() => setShowKey((v) => !v)}
-              className="flex w-full items-center justify-between px-3.5 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground"
+              className="flex w-full items-center justify-between px-3.5 py-2.5 text-sm font-medium text-muted-foreground dark:text-white/70 hover:text-foreground"
             >
               Can't scan? Type a set-up key instead
               <ChevronDown className={cn("h-4 w-4 transition-transform", showKey && "rotate-180")} aria-hidden />
             </button>
             {showKey && (
-              <div className="space-y-2 border-t border-border px-3.5 py-3">
-                <p className="text-xs text-muted-foreground">
+              <div className="space-y-2 border-t border-gray-300/80 dark:border-white/15 px-3.5 py-3">
+                <p className="text-xs text-muted-foreground dark:text-white/70">
                   Choose “Enter a set-up key”, use <strong className="font-medium">TVET 3D GIS</strong> as
                   the account name, and type:
                 </p>
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 min-w-0 break-all rounded-md bg-muted px-3 py-2 text-sm font-mono tracking-wide select-all">
+                  <code className="flex-1 min-w-0 break-all rounded-lg bg-muted dark:bg-white/5 px-3 py-2 text-sm font-mono tracking-wide select-all">
                     {setup.secret.replace(/(.{4})/g, "$1 ").trim()}
                   </code>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 rounded-md shrink-0"
+                    className="h-9 w-9 rounded-full shrink-0"
                     aria-label="Copy set-up key"
                     onClick={() => void copy(setup.secret, "Set-up key")}
                   >
@@ -307,10 +321,10 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
             )}
           </div>
           <div className="grid grid-cols-[auto_1fr] gap-2">
-            <Button type="button" variant="outline" className="h-11 rounded-lg" onClick={back} aria-label="Back">
+            <Button type="button" variant="outline" className="border-gray-300 dark:border-white/20 bg-transparent dark:text-white dark:hover:bg-white/5 h-11 rounded-full" onClick={back} aria-label="Back">
               <ArrowLeft className="h-4 w-4" aria-hidden />
             </Button>
-            <Button type="button" className="h-11 rounded-lg font-semibold" onClick={() => setStep("verify")}>
+            <Button type="button" className="h-11 rounded-full font-semibold" onClick={() => setStep("verify")}>
               I've added it — continue
             </Button>
           </div>
@@ -326,9 +340,9 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
           }}
         >
           <div className="space-y-1.5">
-            <h3 className="text-base font-semibold text-foreground">Enter the code from the app</h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Type the 6-digit code shown under <strong className="font-medium text-foreground">TVET 3D GIS</strong>.
+            <h3 className="text-base font-semibold text-foreground dark:text-white">Enter the code from the app</h3>
+            <p className="text-sm text-muted-foreground dark:text-white/70 leading-relaxed">
+              Type the 6-digit code shown under <strong className="font-medium text-foreground dark:text-white">TVET 3D GIS</strong>.
             </p>
           </div>
           <OtpInput
@@ -340,18 +354,20 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
           />
           {error && <AuthAlert>{error}</AuthAlert>}
           <div className="grid grid-cols-[auto_1fr] gap-2">
-            <Button type="button" variant="outline" className="h-11 rounded-lg" onClick={back} disabled={loading} aria-label="Back">
+            <Button type="button" variant="outline" className="border-gray-300 dark:border-white/20 bg-transparent dark:text-white dark:hover:bg-white/5 h-11 rounded-full" onClick={back} disabled={loading} aria-label="Back">
               <ArrowLeft className="h-4 w-4" aria-hidden />
             </Button>
-            <Button type="submit" className="h-11 rounded-lg font-semibold" isLoading={loading} disabled={code.length !== 6}>
+            <Button type="submit" className="h-11 rounded-full font-semibold" isLoading={loading} disabled={code.length !== 6}>
               Turn on two-factor
             </Button>
           </div>
         </form>
       )}
 
+      </motion.div>
+
       {step === "app" && onCancel && (
-        <Button type="button" variant="ghost" className="w-full h-10 rounded-lg text-muted-foreground" onClick={onCancel}>
+        <Button type="button" variant="ghost" className="w-full h-10 rounded-full text-muted-foreground dark:text-white/70" onClick={onCancel}>
           {cancelLabel}
         </Button>
       )}

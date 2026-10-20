@@ -142,7 +142,7 @@ export function MfaChallenge<T>({
           void verify();
         }}
       >
-        <p className="text-sm text-muted-foreground leading-relaxed" aria-live="polite">
+        <p className="text-sm text-muted-foreground dark:text-white/70 leading-relaxed" aria-live="polite">
           {hint}
         </p>
 
@@ -191,7 +191,7 @@ export function MfaChallenge<T>({
         )}
 
         {mode === "email" && emailSent && (
-          <p className="text-center text-sm text-muted-foreground">
+          <p className="text-center text-sm text-muted-foreground dark:text-white/70">
             Didn't get it?{" "}
             <button
               type="button"
@@ -207,17 +207,17 @@ export function MfaChallenge<T>({
 
       {options.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">Other ways to verify</p>
-          <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
+          <p className="text-xs font-medium text-muted-foreground dark:text-white/70">Other ways to verify</p>
+          <div className="divide-y divide-gray-300/80 dark:divide-white/15 rounded-xl border border-gray-300/80 dark:border-white/15 overflow-hidden">
             {options.map(({ key, label, icon: Icon, onClick, disabled }) => (
               <button
                 key={key}
                 type="button"
                 onClick={onClick}
                 disabled={disabled}
-                className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-sm font-medium text-foreground hover:bg-muted/60 transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:bg-muted"
+                className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left text-sm font-medium text-foreground dark:text-white hover:bg-muted/60 dark:hover:bg-white/5 transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:bg-muted"
               >
-                <Icon className="h-4 w-4 text-muted-foreground" aria-hidden />
+                <Icon className="h-4 w-4 text-muted-foreground dark:text-white/70" aria-hidden />
                 {label}
               </button>
             ))}

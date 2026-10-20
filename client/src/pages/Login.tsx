@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { homePathFor } from "../hooks/useScope";
 import { useAuthStore, type User } from "../store/authStore";
 import { api, apiErrorMessage } from "../lib/api";
-import { ArrowLeft, ChevronRight, Mail, ShieldCheck, Smartphone } from "lucide-react";
+import { ArrowLeft, ChevronRight, Mail, Smartphone } from "lucide-react";
 import { PasswordInput } from "../components/ui/password-input";
 import { Button } from "../components/ui/button";
 import { AuthAlert, AuthShell } from "../components/ui/AuthShell";
@@ -11,7 +11,9 @@ import { GoogleSignInButton } from "../components/ui/GoogleSignInButton";
 import {
   authInputClass,
   authLabelClass,
+  authCardClass,
   authLinkClass,
+  authMutedClass,
   authPrimaryButtonClass,
   authSubtleLinkClass,
 } from "../components/auth/auth-styles";
@@ -72,7 +74,13 @@ const DEV_PASSWORD = import.meta.env.DEV ? "Admin@123" : "";
 export default function Login() {
   const [email, setEmail] = useState(DEV_EMAIL);
   const [password, setPassword] = useState(DEV_PASSWORD);
-  const [error, setError] = useState("");
+  const [error, setErrorText] = useState("");
+  // Bumped per error so the alert shakes again on a repeated failure.
+  const [errorCount, setErrorCount] = useState(0);
+  const setError = (message: string) => {
+    setErrorText(message);
+    if (message) setErrorCount((n) => n + 1);
+  };
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<Step>("credentials");
   const [mfaToken, setMfaToken] = useState("");
@@ -177,7 +185,7 @@ export default function Login() {
     return (
       <AuthShell
         stepKey={step}
-        icon={step === "mfa" ? <ShieldCheck /> : <Mail />}
+        art={step === "mfa" ? "verify" : "email"}
         title={step === "mfa" ? "Verify it's you" : "Check your email"}
       >
         <MfaChallenge<SessionPayload>
@@ -205,7 +213,7 @@ export default function Login() {
     return (
       <AuthShell
         stepKey={step}
-        icon={<ShieldCheck />}
+        art="choose"
         title="Add a second sign-in check"
         description="Your role can view and change sensitive school data, so each sign-in needs one more check besides your password. Choose what works best for you."
       >
@@ -236,7 +244,7 @@ export default function Login() {
 
   if (step === "enroll") {
     return (
-      <AuthShell stepKey={step} icon={<Smartphone />} title="Set up your authenticator app">
+      <AuthShell stepKey={step} art="app" title="Set up your authenticator app">
         <MfaEnrollment
           start={async () =>
             (await api.post<EnrolmentStart>("/auth/2fa/enroll/start", { mfaToken })).data
@@ -261,10 +269,12 @@ export default function Login() {
   return (
     <AuthShell
       stepKey={step}
+      art="signin"
+      busy={isLoading}
       title="Sign in"
-      description="Use your RTB work account to access the TVET 3D GIS platform."
+      description="Welcome back. Use your RTB work account to continue to TVET 3D GIS."
     >
-      {error && <AuthAlert>{error}</AuthAlert>}
+      {error && <AuthAlert key={errorCount}>{error}</AuthAlert>}
 
       <form onSubmit={handleLogin} className="space-y-4">
         <div className="space-y-1.5">
@@ -339,19 +349,19 @@ function MethodOption({
     <button
       type="button"
       onClick={onClick}
-      className="group flex w-full items-start gap-3.5 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-primary/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className={`group flex w-full items-start gap-3.5 ${authCardClass} bg-card dark:bg-white/[0.02] p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary/60 dark:hover:border-primary/60 hover:shadow-lg hover:shadow-primary/5 hover:bg-primary/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
     >
-      <span className="h-9 w-9 shrink-0 rounded-lg bg-primary/10 text-primary flex items-center justify-center [&_svg]:h-4.5 [&_svg]:w-4.5">
+      <span className="h-10 w-10 shrink-0 rounded-xl bg-primary/10 text-primary flex items-center justify-center transition-transform group-hover:scale-110 [&_svg]:h-5 [&_svg]:w-5">
         {icon}
       </span>
       <span className="flex-1 min-w-0 space-y-1">
         <span className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold text-foreground">{title}</span>
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+          <span className="text-[15px] font-semibold text-foreground dark:text-white">{title}</span>
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
             {badge}
           </span>
         </span>
-        <span className="block text-sm text-muted-foreground leading-relaxed">{text}</span>
+        <span className={`block text-sm leading-relaxed ${authMutedClass}`}>{text}</span>
       </span>
       <ChevronRight
         className="h-4 w-4 mt-2.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"

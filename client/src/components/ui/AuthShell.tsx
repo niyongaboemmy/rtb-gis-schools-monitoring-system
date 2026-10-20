@@ -1,9 +1,11 @@
 import { useState, type ReactNode } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { AlertCircle, Box, CheckCircle2, Info, LineChart, Map as MapIcon, ShieldCheck } from "lucide-react";
 import { ImigongoPattern } from "./ImigongoPattern";
 import { PrivacyNoticeModal } from "../auth/PrivacyNotice";
 import { AuthGlobe } from "../auth/AuthGlobe";
+import { AuthArt, type AuthArtVariant } from "../auth/AuthArt";
+import { authMutedClass } from "../auth/auth-styles";
 import { ThemeToggle } from "../ThemeToggle";
 import { cn } from "../../lib/utils";
 
@@ -16,8 +18,10 @@ const FEATURES = [
 interface AuthShellProps {
   title: ReactNode;
   description?: ReactNode;
-  /** Optional icon tile above the title (e.g. on 2FA or reset steps). */
-  icon?: ReactNode;
+  /** Animated illustration above the title, chosen per step. */
+  art?: AuthArtVariant;
+  /** A request is running — the illustration shows a spinner ring. */
+  busy?: boolean;
   /** Optional "Step x of y" indicator for multi-step flows. */
   progress?: { current: number; total: number; label?: string };
   /** Changing it replays the entry animation (one per step). */
@@ -30,7 +34,7 @@ interface AuthShellProps {
  * reset, forced change): a brand panel on wide screens, a compact brand row
  * on small ones, and one consistent title + form column.
  */
-export function AuthShell({ title, description, icon, progress, stepKey, children }: AuthShellProps) {
+export function AuthShell({ title, description, art, busy, progress, stepKey, children }: AuthShellProps) {
   const [showPrivacy, setShowPrivacy] = useState(false);
 
   return (
@@ -90,8 +94,8 @@ export function AuthShell({ title, description, icon, progress, stepKey, childre
           <div className="lg:hidden flex items-center gap-2.5">
             <img src="/logortb.png" alt="" className="h-8 w-8 object-contain" />
             <div className="leading-tight">
-              <p className="text-sm font-semibold text-foreground">TVET 3D GIS</p>
-              <p className="text-xs text-muted-foreground">Rwanda TVET Board</p>
+              <p className="text-sm font-semibold text-foreground dark:text-white">TVET 3D GIS</p>
+              <p className={cn("text-xs", authMutedClass)}>Rwanda TVET Board</p>
             </div>
           </div>
           <div className="ml-auto">
@@ -105,30 +109,28 @@ export function AuthShell({ title, description, icon, progress, stepKey, childre
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
-            className="w-full max-w-[400px] space-y-6"
+            className="w-full max-w-[420px] space-y-7"
           >
-            <div className="space-y-2">
-              {icon && (
-                <div className="mb-4 h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center [&_svg]:h-5 [&_svg]:w-5">
-                  {icon}
-                </div>
-              )}
+            <div className="space-y-2.5">
+              {art && <AuthArt variant={art} busy={busy} />}
               {progress && <StepProgress {...progress} />}
-              <h2 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h2>
+              <h2 className="text-[1.75rem] sm:text-[2rem] leading-tight font-bold tracking-tight text-foreground dark:text-white">
+                {title}
+              </h2>
               {description && (
-                <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
+                <p className={cn("text-[15px] leading-relaxed", authMutedClass)}>{description}</p>
               )}
             </div>
             {children}
           </motion.div>
         </div>
 
-        <footer className="px-5 sm:px-8 pb-6 flex flex-col sm:flex-row items-center justify-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground text-center">
+        <footer className={cn("px-5 sm:px-8 pb-6 flex flex-col sm:flex-row items-center justify-center gap-x-4 gap-y-1.5 text-xs text-center", authMutedClass)}>
           <span>© {new Date().getFullYear()} Rwanda TVET Board · Authorised personnel only</span>
           <button
             type="button"
             onClick={() => setShowPrivacy(true)}
-            className="inline-flex items-center gap-1 font-medium hover:text-foreground hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+            className="inline-flex items-center gap-1 font-medium hover:text-foreground dark:hover:text-white hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
           >
             <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
             Privacy &amp; terms
@@ -143,7 +145,7 @@ export function AuthShell({ title, description, icon, progress, stepKey, childre
 function StepProgress({ current, total, label }: { current: number; total: number; label?: string }) {
   return (
     <div className="mb-3 space-y-2">
-      <p className="text-xs font-medium text-muted-foreground">
+      <p className={cn("text-xs font-medium", authMutedClass)}>
         Step {current} of {total}
         {label ? ` · ${label}` : ""}
       </p>
@@ -160,7 +162,7 @@ function StepProgress({ current, total, label }: { current: number; total: numbe
             key={i}
             className={cn(
               "h-1 flex-1 rounded-full transition-colors",
-              i < current ? "bg-primary" : "bg-muted",
+              i < current ? "bg-primary" : "bg-gray-200 dark:bg-white/10",
             )}
           />
         ))}
@@ -170,24 +172,38 @@ function StepProgress({ current, total, label }: { current: number; total: numbe
 }
 
 const ALERT_STYLES = {
-  error: { cls: "bg-destructive/8 text-destructive border-destructive/25", Icon: AlertCircle },
+  error: {
+    cls: "bg-destructive/8 text-destructive dark:text-red-300 border-destructive/25 dark:border-red-400/30",
+    Icon: AlertCircle,
+  },
   success: {
-    cls: "bg-emerald-500/8 text-emerald-700 dark:text-emerald-400 border-emerald-500/25",
+    cls: "bg-emerald-500/8 text-emerald-700 dark:text-emerald-300 border-emerald-500/25",
     Icon: CheckCircle2,
   },
-  info: { cls: "bg-primary/8 text-foreground border-primary/20", Icon: Info },
+  info: { cls: "bg-primary/8 text-foreground dark:text-white border-primary/20", Icon: Info },
 } as const;
 
-/** Inline status message for auth forms. Errors are announced immediately. */
+/**
+ * Inline status message for auth forms. Errors are announced immediately
+ * and shake in; pass a changing `key` to replay the shake on a new error.
+ */
 export function AuthAlert({ tone = "error", children }: { tone?: keyof typeof ALERT_STYLES; children: ReactNode }) {
   const { cls, Icon } = ALERT_STYLES[tone];
+  const reduce = useReducedMotion();
   return (
-    <div
+    <motion.div
       role={tone === "error" ? "alert" : "status"}
-      className={cn("flex items-start gap-2.5 rounded-lg border px-3.5 py-3 text-sm", cls)}
+      initial={reduce ? false : tone === "error" ? { x: 0, opacity: 0 } : { y: -6, opacity: 0 }}
+      animate={
+        tone === "error"
+          ? { x: reduce ? 0 : [0, -8, 8, -5, 5, 0], opacity: 1 }
+          : { y: 0, opacity: 1 }
+      }
+      transition={{ duration: tone === "error" ? 0.4 : 0.25 }}
+      className={cn("flex items-start gap-2.5 rounded-xl border px-4 py-3 text-sm", cls)}
     >
       <Icon className="h-4 w-4 shrink-0 mt-0.5" aria-hidden />
       <div className="min-w-0">{children}</div>
-    </div>
+    </motion.div>
   );
 }
