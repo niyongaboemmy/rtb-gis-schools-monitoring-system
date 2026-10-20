@@ -100,11 +100,12 @@ export function OtpInput({
           onKeyDown={(e) => handleKeyDown(index, e)}
           onFocus={(e) => e.target.select()}
           className={cn(
-            "h-12 w-full max-w-12 min-w-0 rounded-lg border border-input bg-background",
-            "text-center text-lg font-semibold tabular-nums text-foreground",
-            "transition-colors outline-none focus:border-primary focus:ring-3 focus:ring-primary/15",
+            "h-12 sm:h-13 w-full max-w-13 min-w-0 rounded-xl border border-gray-300 dark:border-white/20",
+            "bg-background dark:bg-white/[0.03] text-center text-lg font-semibold tabular-nums text-foreground dark:text-white",
+            "transition-[border-color,box-shadow,transform] outline-none hover:border-gray-400 dark:hover:border-white/30",
+            "focus:border-primary dark:focus:border-primary focus:ring-4 focus:ring-primary/15 focus:-translate-y-0.5",
             "disabled:opacity-50",
-            value[index] && "border-primary/50",
+            value[index] && "border-primary/60 dark:border-primary/60 animate-[otp-pop_160ms_ease-out]",
           )}
         />
       ))}

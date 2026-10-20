@@ -54,7 +54,7 @@ export function ChangePasswordForm({
   return (
     <form onSubmit={submit} className="space-y-4" noValidate>
       <div className="space-y-1.5">
-        <label htmlFor={ids.current} className="text-sm font-semibold text-foreground/80">
+        <label htmlFor={ids.current} className="block text-sm font-medium text-foreground dark:text-white">
           {currentLabel}
         </label>
         <PasswordInput
@@ -66,7 +66,7 @@ export function ChangePasswordForm({
         />
       </div>
       <div className="space-y-1.5">
-        <label htmlFor={ids.next} className="text-sm font-semibold text-foreground/80">
+        <label htmlFor={ids.next} className="block text-sm font-medium text-foreground dark:text-white">
           New password
         </label>
         <PasswordInput
@@ -80,7 +80,7 @@ export function ChangePasswordForm({
       </div>
       <PasswordStrengthMeter id={ids.rules} password={next} email={user?.email} />
       <div className="space-y-1.5">
-        <label htmlFor={ids.confirm} className="text-sm font-semibold text-foreground/80">
+        <label htmlFor={ids.confirm} className="block text-sm font-medium text-foreground dark:text-white">
           Confirm new password
         </label>
         <PasswordInput
