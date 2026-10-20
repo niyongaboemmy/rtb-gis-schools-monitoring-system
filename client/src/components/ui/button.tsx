@@ -14,14 +14,18 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = "default", size = "default", isLoading, asChild = false, children, ...props }, ref) => {
     const Comp = asChild ? Slot : "button"
     
-    const baseStyles = "inline-flex items-center justify-center whitespace-nowrap rounded-full text-sm font-medium ring-offset-background transition-all duration-300 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+    const baseStyles = "inline-flex items-center justify-center gap-0 whitespace-nowrap rounded-full text-sm font-medium ring-offset-background transition-[background-color,border-color,color,box-shadow,transform,filter] duration-200 ease-out active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 disabled:shadow-none"
     
     const variants = {
-      default: "bg-primary text-primary-foreground hover:bg-primary/90",
-      destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-      outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
-      secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-      ghost: "hover:bg-accent hover:text-accent-foreground",
+      // Solid brand blue + white text in both themes; brightens and lifts on hover.
+      default:
+        "bg-primary text-primary-foreground shadow-sm shadow-primary/25 hover:brightness-110 hover:shadow-md hover:shadow-primary/30 hover:-translate-y-px",
+      destructive:
+        "bg-destructive text-destructive-foreground shadow-sm shadow-destructive/25 hover:brightness-110 hover:shadow-md hover:shadow-destructive/30 hover:-translate-y-px",
+      outline:
+        "border border-input bg-background hover:bg-accent hover:text-accent-foreground dark:border-white/15 dark:bg-transparent dark:text-white dark:hover:bg-white/5 dark:hover:border-white/25",
+      secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80 dark:text-white",
+      ghost: "hover:bg-accent hover:text-accent-foreground dark:hover:bg-white/5",
       link: "text-primary underline-offset-4 hover:underline",
     }
     

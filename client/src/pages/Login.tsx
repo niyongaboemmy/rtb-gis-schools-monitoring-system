@@ -3,13 +3,13 @@ import { Link, useNavigate } from "react-router-dom";
 import { homePathFor } from "../hooks/useScope";
 import { useAuthStore, type User } from "../store/authStore";
 import { api, apiErrorMessage } from "../lib/api";
-import { ArrowLeft, ChevronRight, Mail, Smartphone } from "lucide-react";
+import { ArrowLeft, ChevronRight, Lock, Mail, Smartphone } from "lucide-react";
+import { AuthInput } from "../components/auth/AuthInput";
 import { PasswordInput } from "../components/ui/password-input";
 import { Button } from "../components/ui/button";
 import { AuthAlert, AuthShell } from "../components/ui/AuthShell";
-import { GoogleSignInButton } from "../components/ui/GoogleSignInButton";
+import { GoogleSignInButton, type GoogleCredential } from "../components/ui/GoogleSignInButton";
 import {
-  authInputClass,
   authLabelClass,
   authCardClass,
   authLinkClass,
@@ -138,12 +138,12 @@ export default function Login() {
     }
   };
 
-  const handleGoogleCredential = async (idToken: string) => {
+  const handleGoogleCredential = async (credential: GoogleCredential) => {
     setIsLoading(true);
     setError("");
 
     try {
-      const response = await api.post<LoginResponse>("/auth/google", { idToken });
+      const response = await api.post<LoginResponse>("/auth/google", credential);
       handleLoginResponse(response.data);
     } catch (err) {
       setError(apiErrorMessage(err, "Google sign-in failed. Please try again."));
@@ -279,8 +279,9 @@ export default function Login() {
           <label htmlFor="login-email" className={authLabelClass}>
             Work email
           </label>
-          <input
+          <AuthInput
             id="login-email"
+            icon={<Mail />}
             type="email"
             inputMode="email"
             autoComplete="username"
@@ -289,7 +290,6 @@ export default function Login() {
             autoFocus={!email}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className={authInputClass}
             placeholder="name@rtb.gov.rw"
             aria-invalid={!!error || undefined}
             required
@@ -306,6 +306,7 @@ export default function Login() {
           </div>
           <PasswordInput
             id="login-password"
+            leadingIcon={<Lock />}
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -321,9 +322,11 @@ export default function Login() {
       </form>
 
       <GoogleSignInButton
-        onCredential={(idToken) => void handleGoogleCredential(idToken)}
+        onCredential={(credential) => void handleGoogleCredential(credential)}
         onError={setError}
         disabled={isLoading}
+        busy={isLoading}
+        divider
       />
     </AuthShell>
   );

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, Fragment, useMemo } from "react";
 import { useAuthStore } from "../store/authStore";
 import { useSchoolsStore } from "../store/schoolsStore";
-import { api, fileApi } from "../lib/api";
+import { api, apiErrorMessage, fileApi } from "../lib/api";
+import { useToast } from "../components/ui/toast";
 import { hasPermission, Permission } from "../lib/permissions";
 import { AdminReportingDashboard } from "../components/reports/AdminReportingDashboard";
 import {
@@ -160,13 +161,7 @@ export default function SchoolReporting({
     category?: string;
   }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [toast, setToast] = useState<{
-    message: string;
-    type: "success" | "warning" | null;
-  }>({
-    message: "",
-    type: null,
-  });
+  const toast = useToast();
 
   // History state
   const [history, setHistory] = useState<any[]>([]);
@@ -323,9 +318,8 @@ export default function SchoolReporting({
     }
   };
 
-  const showToast = (message: string, type: "success" | "warning") => {
-    setToast({ message, type });
-    setTimeout(() => setToast({ message: "", type: null }), 5000);
+  const showToast = (message: string, type: "success" | "warning" | "error") => {
+    toast[type](message);
   };
 
   const handleUpdateReportStatus = async (reportId: string, status: string) => {
@@ -343,11 +337,11 @@ export default function SchoolReporting({
         setSelectedReport({ ...selectedReport, status });
       }
 
-      showToast(`Status updated to ${status.replace("_", " ")}`, "success");
+      showToast(`Report marked ${label("reportStatus", status)}`, "success");
       fetchHistory(); // Refresh history tab as well
     } catch (err) {
       console.error("Failed to update report status", err);
-      showToast("Failed to update status", "warning");
+      showToast(apiErrorMessage(err, "Could not update the report status"), "error");
       throw err;
     } finally {
       setIsStatusUpdating(false);
@@ -409,12 +403,12 @@ export default function SchoolReporting({
     setIsDeleting(true);
     try {
       await api.delete(`/reports/${reportToDelete.id}`);
-      showToast("Report deleted successfully", "success");
+      showToast("Report deleted", "success");
       fetchHistory();
       setReportToDelete(null);
     } catch (err) {
       console.error("Failed to delete report", err);
-      showToast("Failed to delete report", "warning");
+      showToast(apiErrorMessage(err, "Could not delete the report"), "error");
     } finally {
       setIsDeleting(false);
     }
@@ -460,10 +454,10 @@ export default function SchoolReporting({
       setActiveTab("report");
       setStep(5);
 
-      showToast("Edit mode active – update the details below.", "success");
+      showToast("Editing report: update the details below.", "success");
     } catch (err) {
       console.error("Failed to prepare edit mode", err);
-      showToast("Failed to enter edit mode", "warning");
+      showToast(apiErrorMessage(err, "Could not open this report for editing"), "error");
     } finally {
       setIsHistoryLoading(false);
     }
@@ -553,11 +547,12 @@ export default function SchoolReporting({
     }
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
-      return;
+      return false;
     }
     setFormErrors({});
     setIssues([...issues, { ...currentIssue }]);
     setCurrentIssue({ category: [], description: "", files: [] });
+    return true;
   };
 
   const removeIssue = (index: number) => {
@@ -605,7 +600,7 @@ export default function SchoolReporting({
         };
 
         await api.patch(`/reports/${isEditing}`, payload);
-        showToast("Report updated successfully", "success");
+        showToast("Report updated", "success");
       } else {
         // CREATE MODE
         for (const issue of finalIssues) {
@@ -621,7 +616,12 @@ export default function SchoolReporting({
           };
           await api.post("/reports", payload);
         }
-        showToast("Report submitted successfully!", "success");
+        showToast(
+          finalIssues.length === 1
+            ? "Report submitted"
+            : `${finalIssues.length} reports submitted`,
+          "success",
+        );
       }
 
       setIssues([]);
@@ -630,7 +630,6 @@ export default function SchoolReporting({
       if (mode !== "modal") {
         setSubmissionStatus("success");
       }
-      showToast("Report submitted successfully!", "success");
       fetchHistory(); // Reload history
       if (onReportSubmitted) {
         onReportSubmitted();
@@ -640,7 +639,10 @@ export default function SchoolReporting({
       if (mode !== "modal") {
         setSubmissionStatus("error");
       }
-      showToast("Failed to submit report. Please try again.", "warning");
+      showToast(
+        apiErrorMessage(err, err instanceof Error && err.message ? err.message : "Could not submit the report. Please try again."),
+        "error",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -691,7 +693,7 @@ export default function SchoolReporting({
           initial={{ scale: 0.9, opacity: 0, y: 20 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.9, opacity: 0, y: 20 }}
-          className="relative bg-card p-10 rounded-2xl border border-border/10 max-w-md w-full text-center overflow-hidden"
+          className="relative bg-card p-6 sm:p-10 rounded-2xl border border-border/10 max-w-md w-full text-center overflow-hidden"
         >
           <ImigongoPattern className="absolute inset-0 text-primary pointer-events-none opacity-[0.03]" />
 
@@ -712,7 +714,7 @@ export default function SchoolReporting({
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-3xl font-black uppercase tracking-tighter">
+              <h3 className="text-2xl sm:text-3xl font-black uppercase tracking-tighter">
                 {isSuccess ? "Report Submitted" : "Submission Failed"}
               </h3>
               <p className="text-xs font-bold text-muted-foreground uppercase opacity-60 leading-relaxed">
@@ -886,8 +888,9 @@ export default function SchoolReporting({
                             size="icon"
                             className="h-8 w-8 rounded-full text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
                             onClick={() => removeIssue(idx)}
+                            aria-label={`Remove issue ${idx + 1}`}
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4" aria-hidden />
                           </Button>
                         </div>
                       </div>
@@ -1072,33 +1075,6 @@ export default function SchoolReporting({
     );
   };
 
-  const renderToast = () => (
-    <AnimatePresence>
-      {toast.type && (
-        <motion.div
-          initial={{ opacity: 0, y: 50, scale: 0.9 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-          className={cn(
-            "fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-2xl backdrop-blur-xl border flex items-center gap-3",
-            toast.type === "success"
-              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
-              : "bg-amber-500/10 border-amber-500/20 text-amber-500",
-          )}
-        >
-          {toast.type === "success" ? (
-            <CheckCircle2 className="w-5 h-5" />
-          ) : (
-            <AlertCircle className="w-5 h-5" />
-          )}
-          <span className="text-[13px] font-black uppercase tracking-widest leading-none">
-            {toast.message}
-          </span>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-
   return (
     <div
       className={cn(
@@ -1120,7 +1096,6 @@ export default function SchoolReporting({
       {mode !== "modal" && (
         <AnimatePresence>{renderStatusModal()}</AnimatePresence>
       )}
-      {renderToast()}
       <ImigongoPattern className="absolute top-0 right-0 w-64 h-64 text-primary pointer-events-none rotate-12 opacity-5" />
 
       {!hideHeader && mode !== "modal" && (
@@ -1363,6 +1338,7 @@ export default function SchoolReporting({
                       </span>
                       <div className="flex items-center gap-1">
                         <Button
+                          aria-label="Previous page of schools"
                           variant="outline"
                           size="sm"
                           disabled={schoolsPage <= 1}
@@ -1372,9 +1348,10 @@ export default function SchoolReporting({
                           }}
                           className="h-8 w-8 p-0 rounded-lg"
                         >
-                          <ChevronLeft className="w-4 h-4" />
+                          <ChevronLeft className="w-4 h-4" aria-hidden />
                         </Button>
                         <Button
+                          aria-label="Next page of schools"
                           variant="outline"
                           size="sm"
                           disabled={
@@ -1387,7 +1364,7 @@ export default function SchoolReporting({
                           }}
                           className="h-8 w-8 p-0 rounded-lg"
                         >
-                          <ChevronRight className="w-4 h-4" />
+                          <ChevronRight className="w-4 h-4" aria-hidden />
                         </Button>
                       </div>
                     </div>
@@ -1406,12 +1383,13 @@ export default function SchoolReporting({
                   >
                     <div className="flex flex-col md:flex-row md:items-center gap-6 mb-6">
                       <Button
+                        aria-label="Back to school selection"
                         variant="ghost"
                         size="sm"
                         onClick={() => setStep(1)}
                         className="rounded-full h-10 w-10 p-0 font-black uppercase text-[9px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
                       >
-                        <ArrowLeft className="w-4 h-4" />
+                        <ArrowLeft className="w-4 h-4" aria-hidden />
                       </Button>
                       <div className="flex-1">
                         <h3 className="text-base font-bold uppercase tracking-tighter">
@@ -1539,12 +1517,13 @@ export default function SchoolReporting({
                   >
                     <div className="flex items-center gap-4 mb-6">
                       <Button
+                        aria-label="Back to building selection"
                         variant="ghost"
                         size="sm"
                         onClick={() => setStep(2)}
                         className="rounded-full h-10 w-10 p-0 font-black uppercase text-[9px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
                       >
-                        <ArrowLeft className="w-4 h-4" />
+                        <ArrowLeft className="w-4 h-4" aria-hidden />
                       </Button>
                       <div>
                         <h3 className="text-base font-bold uppercase tracking-tighter">
@@ -1592,12 +1571,13 @@ export default function SchoolReporting({
                   >
                     <div className="flex items-center gap-4 mb-6">
                       <Button
+                        aria-label="Back to facility selection"
                         variant="ghost"
                         size="sm"
                         onClick={() => setStep(3)}
                         className="rounded-full h-10 w-10 p-0 font-black uppercase text-[9px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
                       >
-                        <ArrowLeft className="w-4 h-4" />
+                        <ArrowLeft className="w-4 h-4" aria-hidden />
                       </Button>
                       <div>
                         <h3 className="text-base font-bold uppercase tracking-tighter">
@@ -1647,12 +1627,13 @@ export default function SchoolReporting({
                   >
                     <div className="flex items-center gap-4 mb-6">
                       <Button
+                        aria-label="Back to item selection"
                         variant="ghost"
                         size="sm"
                         onClick={() => setStep(4)}
                         className="rounded-full h-10 w-10 p-0 font-black uppercase text-[9px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
                       >
-                        <ArrowLeft className="w-4 h-4" />
+                        <ArrowLeft className="w-4 h-4" aria-hidden />
                       </Button>
                       <div>
                         <h3 className="text-base font-bold uppercase tracking-tighter">
@@ -1794,7 +1775,7 @@ export default function SchoolReporting({
                       <div className="space-y-4">
                         <Card className="bg-card p-6 rounded-2xl border border-border/10 space-y-3">
                           <h4 className="text-[13px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
-                            <Camera className="w-3.5 h-3.5" /> Visual Evidence
+                            <Camera className="w-3.5 h-3.5" aria-hidden /> Visual Evidence
                           </h4>
                           <FileUploader
                             maxFiles={3}
@@ -1809,8 +1790,7 @@ export default function SchoolReporting({
                             variant="outline"
                             className="flex-1 rounded-full h-12 text-[13px] font-black uppercase tracking-widest border-2 hover:bg-primary/5 transition-all"
                             onClick={() => {
-                              addIssue();
-                              showToast("Issue added to list", "success");
+                              if (addIssue()) showToast("Issue added to the list", "success");
                             }}
                             disabled={
                               !currentIssue.description ||
@@ -2010,19 +1990,21 @@ export default function SchoolReporting({
               <div className="md:col-span-4 flex justify-end pb-0.5">
                 <div className="bg-muted/30 p-1.5 rounded-full border border-border/10 flex items-center gap-2">
                   <Button
+                    aria-label="Previous page"
                     variant="ghost"
                     size="sm"
                     disabled={historyPage <= 1}
                     onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
                     className="rounded-full h-8 w-8 p-0"
                   >
-                    <ChevronLeft className="w-4 h-4" />
+                    <ChevronLeft className="w-4 h-4" aria-hidden />
                   </Button>
                   <span className="text-[13px] font-black px-4 uppercase tracking-widest">
                     Page {historyPage} of{" "}
                     {Math.ceil(historyTotal / historyLimit) || 1}
                   </span>
                   <Button
+                    aria-label="Next page"
                     variant="ghost"
                     size="sm"
                     disabled={
@@ -2031,7 +2013,7 @@ export default function SchoolReporting({
                     onClick={() => setHistoryPage((p) => p + 1)}
                     className="rounded-full h-8 w-8 p-0"
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    <ChevronRight className="w-4 h-4" aria-hidden />
                   </Button>
                 </div>
               </div>
@@ -2157,6 +2139,7 @@ export default function SchoolReporting({
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2 pr-2">
                               <Button
+                                aria-label="Edit report"
                                 variant="ghost"
                                 size="sm"
                                 onClick={(e) => {
@@ -2165,10 +2148,11 @@ export default function SchoolReporting({
                                 }}
                                 className="h-8 w-8 rounded-full p-0 flex items-center justify-center hover:bg-primary/10 transition-all text-primary"
                               >
-                                <Edit2 className="w-3.5 h-3.5" />
+                                <Edit2 className="w-3.5 h-3.5" aria-hidden />
                               </Button>
 
                               <Button
+                                aria-label="Delete report"
                                 variant="ghost"
                                 size="sm"
                                 onClick={(e) => {
@@ -2177,12 +2161,13 @@ export default function SchoolReporting({
                                 }}
                                 className="h-8 w-8 rounded-full p-0 flex items-center justify-center hover:bg-rose-500/10 transition-all text-rose-500"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash2 className="w-3.5 h-3.5" aria-hidden />
                               </Button>
 
                               {record.attachments &&
                                 record.attachments.length > 0 && (
                                   <Button
+                                    aria-label="View photos"
                                     variant="ghost"
                                     size="sm"
                                     onClick={(e) => {
@@ -2193,7 +2178,7 @@ export default function SchoolReporting({
                                     }}
                                     className="h-8 w-8 rounded-full p-0 flex items-center justify-center hover:bg-muted transition-all text-muted-foreground"
                                   >
-                                    <Camera className="w-3.5 h-3.5" />
+                                    <Camera className="w-3.5 h-3.5" aria-hidden />
                                   </Button>
                                 )}
                             </div>
@@ -2278,6 +2263,7 @@ export default function SchoolReporting({
                           onClick={(e) => e.stopPropagation()}
                         >
                           <Button
+                            aria-label="Edit report"
                             variant="ghost"
                             size="sm"
                             className="h-8 w-8 p-0 rounded-full hover:bg-primary/10"
@@ -2286,9 +2272,10 @@ export default function SchoolReporting({
                               handleEditReport(record);
                             }}
                           >
-                            <Edit2 className="w-3.5 h-3.5 text-primary" />
+                            <Edit2 className="w-3.5 h-3.5 text-primary" aria-hidden />
                           </Button>
                           <Button
+                            aria-label="Delete report"
                             variant="ghost"
                             size="sm"
                             className="h-8 w-8 p-0 rounded-full hover:bg-rose-500/10"
@@ -2297,7 +2284,7 @@ export default function SchoolReporting({
                               setReportToDelete(record);
                             }}
                           >
-                            <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                            <Trash2 className="w-3.5 h-3.5 text-rose-500" aria-hidden />
                           </Button>
                         </div>
                       </div>
@@ -2349,9 +2336,10 @@ export default function SchoolReporting({
                   variant="ghost"
                   size="icon"
                   onClick={() => setSelectedGalleryImages(null)}
+                  aria-label="Close gallery"
                   className="rounded-full"
                 >
-                  <Plus className="w-6 h-6 rotate-45" />
+                  <Plus className="w-6 h-6 rotate-45" aria-hidden />
                 </Button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto p-4 no-scrollbar">

@@ -348,7 +348,8 @@ export function MfaEnrollment({ start, confirm, onDone, onCancel, cancelLabel = 
           <OtpInput
             value={code}
             onChange={setCode}
-            disabled={loading}
+            busy={loading}
+            invalid={!!error}
             label="Code from your authenticator app"
             onComplete={(v) => void submit(v)}
           />

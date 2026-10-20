@@ -77,6 +77,8 @@ export function PeriodFilter({ onRangeChange, className }: PeriodFilterProps) {
       <Button
         variant="outline"
         onClick={() => setIsOpen(!isOpen)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
         className="rounded-2xl h-11 px-5 border-border/10 bg-card/50 backdrop-blur-md flex items-center gap-3 font-black uppercase text-[10px] tracking-widest transition-all hover:bg-primary/5 active:scale-95 shadow-none"
       >
         <Calendar className="w-3.5 h-3.5 text-primary" />
@@ -87,13 +89,17 @@ export function PeriodFilter({ onRangeChange, className }: PeriodFilterProps) {
       {isOpen && (
         <>
           <div 
-            className="fixed inset-0 z-50" 
-            onClick={() => setIsOpen(false)} 
+            className="fixed inset-0 z-50"
+            aria-hidden="true"
+            onClick={() => setIsOpen(false)}
           />
-          <div className="absolute top-full mt-2 left-0 w-56 bg-card/90 backdrop-blur-xl border border-border/10 rounded-[25px] shadow-2xl z-50 overflow-hidden p-2">
+          <div role="listbox" aria-label="Period" className="absolute top-full mt-2 left-0 w-56 max-w-[calc(100vw-2rem)] bg-card/90 backdrop-blur-xl border border-border/10 rounded-[25px] shadow-2xl z-50 overflow-hidden p-2">
             {PREDEFINED_RANGES.map((range) => (
               <button
                 key={range.key}
+                type="button"
+                role="option"
+                aria-selected={selectedRange.key === range.key}
                 onClick={() => handleSelect(range)}
                 className={cn(
                   "w-full flex items-center justify-between px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all",

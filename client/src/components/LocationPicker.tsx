@@ -9,6 +9,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Input } from "./ui/input";
+import { useToast } from "./ui/toast";
 import { RichDropdown } from "./ui/rich-dropdown";
 import type { DropdownOption } from "./ui/rich-dropdown";
 import {
@@ -195,6 +196,7 @@ export function LocationPicker({
   tifFilePath = "",
   onGisChange,
 }: LocationPickerProps) {
+  const toast = useToast();
   // Map view state
   const [mapView, setMapView] = useState<MapViewType>("street");
 
@@ -418,6 +420,7 @@ export function LocationPicker({
     } catch (error) {
       console.error("Error fetching elevation:", error);
       // Try alternative API if primary fails
+      let found = false;
       try {
         const altResponse = await fetch(
           `https://elevation-api.io/api/elevation?points=${lat},${lng}`,
@@ -429,10 +432,14 @@ export function LocationPicker({
               altData.results[0].elevation.meters,
             );
             onElevationChange(elevationValue.toString());
+            found = true;
           }
         }
       } catch (altError) {
         console.error("Alternative elevation API also failed:", altError);
+      }
+      if (!found) {
+        toast.warning("Could not look up the elevation. Please enter it manually.");
       }
     } finally {
       setIsLoadingElevation(false);
@@ -602,8 +609,8 @@ export function LocationPicker({
       </div>
 
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-3">
             <label className="text-sm font-semibold text-foreground">
               Pick Location on Map <span className="text-destructive">*</span>
             </label>
@@ -612,7 +619,8 @@ export function LocationPicker({
                 type="button"
                 onClick={() => setMapView("street")}
                 className={`p-1.5 rounded-md transition-colors ${mapView === "street" ? "bg-primary text-primary-foreground" : "hover:bg-muted-foreground/20"}`}
-                title="Street View"
+                aria-label="Show street map"
+                aria-pressed={mapView === "street"}
               >
                 <MapIcon className="w-4 h-4" />
               </button>
@@ -620,7 +628,8 @@ export function LocationPicker({
                 type="button"
                 onClick={() => setMapView("satellite")}
                 className={`p-1.5 rounded-md transition-colors ${mapView === "satellite" ? "bg-primary text-primary-foreground" : "hover:bg-muted-foreground/20"}`}
-                title="Satellite View"
+                aria-label="Show satellite map"
+                aria-pressed={mapView === "satellite"}
               >
                 <Satellite className="w-4 h-4" />
               </button>
@@ -628,7 +637,8 @@ export function LocationPicker({
                 type="button"
                 onClick={() => setMapView("terrain")}
                 className={`p-1.5 rounded-md transition-colors ${mapView === "terrain" ? "bg-primary text-primary-foreground" : "hover:bg-muted-foreground/20"}`}
-                title="Terrain View"
+                aria-label="Show terrain map"
+                aria-pressed={mapView === "terrain"}
               >
                 <Mountain className="w-4 h-4" />
               </button>

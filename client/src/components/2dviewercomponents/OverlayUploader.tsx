@@ -5,6 +5,7 @@ import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
 import { api } from "../../lib/api";
 import { cn } from "../../lib/utils";
+import { useToast } from "../ui/toast";
 
 interface OverlayUploaderProps {
   schoolId: string;
@@ -17,6 +18,7 @@ export const OverlayUploader: React.FC<OverlayUploaderProps> = ({
   onSuccess,
   onCancel,
 }) => {
+  const toast = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -75,6 +77,7 @@ export const OverlayUploader: React.FC<OverlayUploaderProps> = ({
 
       if (response.data.success) {
         setStatus("success");
+        toast.success(`Drone layer "${file.name}" uploaded`);
         setTimeout(() => onSuccess(response.data.manifest), 1000);
       } else {
         throw new Error(response.data.message || "Upload failed");
@@ -99,10 +102,12 @@ export const OverlayUploader: React.FC<OverlayUploaderProps> = ({
           New Drone Layer
         </h4>
         <button
+          type="button"
           onClick={onCancel}
+          aria-label="Close drone layer upload"
           className="text-muted-foreground hover:text-white transition-colors"
         >
-          <X className="h-3 w-3" />
+          <X className="h-3 w-3" aria-hidden />
         </button>
       </div>
 
@@ -141,10 +146,12 @@ export const OverlayUploader: React.FC<OverlayUploaderProps> = ({
             </div>
             {!isUploading && status !== "success" && (
               <button
+                type="button"
                 onClick={() => setFile(null)}
+                aria-label="Remove selected file"
                 className="text-muted-foreground hover:text-destructive transition-colors"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" aria-hidden />
               </button>
             )}
           </div>
@@ -191,7 +198,7 @@ export const OverlayUploader: React.FC<OverlayUploaderProps> = ({
 
           {!isUploading && status !== "success" && (
             <Button
-              className="w-full h-9 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-primary hover:bg-primary/90 transition-all"
+              className="w-full h-9 rounded-full text-[10px] font-bold uppercase tracking-widest"
               onClick={handleUpload}
             >
               Start Processing

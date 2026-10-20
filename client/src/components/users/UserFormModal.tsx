@@ -117,7 +117,7 @@ export function UserFormModal({
     setActionBusy("mfa");
     try {
       await api.post(`/users/${editingUser.id}/2fa/reset`);
-      toast.success("Two-factor authentication was reset.");
+      toast.success(`Two-factor authentication reset for ${editingUser.firstName} ${editingUser.lastName}`.trim());
       onSuccess();
     } catch (err) {
       toast.error(apiErrorMessage(err, "Could not reset two-factor."));
@@ -209,11 +209,12 @@ export function UserFormModal({
       location,
     };
 
+    const who = `${formData.firstName} ${formData.lastName}`.trim() || formData.email;
     try {
       if (editingUser) {
         // Edit flow — passwords are never set here (use "Send reset code").
         await api.patch(`/users/${editingUser.id}`, base);
-        toast.success("User updated.");
+        toast.success(`User "${who}" updated`);
       } else {
         if (!sendInvite && !isPasswordAcceptable(formData.password, formData.email)) {
           setError("The temporary password does not meet the password policy.");
@@ -224,11 +225,11 @@ export function UserFormModal({
           sendInvite ? base : { ...base, password: formData.password },
         );
         if (sendInvite && data.inviteSent)
-          toast.success(`Account created. ${formData.email} was emailed a code to set their password.`);
+          toast.success(`User "${who}" created. ${formData.email} was emailed a code to set their password.`);
         else if (sendInvite)
-          toast.warning("Account created, but the email could not be sent. Use “Send reset code” later.");
+          toast.warning(`User "${who}" created, but the email could not be sent. Use “Send reset code” later.`);
         else
-          toast.success("Account created. The user must change the temporary password at first sign-in.");
+          toast.success(`User "${who}" created. They must change the temporary password at first sign-in.`);
       }
       onSuccess();
       onClose();
@@ -311,7 +312,7 @@ export function UserFormModal({
               <UserIcon className="w-4 h-4 text-primary" /> Core Profile
             </h4>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest pl-1">
                   First Name

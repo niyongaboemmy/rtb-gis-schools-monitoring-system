@@ -184,7 +184,7 @@ export const ViewerRightToolbar: React.FC<ViewerRightToolbarProps> = ({
 
             <Divider />
 
-            <ToolButton label="Screenshot" onClick={handleScreenshot} className={cn(screenshotFlash && "animate-pulse")}>
+            <ToolButton label="Save screenshot" onClick={handleScreenshot} className={cn(screenshotFlash && "animate-pulse")}>
               <Download className="h-4 w-4" />
             </ToolButton>
             <ToolButton label="Save this view as home" onClick={handleSaveHome} className={cn(saveFlash && "bg-emerald-500/20 text-emerald-400")}>
@@ -228,11 +228,11 @@ export const ViewerRightToolbar: React.FC<ViewerRightToolbarProps> = ({
                 <div className="rounded-lg bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">{fmtSpeed(speedSteps[speedIdx])}</div>
               </div>
               <div className="flex items-center gap-3">
-                <button type="button" aria-label="Slower" className={cn("h-10 w-10 shrink-0 rounded-lg border border-slate-200 dark:border-white/10 disabled:opacity-40", focusRing)} onClick={speedDown} disabled={speedIdx <= 0}>−</button>
+                <button type="button" aria-label="Decrease movement speed" className={cn("h-10 w-10 shrink-0 rounded-lg border border-slate-200 dark:border-white/10 disabled:opacity-40", focusRing)} onClick={speedDown} disabled={speedIdx <= 0}>−</button>
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-white/10">
                   <div className="h-full bg-primary transition-all" style={{ width: `${(speedIdx / (speedSteps.length - 1)) * 100}%` }} />
                 </div>
-                <button type="button" aria-label="Faster" className={cn("h-10 w-10 shrink-0 rounded-lg border border-slate-200 dark:border-white/10 disabled:opacity-40", focusRing)} onClick={speedUp} disabled={speedIdx >= speedSteps.length - 1}>+</button>
+                <button type="button" aria-label="Increase movement speed" className={cn("h-10 w-10 shrink-0 rounded-lg border border-slate-200 dark:border-white/10 disabled:opacity-40", focusRing)} onClick={speedUp} disabled={speedIdx >= speedSteps.length - 1}>+</button>
               </div>
             </Card>
           )}

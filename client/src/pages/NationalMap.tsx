@@ -289,7 +289,7 @@ export default function NationalMap() {
                 </button>
                 <button
                   onClick={() => setPanelOpen(false)}
-                  aria-label="Collapse panel"
+                  aria-label="Hide filters panel"
                   className="rounded-lg p-1 text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -469,7 +469,7 @@ export default function NationalMap() {
                 <Button
                   onClick={() => navigate(`/schools/${selected.id}`)}
                   size="sm"
-                  className="h-8 w-full gap-2 rounded-lg text-[10px] font-black uppercase tracking-wider"
+                  className="h-8 w-full gap-2 rounded-full text-[10px] font-black uppercase tracking-wider"
                 >
                   <Navigation className="h-3.5 w-3.5" /> Open full profile
                 </Button>

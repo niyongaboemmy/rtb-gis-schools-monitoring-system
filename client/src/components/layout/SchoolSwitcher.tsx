@@ -93,7 +93,7 @@ export function SchoolSwitcher({
   };
 
   return (
-    <div ref={rootRef} className="relative min-w-0">
+    <div ref={rootRef} className="relative min-w-0 max-w-[16rem]">
       <button
         ref={buttonRef}
         type="button"
@@ -102,7 +102,7 @@ export function SchoolSwitcher({
         aria-expanded={open}
         aria-label={`Current school: ${schoolName}. Switch school`}
         data-tour="school-switcher"
-        className="inline-flex max-w-[11rem] sm:max-w-[16rem] items-center gap-1 rounded-lg px-1.5 py-0.5 font-semibold text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="inline-flex max-w-full items-center gap-1 rounded-lg px-1.5 py-0.5 font-semibold text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <span className="truncate">{schoolName}</span>
         <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />

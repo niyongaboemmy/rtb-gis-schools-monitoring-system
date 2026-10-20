@@ -25,7 +25,6 @@ export function ThemeToggle() {
         aria-label="Change theme"
         aria-haspopup="menu"
         aria-expanded={isOpen}
-        title="Theme"
         className={cn(
           "flex items-center justify-center w-9 h-9 rounded-full transition-colors duration-200 border",
           isOpen
@@ -43,6 +42,7 @@ export function ThemeToggle() {
             {/* Invisible backdrop to catch clicks */}
             <div
               className="fixed inset-0 z-40"
+              aria-hidden="true"
               onClick={() => setIsOpen(false)}
             />
             
@@ -51,6 +51,8 @@ export function ThemeToggle() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -4, scale: 0.95 }}
               transition={{ type: "tween", ease: [0.4, 0, 0.2, 1], duration: 0.15 }}
+              role="menu"
+              aria-label="Theme"
               className="absolute right-0 top-[42px] z-50 w-36 p-1.5 bg-background border border-border/60 rounded-xl overflow-hidden"
             >
               {modes.map(({ key, icon: Icon, label }) => {
@@ -58,6 +60,9 @@ export function ThemeToggle() {
                 return (
                   <button
                     key={key}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={isActive}
                     onClick={() => {
                       setTheme(key);
                       setIsOpen(false);

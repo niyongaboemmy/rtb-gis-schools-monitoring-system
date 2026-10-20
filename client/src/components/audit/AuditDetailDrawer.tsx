@@ -80,7 +80,7 @@ export function AuditDetailDrawer({ row, onClose }: AuditDetailDrawerProps) {
             aria-label="Close details"
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </header>
 

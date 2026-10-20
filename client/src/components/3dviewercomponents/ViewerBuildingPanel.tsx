@@ -39,7 +39,7 @@ export const ViewerBuildingPanel: React.FC<ViewerBuildingPanelProps> = ({ buildi
           <div className="bld-panel-name">{name}</div>
           {code && <div className="bld-panel-code">{code}</div>}
         </div>
-        <button className="bld-panel-close" onClick={onClose} title="Close">✕</button>
+        <button className="bld-panel-close" onClick={onClose} aria-label="Close building panel">✕</button>
       </div>
 
       <div className="bld-panel-body">

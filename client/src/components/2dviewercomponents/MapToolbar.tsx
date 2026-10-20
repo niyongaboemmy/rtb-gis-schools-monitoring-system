@@ -189,6 +189,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
+                      aria-label="Close viewer"
                       variant="ghost"
                       size="icon"
                       className="h-10 w-10 rounded-2xl hover:bg-destructive/10 hover:text-destructive transition-all"
@@ -206,6 +207,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                     <Button
+                      aria-label="Show school overview"
                       variant={showBasicInfo ? "default" : "ghost"}
                       size="icon"
                       className={cn(
@@ -251,6 +253,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    aria-label="Toggle GIS layers panel"
                     variant={showNavigator ? "default" : "ghost"}
                     size="icon"
                     className={cn(
@@ -272,6 +275,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    aria-label="Toggle buildings list"
                     variant={showBuildingsList ? "default" : "ghost"}
                     size="icon"
                     className={cn(
@@ -293,6 +297,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    aria-label="Toggle places overlay"
                     variant={showPlacesOverlay ? "default" : "ghost"}
                     size="icon"
                     className={cn(
@@ -314,6 +319,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    aria-label="Choose basemap"
                     variant={showBasemaps ? "default" : "ghost"}
                     size="icon"
                     className={cn(
@@ -346,6 +352,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    aria-label="Navigate"
                     variant={activeTool === "select" ? "default" : "ghost"}
                     size="icon"
                     className={cn(
@@ -397,6 +404,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    aria-label="Design new block"
                     variant={
                       activeTool === "create_block" ? "default" : "ghost"
                     }
@@ -422,6 +430,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
+                      aria-label="Set school location"
                       variant={
                         activeTool === "set_location" ? "default" : "ghost"
                       }
@@ -546,6 +555,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    aria-label="Adjust overlay opacity"
                     variant={showOpacitySlider ? "default" : "ghost"}
                     size="icon"
                     className={cn(
@@ -572,6 +582,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    aria-label="Adjust image brightness and contrast"
                     variant={showVisuals ? "default" : "ghost"}
                     size="icon"
                     className={cn(
@@ -598,6 +609,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    aria-label="Zoom in"
                     variant="ghost"
                     size="icon"
                     className="h-10 w-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-primary dark:hover:text-white"
@@ -614,6 +626,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    aria-label="Zoom out"
                     variant="ghost"
                     size="icon"
                     className="h-10 w-10 rounded-2xl"
@@ -630,6 +643,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    aria-label="Fit map to school extent"
                     variant="ghost"
                     size="icon"
                     className="h-10 w-10 rounded-2xl"
@@ -646,6 +660,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    aria-label="Export map as PNG"
                     variant="ghost"
                     size="icon"
                     className="h-10 w-10 rounded-2xl"
@@ -662,6 +677,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
+                    aria-label="Reset to home view"
                     variant="ghost"
                     size="icon"
                     className="h-10 w-10 rounded-2xl"
@@ -679,6 +695,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
+                      aria-label="Open 3D viewer"
                       variant="ghost"
                       size="icon"
                       className="h-10 w-10 rounded-2xl bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-white transition-all group"

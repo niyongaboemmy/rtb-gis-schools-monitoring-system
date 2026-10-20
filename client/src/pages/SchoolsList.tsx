@@ -6,6 +6,7 @@ import {
   useRef,
   type ComponentType,
 } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -65,8 +66,10 @@ import {
 } from "../store/schoolsStore";
 import { useAuthStore } from "../store/authStore";
 import { hasPermission, Permission } from "../lib/permissions";
-import { api } from "../lib/api";
+import { api, apiErrorMessage } from "../lib/api";
+import { DeleteConfirmationModal } from "../components/ui/delete-confirmation-modal";
 import { cn } from "../lib/utils";
+import { formatNumber } from "../lib/format";
 
 /* ─────────────────────────────  config  ───────────────────────────── */
 
@@ -175,12 +178,14 @@ export default function SchoolsList() {
     try {
       const res = await api.get(`/schools/${id}`);
       setEditing({ id, data: res.data as Record<string, unknown> });
-    } catch {
-      toast.error("Could not load this school for editing. Please try again.");
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not load this school for editing. Please try again."));
     }
   };
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [searchDraft, setSearchDraft] = useState(params.get("q") ?? "");
@@ -391,6 +396,7 @@ export default function SchoolsList() {
     const next = presets.filter((v) => v.name !== name);
     setPresets(next);
     writeViews(presetKey, next);
+    toast.success(`Removed saved view "${name}"`);
   };
   const applyView = (v: SavedView) => {
     setParams(new URLSearchParams(v.query), { replace: true });
@@ -427,6 +433,7 @@ export default function SchoolsList() {
       ...rows.map((r) => header.map((h) => esc((r as Record<string, unknown>)[h])).join(",")),
     ].join("\n");
     downloadBlobUrl(new Blob([csv], { type: "text/csv" }), `schools-${rows.length}.csv`);
+    toast.success(`${schoolCount(rows.length)} exported to CSV`);
   };
   const exportFilteredXlsx = async () => {
     setExporting(true);
@@ -437,9 +444,10 @@ export default function SchoolsList() {
       XLSX.utils.book_append_sheet(wb, ws, "Schools");
       const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
       downloadBlobUrl(new Blob([buf]), `schools-${sorted.length}.xlsx`);
+      toast.success(`${schoolCount(sorted.length)} exported to Excel`);
     } catch (err) {
       console.error("Export failed", err);
-      toast.error("The export could not be created. Please try again.");
+      toast.error(apiErrorMessage(err, "The export could not be created. Please try again."));
     } finally {
       setExporting(false);
     }
@@ -502,6 +510,7 @@ export default function SchoolsList() {
     a.download = `schools-selection-${rows.length}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+    toast.success(`${schoolCount(rows.length)} exported to CSV`);
   };
 
   const handleExport = async () => {
@@ -514,34 +523,38 @@ export default function SchoolsList() {
       a.download = "schools-export.xlsx";
       a.click();
       URL.revokeObjectURL(url);
+      toast.success("Full schools dataset exported to Excel");
     } catch (err) {
       console.error("Export failed", err);
-      toast.error("The export could not be downloaded. Please try again.");
+      toast.error(apiErrorMessage(err, "The export could not be downloaded. Please try again."));
     } finally {
       setExporting(false);
     }
   };
 
-  const handleDeleteSchool = async (schoolId: string, schoolName: string) => {
-    if (!window.confirm(`Are you sure you want to delete "${schoolName}"? This action cannot be undone.`)) {
-      return;
-    }
+  const handleDeleteSchool = async () => {
+    if (!deleteTarget) return;
+    const { id: schoolId, name: schoolName } = deleteTarget;
+    setDeleting(true);
     try {
       await api.delete(`/schools/${schoolId}`);
       invalidateAllSchools();
       void fetchAllSchools();
-      toast.success(`"${schoolName}" deleted`);
+      setSelected((prev) => {
+        if (!prev.has(schoolId)) return prev;
+        const next = new Set(prev);
+        next.delete(schoolId);
+        return next;
+      });
+      toast.success(`School "${schoolName}" deleted`);
+      setDeleteTarget(null);
     } catch (err) {
       console.error("Delete failed", err);
-      const message = (
-        err as { response?: { data?: { message?: string | string[] } } }
-      ).response?.data?.message;
-      toast.error(
-        Array.isArray(message)
-          ? message.join("\n")
-          : message || "Please try again.",
-        { title: "Failed to delete school" },
-      );
+      toast.error(apiErrorMessage(err, "Please try again."), {
+        title: "Failed to delete school",
+      });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -844,8 +857,8 @@ export default function SchoolsList() {
               </div>
             ) : (
               <>
-              {/* Phones / small tablets: cards instead of a wide table (WS3.4) */}
-              <div className="grid gap-3 p-4 sm:grid-cols-2 md:hidden">
+              {/* Phones / tablets / small laptops: cards instead of a wide table (WS3.4) */}
+              <div className="grid gap-3 p-4 sm:grid-cols-2 xl:hidden">
                 {pageRows.map((s, i) => (
                   <SchoolCard
                     key={s.id}
@@ -857,7 +870,10 @@ export default function SchoolsList() {
                   />
                 ))}
               </div>
-              <Table wrapperClassName="hidden md:block border-none rounded-none bg-transparent shadow-none">
+              <Table
+                wrapperClassName="hidden xl:block border-none rounded-none bg-transparent shadow-none"
+                className="[&_td]:px-3 [&_th]:px-3 2xl:[&_td]:px-5 2xl:[&_th]:px-5"
+              >
                 <TableHeader>
                   <TableRow className="border-b border-border/10 hover:bg-transparent">
                     <TableHead className="w-10">
@@ -944,7 +960,7 @@ export default function SchoolsList() {
                                 className="h-8 w-1 shrink-0 rounded-full"
                                 style={{ background: ps.dot }}
                               />
-                              <div className="min-w-0">
+                              <div className="min-w-0 max-w-[13rem] 2xl:max-w-[18rem]">
                                 {canOpenDetail ? (
                                   <button
                                     type="button"
@@ -952,12 +968,12 @@ export default function SchoolsList() {
                                       e.stopPropagation();
                                       openSchool(school.id);
                                     }}
-                                    className="block max-w-full truncate rounded text-left text-sm font-semibold text-foreground transition-colors group-hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    className="block max-w-full line-clamp-2 rounded text-left text-sm font-semibold text-foreground transition-colors group-hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                   >
                                     {school.name}
                                   </button>
                                 ) : (
-                                  <div className="truncate text-sm font-semibold text-foreground">
+                                  <div className="line-clamp-2 text-sm font-semibold text-foreground">
                                     {school.name}
                                   </div>
                                 )}
@@ -1021,7 +1037,7 @@ export default function SchoolsList() {
                               {canDelete && (
                                 <RowAction
                                   label={`Delete ${school.name}`}
-                                  onClick={() => handleDeleteSchool(school.id, school.name)}
+                                  onClick={() => setDeleteTarget({ id: school.id, name: school.name })}
                                   icon={Trash2}
                                   danger
                                 />
@@ -1090,7 +1106,7 @@ export default function SchoolsList() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-border/40 bg-background/95 px-4 py-3 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#0c1120]/95"
+            className="fixed bottom-6 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-3 rounded-2xl border border-border/40 bg-background/95 px-4 py-3 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#0c1120]/95"
           >
             <span className="text-xs font-black uppercase tracking-wider text-foreground">
               {selected.size} selected
@@ -1098,9 +1114,9 @@ export default function SchoolsList() {
             <Button
               size="sm"
               onClick={exportSelectedCsv}
-              className="h-8 gap-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider"
+              className="h-8 gap-1.5 rounded-full text-[10px] font-black uppercase tracking-wider"
             >
-              <FileDown className="h-3.5 w-3.5" /> Export CSV
+              <FileDown className="h-3.5 w-3.5" aria-hidden /> Export CSV
             </Button>
             <button
               onClick={() => setSelected(new Set())}
@@ -1134,6 +1150,17 @@ export default function SchoolsList() {
           initialData={editing.data as never}
         />
       )}
+      <DeleteConfirmationModal
+        isOpen={!!deleteTarget}
+        onClose={() => {
+          if (!deleting) setDeleteTarget(null);
+        }}
+        onConfirm={() => void handleDeleteSchool()}
+        isLoading={deleting}
+        title="Delete school"
+        description={`Permanently delete "${deleteTarget?.name ?? ""}"? This action cannot be undone and will be logged in the system.`}
+        confirmLabel="Delete school"
+      />
       {changeTarget && (
         <RequestChangeDialog
           isOpen
@@ -1169,6 +1196,10 @@ function writeViews(key: string, views: SavedView[]) {
   } catch {
     /* storage blocked */
   }
+}
+
+function schoolCount(n: number): string {
+  return `${formatNumber(n)} school${n === 1 ? "" : "s"}`;
 }
 
 function downloadBlobUrl(blob: Blob, filename: string) {
@@ -1322,6 +1353,31 @@ function ExportMenu({
   onFull: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  // The menu is portalled to <body> with fixed coordinates: the page header it
+  // sits in clips overflow (and its backdrop blur traps `position: fixed`).
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const toggle = () => {
+    if (!open && anchorRef.current) {
+      const r = anchorRef.current.getBoundingClientRect();
+      const w = Math.min(288, window.innerWidth - 32);
+      setPos({
+        top: r.bottom + 8,
+        left: Math.max(16, Math.min(r.right - w, window.innerWidth - 16 - w)),
+      });
+    }
+    setOpen((o) => !o);
+  };
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [open]);
   const item =
     "flex w-full flex-col items-start rounded-lg px-3 py-2 text-left hover:bg-accent focus-visible:outline-none focus-visible:bg-accent";
   const run = (fn: () => void) => () => {
@@ -1329,10 +1385,10 @@ function ExportMenu({
     fn();
   };
   return (
-    <div className="relative">
+    <div ref={anchorRef} className="relative">
       <Button
         variant="outline"
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         disabled={busy}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -1342,14 +1398,15 @@ function ExportMenu({
         {busy ? "Exporting…" : "Export"}
         <ChevronDown className="h-3 w-3" aria-hidden="true" />
       </Button>
-      {open && (
+      {open && pos && createPortal(
         <>
           <div className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setOpen(false)} />
           <div
             role="menu"
             aria-label="Export schools"
             onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
-            className="absolute right-0 top-full z-50 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-background p-1.5 shadow-xl"
+            style={{ top: pos.top, left: pos.left }}
+            className="fixed z-50 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-background p-1.5 shadow-xl"
           >
             <button type="button" role="menuitem" className={item} onClick={run(onXlsx)}>
               <span className="text-sm text-foreground">Current view — Excel</span>
@@ -1366,7 +1423,8 @@ function ExportMenu({
               <span className="text-xs text-muted-foreground">Every school in your access area, more columns</span>
             </button>
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );

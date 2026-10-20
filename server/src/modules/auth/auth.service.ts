@@ -15,6 +15,15 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { OAuth2Client, type TokenPayload } from 'google-auth-library';
+import type { GoogleLoginDto } from './dto/google-login.dto';
+
+/** The verified Google identity fields the auth flow relies on. */
+type GoogleIdentity = Pick<
+  TokenPayload,
+  'sub' | 'email' | 'email_verified' | 'given_name' | 'family_name' | 'picture'
+>;
+type GoogleCredential = Pick<GoogleLoginDto, 'idToken' | 'accessToken'>;
+const GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 import { User } from '../users/entities/user.entity';
 import { Role } from '../roles/entities/role.entity';
 import { LoginDto } from './dto/login.dto';
@@ -482,10 +491,10 @@ export class AuthService {
    * factor afterwards.
    */
   async loginWithGoogle(
-    idToken: string,
+    credential: GoogleCredential,
     meta: RequestMeta = {},
   ): Promise<LoginResult> {
-    const payload = await this.verifyGoogleIdToken(idToken);
+    const payload = await this.verifyGoogleCredential(credential);
 
     const email = this.normaliseEmail(payload.email ?? '');
     if (!email) throw new UnauthorizedException('Google account has no email');
@@ -538,8 +547,12 @@ export class AuthService {
   }
 
   /** Links a Google identity to the signed-in account (same email only). */
-  async linkGoogle(user: User, idToken: string, meta: RequestMeta = {}) {
-    const payload = await this.verifyGoogleIdToken(idToken);
+  async linkGoogle(
+    user: User,
+    credential: GoogleCredential,
+    meta: RequestMeta = {},
+  ) {
+    const payload = await this.verifyGoogleCredential(credential);
     const email = this.normaliseEmail(payload.email ?? '');
     if (!payload.email_verified || email !== this.normaliseEmail(user.email))
       throw new BadRequestException(
@@ -1158,18 +1171,72 @@ export class AuthService {
     return `${local.slice(0, 2)}${'*'.repeat(Math.max(1, local.length - 2))}@${domain}`;
   }
 
-  /** Verifies the ID token's signature, audience and expiry with Google. */
-  private async verifyGoogleIdToken(idToken: string): Promise<TokenPayload> {
+  /** Accepts either credential kind; exactly one must be present. */
+  private async verifyGoogleCredential(
+    credential: GoogleCredential,
+  ): Promise<GoogleIdentity> {
+    const { idToken, accessToken } = credential;
+    if (!!idToken === !!accessToken)
+      throw new BadRequestException(
+        'Send exactly one Google credential (idToken or accessToken).',
+      );
+    return idToken
+      ? this.verifyGoogleIdToken(idToken)
+      : this.verifyGoogleAccessToken(accessToken!);
+  }
+
+  private googleClientId(): string {
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID')?.trim();
     if (!clientId)
       throw new ServiceUnavailableException(
         'Google sign-in is not configured on this server.',
       );
-
     this.googleClient ??= new OAuth2Client(clientId);
+    return clientId;
+  }
+
+  /**
+   * Verifies an OAuth access token from the custom Google button. Google's
+   * tokeninfo must confirm it was issued to OUR client (an access token minted
+   * for any other app is refused, so tokens can't be replayed here), then the
+   * profile is read with it and must belong to the same Google account.
+   */
+  private async verifyGoogleAccessToken(
+    accessToken: string,
+  ): Promise<GoogleIdentity> {
+    const clientId = this.googleClientId();
+    try {
+      const info = await this.googleClient!.getTokenInfo(accessToken);
+      if (info.aud !== clientId && info.azp !== clientId)
+        throw new Error('token issued to another client');
+      if (!info.sub) throw new Error('no subject');
+
+      const res = await fetch(GOOGLE_USERINFO_URL, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) throw new Error(`userinfo ${res.status}`);
+      const profile = (await res.json()) as GoogleIdentity;
+      if (profile.sub !== info.sub) throw new Error('subject mismatch');
+
+      return {
+        sub: info.sub,
+        email: profile.email ?? info.email,
+        email_verified: profile.email_verified ?? info.email_verified,
+        given_name: profile.given_name,
+        family_name: profile.family_name,
+        picture: profile.picture,
+      };
+    } catch {
+      throw new UnauthorizedException('Invalid or expired Google sign-in.');
+    }
+  }
+
+  /** Verifies the ID token's signature, audience and expiry with Google. */
+  private async verifyGoogleIdToken(idToken: string): Promise<GoogleIdentity> {
+    const clientId = this.googleClientId();
 
     try {
-      const ticket = await this.googleClient.verifyIdToken({
+      const ticket = await this.googleClient!.verifyIdToken({
         idToken,
         audience: clientId,
       });
@@ -1182,7 +1249,7 @@ export class AuthService {
   }
 
   /** Self-registers a Google identity with the configured default role. */
-  private async createUserFromGoogle(email: string, payload: TokenPayload) {
+  private async createUserFromGoogle(email: string, payload: GoogleIdentity) {
     const roleName = this.configService
       .get<string>('GOOGLE_DEFAULT_ROLE', 'viewer')
       .trim();

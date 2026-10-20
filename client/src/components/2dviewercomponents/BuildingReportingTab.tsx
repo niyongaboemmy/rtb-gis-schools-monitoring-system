@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../../lib/api";
 import {
-  CheckCircle,
-  AlertCircle,
   ChevronRight,
   Plus,
   X,
@@ -43,16 +41,6 @@ export function BuildingReportingTab({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
-  const [toast, setToast] = useState<{
-    message: string;
-    type: "success" | "warning" | null;
-  }>({ message: "", type: null });
-
-  const showToast = (message: string, type: "success" | "warning") => {
-    setToast({ message, type });
-    setTimeout(() => setToast({ message: "", type: null }), 5000);
-  };
-
   const fetchReports = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -84,34 +72,6 @@ export function BuildingReportingTab({
     setSelectedReport(updated);
     setReports((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
   };
-
-  // ── Toast ─────────────────────────────────────────────────────────────────
-
-  const renderToast = () => (
-    <AnimatePresence>
-      {toast.type && (
-        <motion.div
-          initial={{ opacity: 0, y: 12, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.9 }}
-          transition={{ type: "spring", stiffness: 400, damping: 30 }}
-          className={cn(
-            "absolute bottom-4 left-1/2 -translate-x-1/2 z-60 flex items-center gap-2 px-4 py-2.5 rounded-2xl border shadow-xl text-xs whitespace-nowrap",
-            toast.type === "success"
-              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
-              : "bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400",
-          )}
-        >
-          {toast.type === "success" ? (
-            <CheckCircle className="w-3.5 h-3.5 shrink-0" />
-          ) : (
-            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-          )}
-          {toast.message}
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
 
   // ── Create modal (portaled) ───────────────────────────────────────────────
 
@@ -156,10 +116,12 @@ export function BuildingReportingTab({
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setShowCreateModal(false)}
+                  aria-label="Close new report"
                   className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 dark:text-white/40 hover:text-slate-900 dark:hover:text-white transition-all active:scale-95 group"
                 >
-                  <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                  <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" aria-hidden />
                 </button>
               </div>
 
@@ -174,7 +136,6 @@ export function BuildingReportingTab({
                     setShowCreateModal(false);
                     fetchReports();
                     onReportStatusChange?.();
-                    showToast("Report submitted successfully!", "success");
                   }}
                 />
               </div>
@@ -221,7 +182,6 @@ export function BuildingReportingTab({
           <Plus className="w-3.5 h-3.5" />
           File first report
         </button>
-        {renderToast()}
         {createPortal(renderCreateModal(), document.body)}
       </div>
     );
@@ -295,14 +255,11 @@ export function BuildingReportingTab({
         })}
       </div>
 
-      {renderToast()}
-
       <BuildingReportDetailModal
         report={selectedReport}
         onClose={() => setSelectedReport(null)}
         onReportUpdated={handleReportUpdated}
         onReportStatusChange={onReportStatusChange}
-        showToast={showToast}
       />
 
       {createPortal(renderCreateModal(), document.body)}

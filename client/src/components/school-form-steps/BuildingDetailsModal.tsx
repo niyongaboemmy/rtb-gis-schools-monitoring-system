@@ -5,6 +5,7 @@ import { MapContainer, TileLayer, Marker } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { BuildingData } from "./BuildingsStep";
+import { useToast } from "../ui/toast";
 import {
   X,
   Building2,
@@ -125,11 +126,13 @@ function StatChip({ icon: Icon, label, value, delay = 0 }: {
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+  const toast = useToast();
   return (
-    <button type="button" onClick={() => {
+    <button type="button" aria-label="Copy coordinates" onClick={() => {
       navigator.clipboard.writeText(text).then(() => {
         setCopied(true); setTimeout(() => setCopied(false), 1800);
-      });
+        toast.success("Coordinates copied");
+      }, () => toast.error("Could not copy the coordinates."));
     }} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0">
       {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
       {copied ? "Copied" : "Copy"}
@@ -219,7 +222,7 @@ export function BuildingDetailsModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 24 }}
             transition={{ type: "spring", damping: 28, stiffness: 320 }}
-            className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-71 mx-auto w-full max-w-2xl bg-background rounded-3xl border border-border/50 overflow-hidden flex flex-col max-h-[92vh]"
+            className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-71 mx-auto max-w-2xl bg-background rounded-3xl border border-border/50 overflow-hidden flex flex-col max-h-[92vh]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* ── Hero map (bigger: h-72) ── */}
@@ -262,9 +265,9 @@ export function BuildingDetailsModal({
                     <Pencil className="w-3 h-3" />Edit
                   </button>
                 )}
-                <button type="button" onClick={onClose}
+                <button type="button" onClick={onClose} aria-label="Close building details"
                   className="flex items-center justify-center w-8 h-8 rounded-full bg-background/90 backdrop-blur border border-border/50 text-muted-foreground hover:text-foreground transition-all">
-                  <X className="w-4 h-4" />
+                  <X className="w-4 h-4" aria-hidden />
                 </button>
               </div>
 
@@ -317,7 +320,7 @@ export function BuildingDetailsModal({
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
 
               {/* Physical stats grid */}
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <StatChip icon={Layers}   label="Floors" value={building.buildingFloors || "—"} delay={0} />
                 <StatChip icon={DoorOpen} label="Rooms"  value={totalRooms > 0 ? totalRooms : "—"} delay={0.05} />
                 <StatChip icon={Maximize2} label="Area"  value={building.buildingArea ? `${building.buildingArea}m²` : "—"} delay={0.1} />

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
-import { api } from "../../lib/api";
+import { api, apiErrorMessage } from "../../lib/api";
+import { useToast, notify } from "../ui/toast";
+import { DeleteConfirmationModal } from "../ui/delete-confirmation-modal";
 import {
   Card,
   CardContent,
@@ -33,6 +35,7 @@ const BUILT_IN_ROLES = ["super_admin", "admin", "gis_analyst", "viewer"];
 const PRESET_ROLES = ["district_officer", "school_leader"];
 
 export function RolesTab() {
+  const toast = useToast();
   const [roles, setRoles] = useState<any[]>([]);
   const [accessLevels, setAccessLevels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,6 +56,8 @@ export function RolesTab() {
   const setAL = (key: string, val: boolean) =>
     setActionLoading((prev) => ({ ...prev, [key]: val }));
   const isAL = (key: string) => actionLoading[key] === true;
+
+  const [pendingDeleteRole, setPendingDeleteRole] = useState<{ id: string; name: string } | null>(null);
 
   const fetchPromise = useRef<Promise<any> | null>(null);
 
@@ -76,6 +81,7 @@ export function RolesTab() {
       }
     }).catch(err => {
       console.error("Failed to load roles data", err);
+      notify.error(apiErrorMessage(err, "Could not load roles."));
     }).finally(() => {
       setLoading(false);
       fetchPromise.current = null;
@@ -106,11 +112,53 @@ export function RolesTab() {
     setSelectedRole(updatedRole);
     setRoles(roles.map((r) => (r.id === role.id ? updatedRole : r)));
 
+    const permName =
+      PERMISSION_GROUPS.flatMap((g) => g.items).find((it) => it.key === permissionLabel)
+        ?.label ?? permissionLabel;
     try {
       await api.patch(`/roles/${role.id}`, { permissions: updatedPermissions });
+      toast.success(
+        checked
+          ? `"${permName}" granted to ${titleCase(role.name)}`
+          : `"${permName}" removed from ${titleCase(role.name)}`,
+      );
     } catch (err) {
       console.error("Failed to update role permissions", err);
+      toast.error(apiErrorMessage(err, `Could not update permissions for ${titleCase(role.name)}.`));
       setSelectedRole(role); // Revert on failure
+      fetchInitialData();
+    } finally {
+      setAL(key, false);
+    }
+  };
+
+  /** Grants or clears a whole permission group in one request (one toast). */
+  const handleToggleGroup = async (
+    role: { id: string; name: string; permissions?: string[] },
+    group: string,
+    keys: string[],
+    grant: boolean,
+  ) => {
+    const key = `group-${role.id}-${group}`;
+    setAL(key, true);
+    const current: string[] = role.permissions ?? [];
+    const updatedPermissions = grant
+      ? Array.from(new Set([...current, ...keys]))
+      : current.filter((p) => !keys.includes(p));
+    const updatedRole = { ...role, permissions: updatedPermissions };
+    setSelectedRole(updatedRole);
+    setRoles((prev) => prev.map((r) => (r.id === role.id ? updatedRole : r)));
+    try {
+      await api.patch(`/roles/${role.id}`, { permissions: updatedPermissions });
+      toast.success(
+        grant
+          ? `All "${group}" permissions granted to ${titleCase(role.name)}`
+          : `All "${group}" permissions removed from ${titleCase(role.name)}`,
+      );
+    } catch (err) {
+      console.error("Failed to update role permissions", err);
+      toast.error(apiErrorMessage(err, `Could not update permissions for ${titleCase(role.name)}.`));
+      setSelectedRole(role);
       fetchInitialData();
     } finally {
       setAL(key, false);
@@ -124,6 +172,7 @@ export function RolesTab() {
     try {
       const payload = { ...roleFormData, permissions: [] };
       const res = await api.post("/roles", payload);
+      toast.success(`Role "${titleCase(roleFormData.name)}" created`);
       setIsRoleModalOpen(false);
       setRoleFormData({ name: "", description: "", accessLevelId: "" });
       await fetchInitialData();
@@ -145,28 +194,29 @@ export function RolesTab() {
       const res = await api.patch(`/roles/${roleId}`, { accessLevelId });
       setRoles((prev) => prev.map((r) => (r.id === roleId ? res.data : r)));
       if (selectedRole?.id === roleId) setSelectedRole(res.data);
+      const levelName = accessLevels.find((al) => al.id === accessLevelId)?.name;
+      toast.success(
+        `${titleCase(res.data?.name ?? "Role")} access level set to ${levelName ?? "the selected level"}`,
+      );
     } catch (err) {
       console.error("Failed to update role access level", err);
+      toast.error(apiErrorMessage(err, "Could not change the role's access level."));
     } finally {
       setAL(key, false);
     }
   };
 
-  const handleDeleteRole = async (id: string) => {
-    if (
-      !window.confirm(
-        `Are you sure you want to delete this role? This might break users assigned to it.`,
-      )
-    )
-      return;
+  const handleDeleteRole = async (id: string, name: string) => {
     const key = `del-role-${id}`;
     setAL(key, true);
     try {
       await api.delete(`/roles/${id}`);
+      toast.success(`Role "${titleCase(name)}" deleted`);
+      setPendingDeleteRole(null);
       setSelectedRole(roles[0]);
       fetchInitialData();
     } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to delete role");
+      toast.error(apiErrorMessage(err, "Could not delete the role."));
     } finally {
       setAL(key, false);
     }
@@ -273,8 +323,8 @@ export function RolesTab() {
             >
               <Card className="border border-border/20 bg-card/60 backdrop-blur-xl rounded-2xl overflow-hidden">
                 <CardHeader className="p-6 border-b border-border/40 bg-linear-to-r from-primary/6 to-transparent">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0 space-y-0.5">
                       <CardTitle className="text-xl font-black uppercase tracking-tight flex items-center gap-3">
                         {selectedRole.name.replace("_", " ")}
                         <Badge className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 text-[9px] px-2 py-0">
@@ -290,7 +340,7 @@ export function RolesTab() {
                         variant="outline"
                         size="sm"
                         className="rounded-xl h-8 px-3 border-destructive/20 text-destructive text-[10px] uppercase font-bold hover:bg-destructive/5"
-                        onClick={() => handleDeleteRole(selectedRole.id)}
+                        onClick={() => setPendingDeleteRole(selectedRole)}
                         disabled={
                           BUILT_IN_ROLES.includes(selectedRole.name) ||
                           isAL(`del-role-${selectedRole.id}`)
@@ -308,7 +358,7 @@ export function RolesTab() {
                 </CardHeader>
                 <CardContent className="p-6 space-y-6">
                   {/* Access Level Row */}
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-muted/20 border border-border/20">
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-muted/20 border border-border/20">
                     <div className="flex items-center gap-2">
                       {isAL(`role-al-${selectedRole.id}`) && (
                         <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
@@ -327,6 +377,7 @@ export function RolesTab() {
                         )
                       }
                       required
+                      aria-label="Role access level"
                       disabled={isAL(`role-al-${selectedRole.id}`)}
                       className="text-[10px] font-black uppercase tracking-wide bg-primary/10 text-primary border border-primary/20 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -366,20 +417,17 @@ export function RolesTab() {
                               </span>
                             </h5>
                             <button
+                              type="button"
                               onClick={() =>
-                                items.forEach((it) => {
-                                  const has = selectedRole.permissions?.includes(
-                                    it.key,
-                                  );
-                                  if (allOn ? has : !has)
-                                    handleTogglePermission(
-                                      selectedRole,
-                                      it.key,
-                                      !allOn,
-                                    );
-                                })
+                                handleToggleGroup(
+                                  selectedRole,
+                                  group,
+                                  items.map((it) => it.key),
+                                  !allOn,
+                                )
                               }
-                              className="text-[9px] font-black uppercase tracking-wider text-primary/70 hover:text-primary"
+                              disabled={isAL(`group-${selectedRole.id}-${group}`)}
+                              className="shrink-0 text-[9px] font-black uppercase tracking-wider text-primary/70 hover:text-primary disabled:opacity-50"
                             >
                               {allOn ? "Clear group" : "Grant group"}
                             </button>
@@ -580,6 +628,19 @@ export function RolesTab() {
           </div>
         </form>
       </Modal>
+
+      <DeleteConfirmationModal
+        isOpen={pendingDeleteRole !== null}
+        onClose={() => setPendingDeleteRole(null)}
+        onConfirm={() =>
+          pendingDeleteRole &&
+          handleDeleteRole(pendingDeleteRole.id, pendingDeleteRole.name)
+        }
+        title="Delete role"
+        description={`Delete the role "${pendingDeleteRole ? titleCase(pendingDeleteRole.name) : ""}"? Users assigned to it may lose access.`}
+        confirmLabel="Delete role"
+        isLoading={pendingDeleteRole ? isAL(`del-role-${pendingDeleteRole.id}`) : false}
+      />
     </motion.div>
   );
 }

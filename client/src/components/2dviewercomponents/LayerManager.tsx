@@ -110,8 +110,9 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
           size="icon"
           className="h-8 w-8 rounded-full hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 dark:text-white"
           onClick={onClose}
+          aria-label="Close GIS panel"
         >
-          <X className="h-4 w-4" />
+          <X className="h-4 w-4" aria-hidden />
         </Button>
       </div>
 
@@ -151,7 +152,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar min-h-[300px]">
+      <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar min-h-0 md:min-h-[300px]">
         {activeTab === "features" && (
           <>
             {/* Group visibility filter chips */}
@@ -222,18 +223,18 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
                       isGroupHidden && "opacity-30",
                     )}
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
                       <div
                         className={cn(
-                          "h-10 w-10 rounded-xl flex items-center justify-center border",
+                          "h-10 w-10 shrink-0 rounded-xl flex items-center justify-center border",
                           iconDef.bg,
                           iconDef.border,
                         )}
                       >
                         <IconComp className={cn("h-5 w-5", iconDef.color)} />
                       </div>
-                      <div className="flex flex-col gap-0.5">
-                        <span className="text-[11px] font-bold text-foreground/90 leading-tight">
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <span className="text-[11px] font-bold text-foreground/90 leading-tight truncate">
                           {ann.title || ann.label || "Untitled Annotation"}
                         </span>
                         <span
@@ -252,7 +253,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-all">
+                    <div className="flex items-center gap-1 shrink-0 md:opacity-10 md:group-hover:opacity-100 focus-within:opacity-100 transition-all">
                       <Button
                         variant="ghost"
                         size="icon"
@@ -261,8 +262,9 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
                           e.stopPropagation();
                           onDeleteAnnotation(ann.id);
                         }}
+                        aria-label={`Delete "${ann.title || ann.label || "Untitled Annotation"}"`}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4" aria-hidden />
                       </Button>
                     </div>
                   </div>

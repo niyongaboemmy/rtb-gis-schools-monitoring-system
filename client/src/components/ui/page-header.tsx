@@ -69,7 +69,7 @@ export function PageHeader({
         </div>
 
         {actions && (
-          <div className="w-full lg:w-auto shrink-0 flex items-center gap-3 no-scrollbar pb-1 lg:pb-0 overflow-x-auto">
+          <div className="w-full lg:w-auto shrink-0 flex flex-wrap items-center gap-3 no-scrollbar pb-1 lg:pb-0 overflow-x-auto">
             {actions}
           </div>
         )}

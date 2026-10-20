@@ -15,7 +15,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Modal } from "../ui/modal";
 import { PasswordInput } from "../ui/password-input";
-import { GoogleSignInButton } from "../ui/GoogleSignInButton";
+import { GoogleSignInButton, type GoogleCredential } from "../ui/GoogleSignInButton";
 import { useToast } from "../ui/toast";
 import { api, apiErrorMessage } from "../../lib/api";
 import { formatDateTime, formatRelative } from "../../lib/format";
@@ -424,10 +424,10 @@ function GoogleSection() {
   const [busy, setBusy] = useState(false);
   if (!import.meta.env.VITE_GOOGLE_CLIENT_ID) return null;
 
-  const link = async (idToken: string) => {
+  const link = async (credential: GoogleCredential) => {
     setBusy(true);
     try {
-      await api.post("/auth/google/link", { idToken });
+      await api.post("/auth/google/link", credential);
       updateUser({ googleLinked: true });
       toast.success("Google account linked.");
     } catch (err) {
@@ -472,9 +472,11 @@ function GoogleSection() {
             Link the Google account with the same email address to sign in with Google.
           </p>
           <GoogleSignInButton
-            onCredential={(t) => void link(t)}
+            onCredential={(c) => void link(c)}
             onError={(m) => toast.error(m)}
             disabled={busy}
+            busy={busy}
+            label="Link Google account"
           />
         </div>
       )}

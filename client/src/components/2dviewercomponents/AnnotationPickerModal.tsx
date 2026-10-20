@@ -137,10 +137,12 @@ export function AnnotationPickerModal({
                 </div>
               </div>
               <button
+                type="button"
                 onClick={onCancel}
+                aria-label="Cancel annotation"
                 className="p-1.5 rounded-xl text-white/20 hover:text-white hover:bg-white/10 transition-all"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-3.5 h-3.5" aria-hidden />
               </button>
             </div>
 

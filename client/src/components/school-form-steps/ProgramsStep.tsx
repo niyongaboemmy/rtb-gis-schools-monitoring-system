@@ -70,8 +70,8 @@ export function ProgramsStep({
                 key={program.id}
                 className="flex items-center gap-3 p-4 rounded-xl border-2 border-border/30 bg-card"
               >
-                <div className="flex flex-row items-center gap-3 w-full">
-                  <div>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full min-w-0">
+                  <div className="w-full sm:w-auto">
                     <Input
                       placeholder="Code (e.g., CON-001)"
                       value={program.code}
@@ -80,7 +80,7 @@ export function ProgramsStep({
                         updated[index].code = e.target.value;
                         onEducationProgramsChange(updated);
                       }}
-                      className="font-mono text-sm w-[150px]"
+                      className="font-mono text-sm w-full sm:w-[150px]"
                     />
                   </div>
                   <div className="w-full">
@@ -95,7 +95,7 @@ export function ProgramsStep({
                       className="w-full"
                     />
                   </div>
-                  <div>
+                  <div className="w-full sm:w-auto">
                     <Input
                       type="number"
                       min="0"
@@ -106,10 +106,10 @@ export function ProgramsStep({
                         updated[index].totalStudents = e.target.value;
                         onEducationProgramsChange(updated);
                       }}
-                      className="text-sm w-[100px]"
+                      className="text-sm w-full sm:w-[100px]"
                     />
                   </div>
-                  <div>
+                  <div className="w-full sm:w-auto">
                     <Input
                       type="number"
                       min="0"
@@ -120,7 +120,7 @@ export function ProgramsStep({
                         updated[index].capacity = e.target.value;
                         onEducationProgramsChange(updated);
                       }}
-                      className="text-sm w-[100px]"
+                      className="text-sm w-full sm:w-[100px]"
                     />
                   </div>
                 </div>
@@ -134,9 +134,10 @@ export function ProgramsStep({
                     );
                     onEducationProgramsChange(updated);
                   }}
-                  className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                  aria-label={`Remove program ${program.name || program.code || index + 1}`}
+                  className="shrink-0 text-red-500 hover:text-red-600 hover:bg-red-50"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-4 h-4" aria-hidden />
                 </Button>
               </div>
             ))}

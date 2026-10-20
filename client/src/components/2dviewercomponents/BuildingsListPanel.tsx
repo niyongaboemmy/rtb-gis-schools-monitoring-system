@@ -106,9 +106,10 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
                     variant="default"
                     size="sm"
                     onClick={onAdd}
-                    className="h-8 rounded-xl bg-primary text-white hover:opacity-90 px-2.5 flex items-center gap-1.5"
+                    aria-label="Add building"
+                    className="h-8 rounded-full px-2.5 flex items-center gap-1.5"
                   >
-                    <Plus className="w-3.5 h-3.5" />
+                    <Plus className="w-3.5 h-3.5" aria-hidden />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="left" className="hidden md:block">
@@ -121,9 +122,10 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
             variant="ghost"
             size="icon"
             onClick={onClose}
+            aria-label="Close buildings list"
             className="h-8 w-8 rounded-xl hover:bg-destructive/10 hover:text-destructive"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden />
           </Button>
         </div>
       </div>
@@ -171,7 +173,7 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
                 )}
               >
               <div className="flex justify-between items-start w-full">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 min-w-0">
                   <span
                     className={cn(
                       "font-bold text-[12px] truncate max-w-[140px]",
@@ -223,10 +225,10 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
                       e.stopPropagation();
                       setShowConfirm(b.id);
                     }}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive hover:text-white transition-all shrink-0"
-                    title="Delete Building"
+                    className="md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 p-1.5 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive hover:text-white transition-all shrink-0"
+                    aria-label={`Delete building "${b.buildingName || "Unnamed Block"}"`}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="w-3.5 h-3.5" aria-hidden />
                   </button>
                 )}
               </div>

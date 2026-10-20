@@ -17,6 +17,7 @@ import { Button } from "../components/ui/button";
 import { PageHeader } from "../components/ui/page-header";
 import { cn } from "../lib/utils";
 import { api } from "../lib/api";
+import { useToast } from "../components/ui/toast";
 import { useAuthStore } from "../store/authStore";
 
 const FILE_SERVER_BASE = (
@@ -26,6 +27,7 @@ const FILE_SERVER_BASE = (
 export default function KmzUpload() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
   const [uploadMode, setUploadMode] = useState<"3d" | "2d">("3d");
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<
@@ -165,6 +167,7 @@ export default function KmzUpload() {
       setStatus("success");
       setUploadProgress(100);
       setMessage("Geospatial data successfully integrated into GIS database.");
+      toast.success(`${uploadMode === "3d" ? "3D model" : "2D map"} "${file.name}" ${isUpdate ? "replaced" : "uploaded"}`);
       setTimeout(() => navigate(`/schools/${id}`), 3000);
     } catch (err: any) {
       setStatus("error");
@@ -196,15 +199,15 @@ export default function KmzUpload() {
             asChild
             className="rounded-full h-12 w-12 border-border/10 shadow-none hover:bg-background/50 hover:border-primary/30 transition-all"
           >
-            <Link to={`/schools/${id}`}>
-              <ArrowLeft className="h-5 w-5" />
+            <Link to={`/schools/${id}`} aria-label="Back to school">
+              <ArrowLeft className="h-5 w-5" aria-hidden />
             </Link>
           </Button>
         }
       />
 
       {/* 2D / 3D mode selector */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {[
           {
             mode: "3d" as const,
@@ -229,7 +232,7 @@ export default function KmzUpload() {
               setStatus("idle");
             }}
             className={cn(
-              "rounded-3xl p-6 text-left border-2 transition-all",
+              "min-w-0 rounded-3xl p-5 sm:p-6 text-left border-2 transition-all",
               uploadMode === mode
                 ? "border-primary bg-primary/5"
                 : "border-border/20 hover:border-primary/40 bg-card",
@@ -263,7 +266,7 @@ export default function KmzUpload() {
         ))}
       </div>
 
-      <div className="bg-card rounded-3xl p-8">
+      <div className="bg-card rounded-3xl p-5 sm:p-8">
         {status === "success" ? (
           <div className="text-center py-12 space-y-4">
             <div className="mx-auto w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-500 rounded-full flex items-center justify-center">
@@ -298,7 +301,7 @@ export default function KmzUpload() {
             <div
               onDragOver={handleDragOver}
               onDrop={handleDrop}
-              className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors
+              className={`border-2 border-dashed rounded-xl p-6 sm:p-12 text-center transition-colors
                 ${file ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 hover:bg-muted/50"}
                 ${status === "uploading" || status === "processing" ? "opacity-50 pointer-events-none" : ""}
               `}
@@ -337,7 +340,7 @@ export default function KmzUpload() {
                     <Layers className="h-8 w-8" />
                   </div>
                   <div>
-                    <p className="text-lg font-medium">{file.name}</p>
+                    <p className="text-lg font-medium break-all">{file.name}</p>
                     <p className="text-sm text-muted-foreground">
                       {file.size > 1024 * 1024 * 1024
                         ? (file.size / (1024 * 1024 * 1024)).toFixed(2) + " GB"
@@ -378,7 +381,7 @@ export default function KmzUpload() {
               </div>
             )}
 
-            <div className="flex justify-end gap-4">
+            <div className="flex flex-wrap justify-end gap-4">
               <Button
                 variant="outline"
                 asChild

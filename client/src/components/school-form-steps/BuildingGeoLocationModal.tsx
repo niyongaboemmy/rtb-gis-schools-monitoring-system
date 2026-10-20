@@ -276,9 +276,10 @@ export function BuildingGeoLocationModal({
                 <button
                   type="button"
                   onClick={onClose}
+                  aria-label="Close location picker"
                   className="flex items-center justify-center w-8 h-8 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-4 h-4" aria-hidden />
                 </button>
               </div>
             </div>
@@ -381,7 +382,7 @@ export function BuildingGeoLocationModal({
             </div>
 
             {/* ── Footer ── */}
-            <div className="flex items-center justify-between px-5 py-4 border-t border-border/20 bg-muted/10 shrink-0">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-4 border-t border-border/20 bg-muted/10 shrink-0">
               <div className="text-xs text-muted-foreground flex items-center gap-1.5">
                 {pinLat !== null ? (
                   <>
@@ -395,7 +396,7 @@ export function BuildingGeoLocationModal({
                   </>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2 ml-auto">
                 {pinLat !== null && (
                   <button
                     type="button"

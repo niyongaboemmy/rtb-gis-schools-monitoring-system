@@ -3,12 +3,14 @@ import { useParams } from "react-router-dom";
 import SchoolMap from "../components/SchoolMap";
 import { Button } from "../components/ui/button";
 import { ArrowLeft } from "lucide-react";
-import { api } from "../lib/api";
+import { api, apiErrorMessage } from "../lib/api";
 import { useGoBack } from "../hooks/useGoBack";
+import { useToast } from "../components/ui/toast";
 
 export default function School3DViewPage() {
   const { id } = useParams<{ id: string }>();
   const goBack = useGoBack(id ? `/schools/${id}` : "/schools");
+  const toast = useToast();
   const [school, setSchool] = useState<any>(null);
   const [placesOverlay, setPlacesOverlay] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -38,13 +40,14 @@ export default function School3DViewPage() {
         }
       } catch (error) {
         console.error("Failed to fetch school data", error);
+        toast.error(apiErrorMessage(error, "Could not load this school"));
       } finally {
         setLoading(false);
       }
     };
 
     fetchSchool();
-  }, [id]);
+  }, [id, toast]);
 
   if (loading) {
     return (
@@ -62,18 +65,18 @@ export default function School3DViewPage() {
           onClick={goBack}
           variant="outline"
           size="icon"
-          aria-label="Back"
+          aria-label="Back to school"
           className="rounded-full h-12 w-12 bg-black/30 backdrop-blur-md border-white/12 hover:bg-black/50"
         >
-          <ArrowLeft className="h-5 w-5 text-white" />
+          <ArrowLeft className="h-5 w-5 text-white" aria-hidden />
         </Button>
       </div>
 
       {/* School Info Badge */}
-      <div className="fixed top-6 right-6 z-50">
-        <div className="bg-black/70 backdrop-blur-xl rounded-2xl px-6 py-3 border border-white/12">
-          <p className="text-white font-bold text-lg">{school?.name}</p>
-          <p className="text-blue-300 text-sm font-medium">{school?.code}</p>
+      <div className="fixed top-6 right-4 sm:right-6 z-50 max-w-[calc(100vw-6.5rem)]">
+        <div className="bg-black/70 backdrop-blur-xl rounded-2xl px-4 sm:px-6 py-3 border border-white/12 min-w-0">
+          <p className="text-white font-bold text-base sm:text-lg truncate">{school?.name}</p>
+          <p className="text-blue-300 text-sm font-medium truncate">{school?.code}</p>
         </div>
       </div>
 

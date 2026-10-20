@@ -14,12 +14,12 @@ export const BasicInfoModal: React.FC<BasicInfoModalProps> = ({
 }) => {
   return (
     <div className="absolute inset-0 z-100 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="relative w-full max-w-lg bg-black/60 backdrop-blur-xl border border-white/6 rounded-3xl p-8 text-white overflow-hidden">
+      <div className="relative w-full max-w-lg bg-black/60 backdrop-blur-xl border border-white/6 rounded-3xl p-5 sm:p-8 text-white overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1 bg-linear-to-r from-blue-500 via-indigo-500 to-purple-500" />
 
         <div className="flex items-start justify-between mb-8">
           <div>
-            <h2 className="text-2xl font-bold tracking-tight mb-1">
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight mb-1 break-words">
               {school.name}
             </h2>
             <div className="flex items-center gap-2 text-sm text-white/50 font-medium tracking-wide">
@@ -34,12 +34,13 @@ export const BasicInfoModal: React.FC<BasicInfoModalProps> = ({
             size="icon"
             className="h-8 w-8 rounded-full bg-white/5 hover:bg-white/20 text-white/70 hover:text-white shrink-0"
             onClick={onClose}
+            aria-label="Close school info"
           >
-            <X className="h-4 w-4" />
+            <X className="h-4 w-4" aria-hidden />
           </Button>
         </div>
 
-        <div className="grid grid-cols-2 gap-y-6 gap-x-8">
+        <div className="grid grid-cols-2 gap-y-6 gap-x-4 sm:gap-x-8">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1.5">
               School Code

@@ -16,7 +16,7 @@ export function HelpMenu({ onStartTour }: { onStartTour: () => void }) {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="Help"
+        aria-label="Open help menu"
         className="flex items-center justify-center w-9 h-9 rounded-full text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <CircleHelp className="w-4 h-4" aria-hidden="true" />
@@ -28,7 +28,7 @@ export function HelpMenu({ onStartTour }: { onStartTour: () => void }) {
             ref={ref}
             role="menu"
             aria-label="Help"
-            className="absolute right-0 top-11 z-50 w-64 rounded-xl border border-border bg-background p-1.5 shadow-xl"
+            className="absolute right-0 top-11 z-50 w-64 max-w-[calc(100vw-1rem)] rounded-xl border border-border bg-background p-1.5 shadow-xl"
           >
             <button
               type="button"

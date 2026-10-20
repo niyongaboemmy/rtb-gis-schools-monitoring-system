@@ -202,10 +202,10 @@ export function BlockInspector({
           </div>
           <button
             onClick={onClose}
-            aria-label="Close"
+            aria-label="Close building inspector"
             className="p-1.5 rounded-xl text-slate-400 dark:text-white/40 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors active:scale-95"
           >
-            <X className="w-4.5 h-4.5" />
+            <X className="w-4.5 h-4.5" aria-hidden />
           </button>
         </div>
       </div>
@@ -386,7 +386,7 @@ export function BlockInspector({
       {activeTab === "details" && (
         <div className="p-4 shrink-0 border-t border-slate-200/70 dark:border-white/8 bg-white/70 dark:bg-[#0d0f14]/70 backdrop-blur-md">
           <Button
-            className="w-full h-11 rounded-xl text-[12px] font-bold tracking-wide bg-primary hover:bg-primary/90 text-white transition-all active:scale-[0.98]"
+            className="w-full h-11 rounded-full text-[12px] font-bold tracking-wide"
             onClick={() => onEdit(building)}
           >
             <Pencil className="w-3.5 h-3.5 mr-2" />

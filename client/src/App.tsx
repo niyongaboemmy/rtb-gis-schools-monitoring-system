@@ -24,6 +24,7 @@ import { useAuthStore } from "./store/authStore";
 import { homePathFor } from "./hooks/useScope";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { ToastProvider } from "./components/ui/toast";
+import { GlobalTooltips } from "./components/ui/GlobalTooltips";
 import Profile from "./pages/Profile";
 import SchoolDecisionDashboard from "./pages/SchoolDecisionDashboard";
 import School3DViewPage from "./pages/School3DViewPage";
@@ -252,6 +253,7 @@ export default function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+        <GlobalTooltips />
       </ToastProvider>
     </TooltipProvider>
   );

@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../lib/api";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Lock, Mail } from "lucide-react";
+import { AuthInput } from "../components/auth/AuthInput";
 import { PasswordInput } from "../components/ui/password-input";
 import { OtpInput } from "../components/ui/otp-input";
 import { Button } from "../components/ui/button";
 import { AuthAlert, AuthShell } from "../components/ui/AuthShell";
 import {
-  authInputClass,
   authLabelClass,
   authMutedClass,
   authPrimaryButtonClass,
@@ -170,6 +170,7 @@ export default function ForgotPassword() {
             </label>
             <PasswordInput
               id="reset-new"
+              leadingIcon={<Lock />}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="new-password"
@@ -192,6 +193,7 @@ export default function ForgotPassword() {
             </label>
             <PasswordInput
               id="reset-confirm"
+              leadingIcon={<Lock />}
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               autoComplete="new-password"
@@ -242,7 +244,8 @@ export default function ForgotPassword() {
           <OtpInput
             value={otp}
             onChange={setOtp}
-            disabled={isLoading}
+            busy={isLoading}
+            invalid={!!error}
             label="Code from your email"
             onComplete={(code) => void verifyCode(code)}
           />
@@ -310,8 +313,9 @@ export default function ForgotPassword() {
           <label htmlFor="reset-email" className={authLabelClass}>
             Work email
           </label>
-          <input
+          <AuthInput
             id="reset-email"
+            icon={<Mail />}
             type="email"
             inputMode="email"
             autoComplete="username"
@@ -319,7 +323,6 @@ export default function ForgotPassword() {
             spellCheck={false}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className={authInputClass}
             placeholder="name@rtb.gov.rw"
             autoFocus
             required

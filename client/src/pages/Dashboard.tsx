@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { api } from "../lib/api";
+import { api, apiErrorMessage } from "../lib/api";
+import { useToast } from "../components/ui/toast";
 import {
   Building2,
   AlertTriangle,
@@ -70,6 +71,7 @@ export default function Dashboard() {
   const fetchedRef = useRef(false);
 
   const navigate = useNavigate();
+  const toast = useToast();
   const { user } = useAuthStore();
   const { allSchools, allSchoolsLoading, fetchAllSchools } = useSchoolsStore();
 
@@ -86,11 +88,12 @@ export default function Dashboard() {
           params: { province },
         });
         setDrillData(res.data);
-      } catch {
+      } catch (err) {
         setDrillData(null);
+        toast.error(apiErrorMessage(err, `Could not load districts for ${province}`));
       }
     },
-    [selectedProvince],
+    [selectedProvince, toast],
   );
 
   const handleExport = useCallback(async () => {
@@ -108,12 +111,14 @@ export default function Dashboard() {
       anchor.click();
       anchor.remove();
       window.URL.revokeObjectURL(url);
+      toast.success("School scores exported to CSV");
     } catch (err) {
       console.error("Export failed", err);
+      toast.error(apiErrorMessage(err, "Could not export the school scores. Please try again."));
     } finally {
       setExporting(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     fetchAllSchools();
@@ -232,7 +237,7 @@ export default function Dashboard() {
                 disabled={exporting}
                 className="rounded-xl text-[10px] font-black uppercase tracking-wider h-8 px-3 gap-1.5"
               >
-                <Download className="w-3.5 h-3.5" />
+                <Download className="w-3.5 h-3.5" aria-hidden />
                 {exporting ? "Exporting…" : "Export CSV"}
               </Button>
             )}
@@ -478,13 +483,13 @@ function DirectorySection({
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent border-b border-border/10 bg-muted/20">
-              <TableHead className="font-black text-[10px] uppercase tracking-wider pl-6">
+              <TableHead className="font-black text-[10px] uppercase tracking-wider pl-4 pr-2 sm:pl-6 sm:pr-6">
                 Institution
               </TableHead>
-              <TableHead className="text-center font-black text-[10px] uppercase tracking-wider">
+              <TableHead className="text-center font-black text-[10px] uppercase tracking-wider px-2 sm:px-6">
                 Score
               </TableHead>
-              <TableHead className="text-right font-black text-[10px] uppercase tracking-wider pr-6">
+              <TableHead className="text-right font-black text-[10px] uppercase tracking-wider pl-2 pr-4 sm:pl-6 sm:pr-6">
                 Action
               </TableHead>
             </TableRow>
@@ -502,11 +507,11 @@ function DirectorySection({
                 key={school.id}
                 className="group/row border-b border-border/5 last:border-0 hover:bg-primary/5 transition-colors"
               >
-                <TableCell className="pl-6 py-4">
+                <TableCell className="pl-4 pr-2 sm:pl-6 sm:pr-6 py-4">
                   <div className="flex items-center gap-3">
                     <div
                       className={cn(
-                        "w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] group-hover/row:scale-110 transition-all",
+                        "shrink-0 w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] group-hover/row:scale-110 transition-all",
                         variant === "success"
                           ? "bg-emerald-500/10 text-emerald-600"
                           : "bg-destructive/10 text-destructive",
@@ -514,8 +519,8 @@ function DirectorySection({
                     >
                       {school.code?.substring(0, 2)}
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-foreground leading-tight line-clamp-1">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-foreground leading-tight line-clamp-2 sm:line-clamp-1">
                         {school.name}
                       </p>
                       <p className="text-[9px] text-muted-foreground font-black uppercase tracking-widest mt-0.5">
@@ -524,7 +529,7 @@ function DirectorySection({
                     </div>
                   </div>
                 </TableCell>
-                <TableCell className="text-center">
+                <TableCell className="text-center px-2 sm:px-6">
                   <span
                     className={cn(
                       "inline-flex items-center justify-center px-2 py-0.5 rounded-lg font-black text-[10px]",
@@ -536,13 +541,13 @@ function DirectorySection({
                     {formatScore(school.calculatedScore)}
                   </span>
                 </TableCell>
-                <TableCell className="text-right pr-6">
+                <TableCell className="text-right pl-2 pr-4 sm:pl-6 sm:pr-6">
                   <Link
                     to={`/schools/${school.id}/decision`}
                     aria-label={`Open ${school.name} dashboard`}
                     className="text-primary hover:text-primary transition-all"
                   >
-                    <ArrowRight className="w-4 h-4 ml-auto" />
+                    <ArrowRight className="w-4 h-4 ml-auto" aria-hidden />
                   </Link>
                 </TableCell>
               </TableRow>

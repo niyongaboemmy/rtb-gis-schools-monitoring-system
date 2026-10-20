@@ -547,6 +547,22 @@
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4)
 }
 
+/* The camera-view pad (ViewerCameraNav) sits bottom-left and the movement pad
+   bottom-right: keep the stats strip clear of both, and drop it where they
+   leave no room for it (phones and tablets). */
+@media (min-width: 1280px) {
+    .stats-panel {
+        left: 134px;
+        bottom: 24px;
+    }
+}
+
+@media (max-width: 1279px) {
+    .stats-panel {
+        display: none;
+    }
+}
+
 .stat-item {
     display: flex;
     flex-direction: column;

@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import "leaflet/dist/leaflet.css";
 import { cn } from "../../lib/utils";
+import { notify } from "../ui/toast";
 import {
   BASEMAP_ATTRIBUTION,
   basemapUrls,
@@ -451,7 +452,11 @@ export function SchoolCoverMap({
   }, [map]);
 
   const locate = useCallback(() => {
-    if (!map || !navigator.geolocation) return;
+    if (!map) return;
+    if (!navigator.geolocation) {
+      notify.error("Location is not available in this browser.");
+      return;
+    }
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -460,7 +465,10 @@ export function SchoolCoverMap({
         map.flyTo([latitude, longitude], 13, { duration: 1 });
         setLocating(false);
       },
-      () => setLocating(false),
+      () => {
+        setLocating(false);
+        notify.error("Could not get your location. Check the browser's location permission.");
+      },
       { enableHighAccuracy: true, timeout: 8000 },
     );
   }, [map]);
@@ -675,7 +683,7 @@ export function SchoolCoverMap({
       {showTools && (
         <>
           {/* search */}
-          <div className="absolute left-1/2 top-16 z-30 w-[min(88%,360px)] -translate-x-1/2 sm:top-4">
+          <div className="absolute left-4 right-16 top-16 z-30 sm:right-auto sm:left-1/2 xl:top-4 sm:w-[min(88%,360px)] sm:-translate-x-1/2">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <input
@@ -731,7 +739,7 @@ export function SchoolCoverMap({
 
           {/* tool rail */}
           {map && (
-            <div className="absolute right-4 top-16 z-30 flex flex-col gap-1.5">
+            <div className="absolute right-4 top-16 z-30 flex max-h-[calc(100%-7rem)] flex-col gap-1.5 [&>*]:shrink-0 overflow-y-auto overflow-x-hidden no-scrollbar">
               <ToolButton icon={Plus} label="Zoom in" onClick={() => map.zoomIn()} />
               <ToolButton
                 icon={Minus}
@@ -762,7 +770,7 @@ export function SchoolCoverMap({
               />
               <ToolButton
                 icon={Locate}
-                label="My location"
+                label="Show my location"
                 active={locating || !!me}
                 onClick={locate}
               />
@@ -800,7 +808,9 @@ export function SchoolCoverMap({
                 </span>
                 {measurePts.length > 0 && (
                   <button
+                    type="button"
                     onClick={() => setMeasurePts([])}
+                    aria-label="Clear measurement points"
                     className="rounded-full bg-muted px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-foreground hover:bg-muted/70"
                   >
                     Clear
@@ -820,7 +830,7 @@ export function SchoolCoverMap({
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.1 }}
-              className="absolute bottom-4 left-5 z-20 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl border border-border/30 bg-background/70 px-3.5 py-2 backdrop-blur-md dark:border-white/6 dark:bg-white/5"
+              className="absolute bottom-12 sm:bottom-4 left-5 max-w-[calc(100%-2.5rem)] sm:max-w-[calc(100%-13rem)] z-20 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl border border-border/30 bg-background/70 px-3.5 py-2 backdrop-blur-md dark:border-white/6 dark:bg-white/5"
             >
               {Object.entries(PRIORITY_META).map(([key, m]) => (
                 <span key={key} className="flex items-center gap-1.5">

@@ -199,10 +199,12 @@ export function GlobalSearch() {
 
       {/* Mobile search icon */}
       <button
+        type="button"
         onClick={() => setIsOpen(true)}
+        aria-label="Search pages and actions"
         className="sm:hidden flex items-center justify-center w-9 h-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
       >
-        <Search className="w-4 h-4" />
+        <Search className="w-4 h-4" aria-hidden />
       </button>
 
       {/* Modal */}
@@ -239,14 +241,17 @@ export function GlobalSearch() {
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={onKeyDown}
                   placeholder="Search pages, actions..."
+                  aria-label="Search pages and actions"
                   className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/50 outline-none"
                 />
                 {query && (
                   <button
+                    type="button"
                     onClick={() => setQuery("")}
+                    aria-label="Clear search"
                     className="text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <X className="w-3.5 h-3.5" aria-hidden />
                   </button>
                 )}
                 <kbd className="hidden sm:flex items-center px-1.5 py-0.5 rounded border border-border/60 text-[10px] text-muted-foreground font-mono">

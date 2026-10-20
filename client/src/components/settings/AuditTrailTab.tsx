@@ -25,6 +25,7 @@ import {
 } from "../ui/table";
 import { useToast } from "../ui/toast";
 import { cn } from "../../lib/utils";
+import { apiErrorMessage } from "../../lib/api";
 import { formatDateTime, formatNumber, formatRelative } from "../../lib/format";
 import {
   actionLabel,
@@ -162,8 +163,8 @@ export function AuditTrailTab() {
     try {
       await downloadAuditCsv(filters);
       toast.success("Audit trail exported. The export itself is recorded in the trail.");
-    } catch {
-      toast.error("The export failed. Please try again.");
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not export the audit trail. Please try again."));
     } finally {
       setExporting(false);
     }
@@ -176,8 +177,8 @@ export function AuditTrailTab() {
       setVerification(result);
       if (result.ok) toast.success(`Integrity verified: ${formatNumber(result.checked)} records intact.`);
       else toast.error("Integrity check failed: the audit trail has been altered.", { duration: 0 });
-    } catch {
-      toast.error("Could not run the integrity check.");
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not run the integrity check."));
     } finally {
       setVerifying(false);
     }
@@ -315,7 +316,7 @@ export function AuditTrailTab() {
       ) : (
         <>
           {/* Desktop / tablet: table */}
-          <Card className="hidden md:block overflow-hidden p-0">
+          <Card className="hidden xl:block overflow-hidden p-0">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -367,14 +368,14 @@ export function AuditTrailTab() {
             </Table>
           </Card>
 
-          {/* Phone: stacked cards */}
-          <ul className="md:hidden space-y-2" aria-label="Audit records">
+          {/* Phones / tablets: stacked cards (the table needs xl width) */}
+          <ul className="xl:hidden grid gap-2 md:grid-cols-2" aria-label="Audit records">
             {rows.map((row) => (
               <li key={row.id}>
                 <button
                   type="button"
                   onClick={() => setSelected(row)}
-                  className="w-full text-left rounded-2xl border border-border/60 bg-card p-4 space-y-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="w-full h-full text-left rounded-2xl border border-border/60 bg-card p-4 space-y-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="text-sm font-medium">{actionLabel(row.action)}</span>
