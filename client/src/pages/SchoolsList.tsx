@@ -6,6 +6,7 @@ import {
   useRef,
   type ComponentType,
 } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -1352,6 +1353,31 @@ function ExportMenu({
   onFull: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  // The menu is portalled to <body> with fixed coordinates: the page header it
+  // sits in clips overflow (and its backdrop blur traps `position: fixed`).
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const toggle = () => {
+    if (!open && anchorRef.current) {
+      const r = anchorRef.current.getBoundingClientRect();
+      const w = Math.min(288, window.innerWidth - 32);
+      setPos({
+        top: r.bottom + 8,
+        left: Math.max(16, Math.min(r.right - w, window.innerWidth - 16 - w)),
+      });
+    }
+    setOpen((o) => !o);
+  };
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [open]);
   const item =
     "flex w-full flex-col items-start rounded-lg px-3 py-2 text-left hover:bg-accent focus-visible:outline-none focus-visible:bg-accent";
   const run = (fn: () => void) => () => {
@@ -1359,10 +1385,10 @@ function ExportMenu({
     fn();
   };
   return (
-    <div className="relative">
+    <div ref={anchorRef} className="relative">
       <Button
         variant="outline"
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         disabled={busy}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -1372,14 +1398,15 @@ function ExportMenu({
         {busy ? "Exporting…" : "Export"}
         <ChevronDown className="h-3 w-3" aria-hidden="true" />
       </Button>
-      {open && (
+      {open && pos && createPortal(
         <>
           <div className="fixed inset-0 z-40" aria-hidden="true" onClick={() => setOpen(false)} />
           <div
             role="menu"
             aria-label="Export schools"
             onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
-            className="absolute right-0 top-full z-50 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-background p-1.5 shadow-xl"
+            style={{ top: pos.top, left: pos.left }}
+            className="fixed z-50 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-background p-1.5 shadow-xl"
           >
             <button type="button" role="menuitem" className={item} onClick={run(onXlsx)}>
               <span className="text-sm text-foreground">Current view — Excel</span>
@@ -1396,7 +1423,8 @@ function ExportMenu({
               <span className="text-xs text-muted-foreground">Every school in your access area, more columns</span>
             </button>
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );

@@ -1,21 +1,20 @@
 import { useImperativeHandle, useRef, type Ref } from "react";
-import { geoContains, geoDistance, geoInterpolate, type GeoPath, type GeoProjection } from "d3-geo";
-import type { Feature, Geometry } from "geojson";
+import { geoDistance, geoInterpolate, type GeoPath, type GeoProjection } from "d3-geo";
+import { RWANDA_CENTER, RWANDA_SCHOOLS, ZOOM_RWANDA, ZOOM_SCHOOL, type LonLat } from "./globe-scope";
 
 /**
- * A survey drone that patrols the sign-in globe.
+ * A survey drone working the platform's scope: TVET schools in Rwanda.
  *
- * It flies great-circle legs between random points on land on the visible
- * side of the globe, hovers at each one to "capture" (camera footprint, scan
- * line, shutter flashes) and shows a compact live telemetry card, then moves
- * on — forever. Telemetry follows real photogrammetry practice: ~120 m AGL,
- * ~3.3 cm/px GSD on a 1-inch sensor, 80/70 % side/front overlap.
+ * Cycle: the globe rests → the camera dives into Rwanda → the drone takes off
+ * from Kigali and surveys a run of schools (every school is visited before
+ * any repeats), hovering at each to "capture" (camera close-up, footprint,
+ * scan line, shutter flashes, live telemetry card) → the camera climbs back
+ * out to the globe. Telemetry follows real photogrammetry practice: ~120 m
+ * AGL, ~3.3 cm/px GSD on a 1-inch sensor.
  *
  * Everything is driven from the globe's own animation frame (no React
- * re-renders): the parent calls `update()` and `drawGround()` each frame.
+ * re-renders): the parent calls `camera()`, `drawGround()` and `update()`.
  */
-
-export type Country = Feature<Geometry, { name?: string }>;
 
 export interface DroneFrame {
   now: number;
@@ -35,7 +34,6 @@ export interface DroneFrame {
   cx: number;
   wrapWidth: number;
   wrapHeight: number;
-  countries: Country[] | null;
   /** False until the intro spin has finished. */
   active: boolean;
   dark: boolean;
@@ -55,89 +53,59 @@ const overlaps = (a: Box, b: Box) => a.x < b.x + b.w && b.x < a.x + a.w && a.y <
 export interface GlobeDroneHandle {
   /** Positions the drone; returns whether it or its card covers `f.avoid`. */
   update: (f: DroneFrame) => boolean;
-  /** Where the camera should look while capturing (null = free / zoomed out). */
+  /** Where the camera should look (null = free: the whole globe). */
   camera: () => { focus: [number, number]; zoom: number } | null;
   /** Ground layer (route, footprint) — call inside the canvas draw, before the beacon. */
   drawGround: (ctx: CanvasRenderingContext2D, path: GeoPath, f: DroneFrame) => void;
 }
 
-type LonLat = [number, number];
-type Phase = "idle" | "fly" | "scan" | "done";
+type Phase = "rest" | "dive" | "fly" | "scan" | "done" | "ascend";
 
 const RAD = Math.PI / 180;
 const KIGALI: LonLat = [30.06, -1.95];
+const REST_MS = 3200;
+const FIRST_REST_MS = 900;
+const DIVE_MS = 1700;
+const ASCEND_MS = 1500;
 const SCAN_MS = 4600;
-/** Camera zoom while capturing: Rwanda is tiny at globe scale, so go deeper. */
-const ZOOM_SCHOOL = 10;
-const ZOOM_WORLD = 2.4;
+const DONE_MS = 1400;
 /** The camera starts pulling back this far into the "Synced" beat. */
 const ZOOM_RELEASE_MS = 500;
-const DONE_MS = 1400;
+const SCHOOLS_PER_RUN = 3;
 
-const RWANDA_MISSIONS = ["Campus orthomosaic", "Workshop roof inspection", "Site boundary mapping", "Classroom block scan"];
-
-/**
- * Sample TVET schools the drone surveys in Rwanda — the same sample set the
- * app seeds (server/src/modules/seed/seed.service.ts), at their coordinates.
- */
-const RWANDA_SCHOOLS: { name: string; district: string; at: LonLat }[] = [
-  { name: "Kigali Technical Secondary School", district: "Gasabo", at: [30.1089, -1.9354] },
-  { name: "Nyamirama Vocational Training Center", district: "Kayonza", at: [30.0619, -1.9441] },
-  { name: "Byumba Technical Secondary School", district: "Gicumbi", at: [30.067, -1.5761] },
-  { name: "Huye Technical Secondary School", district: "Huye", at: [29.74, -2.596] },
-  { name: "Rubavu Technical Secondary School", district: "Rubavu", at: [29.346, -1.6775] },
-  { name: "Kicukiro VTC", district: "Kicukiro", at: [30.0852, -1.9769] },
-  { name: "Rwamagana Integrated Polytechnic", district: "Rwamagana", at: [30.4352, -1.9487] },
-  { name: "Musanze TSS", district: "Musanze", at: [29.6348, -1.5014] },
-];
-const WORLD_MISSIONS = ["Orthomosaic capture", "Terrain model survey", "Land-cover mapping", "Infrastructure scan"];
-
-/** Natural Earth abbreviates some names; spell them out on the card. */
-const COUNTRY_NAMES: Record<string, string> = {
-  "Dem. Rep. Congo": "DR Congo",
-  "S. Sudan": "South Sudan",
-  "Central African Rep.": "Central African Republic",
-  "Eq. Guinea": "Equatorial Guinea",
-  "W. Sahara": "Western Sahara",
-  "Bosnia and Herz.": "Bosnia and Herzegovina",
-  "Dominican Rep.": "Dominican Republic",
-  "Solomon Is.": "Solomon Islands",
-  "Falkland Is.": "Falkland Islands",
-  "Fr. S. Antarctic Lands": "French Southern Lands",
-  "N. Cyprus": "Northern Cyprus",
-  "Somaliland": "Somaliland",
-};
+const TASKS = ["Campus orthomosaic", "Workshop roof inspection", "Site boundary mapping", "Classroom block scan"];
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const pick = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)];
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const lerpAngle = (a: number, b: number, k: number) => a + ((((b - a) % 360) + 540) % 360 - 180) * k;
-
-/** Point reached from `from` along `bearing` for `distance` (degrees). */
-function destination([lon, lat]: LonLat, bearing: number, distance: number): LonLat {
-  const φ1 = lat * RAD;
-  const λ1 = lon * RAD;
-  const θ = bearing * RAD;
-  const δ = distance * RAD;
-  const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ));
-  const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(δ) * Math.cos(φ1), Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2));
-  return [((((λ2 / RAD) + 540) % 360) - 180), φ2 / RAD];
-}
+const shuffled = (n: number) => {
+  const a = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
 
 const fmtCoord = ([lon, lat]: LonLat) =>
-  `${Math.abs(lat).toFixed(2)}° ${lat < 0 ? "S" : "N"}  ${Math.abs(lon).toFixed(2)}° ${lon < 0 ? "W" : "E"}`;
+  `${Math.abs(lat).toFixed(4)}° ${lat < 0 ? "S" : "N"}  ${Math.abs(lon).toFixed(4)}° ${lon < 0 ? "W" : "E"}`;
+
+/**
+ * Close-up progress: 0 at the Rwanda overview, 1 at a school close-up.
+ * Measured on a log scale so it tracks how the zoom feels.
+ */
+const closeUp = (zoom: number) => clamp01(Math.log(zoom / ZOOM_RWANDA) / Math.log(ZOOM_SCHOOL / ZOOM_RWANDA));
+/** 0 on the whole globe, 1 once the camera is down at the Rwanda overview. */
+const inRwanda = (zoom: number) => clamp01(Math.log(zoom) / Math.log(ZOOM_RWANDA));
 
 interface Mission {
-  /** Card title: the school name in Rwanda, else the task. */
-  title: string;
-  /** Second line: task · district, or the country. */
-  subtitle: string;
+  school: number;
+  task: string;
   agl: number;
   frames: number;
-  zoom: number;
-  school: boolean;
+  stop: number;
 }
-
-type Target = { to: LonLat; title: string; subtitle: string; school?: boolean };
 
 export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
   const droneRef = useRef<HTMLDivElement>(null);
@@ -147,6 +115,7 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
   const lensRef = useRef<HTMLDivElement>(null);
   const t = {
     status: useRef<HTMLSpanElement>(null),
+    stop: useRef<HTMLSpanElement>(null),
     dot: useRef<HTMLSpanElement>(null),
     mission: useRef<HTMLParagraphElement>(null),
     place: useRef<HTMLParagraphElement>(null),
@@ -162,7 +131,14 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
 
   // Mutable flight state — never rendered through React.
   const s = useRef({
-    phase: "idle" as Phase,
+    phase: "rest" as Phase,
+    /** Survey order (shuffled), position in it, and this run's queue. */
+    order: shuffled(RWANDA_SCHOOLS.length),
+    orderPos: 0,
+    queue: [] as number[],
+    /** Schools captured during the current run (shown green on the map). */
+    visited: new Set<number>(),
+    runs: 0,
     from: KIGALI as LonLat,
     to: KIGALI as LonLat,
     pos: KIGALI as LonLat,
@@ -176,9 +152,6 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
     battery: 97,
     mission: null as Mission | null,
     lastFrames: -1,
-    lastSchool: -1,
-    /** Schools left in the current Rwanda survey run (chains 1–3 stops). */
-    rwandaRun: 0,
     flash: 0,
     visible: 0,
     /** 0→1 slow push-in on the drone during a capture. */
@@ -192,82 +165,50 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
       if (el && el.textContent !== text) el.textContent = text;
     };
 
-    const countryAt = (p: LonLat, countries: Country[]) => {
-      const name = countries.find((c) => geoContains(c, p))?.properties?.name;
-      return name ? (COUNTRY_NAMES[name] ?? name) : null;
+    /** Next SCHOOLS_PER_RUN schools, cycling through all of them in shuffled order. */
+    const planRun = () => {
+      const st = s.current;
+      st.queue = [];
+      for (let i = 0; i < SCHOOLS_PER_RUN; i++) {
+        if (st.orderPos >= st.order.length) {
+          st.order = shuffled(RWANDA_SCHOOLS.length);
+          st.orderPos = 0;
+        }
+        st.queue.push(st.order[st.orderPos++]);
+      }
+      st.visited = new Set();
     };
 
-    /** A sample TVET school in Rwanda (not the one just surveyed). */
-    const schoolTarget = (): Target => {
-      const st = s.current;
-      let i = Math.floor(Math.random() * RWANDA_SCHOOLS.length);
-      if (i === st.lastSchool) i = (i + 1) % RWANDA_SCHOOLS.length;
-      st.lastSchool = i;
-      const school = RWANDA_SCHOOLS[i];
-      return {
-        to: school.at,
-        title: school.name,
-        subtitle: `${pick(RWANDA_MISSIONS)} · ${school.district} District`,
-        school: true,
-      };
+    const setPhase = (phase: Phase, now: number) => {
+      s.current.phase = phase;
+      s.current.phaseStart = now;
     };
 
-    /**
-     * Next waypoint. Rwanda gets frequent survey runs of 1–3 sample schools;
-     * otherwise a random point on land, on the visible side, a medium hop away.
-     */
-    const nextTarget = (f: DroneFrame): Target => {
+    const startFlight = (now: number) => {
       const st = s.current;
-      const countries = f.countries ?? [];
-      const rwandaVisible = geoDistance(KIGALI, f.centre) < 55 * RAD;
-      if (rwandaVisible && st.rwandaRun > 0) {
-        st.rwandaRun -= 1;
-        return schoolTarget();
-      }
-      if (rwandaVisible && Math.random() < 0.55) {
-        st.rwandaRun = Math.floor(Math.random() * 3);
-        return schoolTarget();
-      }
-      st.rwandaRun = 0;
-      let fallback: LonLat | null = null;
-      for (let i = 0; i < 60; i++) {
-        const c = destination(f.centre, Math.random() * 360, Math.random() * 52);
-        const hop = geoDistance(c, st.pos) / RAD;
-        if (hop < 10 || hop > 42) continue;
-        fallback ??= c;
-        const name = countryAt(c, countries);
-        if (name && name !== "Rwanda") return { to: c, title: pick(WORLD_MISSIONS), subtitle: name };
-      }
-      const to = fallback ?? destination(f.centre, Math.random() * 360, 25);
-      return { to, title: pick(WORLD_MISSIONS), subtitle: countryAt(to, countries) ?? "Open water" };
-    };
-
-    const startFlight = (f: DroneFrame) => {
-      const st = s.current;
-      const { to, title, subtitle, school = false } = nextTarget(f);
+      const school = st.queue.shift()!;
       st.from = st.pos;
-      st.to = to;
+      st.to = RWANDA_SCHOOLS[school].at;
       st.interp = geoInterpolate(st.from, st.to);
-      st.flightMs = 1400 + (geoDistance(st.from, st.to) / RAD) * 120;
-      st.phase = "fly";
-      st.phaseStart = f.now;
-      const agl = 100 + Math.round(Math.random() * 6) * 5;
+      st.flightMs = 1500 + (geoDistance(st.from, st.to) / RAD) * 1500;
       st.mission = {
-        title,
-        subtitle,
-        agl,
-        frames: 48 + Math.round(Math.random() * 10) * 4,
-        zoom: school ? ZOOM_SCHOOL : ZOOM_WORLD,
         school,
+        task: pick(TASKS),
+        agl: 100 + Math.round(Math.random() * 6) * 5,
+        frames: 48 + Math.round(Math.random() * 10) * 4,
+        stop: SCHOOLS_PER_RUN - st.queue.length,
       };
+      setPhase("fly", now);
     };
 
     const fillCard = () => {
       const st = s.current;
       const m = st.mission;
       if (!m) return;
-      setText(t.mission.current, m.title);
-      setText(t.place.current, m.subtitle);
+      const school = RWANDA_SCHOOLS[m.school];
+      setText(t.mission.current, school.name);
+      setText(t.place.current, `${m.task} · ${school.district} District`);
+      setText(t.stop.current, `Stop ${m.stop}/${SCHOOLS_PER_RUN}`);
       setText(t.coords.current, fmtCoord(st.to));
       setText(t.agl.current, `${m.agl} m`);
       // 1-inch sensor, 8.8 mm lens, 5472 px: GSD ≈ 2.74 cm/px per 100 m.
@@ -284,13 +225,83 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
       if (bar) bar.dataset.state = done ? "done" : "rec";
     };
 
+    const drawSchools = (ctx: CanvasRenderingContext2D, f: DroneFrame, alpha: number) => {
+      const st = s.current;
+      const d = f.dpr;
+      const target = st.mission && st.phase !== "rest" && st.phase !== "ascend" ? st.mission.school : -1;
+      const placed: Box[] = [];
+      const gold = f.dark ? "48, 96%, 58%" : "38, 92%, 50%";
+      const green = "152, 76%, 45%";
+      const ink = f.dark ? "213, 94%, 82%" : "224, 76%, 40%";
+      const halo = f.dark ? "224, 71%, 6%" : "0, 0%, 100%";
+      ctx.font = `600 ${11 * d}px Inter, system-ui, sans-serif`;
+      ctx.textBaseline = "middle";
+
+      // Draw the target last so its label wins any collision.
+      const order = RWANDA_SCHOOLS.map((_, i) => i).sort((a, b) => (a === target ? 1 : b === target ? -1 : 0));
+      const labels: { i: number; x: number; y: number }[] = [];
+      for (const i of order) {
+        const sp = f.projection(RWANDA_SCHOOLS[i].at);
+        if (!sp) continue;
+        const isTarget = i === target;
+        const done = st.visited.has(i) && !isTarget;
+        const hue = isTarget ? gold : done ? green : ink;
+        if (isTarget) {
+          const phase = (f.now / 1600) % 1;
+          ctx.beginPath();
+          ctx.arc(sp[0], sp[1], (6 + phase * 14) * d, 0, Math.PI * 2);
+          ctx.strokeStyle = `hsla(${gold}, ${0.55 * (1 - phase) * alpha})`;
+          ctx.lineWidth = 1.4 * d;
+          ctx.stroke();
+        }
+        ctx.beginPath();
+        ctx.arc(sp[0], sp[1], (isTarget ? 5 : 3.6) * d, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${hue}, ${alpha})`;
+        ctx.fill();
+        ctx.lineWidth = 2 * d;
+        ctx.strokeStyle = `hsla(${halo}, ${0.95 * alpha})`;
+        ctx.stroke();
+        labels.push({ i, x: sp[0], y: sp[1] });
+      }
+
+      // Labels: pill to the right of each marker, skipped if they'd overlap.
+      for (const { i, x, y } of labels.reverse()) {
+        const isTarget = i === target;
+        const text = RWANDA_SCHOOLS[i].short;
+        const w = ctx.measureText(text).width + 14 * d;
+        const h = 18 * d;
+        const box = { x: x + 9 * d, y: y - h / 2, w, h };
+        if (!isTarget && placed.some((b) => overlaps(b, box))) continue;
+        placed.push(box);
+        ctx.beginPath();
+        ctx.roundRect(box.x, box.y, box.w, box.h, h / 2);
+        ctx.fillStyle = isTarget
+          ? `hsla(${gold}, ${0.95 * alpha})`
+          : `hsla(${halo}, ${0.78 * alpha})`;
+        ctx.fill();
+        ctx.fillStyle = isTarget
+          ? `hsla(224, 71%, 8%, ${alpha})`
+          : `hsla(${st.visited.has(i) ? green : ink}, ${alpha})`;
+        ctx.fillText(text, box.x + 7 * d, y + 0.5 * d);
+      }
+    };
+
     return {
       camera() {
         const st = s.current;
-        if (!st.mission) return null;
-        const holding =
-          st.phase === "scan" || (st.phase === "done" && performance.now() - st.phaseStart < ZOOM_RELEASE_MS);
-        return holding ? { focus: st.to, zoom: st.mission.zoom } : null;
+        switch (st.phase) {
+          case "rest":
+          case "ascend":
+            return null;
+          case "scan":
+            return { focus: st.to, zoom: ZOOM_SCHOOL };
+          case "done":
+            return performance.now() - st.phaseStart < ZOOM_RELEASE_MS
+              ? { focus: st.to, zoom: ZOOM_SCHOOL }
+              : { focus: RWANDA_CENTER, zoom: ZOOM_RWANDA };
+          default:
+            return { focus: RWANDA_CENTER, zoom: ZOOM_RWANDA };
+        }
       },
 
       update(f) {
@@ -301,21 +312,32 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
         const card = cardRef.current;
         if (!drone || !body || !shadow || !card) return false;
 
-        if (!f.active || !f.countries) {
+        if (!f.active) {
           drone.style.opacity = shadow.style.opacity = card.style.opacity = "0";
+          if (lensRef.current) lensRef.current.style.opacity = "0";
+          st.phaseStart = f.now;
           return false;
         }
 
         // ── State machine ─────────────────────────────────────────────
-        if (st.phase === "idle") {
-          // Launch from Kigali on a Rwanda school survey run.
-          st.pos = KIGALI;
-          st.rwandaRun = 1 + Math.floor(Math.random() * 2);
-          startFlight(f);
-        }
         const elapsed = f.now - st.phaseStart;
         let targetPitch = 0;
-        if (st.phase === "fly") {
+        if (st.phase === "rest") {
+          if (elapsed > (st.runs === 0 ? FIRST_REST_MS : REST_MS)) {
+            planRun();
+            st.pos = KIGALI;
+            st.altitude = 0;
+            setPhase("dive", f.now);
+          }
+        } else if (st.phase === "dive") {
+          // Take off from Kigali as the camera comes down over Rwanda.
+          if (elapsed > DIVE_MS) startFlight(f.now);
+        } else if (st.phase === "ascend") {
+          if (elapsed > ASCEND_MS) {
+            st.runs += 1;
+            setPhase("rest", f.now);
+          }
+        } else if (st.phase === "fly") {
           const k = Math.min(1, elapsed / st.flightMs);
           st.pos = st.interp(easeInOut(k));
           targetPitch = Math.sin(Math.PI * k) * 22; // nose down mid-leg
@@ -341,15 +363,18 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
             st.battery = st.battery <= 41 ? 98 : st.battery - 1 - Math.round(Math.random() * 2);
             setText(t.battery.current, `${st.battery}%`);
             setStatus(true);
+            st.visited.add(m.school);
           }
         } else if (st.phase === "done" && elapsed > DONE_MS) {
-          startFlight(f);
+          if (st.queue.length) startFlight(f.now);
+          else setPhase("ascend", f.now);
         }
 
         // ── Screen placement ──────────────────────────────────────────
         const p = f.projection(st.pos);
         const facing = geoDistance(st.pos, f.centre) < Math.PI / 2 - 0.15;
-        st.visible += ((facing && p ? 1 : 0) - st.visible) * 0.12;
+        const working = st.phase !== "rest" && st.phase !== "ascend";
+        st.visible += ((working && facing && p ? 1 : 0) - st.visible) * (working ? 0.12 : 0.18);
         if (!p) return false;
         const x = f.offsetX + p[0] / f.dpr;
         const y = f.offsetY + p[1] / f.dpr;
@@ -373,14 +398,18 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
         // The camera zooming in brings the drone closer too: it grows ~2.7×,
         // then a slow push-in during the capture brings it ~30% closer again.
         // It hovers higher above its target so the shot below stays visible.
-        const zp = Math.max(0, Math.min(1, (f.zoom - 1) / 1.4));
+        const zr = inRwanda(f.zoom);
+        const zp = closeUp(f.zoom);
         const pushTarget = st.phase === "scan" ? Math.min(1, (f.now - st.phaseStart) / SCAN_MS) : 0;
         st.push += (pushTarget - st.push) * (pushTarget > st.push ? 0.04 : 0.08);
-        const size = Math.max(48, Math.min(74, f.radius * 0.27)) * (1 + 1.7 * zp) * (1 + 0.3 * st.push * zp);
+        const size =
+          Math.max(48, Math.min(74, f.radius * 0.27)) * (0.75 + 0.5 * zr) * (1 + 1.3 * zp) * (1 + 0.3 * st.push * zp);
 
-        // Altitude: cruise, settle a little to capture, rise with the zoom, hover bob.
-        const cruise = f.radius * 0.085;
-        const targetAlt = (st.phase === "fly" ? cruise : cruise * 0.62) + zp * size * 0.72;
+        // Altitude: climb out of Kigali, cruise, rise above the target in the
+        // close-up so the shot below stays visible, gentle hover bob.
+        const cruise = f.radius * 0.085 * (0.8 + 0.6 * zr);
+        const targetAlt =
+          st.phase === "dive" ? cruise * clamp01((f.now - st.phaseStart) / DIVE_MS) : (st.phase === "fly" ? cruise : cruise * 0.7) + zp * size * 0.72;
         st.altitude += (targetAlt - st.altitude) * 0.08;
         const bob = Math.sin(f.now / 520) * (1.2 + zp * 2);
         const alt = st.altitude + bob;
@@ -404,7 +433,7 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
         let covers = st.visible > 0.3 && !!f.avoid && overlaps(droneBox, f.avoid);
 
         // ── Telemetry card ────────────────────────────────────────────
-        const showCard = st.phase === "scan" || st.phase === "done";
+        const showCard = (st.phase === "scan" || st.phase === "done") && zp > 0.3;
         card.style.opacity = showCard ? op : "0";
         if (showCard) {
           const w = card.offsetWidth;
@@ -435,7 +464,7 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
         // ── Viewfinder over the lens while zoomed ─────────────────────
         const lens = lensRef.current;
         if (lens) {
-          const k = Math.max(0, Math.min(1, (f.zoom - 1.15) / (ZOOM_WORLD - 1.15)));
+          const k = closeUp(f.zoom);
           lens.style.opacity = String(k);
           lens.style.width = lens.style.height = `${f.canvasSize}px`;
           lens.style.transform = `translate(${f.offsetX}px, ${f.offsetY}px) scale(${1.04 - 0.04 * k})`;
@@ -450,29 +479,19 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
 
       drawGround(ctx, path, f) {
         const st = s.current;
-        if (!f.active || !f.countries || st.phase === "idle" || st.visible < 0.05) return;
+        if (!f.active) return;
         const a = st.visible;
         const d = f.dpr;
         const ink = f.dark ? "213, 94%, 82%" : "224, 76%, 40%";
         ctx.save();
 
-        // Zoomed into Rwanda: every sample school appears; the target glows.
-        const schoolsAlpha = st.mission?.school ? Math.max(0, Math.min(1, (f.zoom - 1.6) / 1.4)) : 0;
-        if (schoolsAlpha > 0.02) {
-          for (const school of RWANDA_SCHOOLS) {
-            const sp = f.projection(school.at);
-            if (!sp) continue;
-            const target = school.at === st.to;
-            ctx.beginPath();
-            ctx.arc(sp[0], sp[1], (target ? 4 : 2.6) * d, 0, Math.PI * 2);
-            ctx.fillStyle = target
-              ? `hsla(${f.dark ? "48, 96%, 58%" : "38, 92%, 50%"}, ${schoolsAlpha})`
-              : `hsla(${ink}, ${0.75 * schoolsAlpha})`;
-            ctx.fill();
-            ctx.lineWidth = 1.2 * d;
-            ctx.strokeStyle = `hsla(${f.dark ? "224, 71%, 6%" : "0, 0%, 100%"}, ${0.9 * schoolsAlpha})`;
-            ctx.stroke();
-          }
+        // Over Rwanda: every sample school as a labelled marker — the target
+        // glows gold, schools surveyed this run turn green.
+        const schoolsAlpha = clamp01((inRwanda(f.zoom) - 0.75) / 0.2);
+        if (schoolsAlpha > 0.02) drawSchools(ctx, f, schoolsAlpha);
+        if (st.visible < 0.05) {
+          ctx.restore();
+          return;
         }
 
         // Route: flown part solid-ish, remaining part dotted, target ring.
@@ -644,11 +663,13 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
         className="gd-card pointer-events-none absolute left-0 top-0 w-[244px] opacity-0 transition-opacity duration-300"
         style={{ willChange: "transform" }}
       >
-        <div className="rounded-xl border border-brand-accent/20 bg-white/90 p-2.5 shadow-xl shadow-brand-accent/10 backdrop-blur-md dark:border-white/10 dark:bg-[hsl(224_71%_6%)]/85 dark:shadow-black/40">
+        <div className="rounded-xl border border-brand-accent/20 bg-white/95 p-2.5 shadow-xl shadow-brand-accent/10 backdrop-blur-md dark:border-white/10 dark:bg-[hsl(224_71%_6%)]/95 dark:shadow-black/40">
           <div className="flex items-center justify-between font-mono text-[9.5px] uppercase tracking-wider">
             <span className="flex items-center gap-1.5 font-semibold text-brand-ink/80 dark:text-white/80">
               <span ref={t.dot} className="gd-dot h-1.5 w-1.5 rounded-full" data-state="rec" />
               DRN-01
+              <span className="text-brand-ink/35 dark:text-white/30">·</span>
+              <span ref={t.stop} className="font-medium text-brand-ink/60 dark:text-white/55" />
             </span>
             <span ref={t.status} className="text-brand-ink/55 dark:text-white/50">
               Capturing

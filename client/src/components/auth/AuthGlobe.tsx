@@ -3,7 +3,9 @@ import { geoDistance, geoGraticule10, geoOrthographic, geoPath, type GeoPermissi
 import { feature, mesh } from "topojson-client";
 import type { GeometryCollection, Topology } from "topojson-specification";
 import { cn } from "../../lib/utils";
-import { GlobeDrone, type Country, type DroneFrame, type GlobeDroneHandle } from "./GlobeDrone";
+import type { FeatureCollection, Geometry } from "geojson";
+import { GlobeDrone, type DroneFrame, type GlobeDroneHandle } from "./GlobeDrone";
+import { ZOOM_RWANDA } from "./globe-scope";
 
 /** Kigali — the globe settles here and the beacon pulses here. */
 const KIGALI: [number, number] = [30.06, -1.95];
@@ -30,6 +32,10 @@ const DARK = {
   satellite: "hsl(213 94% 85%)",
   satelliteBack: "hsla(213, 94%, 85%, 0.35)",
   rim: "hsla(213, 94%, 85%, 0.18)",
+  /** Rwanda scope: everything outside the country recedes under this. */
+  mask: "hsla(224, 71%, 4%, 0.62)",
+  rwandaScope: "hsla(217, 91%, 60%, 0.16)",
+  neighbourLabel: "hsla(213, 94%, 85%, 0.4)",
 };
 const LIGHT: typeof DARK = {
   oceanTop: "hsl(210 100% 98%)",
@@ -47,16 +53,29 @@ const LIGHT: typeof DARK = {
   satellite: "hsl(224 76% 33%)",
   satelliteBack: "hsla(224, 76%, 33%, 0.3)",
   rim: "hsla(224, 76%, 40%, 0.25)",
+  mask: "hsla(214, 90%, 97%, 0.6)",
+  rwandaScope: "hsla(221, 83%, 53%, 0.14)",
+  neighbourLabel: "hsla(224, 76%, 30%, 0.45)",
 };
 const isDark = () => document.documentElement.classList.contains("dark");
 
 type Land = {
   countries: GeoPermissibleObjects;
-  /** Same shapes as a list, for point-in-country lookups (drone waypoints). */
-  countryList: Country[];
   borders: GeoPermissibleObjects;
   rwanda: GeoPermissibleObjects;
 };
+
+/** High-detail Rwanda (1:10m) and neighbours (1:50m) for the close-up. */
+type Region = { rwanda: GeoPermissibleObjects; neighbours: GeoPermissibleObjects };
+type RegionProps = { name: string; role: "rwanda" | "neighbour" };
+
+const NEIGHBOUR_LABELS: { name: string; at: [number, number] }[] = [
+  { name: "DR CONGO", at: [28.75, -2.05] },
+  { name: "UGANDA", at: [30.25, -0.82] },
+  { name: "TANZANIA", at: [31.05, -2.35] },
+  { name: "BURUNDI", at: [29.9, -3.05] },
+];
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 
@@ -64,7 +83,9 @@ const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
  * Interactive orthographic globe for the sign-in brand panel: spins in to
  * Rwanda, highlights it with a beacon over Kigali, and can be dragged (or
  * rotated with the arrow keys). Drifts back home after a few idle seconds.
- * A survey drone (GlobeDrone) patrols it, capturing imagery at waypoints.
+ * A survey drone (GlobeDrone) works its scope — Rwanda's TVET schools: the
+ * camera dives into Rwanda (everything else recedes) and closes in on each
+ * school the drone captures.
  */
 export function AuthGlobe({ className }: { className?: string }) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -93,6 +114,21 @@ export function AuthGlobe({ className }: { className?: string }) {
     const graticule = geoGraticule10();
 
     let land: Land | null = null;
+    let region: Region | null = null;
+    let regionRequested = false;
+    // Loaded on the first dive into Rwanda (8 KB gzipped), not with the page.
+    const loadRegion = () => {
+      if (regionRequested) return;
+      regionRequested = true;
+      void import("./rwanda-region.json").then((mod) => {
+        if (cancelled) return;
+        const fc = (mod.default ?? mod) as unknown as FeatureCollection<Geometry, RegionProps>;
+        region = {
+          rwanda: { type: "FeatureCollection", features: fc.features.filter((f) => f.properties.role === "rwanda") },
+          neighbours: { type: "FeatureCollection", features: fc.features.filter((f) => f.properties.role === "neighbour") },
+        };
+      });
+    };
     let size = 0;
     let dpr = 1;
     let frame = 0;
@@ -118,7 +154,6 @@ export function AuthGlobe({ className }: { className?: string }) {
       const countries = feature(topo, topo.objects.countries);
       land = {
         countries,
-        countryList: countries.features as Country[],
         borders: mesh(topo, topo.objects.countries, (a, b) => a !== b),
         rwanda: {
           type: "FeatureCollection",
@@ -205,7 +240,6 @@ export function AuthGlobe({ className }: { className?: string }) {
         cx: cx / dpr,
         wrapWidth: wrap!.clientWidth,
         wrapHeight: wrap!.clientHeight,
-        countries: land?.countryList ?? null,
         // A patrolling drone is pure decoration: off for reduced motion.
         active: introDone && !reduceMotion,
         dark: C === DARK,
@@ -230,13 +264,22 @@ export function AuthGlobe({ className }: { className?: string }) {
       ctx!.fillStyle = ocean;
       ctx!.fill();
 
+      // Grid lines belong to the globe view; they fade out as the camera dives.
+      ctx!.globalAlpha = clamp01(1 - (zoom - 1.5) / 3);
       ctx!.beginPath();
       path(graticule);
       ctx!.lineWidth = 0.6 * dpr;
       ctx!.strokeStyle = C.graticule;
       ctx!.stroke();
+      ctx!.globalAlpha = 1;
 
-      if (land) {
+      // Diving into Rwanda: the coarse world map hands over to the detailed
+      // Rwanda region, and everything outside Rwanda recedes (its scope).
+      if (zoom > 1.5) loadRegion();
+      const detail = region ? clamp01((zoom - 3) / 5) : 0;
+
+      if (land && detail < 1) {
+        ctx!.globalAlpha = 1 - detail;
         ctx!.beginPath();
         path(land.countries);
         ctx!.fillStyle = C.land;
@@ -258,6 +301,54 @@ export function AuthGlobe({ className }: { className?: string }) {
         ctx!.lineWidth = 1 * dpr;
         ctx!.strokeStyle = C.rwandaEdge;
         ctx!.stroke();
+        ctx!.globalAlpha = 1;
+      }
+
+      if (region && detail > 0) {
+        ctx!.globalAlpha = detail;
+        ctx!.beginPath();
+        path(region.neighbours);
+        ctx!.fillStyle = C.land;
+        ctx!.fill();
+        ctx!.lineWidth = 0.8 * dpr;
+        ctx!.strokeStyle = C.borders;
+        ctx!.stroke();
+
+        // Spotlight: dim the whole lens except Rwanda (even-odd cut-out).
+        ctx!.beginPath();
+        path({ type: "Sphere" });
+        path(region.rwanda);
+        ctx!.fillStyle = C.mask;
+        ctx!.fill("evenodd");
+
+        ctx!.beginPath();
+        path(region.rwanda);
+        ctx!.fillStyle = C.rwandaScope;
+        ctx!.fill();
+        ctx!.shadowColor = C.rwanda;
+        ctx!.shadowBlur = 14 * dpr;
+        ctx!.lineWidth = 2 * dpr;
+        ctx!.strokeStyle = C.rwandaEdge;
+        ctx!.stroke();
+        ctx!.shadowBlur = 0;
+
+        // Neighbour names, quiet, letter-spaced.
+        const labelAlpha = clamp01((zoom - ZOOM_RWANDA * 0.5) / (ZOOM_RWANDA * 0.3));
+        if (labelAlpha > 0) {
+          ctx!.font = `600 ${10 * dpr}px Inter, system-ui, sans-serif`;
+          ctx!.letterSpacing = `${2 * dpr}px`;
+          ctx!.textAlign = "center";
+          ctx!.textBaseline = "middle";
+          ctx!.fillStyle = C.neighbourLabel;
+          ctx!.globalAlpha = detail * labelAlpha;
+          for (const n of NEIGHBOUR_LABELS) {
+            const lp = projection(n.at);
+            if (lp) ctx!.fillText(n.name, lp[0], lp[1]);
+          }
+          ctx!.letterSpacing = "0px";
+          ctx!.textAlign = "start";
+        }
+        ctx!.globalAlpha = 1;
       }
 
       // Drone route + camera footprint sit on the ground, under the beacon.
@@ -273,6 +364,9 @@ export function AuthGlobe({ className }: { className?: string }) {
       // Beacon over Kigali, only while it faces us
       const facing = geoDistance(KIGALI, centre) < Math.PI / 2 - 0.08;
       const p = projection(KIGALI);
+      // The beacon belongs to the globe view; inside Rwanda the schools speak.
+      const beaconAlpha = clamp01(1 - (zoom - 1.3) / 1.5);
+      ctx!.globalAlpha = beaconAlpha;
       if (facing && p) {
         const [bx, by] = p;
         if (!reduceMotion) {
@@ -293,6 +387,7 @@ export function AuthGlobe({ className }: { className?: string }) {
         ctx!.fill();
         ctx!.shadowBlur = 0;
 
+        ctx!.globalAlpha = 1;
         // Canvas is centred in a wider wrapper — offset into wrapper space.
         const lx = canvas!.offsetLeft + bx / dpr + 16;
         const ly = canvas!.offsetTop + by / dpr - 58;
@@ -302,6 +397,7 @@ export function AuthGlobe({ className }: { className?: string }) {
           droneFrame.avoid = { x: lx, y: ly, w: label!.offsetWidth, h: label!.offsetHeight };
         else label!.style.opacity = "0";
       } else {
+        ctx!.globalAlpha = 1;
         label!.style.opacity = "0";
       }
 
@@ -327,12 +423,13 @@ export function AuthGlobe({ className }: { className?: string }) {
         const cam = now - lastInput > 4000 ? droneRef.current?.camera() : null;
         if (cam) {
           const dl = ((-cam.focus[0] - rot[0] + 540) % 360) - 180;
-          rot[0] += dl * 0.07;
-          rot[1] += (-cam.focus[1] - rot[1]) * 0.07;
-          zoom += (cam.zoom - zoom) * 0.05;
+          rot[0] += dl * 0.1;
+          rot[1] += (-cam.focus[1] - rot[1]) * 0.1;
+          // Ease on a log scale so a 1× → 90× move feels even, not lurching.
+          zoom = Math.exp(Math.log(zoom) + (Math.log(cam.zoom) - Math.log(zoom)) * 0.06);
         } else {
-          zoom += (1 - zoom) * 0.05;
-          if (Math.abs(zoom - 1) < 0.002) zoom = 1;
+          zoom = Math.exp(Math.log(zoom) * (1 - 0.06));
+          if (zoom < 1.002) zoom = 1;
 
           if (Math.abs(velocity[0]) + Math.abs(velocity[1]) > 0.01) {
             // Inertia after a fling…
@@ -358,8 +455,8 @@ export function AuthGlobe({ className }: { className?: string }) {
 
     const nudge = () => {
       lastInput = performance.now();
-      // Grabbing the globe pulls the camera straight back out.
-      zoom = Math.min(zoom, 1.25);
+      // Grabbing the globe hands control back: the camera eases out (the
+      // drone's camera requests are ignored for a few seconds).
       introDone = true;
       setInteracted(true);
       if (!frame) frame = requestAnimationFrame(tick);
@@ -374,7 +471,8 @@ export function AuthGlobe({ className }: { className?: string }) {
     };
     const onMove = (e: PointerEvent) => {
       if (!dragging) return;
-      const k = 70 / (size / 2);
+      // Degrees per pixel shrink as the camera zooms in.
+      const k = 70 / (size / 2) / zoom;
       const dx = (e.clientX - last[0]) * k * 0.4;
       const dy = (e.clientY - last[1]) * k * 0.4;
       rot[0] += dx;
