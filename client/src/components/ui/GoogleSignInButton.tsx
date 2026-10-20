@@ -87,6 +87,11 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
       });
     };
     const observer = new ResizeObserver(() => render());
+    // Re-render in the matching style when the app theme flips.
+    const themeObserver = new MutationObserver(() => {
+      renderedWidth = 0;
+      render();
+    });
 
     loadGoogleScript()
       .then(() => {
@@ -102,6 +107,7 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
         });
         render();
         if (container.parentElement) observer.observe(container.parentElement);
+        themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
         setReady(true);
       })
       .catch(() => {
@@ -114,6 +120,7 @@ export function GoogleSignInButton({ onCredential, onError, disabled }: Props) {
     return () => {
       cancelled = true;
       observer.disconnect();
+      themeObserver.disconnect();
     };
   }, [clientId]);
 

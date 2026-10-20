@@ -40,22 +40,22 @@ export function AuthShell({ title, description, art, busy, progress, stepKey, ch
   return (
     <div className="min-h-dvh w-full flex bg-background font-sans">
       {/* Brand panel — wide screens only */}
-      <aside className="hidden lg:flex lg:w-[46%] xl:w-1/2 sticky top-0 h-dvh overflow-hidden text-white bg-brand bg-linear-to-br from-brand-2 via-brand to-brand">
+      <aside className="hidden lg:flex lg:w-[46%] xl:w-1/2 sticky top-0 h-dvh overflow-hidden text-brand-ink bg-brand bg-linear-to-br from-brand-2 via-brand to-brand dark:via-brand">
         <ImigongoPattern
-          className="absolute inset-0 text-brand-soft mask-[linear-gradient(to_bottom,black_0%,transparent_35%)]"
+          className="absolute inset-0 text-brand-accent dark:text-brand-soft mask-[linear-gradient(to_bottom,black_0%,transparent_35%)]"
           opacity={0.04}
           scale={1.3}
         />
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[70%] aspect-square bg-brand-accent/15 blur-[120px] rounded-full pointer-events-none" />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[70%] aspect-square bg-white/40 dark:bg-brand-accent/15 blur-[120px] rounded-full pointer-events-none" />
 
         <div className="relative z-10 flex flex-col w-full p-10 xl:p-12 gap-6">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-white/10 ring-1 ring-white/10 flex items-center justify-center">
+            <div className="h-10 w-10 rounded-xl bg-white/70 dark:bg-white/10 ring-1 ring-brand-accent/15 dark:ring-white/10 shadow-sm dark:shadow-none flex items-center justify-center">
               <img src="/logortb.png" alt="" className="h-6 w-6 object-contain" />
             </div>
             <div className="leading-tight">
               <p className="text-sm font-semibold">TVET 3D GIS</p>
-              <p className="text-xs text-brand-soft/60">Rwanda TVET Board</p>
+              <p className="text-xs text-brand-ink/65 dark:text-brand-soft/60">Rwanda TVET Board</p>
             </div>
           </div>
 
@@ -67,7 +67,7 @@ export function AuthShell({ title, description, art, busy, progress, stepKey, ch
                 School infrastructure,{" "}
                 <span className="text-brand-soft whitespace-nowrap">mapped in 3D.</span>
               </h1>
-              <p className="text-sm text-brand-soft/70 leading-relaxed">
+              <p className="text-sm text-brand-ink/75 dark:text-brand-soft/70 leading-relaxed">
                 Monitor, plan and improve technical and vocational training
                 schools across Rwanda with geospatial data you can trust.
               </p>
@@ -76,9 +76,9 @@ export function AuthShell({ title, description, art, busy, progress, stepKey, ch
               {FEATURES.map(({ icon: Icon, text }) => (
                 <li
                   key={text}
-                  className="inline-flex items-center gap-2 rounded-full bg-white/6 ring-1 ring-white/10 px-3 py-1.5 text-xs font-medium text-white/85"
+                  className="inline-flex items-center gap-2 rounded-full bg-white/60 dark:bg-white/6 ring-1 ring-brand-accent/15 dark:ring-white/10 px-3 py-1.5 text-xs font-medium text-brand-ink/90 dark:text-white/85 backdrop-blur-sm"
                 >
-                  <Icon className="h-3.5 w-3.5 text-brand-soft" aria-hidden />
+                  <Icon className="h-3.5 w-3.5 text-brand-accent dark:text-brand-soft" aria-hidden />
                   {text}
                 </li>
               ))}

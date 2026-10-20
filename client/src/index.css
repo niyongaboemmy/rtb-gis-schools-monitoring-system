@@ -36,13 +36,14 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 
-  /* Brand panel (sign-in screens, globe) — dark in both themes. Same hues
-     as the dark-mode background and primary so both columns agree. */
-  --color-brand: hsl(224 71% 5%);
-  --color-brand-2: hsl(221 58% 14%);
-  --color-brand-accent: hsl(217 91% 60%);
-  --color-brand-soft: hsl(213 94% 82%);
-  --color-brand-gold: hsl(48 96% 58%);
+  /* Brand panel (sign-in screens, globe). Light: a coloured sky blue;
+     dark: deep navy. Same hues as --primary so both columns agree. */
+  --color-brand: hsl(var(--brand));
+  --color-brand-2: hsl(var(--brand-2));
+  --color-brand-accent: hsl(var(--brand-accent));
+  --color-brand-soft: hsl(var(--brand-soft));
+  --color-brand-ink: hsl(var(--brand-ink));
+  --color-brand-gold: hsl(var(--brand-gold));
 }
 
 @layer base {
@@ -76,6 +77,13 @@
     --ring: 221.2 83.2% 53.3%;
 
     --radius: 0.5rem;
+
+    --brand: 213 94% 88%;
+    --brand-2: 217 91% 76%;
+    --brand-accent: 221 83% 53%;
+    --brand-soft: 224 76% 42%; /* highlight text — 7:1 on --brand */
+    --brand-ink: 224 64% 16%;
+    --brand-gold: 38 92% 50%;
   }
 
   .dark {
@@ -106,6 +114,13 @@
     --border: 215 20% 21%;
     --input: 215 20% 23%;
     --ring: 217.2 91.2% 59.8%; /* visible focus ring: 5.5:1 on background (was 3.0:1) */
+
+    --brand: 224 71% 5%;
+    --brand-2: 221 58% 14%;
+    --brand-accent: 217 91% 60%;
+    --brand-soft: 213 94% 82%;
+    --brand-ink: 0 0% 100%;
+    --brand-gold: 48 96% 58%;
   }
 }
 
