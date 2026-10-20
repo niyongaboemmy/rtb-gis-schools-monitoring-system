@@ -35,6 +35,14 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+
+  /* Brand panel (sign-in screens, globe) — dark in both themes. Same hues
+     as the dark-mode background and primary so both columns agree. */
+  --color-brand: hsl(224 71% 5%);
+  --color-brand-2: hsl(221 58% 14%);
+  --color-brand-accent: hsl(217 91% 60%);
+  --color-brand-soft: hsl(213 94% 82%);
+  --color-brand-gold: hsl(48 96% 58%);
 }
 
 @layer base {

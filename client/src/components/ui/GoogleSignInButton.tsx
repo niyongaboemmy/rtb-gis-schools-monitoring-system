@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-const GOOGLE_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
+const GOOGLE_SCRIPT_SRC = "https://accounts.google.com/gsi/client?hl=en";
 
 interface GoogleAccountsId {
   initialize: (config: {
