@@ -10,20 +10,44 @@ const RWANDA_ID = "646";
 /** Resting view: Rwanda a little below centre so Africa reads as a whole. */
 const HOME: [number, number] = [-KIGALI[0], -KIGALI[1] - 8];
 
-// Fixed brand palette: the panel is dark in both themes. Hues match the
-// dark-mode --primary (217 91% 60%) so the globe and the form agree.
-const C = {
+// Canvas palettes per theme. Hues follow --primary / --brand-* so the
+// globe matches the panel and the form in both themes.
+const DARK = {
   oceanTop: "hsl(219 64% 22%)",
   oceanBottom: "hsl(224 71% 7%)",
   glow: "hsla(217, 91%, 60%, 0.35)",
+  // Same hue at zero alpha — canvas "transparent" is black and greys the fade.
+  glowEnd: "hsla(217, 91%, 60%, 0)",
   graticule: "hsla(213, 94%, 85%, 0.07)",
   land: "hsla(213, 94%, 78%, 0.16)",
   borders: "hsla(213, 94%, 88%, 0.14)",
   rwanda: "hsl(217 91% 60%)",
   rwandaEdge: "hsl(213 94% 85%)",
   beacon: "hsl(48 96% 58%)",
+  beaconRing: "48, 96%, 58%",
   orbit: "hsla(213, 94%, 85%, 0.22)",
+  satellite: "hsl(213 94% 85%)",
+  satelliteBack: "hsla(213, 94%, 85%, 0.35)",
+  rim: "hsla(213, 94%, 85%, 0.18)",
 };
+const LIGHT: typeof DARK = {
+  oceanTop: "hsl(210 100% 98%)",
+  oceanBottom: "hsl(214 90% 83%)",
+  glow: "hsla(0, 0%, 100%, 0.75)",
+  glowEnd: "hsla(0, 0%, 100%, 0)",
+  graticule: "hsla(221, 83%, 40%, 0.10)",
+  land: "hsla(221, 83%, 53%, 0.3)",
+  borders: "hsla(221, 83%, 35%, 0.18)",
+  rwanda: "hsl(221 83% 53%)",
+  rwandaEdge: "hsl(224 76% 30%)",
+  beacon: "hsl(38 92% 50%)",
+  beaconRing: "38, 92%, 50%",
+  orbit: "hsla(224, 76%, 35%, 0.35)",
+  satellite: "hsl(224 76% 33%)",
+  satelliteBack: "hsla(224, 76%, 33%, 0.3)",
+  rim: "hsla(224, 76%, 40%, 0.25)",
+};
+const isDark = () => document.documentElement.classList.contains("dark");
 
 type Land = { countries: GeoPermissibleObjects; borders: GeoPermissibleObjects; rwanda: GeoPermissibleObjects };
 
@@ -48,6 +72,13 @@ export function AuthGlobe({ className }: { className?: string }) {
     if (!wrap || !canvas || !label || !ctx) return;
 
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let C = isDark() ? DARK : LIGHT;
+    // Re-palette (and redraw once) when the theme class on <html> flips.
+    const themeObserver = new MutationObserver(() => {
+      C = isDark() ? DARK : LIGHT;
+      if (!frame) frame = requestAnimationFrame(tick);
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
     const projection = geoOrthographic().clipAngle(90).precision(0.6);
     const path = geoPath(projection, ctx);
     const graticule = geoGraticule10();
@@ -128,7 +159,7 @@ export function AuthGlobe({ className }: { className?: string }) {
         const y = ry * sin;
         ctx!.beginPath();
         ctx!.arc(x, y, front ? 3 : 2, 0, Math.PI * 2);
-        ctx!.fillStyle = front ? C.rwandaEdge : "hsla(213, 94%, 85%, 0.35)";
+        ctx!.fillStyle = front ? C.satellite : C.satelliteBack;
         ctx!.shadowColor = C.rwanda;
         ctx!.shadowBlur = front ? 10 : 0;
         ctx!.fill();
@@ -147,7 +178,7 @@ export function AuthGlobe({ className }: { className?: string }) {
       // Atmosphere glow
       const glow = ctx!.createRadialGradient(cx, cy, r * 0.9, cx, cy, r * 1.35);
       glow.addColorStop(0, C.glow);
-      glow.addColorStop(1, "transparent");
+      glow.addColorStop(1, C.glowEnd);
       ctx!.fillStyle = glow;
       ctx!.fillRect(0, 0, s, s);
 
@@ -196,7 +227,7 @@ export function AuthGlobe({ className }: { className?: string }) {
       ctx!.beginPath();
       path({ type: "Sphere" });
       ctx!.lineWidth = 1 * dpr;
-      ctx!.strokeStyle = "hsla(213, 94%, 85%, 0.18)";
+      ctx!.strokeStyle = C.rim;
       ctx!.stroke();
 
       // Beacon over Kigali, only while it faces us
@@ -210,7 +241,7 @@ export function AuthGlobe({ className }: { className?: string }) {
             const phase = ((now / 2200 + i / 2) % 1 + 1) % 1;
             ctx!.beginPath();
             ctx!.arc(bx, by, (4 + phase * 22) * dpr, 0, Math.PI * 2);
-            ctx!.strokeStyle = `hsla(48, 96%, 58%, ${0.55 * (1 - phase)})`;
+            ctx!.strokeStyle = `hsla(${C.beaconRing}, ${0.6 * (1 - phase)})`;
             ctx!.lineWidth = 1.2 * dpr;
             ctx!.stroke();
           }
@@ -319,6 +350,7 @@ export function AuthGlobe({ className }: { className?: string }) {
     return () => {
       cancelled = true;
       cancelAnimationFrame(frame);
+      themeObserver.disconnect();
       ro.disconnect();
       io.disconnect();
       canvas.removeEventListener("pointerdown", onDown);
@@ -336,7 +368,7 @@ export function AuthGlobe({ className }: { className?: string }) {
         tabIndex={0}
         role="img"
         aria-label="Interactive globe highlighting Rwanda. Drag, or use the arrow keys, to rotate it."
-        className="cursor-grab active:cursor-grabbing touch-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-[hsl(217_91%_60%)]/60"
+        className="cursor-grab active:cursor-grabbing touch-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-brand-accent/60"
       />
       {/* Callout pinned to Kigali; positioned every frame from the projection. */}
       <div
@@ -345,17 +377,17 @@ export function AuthGlobe({ className }: { className?: string }) {
         className="pointer-events-none absolute left-0 top-0 opacity-0 transition-opacity duration-500"
         style={{ willChange: "transform" }}
       >
-        <div className="rounded-lg border border-white/10 bg-[hsl(224_71%_7%)]/80 px-3 py-2 backdrop-blur-md">
-          <p className="flex items-center gap-1.5 text-xs font-semibold text-white">
-            <span className="h-1.5 w-1.5 rounded-full bg-[hsl(48_96%_58%)]" />
+        <div className="rounded-xl border border-brand-accent/20 dark:border-white/10 bg-white/85 dark:bg-brand/80 px-3 py-2 shadow-lg shadow-brand-accent/10 dark:shadow-none backdrop-blur-md">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-brand-ink">
+            <span className="h-1.5 w-1.5 rounded-full bg-brand-gold" />
             Rwanda
           </p>
-          <p className="text-[11px] text-[hsl(213_94%_85%)]/70">National TVET school network</p>
+          <p className="text-[11px] text-brand-ink/65 dark:text-brand-soft/70">National TVET school network</p>
         </div>
       </div>
       <p
         className={cn(
-          "pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 text-[11px] text-white/40 transition-opacity duration-500",
+          "pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 text-[11px] text-brand-ink/50 dark:text-white/40 transition-opacity duration-500",
           interacted && "opacity-0",
         )}
       >
