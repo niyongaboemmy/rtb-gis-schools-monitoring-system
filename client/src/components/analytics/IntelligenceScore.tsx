@@ -1,13 +1,10 @@
-import { type ReactNode } from 'react';
-import { motion } from 'framer-motion';
-import { type LucideIcon, Activity, Sparkles } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Badge } from '../ui/badge';
+import { useEffect, useState, type ReactNode } from 'react';
+import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 'framer-motion';
+import { type LucideIcon, Crosshair, Info } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { formatNumber, formatPercent, formatScore } from '../../lib/format';
 import { label } from '../../lib/labels';
 import { MetricInfo } from '../metric-help/MetricInfo';
-import { DataGapBadge } from '../metric-help/DataGapBadge';
 import type { MetricId } from '../metric-help/metrics';
 
 interface MetricBreakdown {
@@ -22,6 +19,8 @@ interface MetricBreakdown {
   emptyText?: string;
   /** Data-gap note, e.g. "Estimated for 5 schools". */
   estimatedNote?: string | null;
+  /** Share of the School Condition Score (0–1). Context metrics omit it. */
+  weight?: number;
 }
 
 interface IntelligenceScoreProps {
@@ -34,22 +33,52 @@ interface IntelligenceScoreProps {
   /** Number of scored schools behind an aggregate score. */
   assessedCount?: number;
   children?: ReactNode;
+  /** Extra section rendered below a divider inside the same panel. */
+  appendix?: ReactNode;
 }
 
-/** Tone by Intervention Priority band (Critical < 35, High < 55, Medium < 75, Low ≥ 75). */
-function bandOf(s: number): 'critical' | 'high' | 'medium' | 'low' {
+type Band = 'critical' | 'high' | 'medium' | 'low';
+
+/** Intervention Priority band (Critical < 35, High < 55, Medium < 75, Low ≥ 75). */
+function bandOf(s: number): Band {
   if (s < 35) return 'critical';
   if (s < 55) return 'high';
   if (s < 75) return 'medium';
   return 'low';
 }
-const BAND_STYLE = {
-  low: { color: 'text-emerald-500', bg: 'bg-emerald-500' },
-  medium: { color: 'text-amber-500', bg: 'bg-amber-500' },
-  high: { color: 'text-orange-500', bg: 'bg-orange-500' },
-  critical: { color: 'text-red-500', bg: 'bg-red-500' },
-} as const;
+const BAND_HEX: Record<Band, string> = {
+  critical: '#ef4444',
+  high: '#f97316',
+  medium: '#f59e0b',
+  low: '#10b981',
+};
+const BAND_STOPS: { band: Band; from: number; to: number }[] = [
+  { band: 'critical', from: 0, to: 35 },
+  { band: 'high', from: 35, to: 55 },
+  { band: 'medium', from: 55, to: 75 },
+  { band: 'low', from: 75, to: 100 },
+];
 
+const EASE = [0.22, 1, 0.36, 1] as const;
+
+/** Counts up to `value` (rounded) once on mount. */
+function CountUp({ value, delay = 0 }: { value: number; delay?: number }) {
+  const reduce = useReducedMotion();
+  const mv = useMotionValue(reduce ? value : 0);
+  const text = useTransform(mv, (v) => String(Math.round(v)));
+  useEffect(() => {
+    if (reduce) return mv.set(value);
+    const c = animate(mv, value, { duration: 1.4, delay, ease: EASE });
+    return () => c.stop();
+  }, [value, delay, reduce, mv]);
+  return <motion.span>{text}</motion.span>;
+}
+
+/**
+ * School Condition Score panel, built for decisions: the overall score and
+ * its band on a 0–100 scale, the weakest weighted factor called out as the
+ * focus area, then every factor ranked lowest-first with its weight.
+ */
 export function IntelligenceScore({
   score,
   urgencyMonths,
@@ -57,187 +86,279 @@ export function IntelligenceScore({
   className,
   isAggregate = false,
   assessedCount,
-  children
+  children,
+  appendix,
 }: IntelligenceScoreProps) {
+  const reduce = useReducedMotion();
+  const [hovered, setHovered] = useState<string | null>(null);
+
   const hasHero = score != null && Number.isFinite(score);
   const band = hasHero ? bandOf(score) : null;
-  const status = band ? { ...BAND_STYLE[band], label: label('priority', band) } : { color: 'text-muted-foreground', bg: 'bg-muted-foreground/40', label: 'Not assessed' };
+  const color = band ? BAND_HEX[band] : '#94a3b8';
+
+  // Weighted factors drive the score; rank them so the weakest leads.
+  const weighted = metrics
+    .filter((m) => m.weight != null)
+    .sort((a, b) => (a.score ?? 101) - (b.score ?? 101));
+  const context = metrics.filter((m) => m.weight == null);
+  const focus = weighted.find((m) => m.score != null) ?? null;
+
+  const R = 74;
+  const C = 2 * Math.PI * R;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.4 }}
-      className={cn("col-span-1", className)}
+    <motion.section
+      initial={reduce ? false : { opacity: 0, y: 16 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-80px' }}
+      transition={{ duration: 0.6, ease: EASE }}
+      className={cn(
+        'col-span-1 overflow-hidden rounded-[1.75rem] shadow-float',
+        'bg-white/55 backdrop-blur-2xl backdrop-saturate-150 dark:bg-[hsl(224_40%_6%)]/65 dark:backdrop-saturate-75',
+        className,
+      )}
     >
-      <Card className="border border-border/20 dark:border-blue-700/20 bg-card/60 backdrop-blur-sm rounded-3xl overflow-hidden shadow-none">
-        <CardHeader className="border-b border-border/10 dark:border-blue-700/20 pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base sm:text-lg font-black flex items-center gap-2">
-              <Activity className="w-5 h-5 text-primary shrink-0" />
-              {isAggregate ? "Average School Condition Score" : "School Condition Score"}
-              <MetricInfo id={isAggregate ? "national.avgConditionScore" : "school.conditionScore"} />
-            </CardTitle>
-            <Badge
-              variant="outline"
-              className="hidden sm:inline-flex rounded-full bg-primary/5 text-primary border-primary/20 text-[10px] uppercase font-black px-3"
+      {/* Header */}
+      <header className="flex flex-wrap items-center justify-between gap-3 px-6 pt-6 sm:px-8">
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold tracking-tight text-slate-900 dark:text-white">
+            {isAggregate ? 'Condition score' : 'School Condition Score'}
+          </h2>
+          <MetricInfo id={isAggregate ? 'national.avgConditionScore' : 'school.conditionScore'} />
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 dark:text-white/55">
+          {context.map((m) => {
+            const has = m.score != null && Number.isFinite(m.score);
+            return (
+              <span key={m.label} className="inline-flex items-center gap-1.5 rounded-full bg-slate-900/4 px-3 py-1 dark:bg-white/6">
+                <m.icon className="h-3.5 w-3.5" aria-hidden />
+                {m.label}
+                <span className="font-medium text-slate-700 dark:text-white/80">
+                  {has ? (m.unit === 'percent' ? formatPercent(m.score) : formatScore(m.score)) : 'n/a'}
+                </span>
+              </span>
+            );
+          })}
+          <span className="rounded-full bg-slate-900/4 px-3 py-1 dark:bg-white/6">
+            {isAggregate ? `${formatNumber(assessedCount ?? null)} schools assessed` : 'This school'}
+          </span>
+          {isAggregate && (
+            <span
+              tabIndex={0}
+              role="img"
+              aria-label="How it's calculated"
+              data-tooltip="Average of every scored active school in your area, weighting the factors below plus resolution rate (5%). Higher is better."
+              className="inline-flex h-7 w-7 cursor-help items-center justify-center rounded-full transition-colors hover:bg-slate-900/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:bg-white/5"
             >
-              {isAggregate ? "Active schools in your area" : "This school"}
-            </Badge>
-          </div>
-        </CardHeader>
+              <Info className="h-3.5 w-3.5" aria-hidden />
+            </span>
+          )}
+        </div>
+      </header>
 
-        <CardContent className="p-0 overflow-hidden">
-          <div className="flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-border/10 dark:divide-blue-700/30">
-
-            {/* ── Hero Score ─────────────────────────────────────────────── */}
-            <div className="lg:w-2/5 p-6 sm:p-8 flex flex-col items-center justify-center bg-linear-to-br from-primary/5 via-transparent to-transparent">
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: "spring", damping: 15, delay: 0.2 }}
-                className="relative w-40 h-40 sm:w-48 sm:h-48"
-              >
-                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 192 192" role="img" aria-label={hasHero ? `School Condition Score ${formatScore(score)} out of 100` : 'Not assessed yet'}>
-                  <circle
-                    cx="96" cy="96" r="88"
-                    stroke="currentColor" strokeWidth="12" fill="none"
-                    className="text-muted/10"
-                  />
-                  <motion.circle
-                    initial={{ pathLength: 0 }}
-                    animate={{ pathLength: hasHero ? score / 100 : 0 }}
-                    transition={{ duration: 1.5, ease: "easeOut", delay: 0.4 }}
-                    cx="96" cy="96" r="88"
-                    stroke="currentColor" strokeWidth="12" fill="none"
-                    strokeLinecap="round"
-                    className={status.color}
-                  />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                  <motion.span
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.6 }}
-                    className="text-5xl font-black tracking-tight"
-                  >
-                    {formatScore(score)}
-                  </motion.span>
-                  <motion.span
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.8 }}
-                    className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mt-1"
-                  >
-                    out of 100
-                  </motion.span>
-                </div>
-                <div className={cn("absolute -inset-4 rounded-full opacity-20 blur-2xl -z-10 animate-pulse", status.bg)} />
-              </motion.div>
-
-              <div className="mt-8 grid grid-cols-2 gap-4 w-full">
-                <div className="p-3 rounded-2xl bg-background/40 border border-border/10 text-center">
-                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
-                    {isAggregate ? "Band of average" : "Intervention Priority"}
-                  </p>
-                  <Badge className={cn("rounded-full font-black text-[10px] uppercase text-white", status.bg)}>
-                    {status.label}
-                  </Badge>
-                </div>
-                <div className="p-3 rounded-2xl bg-background/40 border border-border/10 text-center">
-                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
-                    {isAggregate ? "Assessed schools" : "Months to intervention"}
-                  </p>
-                  <p className="text-sm font-black text-primary leading-tight">
-                    {isAggregate
-                      ? formatNumber(assessedCount ?? null)
-                      : urgencyMonths != null
-                        ? urgencyMonths === 0 ? "Now" : `${urgencyMonths} months`
-                        : "—"}
-                  </p>
-                </div>
-              </div>
+      <div className="grid gap-8 p-6 sm:p-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-10">
+        {/* ── Overall ─────────────────────────────────────────────────── */}
+        <div className="flex flex-col items-center gap-6">
+          <div className="relative h-44 w-44">
+            <svg viewBox="0 0 176 176" className="h-full w-full -rotate-90" role="img" aria-label={hasHero ? `Score ${formatScore(score)} out of 100` : 'Not assessed yet'}>
+              <circle cx="88" cy="88" r={R} fill="none" strokeWidth="10" className="stroke-slate-900/6 dark:stroke-white/7" />
+              <motion.circle
+                cx="88"
+                cy="88"
+                r={R}
+                fill="none"
+                stroke={color}
+                strokeWidth="10"
+                strokeLinecap="round"
+                strokeDasharray={C}
+                initial={{ strokeDashoffset: C }}
+                whileInView={{ strokeDashoffset: C * (1 - (hasHero ? score : 0) / 100) }}
+                viewport={{ once: true }}
+                transition={{ duration: reduce ? 0 : 1.4, ease: EASE, delay: 0.2 }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-5xl font-semibold tabular-nums tracking-tight text-slate-900 dark:text-white">
+                {hasHero ? <CountUp value={score} delay={0.2} /> : '—'}
+              </span>
+              <span className="mt-1 text-xs text-slate-500 dark:text-white/50">out of 100</span>
             </div>
+          </div>
 
-            {/* ── Breakdown ──────────────────────────────────────────────── */}
-            <div className="lg:w-3/5 p-6 space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {metrics.map((metric, index) => {
-                  const safeScore = metric.score;
-                  const hasScore  = safeScore != null && !isNaN(safeScore);
-                  const barStatus = hasScore && metric.unit !== 'percent' ? BAND_STYLE[bandOf(safeScore)] : hasScore ? { bg: 'bg-primary' } : null;
-                  const display = !hasScore
-                    ? (metric.emptyText ?? "—")
-                    : metric.unit === 'percent'
-                      ? formatPercent(safeScore)
-                      : formatScore(safeScore);
-
-                  return (
-                    <motion.div
-                      key={metric.label}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.1 * index + 0.3 }}
-                      className="p-3 rounded-2xl bg-muted/30 border border-border/5 transition-all group cursor-default"
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="p-2 rounded-lg bg-background dark:bg-blue-900/20 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                          <metric.icon className="w-3.5 h-3.5" />
-                        </div>
-                        <span className="flex-1 min-w-0 text-xs font-bold text-muted-foreground dark:text-white/80 group-hover:text-foreground transition-colors uppercase tracking-tight">
-                          {metric.label}
-                        </span>
-                        {metric.metricId && <MetricInfo id={metric.metricId} size="xs" />}
-                      </div>
-                      <div className="flex items-end justify-between gap-2">
-                        <span className={cn("font-black leading-none", hasScore ? "text-lg" : "text-xs text-muted-foreground")}>
-                          {display}
-                        </span>
-                        <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden mb-1">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: hasScore ? `${Math.min(100, Math.max(0, safeScore))}%` : "0%" }}
-                            transition={{ duration: 1, delay: 0.5 + index * 0.1 }}
-                            className={cn(
-                              "h-full rounded-full",
-                              barStatus ? barStatus.bg : "bg-muted-foreground/20",
-                            )}
-                          />
-                        </div>
-                      </div>
-                      {metric.estimatedNote && (
-                        <DataGapBadge metricId={metric.metricId} text={metric.estimatedNote} className="mt-2" />
-                      )}
-                    </motion.div>
-                  );
-                })}
+          {/* Band scale: where the score sits between the priority bands */}
+          <div className="w-full max-w-xs space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-500 dark:text-white/50">{isAggregate ? 'Average band' : 'Intervention priority'}</span>
+              <span className="inline-flex items-center gap-1.5 font-medium" style={{ color }}>
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+                {band ? label('priority', band) : 'Not assessed'}
+              </span>
+            </div>
+            <div className="relative h-1.5">
+              <div className="flex h-full gap-0.5 overflow-hidden rounded-full">
+                {BAND_STOPS.map((b) => (
+                  <span
+                    key={b.band}
+                    className="h-full transition-opacity duration-300"
+                    style={{ flexGrow: b.to - b.from, background: BAND_HEX[b.band], opacity: band === b.band ? 0.9 : 0.25 }}
+                  />
+                ))}
               </div>
-
-              {isAggregate && (
-                <div className="p-4 bg-primary/5 border border-primary/10 rounded-2xl">
-                  <h4 className="text-[10px] font-black text-primary flex items-center gap-2 uppercase tracking-widest mb-2">
-                    <Sparkles className="w-3 h-3" />
-                    How this is calculated
-                  </h4>
-                  <p className="text-[12px] font-medium text-muted-foreground leading-relaxed">
-                    The average School Condition Score of every scored active
-                    school you can see. Each school's score combines
-                    Infrastructure 35%, Building Age Score 25%, Facility
-                    Compliance 15%, Accessibility 10%, Population Pressure 10%
-                    and Resolution Rate 5%. Higher is better.
-                  </p>
-                </div>
+              {hasHero && (
+                <motion.span
+                  className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-slate-900 shadow dark:border-slate-900 dark:bg-white"
+                  initial={{ left: '0%' }}
+                  whileInView={{ left: `${Math.min(100, Math.max(0, score))}%` }}
+                  viewport={{ once: true }}
+                  transition={{ duration: reduce ? 0 : 1.4, ease: EASE, delay: 0.2 }}
+                />
               )}
             </div>
+            <div className="flex justify-between text-[10px] tabular-nums text-slate-400 dark:text-white/30">
+              <span>0</span>
+              <span>35</span>
+              <span>55</span>
+              <span>75</span>
+              <span>100</span>
+            </div>
           </div>
 
-          {children && (
-            <div className="p-6 pt-0 border-t border-border/10 dark:border-blue-700/20">
-              {children}
-            </div>
+          {!isAggregate && urgencyMonths != null && (
+            <p className="text-xs text-slate-500 dark:text-white/50">
+              Intervention due:{' '}
+              <span className="font-medium text-slate-900 dark:text-white">
+                {urgencyMonths === 0 ? 'now' : `in ${urgencyMonths} months`}
+              </span>
+            </p>
           )}
-        </CardContent>
-      </Card>
-    </motion.div>
+
+        </div>
+
+        {/* ── Factors, weakest first ──────────────────────────────────── */}
+        <div className="flex flex-col">
+          <div className="flex items-baseline justify-between pb-3">
+            <h3 className="text-sm font-medium text-slate-900 dark:text-white">Factors</h3>
+            <span className="text-xs text-slate-400 dark:text-white/35">weakest first · % = weight</span>
+          </div>
+
+          <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            {weighted.map((m, i) => {
+              const has = m.score != null && Number.isFinite(m.score);
+              const c = has ? BAND_HEX[bandOf(m.score!)] : '#94a3b8';
+              const isFocus = m === focus;
+              const pct = has ? Math.min(100, Math.max(0, m.score!)) / 100 : 0;
+              // Semicircle gauge: arc of radius 40 from 180° to 0°.
+              const ARC = Math.PI * 40;
+              return (
+                <motion.li
+                  key={m.label}
+                  initial={reduce ? false : { opacity: 0, y: 10 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.45, delay: 0.15 + i * 0.07, ease: EASE }}
+                  onPointerEnter={() => setHovered(m.label)}
+                  onPointerLeave={() => setHovered(null)}
+                  className={cn(
+                    'group relative flex flex-col items-center rounded-2xl px-3 pb-3 pt-4 transition-[background-color,transform] duration-300 hover:-translate-y-0.5',
+                    isFocus ? 'bg-primary/6 dark:bg-primary/10' : 'bg-slate-900/3 dark:bg-white/4',
+                    hovered === m.label && 'bg-slate-900/5 dark:bg-white/7',
+                  )}
+                >
+                  {isFocus && (
+                    <span className="absolute right-2 top-2 rounded-full bg-primary/12 px-1.5 py-px text-[10px] font-medium text-primary">Focus</span>
+                  )}
+                  <span className="absolute left-2.5 top-2.5 text-[10px] tabular-nums text-slate-400 dark:text-white/35">
+                    {Math.round((m.weight ?? 0) * 100)}%
+                  </span>
+                  <div className="relative h-[54px] w-[100px]">
+                    <svg viewBox="0 0 100 54" className="h-full w-full overflow-visible">
+                      <path d="M10 50 A40 40 0 0 1 90 50" fill="none" strokeWidth="8" strokeLinecap="round" className="stroke-slate-900/6 dark:stroke-white/8" />
+                      <motion.path
+                        d="M10 50 A40 40 0 0 1 90 50"
+                        fill="none"
+                        stroke={c}
+                        strokeWidth="8"
+                        strokeLinecap="round"
+                        strokeDasharray={ARC}
+                        initial={{ strokeDashoffset: ARC }}
+                        whileInView={{ strokeDashoffset: ARC * (1 - pct) }}
+                        viewport={{ once: true }}
+                        transition={{ duration: reduce ? 0 : 1.1, delay: 0.3 + i * 0.07, ease: EASE }}
+                        style={{ filter: hovered === m.label ? `drop-shadow(0 0 5px ${c})` : 'none', transition: 'filter 250ms' }}
+                      />
+                    </svg>
+                    <span className="absolute inset-x-0 bottom-0 text-center text-xl font-semibold leading-none tabular-nums text-slate-900 dark:text-white">
+                      {has ? <CountUp value={m.score!} delay={0.3 + i * 0.07} /> : '—'}
+                    </span>
+                  </div>
+                  <span className="mt-2 flex max-w-full items-center gap-1 text-xs text-slate-600 dark:text-white/65">
+                    <m.icon className="h-3.5 w-3.5 shrink-0" style={{ color: c }} aria-hidden />
+                    <span className="truncate">{m.label}</span>
+                  </span>
+                  {m.estimatedNote && (
+                    <span
+                      tabIndex={0}
+                      data-tooltip={m.estimatedNote}
+                      className="mt-1 text-[10px] font-medium text-amber-600 dark:text-amber-400"
+                    >
+                      Estimated
+                    </span>
+                  )}
+                  {m.metricId && (
+                    <span className="absolute bottom-2 right-2 opacity-0 transition-opacity group-hover:opacity-100">
+                      <MetricInfo id={m.metricId} size="xs" />
+                    </span>
+                  )}
+                </motion.li>
+              );
+            })}
+          </ul>
+
+        </div>
+      </div>
+
+      {/* Decision row, on the same columns as above: focus area | next actions */}
+      {(focus || children) && (
+        <div className="grid gap-6 px-6 pb-6 sm:px-8 sm:pb-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-10">
+          {focus ? (
+            <motion.div
+              initial={reduce ? false : { opacity: 0, y: 8 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.45, delay: 0.2, ease: EASE }}
+              className="space-y-2.5"
+            >
+              <h3 className="flex items-center gap-2 text-sm font-medium text-slate-900 dark:text-white">
+                <Crosshair className="h-4 w-4 text-primary" aria-hidden />
+                Focus area
+              </h3>
+              <div className="group flex items-center gap-3 rounded-2xl bg-slate-900/3 p-3 transition-[background-color,transform] duration-300 hover:-translate-y-0.5 hover:bg-slate-900/5 dark:bg-white/4 dark:hover:bg-white/6">
+                <span
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-semibold tabular-nums"
+                  style={{ background: `${BAND_HEX[bandOf(focus.score!)]}1f`, color: BAND_HEX[bandOf(focus.score!)] }}
+                >
+                  {formatScore(focus.score)}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{focus.label}</p>
+                  <p className="truncate text-xs text-slate-500 dark:text-white/50">
+                    Weakest · {Math.round((focus.weight ?? 0) * 100)}% weight
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          ) : (
+            <div />
+          )}
+          {children}
+        </div>
+      )}
+      {appendix && (
+        <>
+          <div className="mx-6 h-px bg-linear-to-r from-transparent via-slate-900/10 to-transparent sm:mx-8 dark:via-white/10" />
+          {appendix}
+        </>
+      )}
+    </motion.section>
   );
 }

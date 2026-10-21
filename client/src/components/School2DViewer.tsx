@@ -1486,7 +1486,13 @@ export default function School2DViewer({
 
       {/* ── Layer Visibility Toggle Bar ───────────────────────────────────── */}
       {!pickerMode && activeTab === "map" && (
-        <div className="absolute bottom-32 md:bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+        <div
+          className={cn(
+            "absolute bottom-32 md:bottom-6 left-1/2 -translate-x-1/2 z-50 pointer-events-auto",
+            // Phones: the buildings / GIS panels open as bottom sheets under this bar.
+            (showBuildingsList || showNavigator) && "hidden md:block",
+          )}
+        >
           <div className="flex items-center gap-1 px-1.5 py-1.5 rounded-full bg-white/80 dark:bg-[#0f1117]/80 backdrop-blur-xl border border-slate-200 dark:border-white/6 shadow-lg">
             {(
               [

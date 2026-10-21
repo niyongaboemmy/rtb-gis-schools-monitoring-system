@@ -825,9 +825,11 @@ export function SchoolForm({
       title=""
       description=""
       maxWidth="max-w-[1400px]"
-      className="h-[calc(100vh-40px)] max-h-[calc(100vh-40px)] w-[calc(100vw-40px)] md:w-[calc(100vw-80px)] lg:w-[calc(100vw-120px)]"
+      className="h-[calc(100dvh-40px)] max-h-[calc(100dvh-40px)] sm:max-h-[calc(100dvh-40px)] w-[calc(100vw-40px)] md:w-[calc(100vw-80px)] lg:w-[calc(100vw-120px)]"
     >
-      <div className="flex flex-col md:flex-row h-full -m-6">
+      {/* Fill the modal body exactly (cancel its px-6 / py-4) so only the step
+          content scrolls and the Previous / Continue bar stays in view. */}
+      <div className="flex flex-col md:flex-row h-[calc(100%+2rem)] -mx-6 -my-4 min-h-0">
         {/* Mobile: Horizontal step bar */}
         <div className="md:hidden flex flex-col border-b border-border/50 bg-linear-to-b from-primary/10 via-primary/5 to-background shrink-0">
           <div className="px-4 pt-4 pb-2">
@@ -860,10 +862,7 @@ export function SchoolForm({
         </div>
 
         {/* Desktop: Left Sidebar - Vertical Steps */}
-        <div
-          className="hidden md:flex w-72 min-w-[288px] bg-linear-to-b from-primary/10 via-primary/5 to-background border-r border-border/50 flex-col"
-          style={{ height: "calc(100vh - 100px)" }}
-        >
+        <div className="hidden md:flex w-60 min-w-[240px] lg:w-72 lg:min-w-[288px] min-h-0 bg-linear-to-b from-primary/10 via-primary/5 to-background border-r border-border/50 flex-col">
           <div className="p-6 pb-4">
             <h2 className="text-2xl font-bold text-foreground">
               {mode === "edit" ? "Edit Institution" : "Register School"}
@@ -913,7 +912,7 @@ export function SchoolForm({
         </div>
 
         {/* Right Content Area */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
           <form
             onSubmit={handleSubmit}
             onKeyDown={(e) => {
@@ -921,12 +920,9 @@ export function SchoolForm({
                 e.preventDefault();
               }
             }}
-            className="flex-1 flex flex-col"
+            className="flex-1 flex flex-col min-h-0"
           >
-            <div
-              className="overflow-y-auto p-4 md:p-8"
-              style={{ height: "calc(100vh - 170px)" }}
-            >
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-8">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={currentStep}
@@ -942,7 +938,7 @@ export function SchoolForm({
             </div>
 
             {/* Fixed Bottom Navigation */}
-            <div className="px-4 md:px-8 py-2 pb-0 -mb-2 bg-background border-t border-border/50 flex justify-between items-center shrink-0">
+            <div className="px-4 lg:px-8 py-3 bg-background border-t border-border/50 flex justify-between items-center gap-2 shrink-0 rounded-b-3xl">
               <Button
                 type="button"
                 variant="outline"

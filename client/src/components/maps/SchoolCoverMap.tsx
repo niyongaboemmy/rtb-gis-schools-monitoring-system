@@ -830,7 +830,7 @@ export function SchoolCoverMap({
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.1 }}
-              className="absolute bottom-12 sm:bottom-4 left-5 max-w-[calc(100%-2.5rem)] sm:max-w-[calc(100%-13rem)] z-20 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl border border-border/30 bg-background/70 px-3.5 py-2 backdrop-blur-md dark:border-white/6 dark:bg-white/5"
+              className="absolute bottom-12 sm:bottom-4 left-5 max-w-[calc(100%-5.5rem)] sm:max-w-[calc(100%-13rem)] z-20 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl border border-border/30 bg-background/70 px-3.5 py-2 backdrop-blur-md dark:border-white/6 dark:bg-white/5"
             >
               {Object.entries(PRIORITY_META).map(([key, m]) => (
                 <span key={key} className="flex items-center gap-1.5">

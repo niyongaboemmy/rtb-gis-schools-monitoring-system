@@ -3,57 +3,42 @@ import { api, apiErrorMessage } from "../lib/api";
 import { useToast } from "../components/ui/toast";
 import {
   Building2,
-  AlertTriangle,
-  CheckCircle2,
-  TrendingUp,
-  LayoutGrid,
   Users,
   MapPin,
   ClipboardCheck,
-  ArrowRight,
-  TrendingDown,
   Download,
+  ArrowUpRight,
+  Globe2,
+  Loader2,
+  MapPinned,
+  GraduationCap,
 } from "lucide-react";
-import { PageHeader } from "../components/ui/page-header";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from "../components/ui/table";
-import { KPICard } from "../components/analytics/KPICard";
 import { IntelligenceScore } from "../components/analytics/IntelligenceScore";
 import { RecommendationList } from "../components/analytics/RecommendationList";
-import { DistributionChart } from "../components/analytics/DistributionChart";
 import { Link, useNavigate } from "react-router-dom";
-import { cn } from "../lib/utils";
-import { ImigongoPattern } from "../components/ui/ImigongoPattern";
 import { useSchoolsStore, calculatedScore } from "../store/schoolsStore";
 import { useAuthStore } from "../store/authStore";
 import { hasPermission } from "../lib/permissions";
 import { Button } from "../components/ui/button";
-import { SchoolCoverMap } from "../components/maps/SchoolCoverMap";
-import { formatDate, formatNumber, formatPercent, formatScore } from "../lib/format";
+import { RwandaBackdrop, type ProvinceSummary } from "../components/dashboard/RwandaBackdrop";
+import { ProvinceDistrictsDialog } from "../components/dashboard/ProvinceDistrictsDialog";
+import { FloatingStat } from "../components/dashboard/FloatingStat";
+import { PriorityDonut } from "../components/dashboard/PriorityDonut";
+import { HeroTitle } from "../components/dashboard/HeroTitle";
+import { SchoolRankings, splitRankings } from "../components/dashboard/SchoolRankings";
+import { RankingQuickInfo } from "../components/dashboard/RankingQuickInfo";
+import { motion } from "framer-motion";
+import { PRIORITY_META, type MapSchool } from "../components/maps/schoolMap";
+import { formatNumber, formatPercent } from "../lib/format";
 import { MetricInfo } from "../components/metric-help/MetricInfo";
 import type { MetricId } from "../components/metric-help/metrics";
-import type { HierarchyItem, NationalOverview, ProvinceStat } from "../components/dashboard/types";
+import type { HierarchyItem, NationalOverview } from "../components/dashboard/types";
 import type { LucideIcon } from "lucide-react";
 import {
   DashboardEmpty,
   DashboardError,
   DashboardSkeleton,
 } from "../components/dashboard/DashboardStates";
-
-interface DashboardSchool {
-  id: string;
-  name: string;
-  code?: string;
-  district?: string;
-  calculatedScore: number;
-  overallScore?: number | string | null;
-}
 
 const num = (v: unknown): number | null => {
   if (v === null || v === undefined || v === "") return null;
@@ -66,35 +51,31 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [selectedProvince, setSelectedProvince] = useState<string | null>(null);
-  const [drillData, setDrillData] = useState<{ items?: HierarchyItem[] } | null>(null);
   const fetchedRef = useRef(false);
+  const mapSlotRef = useRef<HTMLDivElement>(null);
 
-  const navigate = useNavigate();
   const toast = useToast();
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const { allSchools, allSchoolsLoading, fetchAllSchools } = useSchoolsStore();
 
-  const handleProvinceClick = useCallback(
-    async (province: string) => {
-      if (selectedProvince === province) {
-        setSelectedProvince(null);
-        setDrillData(null);
-        return;
-      }
-      setSelectedProvince(province);
-      try {
-        const res = await api.get("/analytics/hierarchy", {
-          params: { province },
-        });
-        setDrillData(res.data);
-      } catch (err) {
-        setDrillData(null);
-        toast.error(apiErrorMessage(err, `Could not load districts for ${province}`));
-      }
-    },
-    [selectedProvince, toast],
-  );
+  // Province drill-down (from the map): districts for the clicked province.
+  const [openProvince, setOpenProvince] = useState<ProvinceSummary | null>(null);
+  const [districts, setDistricts] = useState<HierarchyItem[] | null>(null);
+  const [districtsError, setDistrictsError] = useState(false);
+  const handleProvinceClick = useCallback(async (p: ProvinceSummary) => {
+    setOpenProvince(p);
+    setDistricts(null);
+    setDistrictsError(false);
+    try {
+      const res = await api.get<{ items?: HierarchyItem[] }>("/analytics/hierarchy", {
+        params: { province: p.province },
+      });
+      setDistricts(res.data.items ?? []);
+    } catch {
+      setDistrictsError(true);
+    }
+  }, []);
 
   const handleExport = useCallback(async () => {
     setExporting(true);
@@ -158,6 +139,12 @@ export default function Dashboard() {
     [allSchools],
   );
 
+  // Every active school with a location, scored or not, for the backdrop map.
+  const mapSchools = useMemo(
+    () => allSchools.filter((s) => (s.status ?? "active") === "active") as MapSchool[],
+    [allSchools],
+  );
+
   if (loading || allSchoolsLoading) {
     return <DashboardSkeleton cards={5} label="Loading national dashboard…" className="pt-4" />;
   }
@@ -190,8 +177,7 @@ export default function Dashboard() {
     );
   }
 
-  const top5 = schools.slice(0, 5);
-  const bottom5 = [...schools].reverse().slice(0, 5);
+  const { top: top5, bottom: bottom5 } = splitRankings(schools);
 
   // Server-computed values only — nothing is derived from raw records here.
   const scoredCount: number = stats.scoredSchoolCount ?? 0;
@@ -203,125 +189,175 @@ export default function Dashboard() {
 
   return (
     <div className="relative space-y-8 pb-10 min-h-screen">
-      {/* Background Pattern */}
-      <ImigongoPattern 
-        className="fixed inset-0 text-primary pointer-events-none mask-[linear-gradient(to_bottom_right,black_0%,transparent_40%,transparent_60%,black_100%)]" 
-        opacity={0.05}
+      {/* Rwanda as the page's quiet background: fixed behind the content
+          area (below the header, right of the sidebar) while cards scroll over it. */}
+      <RwandaBackdrop
+        schools={mapSchools}
+        anchor={mapSlotRef}
+        onSchoolClick={(s) => navigate(`/schools/${s.id}/decision`)}
+        provinces={stats?.provinceStats?.map((p) => ({ ...p, avgScore: num(p.avgScore) }))}
+        onProvinceClick={(p) => void handleProvinceClick(p)}
+        className="fixed top-14 bottom-0 right-0 left-[var(--app-shell-inset,0px)] z-0 transition-[left] duration-200"
       />
 
-      <div className="relative z-10 space-y-8">
-        {/* ── Cover map — full-bleed NASA-style locator hero ── */}
-        <SchoolCoverMap
-          schools={schools}
-          variant="hero"
-          interactive
-          title="National School Network"
-          subtitle="Condition of Rwanda's TVET schools at a glance"
-          href="/map"
-          hrefLabel="Open national map"
-          onSchoolClick={(s) => navigate(`/schools/${s.id}/decision`)}
-          className="-mt-5 w-[calc(100vw-var(--app-shell-inset,0px))] ml-[calc((100%-100vw+var(--app-shell-inset,0px))/2)] transition-[width,margin] duration-200 md:-mt-7"
-        />
+      <ProvinceDistrictsDialog
+        open={!!openProvince}
+        province={openProvince}
+        districts={districts}
+        error={districtsError}
+        onClose={() => setOpenProvince(null)}
+      />
 
-        <PageHeader
-        title="National Overview"
-        description="School Condition Scores and Intervention Priorities for the active schools in your area"
-        icon={LayoutGrid}
-        actions={
-          <div className="flex items-center gap-3 flex-wrap">
-            {hasPermission(user, "EXPORT_REPORTS") && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExport}
-                disabled={exporting}
-                className="rounded-xl text-[10px] font-black uppercase tracking-wider h-8 px-3 gap-1.5"
-              >
-                <Download className="w-3.5 h-3.5" aria-hidden />
-                {exporting ? "Exporting…" : "Export CSV"}
+      {/* Pointer events pass through empty space to the map (school dots are
+          clickable); every real block below opts back in. */}
+      <div className="pointer-events-none relative z-10 space-y-8 [&>*:not([data-pass])]:pointer-events-auto">
+        {/* ── Hero: title row; then the map stage — full width, Rwanda centred,
+            nothing on top of it; then the priority ring + network snapshot. ── */}
+        <section data-pass className="relative flex flex-col gap-4">
+          {/* Command bar: one floating glass capsule — identity, live status and
+              actions — centred over the top of the map. */}
+          <div className="pointer-events-none! z-20 flex justify-center lg:absolute lg:inset-x-0 lg:top-0">
+          <motion.div
+            initial={{ opacity: 0, y: -10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            className="pointer-events-auto relative flex w-full max-w-fit flex-nowrap items-center gap-1.5 rounded-full bg-white/35 p-1.5 shadow-float backdrop-blur-2xl backdrop-saturate-[1.8] transition-colors duration-300 hover:bg-white/50 dark:bg-white/[0.05] dark:hover:bg-white/[0.08]"
+          >
+            {/* Identity */}
+            <div className="flex items-center gap-2.5 pl-1.5 pr-3">
+              <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_6px_16px_-6px_hsl(var(--primary)/0.7)]">
+                <Globe2 className="h-[18px] w-[18px]" aria-hidden />
+                <span className="absolute -right-0.5 -top-0.5 flex h-3 w-3">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60 motion-reduce:animate-none" />
+                  <span className="relative inline-flex h-3 w-3 rounded-full border-2 border-white bg-emerald-500 dark:border-slate-900" />
+                </span>
+              </span>
+              <HeroTitle />
+            </div>
+
+            {/* Actions */}
+            <div className="ml-auto flex items-center gap-1.5">
+              {hasPermission(user, "EXPORT_REPORTS") && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleExport}
+                  disabled={exporting}
+                  aria-label={exporting ? "Exporting CSV…" : "Export CSV"}
+                  className="h-10 w-10 rounded-full hover:bg-slate-900/5 dark:hover:bg-white/10"
+                >
+                  {exporting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
+                </Button>
+              )}
+              <Button asChild aria-label="Explore map" className="group h-10 gap-1.5 rounded-full pl-2 pr-2 sm:pl-4 sm:pr-3">
+                <Link to="/map">
+                  <span className="hidden sm:inline">Explore map</span>
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 transition-transform duration-300 group-hover:rotate-45">
+                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
+                  </span>
+                </Link>
               </Button>
-            )}
-            <div className="text-[10px] font-black tracking-widest text-muted-foreground bg-background/50 backdrop-blur-md px-4 py-2 rounded-xl border border-border/20">
-              Scores as of{" "}
-              {stats?.lastCalculatedAt ? formatDate(stats.lastCalculatedAt) : "—"}
+            </div>
+          </motion.div>
+          </div>
+
+          {/* Map stage. From xl the side space becomes two rails — priority ring
+              on the left, network counters on the right — and the map's slot
+              is the centre column, so the cards never cover the country. */}
+          <div className="pointer-events-none! relative hidden lg:grid lg:h-[max(560px,calc(100dvh-6rem))] lg:grid-cols-1 xl:grid-cols-[clamp(220px,15vw,270px)_minmax(0,1fr)_clamp(220px,15vw,270px)] xl:gap-4">
+            {/* Bottom padding lifts the ring above centre, level with the map's
+                body now that the country is pinned to the top of its slot. */}
+            <div className="pointer-events-auto hidden min-h-0 flex-col justify-center pb-[clamp(6rem,18vh,11rem)] xl:flex">
+                <PriorityDonut
+                  vertical
+                  footer={<RankingQuickInfo score={aggregateScore} top={top5[0]} bottom={bottom5[0]} />}
+                  segments={(["critical", "high", "medium", "low"] as const).map((key) => ({
+                    key,
+                    label: PRIORITY_META[key].label,
+                    value: stats.byPriority?.[key] ?? 0,
+                    color: PRIORITY_META[key].color,
+                  }))}
+                />
+            </div>
+
+            <div ref={mapSlotRef} className="relative min-h-0">
+              <p className="pointer-events-auto absolute bottom-2 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-white/40 px-3 py-1.5 text-[11px] text-muted-foreground backdrop-blur-xl dark:bg-white/5 dark:text-white/45">
+                <MapPinned className="h-3.5 w-3.5 text-primary" aria-hidden />
+                <span className="font-semibold text-foreground dark:text-white/80">Rwanda</span>· 5 provinces ·{" "}
+                {formatNumber(mapSchools.length)} schools · tap a province
+              </p>
+            </div>
+
+            <div className="pointer-events-auto hidden min-h-0 flex-col justify-center xl:flex">
+                {/* Network snapshot — server-side aggregates only */}
+                <dl className="grid gap-3">
+                  {(
+                    [
+                      { label: "Survey coverage", caption: "of schools surveyed", value: num(stats.surveyCompletionRate), pct: true, id: "national.surveyCoverage", icon: ClipboardCheck, tone: "text-sky-500 dark:text-sky-400", color: "#0ea5e9" },
+                      { label: "Map coverage", caption: "with a site model", value: num(stats.kmzCoverageRate), pct: true, id: "national.mapCoverage", icon: MapPinned, tone: "text-violet-500 dark:text-violet-400", color: "#8b5cf6" },
+                      { label: "Students", caption: "enrolled", value: num(stats.totalStudents), pct: false, id: "national.totalStudents", icon: GraduationCap, tone: "text-emerald-500 dark:text-emerald-400", color: "#10b981" },
+                      { label: "Teachers", caption: "teaching staff", value: num(stats.totalTeachers), pct: false, id: "national.totalTeachers", icon: Users, tone: "text-amber-500 dark:text-amber-400", color: "#f59e0b" },
+                    ] satisfies Array<{ label: string; caption: string; value: number | null; pct: boolean; id: MetricId; icon: LucideIcon; tone: string; color: string }>
+                  ).map((stat, i) => (
+                    <FloatingStat
+                      key={stat.label}
+                      index={i}
+                      compact
+                      label={stat.label}
+                      caption={stat.caption}
+                      value={stat.value}
+                      format={stat.pct ? (n) => formatPercent(n) : (n) => formatNumber(n)}
+                      percent={stat.pct ? stat.value : null}
+                      icon={stat.icon}
+                      tone={stat.tone}
+                      color={stat.color}
+                      info={<MetricInfo id={stat.id} size="xs" />}
+                    />
+                  ))}
+                </dl>
             </div>
           </div>
-        }
-      />
 
-      {/* KPI Cards Section */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
-        <KPICard
-          title="Active schools"
-          value={formatNumber(stats.totalSchools)}
-          subValue={
-            stats.byPriority?.unassessed
-              ? `${formatNumber(stats.byPriority.unassessed)} not assessed yet`
-              : undefined
-          }
-          icon={Building2}
-          variant="info"
-          delay={0.1}
-          metricId="national.totalSchools"
-          className="col-span-2 lg:col-span-1"
-        />
-        <KPICard
-          title="Critical priority"
-          value={formatNumber(stats.byPriority?.critical ?? 0)}
-          subValue="Score below 35"
-          icon={AlertTriangle}
-          variant="destructive"
-          delay={0.2}
-          metricId="national.priorityCount"
-        />
-        <KPICard
-          title="High priority"
-          value={formatNumber(stats.byPriority?.high ?? 0)}
-          subValue="Score 35–54"
-          icon={AlertTriangle}
-          variant="warning"
-          delay={0.3}
-          metricId="national.priorityCount"
-        />
-        <KPICard
-          title="Medium priority"
-          value={formatNumber(stats.byPriority?.medium ?? 0)}
-          subValue="Score 55–74"
-          icon={AlertTriangle}
-          variant="warning"
-          delay={0.35}
-          metricId="national.priorityCount"
-        />
-        <KPICard
-          title="Low priority"
-          value={formatNumber(stats.byPriority?.low ?? 0)}
-          subValue="Score 75 or more"
-          icon={CheckCircle2}
-          variant="success"
-          delay={0.4}
-          metricId="national.priorityCount"
-        />
-      </div>
-
-      {/* Coverage data strip — sourced entirely from server-side aggregates */}
-      <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground border border-border/10 rounded-2xl p-2 sm:py-2 sm:px-4 bg-muted/10">
-        {(
-          [
-            ["Survey Coverage", formatPercent(num(stats.surveyCompletionRate)), "national.surveyCoverage"],
-            ["Map Coverage", formatPercent(num(stats.kmzCoverageRate)), "national.mapCoverage"],
-            ["Total students", formatNumber(num(stats.totalStudents)), "national.totalStudents"],
-            ["Total teachers", formatNumber(num(stats.totalTeachers)), "national.totalTeachers"],
-          ] as Array<[string, string, MetricId]>
-        ).map(([labelText, value, id]) => (
-          <div key={labelText} className="flex flex-wrap items-center justify-center gap-x-1.5 min-w-0 text-center">
-            <dt className="truncate">{labelText}:</dt>
-            <dd className="text-foreground font-black tabular-nums">{value}</dd>
-            <MetricInfo id={id} size="xs" />
+          <div className="pointer-events-auto grid gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,2.65fr)] xl:hidden">
+            <PriorityDonut
+              className="h-full"
+              segments={(["critical", "high", "medium", "low"] as const).map((key) => ({
+                key,
+                label: PRIORITY_META[key].label,
+                value: stats.byPriority?.[key] ?? 0,
+                color: PRIORITY_META[key].color,
+              }))}
+            />
+            {/* Network snapshot — server-side aggregates only */}
+            <dl className="grid grid-cols-1 gap-3 min-[460px]:grid-cols-2">
+              {(
+                [
+                  { label: "Survey coverage", caption: "of schools surveyed", value: num(stats.surveyCompletionRate), pct: true, id: "national.surveyCoverage", icon: ClipboardCheck, tone: "text-sky-500 dark:text-sky-400", color: "#0ea5e9" },
+                  { label: "Map coverage", caption: "with a site model", value: num(stats.kmzCoverageRate), pct: true, id: "national.mapCoverage", icon: MapPinned, tone: "text-violet-500 dark:text-violet-400", color: "#8b5cf6" },
+                  { label: "Students", caption: "enrolled", value: num(stats.totalStudents), pct: false, id: "national.totalStudents", icon: GraduationCap, tone: "text-emerald-500 dark:text-emerald-400", color: "#10b981" },
+                  { label: "Teachers", caption: "teaching staff", value: num(stats.totalTeachers), pct: false, id: "national.totalTeachers", icon: Users, tone: "text-amber-500 dark:text-amber-400", color: "#f59e0b" },
+                ] satisfies Array<{ label: string; caption: string; value: number | null; pct: boolean; id: MetricId; icon: LucideIcon; tone: string; color: string }>
+              ).map((stat, i) => (
+                <FloatingStat
+                  key={stat.label}
+                  index={i}
+                  compact
+                  label={stat.label}
+                  caption={stat.caption}
+                  value={stat.value}
+                  format={stat.pct ? (n) => formatPercent(n) : (n) => formatNumber(n)}
+                  percent={stat.pct ? stat.value : null}
+                  icon={stat.icon}
+                  tone={stat.tone}
+                  color={stat.color}
+                  info={<MetricInfo id={stat.id} size="xs" />}
+                />
+              ))}
+            </dl>
           </div>
-        ))}
-      </dl>
+        </section>
 
-      <div className="grid gap-6 grid-cols-1 xl:grid-cols-3">
+      <div className="grid gap-6 grid-cols-1">
         <IntelligenceScore
           score={aggregateScore}
           isAggregate={true}
@@ -329,47 +365,53 @@ export default function Dashboard() {
           metrics={[
             {
               label: "Infrastructure",
+              weight: 0.35,
               score: scoredCount > 0 ? num(stats.nationalAvgInfraScore) : null,
               icon: Building2,
               metricId: "national.avgInfrastructure",
               estimatedNote: gapNote(infraGaps),
             },
             {
-              label: "Building Age Score",
+              label: "Building age",
+              weight: 0.25,
               score: scoredCount > 0 ? num(stats.nationalAvgAgeScore) : null,
               icon: MapPin,
               metricId: "national.avgBuildingAgeScore",
             },
             {
-              label: "Facility Compliance",
+              label: "Compliance",
+              weight: 0.15,
               score: scoredCount > 0 ? num(stats.nationalAvgComplianceScore) : null,
               icon: ClipboardCheck,
               metricId: "national.avgFacilityCompliance",
             },
             {
               label: "Accessibility",
+              weight: 0.1,
               score: scoredCount > 0 ? num(stats.nationalAvgAccessScore) : null,
               icon: MapPin,
               metricId: "national.avgAccessibility",
             },
             {
-              label: "Population Pressure",
+              label: "Population pressure",
+              weight: 0.1,
               score: scoredCount > 0 ? num(stats.nationalAvgPopScore) : null,
               icon: Users,
               metricId: "national.avgPopulation",
               estimatedNote: gapNote(popGaps),
             },
             {
-              label: "Capacity Utilisation",
+              label: "Capacity use",
               // Σ students ÷ Σ capacity (server). null → no capacity on record.
               score: num(stats.nationalCapacityUtilisation),
               unit: "percent",
-              emptyText: "No capacity data yet",
+              emptyText: "No data yet",
               icon: Users,
               metricId: "national.capacityUtilisation",
             },
           ]}
           className="xl:col-span-2"
+          appendix={<SchoolRankings top={top5} bottom={bottom5} embedded />}
         >
           <RecommendationList
             recommendations={
@@ -378,182 +420,12 @@ export default function Dashboard() {
                 ? stats.nationalRecommendations
                 : ["No recommendations yet. Recalculate scores on the Decisions page to generate them."]
             }
-            title="National recommendations"
-            className="mt-6"
+            title="Recommended actions"
           />
         </IntelligenceScore>
 
-        <div className="flex flex-col gap-4">
-          {selectedProvince && (
-            <button
-              onClick={() => { setSelectedProvince(null); setDrillData(null); }}
-              className="text-[10px] font-black uppercase tracking-widest text-primary/70 hover:text-primary flex items-center gap-1 transition-colors"
-            >
-              ← Back to National
-            </button>
-          )}
-          <DistributionChart
-            className="flex-1 h-auto min-h-0"
-            title={
-              selectedProvince
-                ? `${selectedProvince} — Districts`
-                : "Schools by province"
-            }
-            selectedLabel={selectedProvince}
-            onItemClick={!selectedProvince ? handleProvinceClick : undefined}
-            items={
-              drillData?.items?.map((d: HierarchyItem) => ({
-                label:    d.label,
-                total:    Number(d.total),
-                critical: Number(d.critical),
-                high:     Number(d.high),
-                avgScore: d.avgScore,
-              })) ??
-              stats?.provinceStats?.map((p: ProvinceStat) => ({
-                label:    p.province,
-                total:    Number(p.total),
-                critical: Number(p.critical),
-                high:     Number(p.high),
-                avgScore: p.avgScore,
-              })) ??
-              []
-            }
-          />
-        </div>
       </div>
 
-      {/* Top and Bottom Rankings */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <DirectorySection
-          title="Highest scores"
-          subtitle="Top 5 School Condition Scores"
-          icon={TrendingUp}
-          schools={top5}
-          variant="success"
-        />
-        <DirectorySection
-          title="Lowest scores"
-          subtitle="Bottom 5 School Condition Scores"
-          icon={TrendingDown}
-          schools={bottom5}
-          variant="destructive"
-        />
-      </div>
-      </div>
-    </div>
-  );
-}
-
-function DirectorySection({
-  title,
-  subtitle,
-  icon: Icon,
-  schools,
-  variant,
-}: {
-  title: string;
-  subtitle: string;
-  icon: LucideIcon;
-  schools: DashboardSchool[];
-  variant: "success" | "destructive";
-}) {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div
-          className={cn(
-            "p-2.5 rounded-2xl bg-card border border-border/20",
-            variant === "success" ? "text-emerald-500" : "text-destructive",
-          )}
-        >
-          <Icon className="w-5 h-5" />
-        </div>
-        <div>
-          <h3 className="flex items-center gap-1 text-lg font-black tracking-tight text-foreground uppercase">
-            {title}
-            <MetricInfo id="national.rankings" />
-          </h3>
-          <p className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">
-            {subtitle}
-          </p>
-        </div>
-      </div>
-
-      <div className="flex flex-col border border-border/20 dark:border-blue-700/12 rounded-3xl bg-card/60 backdrop-blur-sm overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent border-b border-border/10 bg-muted/20">
-              <TableHead className="font-black text-[10px] uppercase tracking-wider pl-4 pr-2 sm:pl-6 sm:pr-6">
-                Institution
-              </TableHead>
-              <TableHead className="text-center font-black text-[10px] uppercase tracking-wider px-2 sm:px-6">
-                Score
-              </TableHead>
-              <TableHead className="text-right font-black text-[10px] uppercase tracking-wider pl-2 pr-4 sm:pl-6 sm:pr-6">
-                Action
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {schools.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={3} className="py-8 text-center text-sm text-muted-foreground">
-                  No scored schools yet. Scores appear after a school's data is entered and recalculated.
-                </TableCell>
-              </TableRow>
-            )}
-            {schools.map((school) => (
-              <TableRow
-                key={school.id}
-                className="group/row border-b border-border/5 last:border-0 hover:bg-primary/5 transition-colors"
-              >
-                <TableCell className="pl-4 pr-2 sm:pl-6 sm:pr-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={cn(
-                        "shrink-0 w-8 h-8 rounded-lg flex items-center justify-center font-black text-[10px] group-hover/row:scale-110 transition-all",
-                        variant === "success"
-                          ? "bg-emerald-500/10 text-emerald-600"
-                          : "bg-destructive/10 text-destructive",
-                      )}
-                    >
-                      {school.code?.substring(0, 2)}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-foreground leading-tight line-clamp-2 sm:line-clamp-1">
-                        {school.name}
-                      </p>
-                      <p className="text-[9px] text-muted-foreground font-black uppercase tracking-widest mt-0.5">
-                        {school.district}
-                      </p>
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell className="text-center px-2 sm:px-6">
-                  <span
-                    className={cn(
-                      "inline-flex items-center justify-center px-2 py-0.5 rounded-lg font-black text-[10px]",
-                      variant === "success"
-                        ? "bg-emerald-500/10 text-emerald-600"
-                        : "bg-destructive/10 text-destructive",
-                    )}
-                  >
-                    {formatScore(school.calculatedScore)}
-                  </span>
-                </TableCell>
-                <TableCell className="text-right pl-2 pr-4 sm:pl-6 sm:pr-6">
-                  <Link
-                    to={`/schools/${school.id}/decision`}
-                    aria-label={`Open ${school.name} dashboard`}
-                    className="text-primary hover:text-primary transition-all"
-                  >
-                    <ArrowRight className="w-4 h-4 ml-auto" aria-hidden />
-                  </Link>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
       </div>
     </div>
   );

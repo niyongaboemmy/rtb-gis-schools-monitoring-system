@@ -1,6 +1,5 @@
 import { motion } from "framer-motion";
 import { AlertTriangle, Wrench, Sparkles, CheckCircle2 } from "lucide-react";
-import { Badge } from "../ui/badge";
 import { cn } from "../../lib/utils";
 
 interface Recommendation {
@@ -47,7 +46,8 @@ export function RecommendationList({
       case "urgent":
         return {
           bg: "bg-red-500/5 border-red-500/20",
-          iconBg: "bg-red-500 text-white",
+          iconBg: "bg-red-500/12 text-red-600 dark:text-red-400",
+          chip: "bg-red-500/10 text-red-600 dark:text-red-400",
           icon: AlertTriangle,
           label: "Urgent",
           labelColor: "text-red-500",
@@ -56,7 +56,8 @@ export function RecommendationList({
       case "critical":
         return {
           bg: "bg-amber-500/5 border-amber-500/20",
-          iconBg: "bg-amber-500 text-white",
+          iconBg: "bg-amber-500/12 text-amber-600 dark:text-amber-400",
+          chip: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
           icon: Wrench,
           label: "Critical",
           labelColor: "text-amber-600",
@@ -65,7 +66,8 @@ export function RecommendationList({
       case "strategic":
         return {
           bg: "bg-emerald-500/5 border-emerald-500/20",
-          iconBg: "bg-emerald-500 text-white",
+          iconBg: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400",
+          chip: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
           icon: Sparkles,
           label: "Strategic",
           labelColor: "text-emerald-600",
@@ -74,7 +76,8 @@ export function RecommendationList({
       default:
         return {
           bg: "bg-primary/5 border-primary/20",
-          iconBg: "bg-primary text-white",
+          iconBg: "bg-primary/12 text-primary",
+          chip: "bg-primary/10 text-primary",
           icon: CheckCircle2,
           label: "Note",
           labelColor: "text-primary",
@@ -83,73 +86,59 @@ export function RecommendationList({
     }
   };
 
+  /** "Context — action" → headline = the action, meta = the context. */
+  const split = (text: string) => {
+    const [ctx, ...rest] = text.split(/\s+[—–-]\s+/);
+    if (!rest.length) return { headline: text, meta: null as string | null };
+    const action = rest.join(" — ").replace(/\.$/, "").replace(/ and /g, " & ");
+    // Compact the context, e.g. "Northern Province has the lowest average score (54)" → "Northern Province · lowest avg 54".
+    const meta = ctx
+      .replace(/\s+has the (lowest|highest) average score\s*\((\d+)\)/i, " · $1 avg $2")
+      .replace(/\s+Province\b/, "");
+    return { headline: action.charAt(0).toUpperCase() + action.slice(1), meta };
+  };
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.5 }}
-      className={cn("p-5 bg-card/40 rounded-3xl backdrop-blur-md", className)}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <h4 className="text-[10px] font-black text-primary flex items-center gap-2 uppercase tracking-[0.2em]">
-          <Sparkles className="w-3.5 h-3.5" />
-          {title}
-        </h4>
-        <Badge
-          variant="outline"
-          className="rounded-full text-[9px] font-black uppercase tracking-widest bg-primary/5 text-primary border-primary/20"
-        >
-          Live Analysis
-        </Badge>
-      </div>
-      <div className="space-y-3">
+    <div className={cn("space-y-2.5", className)}>
+      <h3 className="flex items-center gap-2 text-sm font-medium text-slate-900 dark:text-white">
+        <Sparkles className="h-4 w-4 text-primary" aria-hidden />
+        {title}
+        <span className="rounded-full bg-slate-900/5 px-1.5 text-[11px] font-medium tabular-nums text-slate-500 dark:bg-white/8 dark:text-white/55">
+          {recommendations.length}
+        </span>
+      </h3>
+      <ul className="grid gap-2">
         {recommendations.map((item, i) => {
           const rec = parseRecommendation(item);
           const style = getTypeStyles(rec.type);
           const Icon = style.icon;
-
+          const { headline, meta } = split(rec.text);
           return (
-            <motion.div
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.6 + i * 0.1 }}
+            <motion.li
               key={i}
-              className={cn(
-                "flex items-start gap-4 p-3.5 rounded-2xl border transition-all hover:scale-[1.01]",
-                style.bg,
-              )}
+              initial={{ opacity: 0, y: 8 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4, delay: 0.1 + i * 0.08, ease: [0.22, 1, 0.36, 1] }}
+              className="group relative flex items-center gap-3 rounded-2xl bg-slate-900/3 p-3 transition-[background-color,transform] duration-300 hover:-translate-y-0.5 hover:bg-slate-900/5 dark:bg-white/4 dark:hover:bg-white/6"
             >
-              <div className={cn("p-2 rounded-xl shrink-0", style.iconBg)}>
-                <Icon className="w-3.5 h-3.5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span
-                    className={cn(
-                      "text-[9px] font-black uppercase tracking-wider",
-                      style.labelColor,
-                    )}
-                  >
-                    {style.label}
-                  </span>
-                  <div className={cn("h-1 w-1 rounded-full", style.dot)} />
-                </div>
-                <p className="text-xs font-bold leading-relaxed text-foreground/90">
-                  {rec.text}
+              <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110", style.iconBg)}>
+                <Icon className="h-4 w-4" aria-hidden />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-slate-900 dark:text-white" title={rec.text}>{headline}</p>
+                <p className="truncate text-xs text-slate-500 dark:text-white/50">
+                  <span className={cn("font-medium", style.labelColor)}>{style.label}</span>
+                  {meta ? ` · ${meta}` : ""}
                 </p>
               </div>
-            </motion.div>
+            </motion.li>
           );
         })}
-        {recommendations.length === 0 && (
-          <div className="text-center py-8">
-            <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-500/20" />
-            <p className="text-[10px] uppercase font-black text-muted-foreground tracking-widest">
-              Nothing flagged right now
-            </p>
-          </div>
-        )}
-      </div>
-    </motion.div>
+      </ul>
+      {recommendations.length === 0 && (
+        <p className="py-6 text-center text-sm text-slate-500 dark:text-white/50">Nothing flagged right now.</p>
+      )}
+    </div>
   );
 }

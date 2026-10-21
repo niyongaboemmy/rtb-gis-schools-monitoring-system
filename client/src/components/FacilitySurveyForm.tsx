@@ -274,19 +274,19 @@ export function FacilitySurveyForm({
         maxWidth="max-w-2xl"
         className="max-h-[90vh] overflow-y-auto"
       >
-        <div className="p-8">
+        <div className="p-0 sm:p-8">
           <div className="flex items-center gap-4 mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+            <div className="w-14 h-14 shrink-0 rounded-2xl bg-primary/10 flex items-center justify-center">
               <ClipboardCheck className="w-7 h-7 text-primary" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold">Initialize Facility Survey</h2>
+              <h2 className="text-xl sm:text-2xl font-bold">Initialize Facility Survey</h2>
               <p className="text-muted-foreground">For: {schoolName}</p>
             </div>
           </div>
 
           <Card className="border-2 border-dashed border-primary/20">
-            <CardContent className="p-6 space-y-4">
+            <CardContent className="p-4 sm:p-6 space-y-4">
               <p className="text-muted-foreground">
                 This will create a new survey for <strong>{schoolName}</strong>{" "}
                 with all facility items set to <strong>Non-Compliant</strong> by
