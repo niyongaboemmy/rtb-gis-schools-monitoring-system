@@ -24,7 +24,7 @@ export interface School {
   overallScore?: number;
   tifFilePath?: string;
   kmz2dFilePath?: string;
-  /** Populated by the /schools list API — used by SchoolCoverMap */
+  /** Populated by the /schools list API — used by the dashboard and the national map */
   latitude?: number;
   longitude?: number;
 }

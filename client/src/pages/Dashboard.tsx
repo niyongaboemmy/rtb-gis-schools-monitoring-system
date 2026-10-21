@@ -21,6 +21,7 @@ import { useAuthStore } from "../store/authStore";
 import { hasPermission } from "../lib/permissions";
 import { Button } from "../components/ui/button";
 import { RwandaBackdrop, type ProvinceSummary } from "../components/dashboard/RwandaBackdrop";
+import { NationalDashboardSkeleton } from "../components/dashboard/NationalDashboardSkeleton";
 import { ProvinceDistrictsDialog } from "../components/dashboard/ProvinceDistrictsDialog";
 import { FloatingStat } from "../components/dashboard/FloatingStat";
 import { PriorityDonut } from "../components/dashboard/PriorityDonut";
@@ -37,7 +38,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   DashboardEmpty,
   DashboardError,
-  DashboardSkeleton,
 } from "../components/dashboard/DashboardStates";
 
 const num = (v: unknown): number | null => {
@@ -146,7 +146,7 @@ export default function Dashboard() {
   );
 
   if (loading || allSchoolsLoading) {
-    return <DashboardSkeleton cards={5} label="Loading national dashboard…" className="pt-4" />;
+    return <NationalDashboardSkeleton />;
   }
 
   if (loadError || !stats) {

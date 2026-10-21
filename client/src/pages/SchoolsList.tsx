@@ -10,7 +10,6 @@ import { createPortal } from "react-dom";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Building2,
   Plus,
   Eye,
   Upload,
@@ -22,12 +21,10 @@ import {
   ArrowDown,
   LayoutGrid,
   Rows3,
-  MapPin,
-  Layers,
-  Sparkles,
-  AlertTriangle,
-  CheckCircle2,
   Radar,
+  SlidersHorizontal,
+  ChevronLeft,
+  ChevronRight,
   Trash2,
   Pencil,
   MessageSquarePlus,
@@ -35,15 +32,12 @@ import {
   Link2,
   ChevronDown,
 } from "lucide-react";
-import { Card, CardContent } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { RichDropdown } from "../components/ui/rich-dropdown";
+import { Checkbox } from "../components/ui/checkbox";
 import { Skeleton, SkeletonTable } from "../components/ui/skeleton";
 import { EmptyState } from "../components/ui/empty-state";
 import { ErrorState } from "../components/ui/error-state";
 import { RequestChangeDialog } from "../components/school-form-steps/RequestChangeDialog";
-import { PageHeader } from "../components/ui/page-header";
 import {
   Table,
   TableBody,
@@ -54,7 +48,6 @@ import {
 } from "../components/ui/table";
 import { SchoolForm } from "../components/SchoolForm";
 import { useToast } from "../components/ui/toast";
-import { ImigongoPattern } from "../components/ui/ImigongoPattern";
 import {
   resolveDistrictName,
   resolveProvinceName,
@@ -73,7 +66,9 @@ import { formatNumber } from "../lib/format";
 
 /* ─────────────────────────────  config  ───────────────────────────── */
 
-const PAGE_SIZE = 12;
+/** Rows per page (multiples of 6 so the 2- and 3-column card grids fill evenly). */
+const PAGE_SIZES = [12, 24, 48, 96];
+const DEFAULT_PAGE_SIZE = 12;
 
 const PRIORITY_RANK: Record<string, number> = {
   critical: 0,
@@ -188,6 +183,7 @@ export default function SchoolsList() {
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [searchDraft, setSearchDraft] = useState(params.get("q") ?? "");
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -205,6 +201,9 @@ export default function SchoolsList() {
   const dir = (params.get("dir") as SortDir) || SORT_DEFAULT_DIR[sort] || "asc";
   const view = params.get("view") === "grid" ? "grid" : "table";
   const page = Math.max(1, parseInt(params.get("page") ?? "1", 10) || 1);
+  const perRaw = parseInt(params.get("per") ?? "", 10);
+  const PAGE_SIZE = PAGE_SIZES.includes(perRaw) ? perRaw : DEFAULT_PAGE_SIZE;
+  const listTopRef = useRef<HTMLElement>(null);
 
   const patch = useCallback(
     (next: Record<string, string | null>, resetPage = true) => {
@@ -329,7 +328,7 @@ export default function SchoolsList() {
   const safePage = Math.min(page, totalPages);
   const pageRows = useMemo(
     () => sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
-    [sorted, safePage],
+    [sorted, safePage, PAGE_SIZE],
   );
 
   const stats = useMemo(() => {
@@ -457,6 +456,7 @@ export default function SchoolsList() {
   const pageIds = pageRows.map((s) => s.id);
   const allPageSelected =
     pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+  const somePageSelected = !allPageSelected && pageIds.some((id) => selected.has(id));
   const toggleAll = () =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -572,276 +572,248 @@ export default function SchoolsList() {
       <ArrowDown className="h-3 w-3 text-primary" />
     );
 
-  return (
-    <div className="relative min-h-screen space-y-6 pb-10">
-      <ImigongoPattern
-        className="pointer-events-none fixed inset-0 text-primary mask-[linear-gradient(to_bottom_right,black_0%,transparent_40%,transparent_60%,black_100%)]"
-        opacity={0.04}
+  const scoreTone = (n: number) => (n ? priorityStyle(scoreBandKey(n)).dot : undefined);
+  const sortSelect = (
+    <div className={cn("items-center gap-1", view === "grid" ? "flex" : "flex xl:hidden")}>
+      <PillSelect
+        label="Sort by"
+        options={SORT_OPTIONS.map((o) => ({ ...o, label: `Sort: ${o.label}` }))}
+        value={sort}
+        onChange={(v) => patch({ sort: v, dir: SORT_DEFAULT_DIR[v as SortKey] }, false)}
       />
+      <button
+        type="button"
+        onClick={() => patch({ dir: dir === "asc" ? "desc" : "asc" }, false)}
+        aria-label={dir === "asc" ? "Ascending — switch to descending" : "Descending — switch to ascending"}
+        className={ICON_BTN}
+      >
+        {dir === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+      </button>
+    </div>
+  );
+  const filterSelects = (
+    <>
+      <PillSelect label="Type" options={TYPE_OPTIONS} value={type} onChange={(v) => patch({ type: v || null })} />
+      <PillSelect label="Priority" options={PRIORITY_OPTIONS} value={priority} onChange={(v) => patch({ priority: v || null })} />
+      <PillSelect label="GIS state" options={GIS_OPTIONS} value={gis} onChange={(v) => patch({ gis: v || null })} />
+      <PillSelect label="Province" options={provinceOptions} value={province} onChange={(v) => patch({ province: v || null })} />
+    </>
+  );
+  const filterCount = [type, priority, gis, province].filter(Boolean).length;
 
-      <div className="relative z-10 space-y-6">
-        <PageHeader
-          title="Schools Directory"
-          description="Manage and monitor all national TVET institutions"
-          icon={Building2}
-          actions={
-            <div className="flex flex-wrap items-center gap-2">
-              {canExport && (
-                <ExportMenu
-                  busy={exporting}
-                  count={sorted.length}
-                  filtered={activeChips.length > 0}
-                  onCsv={exportFilteredCsv}
-                  onXlsx={exportFilteredXlsx}
-                  onFull={handleExport}
-                />
-              )}
-              {canCreate && (
-                <Button
-                  onClick={() => setIsAddModalOpen(true)}
-                  className="h-10 gap-2 rounded-full bg-linear-to-r from-primary to-primary/80 px-6 text-sm tracking-wide transition-transform hover:scale-[0.97] active:scale-95"
+  return (
+    <div className="relative mx-auto max-w-[1600px] space-y-5 pb-24">
+      {/* ── header ── */}
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">Schools</h1>
+          <p className="mt-0.5 text-[13px] text-muted-foreground">TVET institutions in your access area</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {canExport && (
+            <ExportMenu
+              busy={exporting}
+              count={sorted.length}
+              filtered={activeChips.length > 0}
+              onCsv={exportFilteredCsv}
+              onXlsx={exportFilteredXlsx}
+              onFull={handleExport}
+            />
+          )}
+          {canCreate && (
+            <Button onClick={() => setIsAddModalOpen(true)} className="h-9 gap-1.5 rounded-full px-4 text-[13px] font-normal">
+              <Plus className="h-4 w-4" /> <span>Add school</span>
+            </Button>
+          )}
+        </div>
+      </header>
+
+      {/* ── summary strip ── */}
+      <dl className="grid grid-cols-2 overflow-hidden rounded-2xl border border-border/40 bg-card/60 sm:grid-cols-4 dark:border-white/[0.07]">
+        <Metric label="Institutions" loading={loading} value={formatNumber(stats.total)} />
+        <Metric
+          label="Critical priority"
+          loading={loading}
+          value={formatNumber(stats.critical)}
+          accent={stats.critical > 0 ? PRIORITY_STYLE.critical.dot : undefined}
+        />
+        <Metric label="Mapped (GIS / 3D)" loading={loading} value={`${stats.gisPct}%`} bar={stats.gisPct} />
+        <Metric
+          label="Avg. condition score"
+          loading={loading}
+          value={stats.avg ? String(stats.avg) : "—"}
+          accent={scoreTone(stats.avg)}
+        />
+      </dl>
+
+      <section ref={listTopRef} className="scroll-mt-20 overflow-hidden rounded-3xl border border-border/40 bg-card/60 dark:border-white/[0.07]">
+        {/* ── toolbar ── */}
+        <div className="space-y-2.5 p-3 sm:p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-0 flex-1 basis-56">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                ref={searchRef}
+                aria-label="Search schools"
+                value={searchDraft}
+                onChange={(e) => setSearchDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") patch({ q: searchDraft || null });
+                  if (e.key === "Escape") {
+                    setSearchDraft("");
+                    patch({ q: null });
+                  }
+                }}
+                onBlur={() => patch({ q: searchDraft || null })}
+                placeholder="Search name, code or district"
+                className="h-9 w-full rounded-full bg-muted/50 pl-9 pr-9 text-[13px] outline-none transition-colors placeholder:text-muted-foreground/70 focus:bg-background focus:ring-2 focus:ring-primary/30 dark:bg-white/[0.05] dark:focus:bg-white/[0.08]"
+              />
+              {searchDraft ? (
+                <button
+                  onClick={() => {
+                    setSearchDraft("");
+                    patch({ q: null });
+                  }}
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-muted"
                 >
-                  <Plus className="h-4 w-4" /> Add New School
-                </Button>
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : (
+                <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded bg-muted px-1.5 text-[10px] text-muted-foreground sm:block">
+                  /
+                </kbd>
               )}
             </div>
-          }
-        />
 
-        {/* ── stat strip ── */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <StatTile
-            icon={Building2}
-            label="Institutions"
-            value={stats.total}
-            tone="bg-primary/10 text-primary"
-            loading={loading}
-          />
-          <StatTile
-            icon={AlertTriangle}
-            label="Critical priority"
-            value={stats.critical}
-            tone="bg-rose-500/10 text-rose-600 dark:text-rose-400"
-            loading={loading}
-          />
-          <StatTile
-            icon={Layers}
-            label="GIS / 3D coverage"
-            value={`${stats.gisPct}%`}
-            tone="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-            loading={loading}
-          />
-          <StatTile
-            icon={Sparkles}
-            label="Avg. School Condition Score"
-            value={stats.avg}
-            tone="bg-amber-500/10 text-amber-600 dark:text-amber-400"
-            loading={loading}
-          />
+            {/* Filters inline on wide screens… */}
+            <div className="hidden items-center gap-2 lg:flex">{filterSelects}</div>
+            {/* …behind one button on smaller ones */}
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((o) => !o)}
+              aria-expanded={filtersOpen}
+              aria-controls="schools-filters"
+              className={cn(
+                "inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[13px] transition-colors lg:hidden",
+                filtersOpen ? "bg-foreground/10 text-foreground" : "bg-muted/50 text-foreground/80 hover:bg-muted dark:bg-white/[0.05]",
+              )}
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Filters
+              {filterCount > 0 && (
+                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] tabular-nums text-primary-foreground">
+                  {filterCount}
+                </span>
+              )}
+            </button>
+
+            <div className="ml-auto flex items-center gap-1">
+              {sortSelect}
+              <SavedViewsMenu views={presets} onApply={applyView} onSave={saveCurrentView} onDelete={deleteView} />
+              <button type="button" onClick={copyLink} aria-label="Copy link to this view" title="Copy link to this view" className={ICON_BTN}>
+                <Link2 className="h-4 w-4" />
+              </button>
+              <div className="ml-1 flex rounded-full bg-muted/50 p-0.5 dark:bg-white/[0.05]" role="group" aria-label="Layout">
+                {(
+                  [
+                    { v: "table", icon: Rows3, label: "List view", on: () => patch({ view: null }, false) },
+                    { v: "grid", icon: LayoutGrid, label: "Grid view", on: () => patch({ view: "grid" }, false) },
+                  ] as const
+                ).map((b) => (
+                  <button
+                    key={b.v}
+                    type="button"
+                    onClick={b.on}
+                    aria-label={b.label}
+                    aria-pressed={view === b.v}
+                    className={cn(
+                      "flex h-8 w-8 items-center justify-center rounded-full transition-colors",
+                      view === b.v ? "bg-background text-foreground shadow-sm dark:bg-white/[0.12]" : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <b.icon className="h-4 w-4" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <AnimatePresence initial={false}>
+            {filtersOpen && (
+              <motion.div
+                id="schools-filters"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                className="overflow-hidden lg:hidden"
+              >
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{filterSelects}</div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {activeChips.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {activeChips.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  aria-label={`Remove filter ${c.label}`}
+                  onClick={() => {
+                    if (c.key === "q") setSearchDraft("");
+                    patch({ [c.key]: null });
+                  }}
+                  className="inline-flex h-6 items-center gap-1 rounded-full bg-primary/10 pl-2.5 pr-1.5 text-[11px] text-foreground/90 transition-colors hover:bg-primary/15"
+                >
+                  {c.label}
+                  <X className="h-3 w-3 opacity-70" />
+                </button>
+              ))}
+              <button onClick={clearFilters} className="px-1.5 text-[11px] text-primary hover:underline">
+                Clear all
+              </button>
+            </div>
+          )}
         </div>
 
-        <Card className="overflow-hidden rounded-3xl border border-border/20 bg-card/70 shadow-none backdrop-blur-xl dark:border-white/10">
-          <CardContent className="p-0">
-            {/* ── toolbar ── */}
-            <div className="flex flex-col gap-3 border-b border-border/10 p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative min-w-[220px] flex-1">
-                  <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    ref={searchRef}
-                    aria-label="Search schools"
-                    value={searchDraft}
-                    onChange={(e) => setSearchDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") patch({ q: searchDraft || null });
-                      if (e.key === "Escape") {
-                        setSearchDraft("");
-                        patch({ q: null });
-                      }
-                    }}
-                    onBlur={() => patch({ q: searchDraft || null })}
-                    placeholder="Search name, code, district…  ( / )"
-                    className="h-10 w-full rounded-full border border-border/30 bg-background/60 pl-10 pr-9 text-xs font-semibold outline-none transition-colors placeholder:text-muted-foreground/60 focus:border-primary/50 dark:border-white/10 dark:bg-white/5"
-                  />
-                  {searchDraft && (
-                    <button
-                      onClick={() => {
-                        setSearchDraft("");
-                        patch({ q: null });
-                      }}
-                      aria-label="Clear search"
-                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-muted"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                <FilterSelect
-                  options={TYPE_OPTIONS}
-                  value={type}
-                  onChange={(v) => patch({ type: v || null })}
-                />
-                <FilterSelect
-                  options={PRIORITY_OPTIONS}
-                  value={priority}
-                  onChange={(v) => patch({ priority: v || null })}
-                />
-                <FilterSelect
-                  options={GIS_OPTIONS}
-                  value={gis}
-                  onChange={(v) => patch({ gis: v || null })}
-                />
-                <FilterSelect
-                  options={provinceOptions}
-                  value={province}
-                  onChange={(v) => patch({ province: v || null })}
-                />
-
-                <div className="ml-auto flex items-center gap-2">
-                  <div className="hidden items-center gap-1 sm:flex">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">
-                      Sort
-                    </span>
-                    <FilterSelect
-                      options={SORT_OPTIONS}
-                      value={sort}
-                      onChange={(v) =>
-                        patch(
-                          { sort: v, dir: SORT_DEFAULT_DIR[v as SortKey] },
-                          false,
-                        )
-                      }
-                      compact
-                    />
-                    <button
-                      onClick={() =>
-                        patch({ dir: dir === "asc" ? "desc" : "asc" }, false)
-                      }
-                      aria-label="Toggle sort direction"
-                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-border/30 bg-background/60 text-muted-foreground hover:text-primary dark:border-white/10 dark:bg-white/5"
-                    >
-                      {dir === "asc" ? (
-                        <ArrowUp className="h-4 w-4" />
-                      ) : (
-                        <ArrowDown className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
-
-                  <div className="flex overflow-hidden rounded-xl border border-border/30 dark:border-white/10">
-                    <button
-                      onClick={() => patch({ view: null }, false)}
-                      className={cn(
-                        "flex h-9 w-9 items-center justify-center transition-colors",
-                        view === "table"
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                      aria-label="Table view"
-                    >
-                      <Rows3 className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => patch({ view: "grid" }, false)}
-                      className={cn(
-                        "flex h-9 w-9 items-center justify-center transition-colors",
-                        view === "grid"
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                      aria-label="Grid view"
-                    >
-                      <LayoutGrid className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <SavedViewsMenu
-                  views={presets}
-                  onApply={applyView}
-                  onSave={saveCurrentView}
-                  onDelete={deleteView}
-                />
-                <button
-                  type="button"
-                  onClick={copyLink}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border/40 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <Link2 className="h-3.5 w-3.5" aria-hidden="true" /> Copy link to this view
-                </button>
-              </div>
-
-              {activeChips.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {activeChips.map((c) => (
-                    <button
-                      key={c.key}
-                      type="button"
-                      aria-label={`Remove filter ${c.label}`}
-                      onClick={() => {
-                        if (c.key === "q") setSearchDraft("");
-                        patch({ [c.key]: null });
-                      }}
-                      className="flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-primary transition-colors hover:bg-primary/10"
-                    >
-                      {c.label}
-                      <X className="h-3 w-3" />
-                    </button>
-                  ))}
-                  <button
-                    onClick={() =>
-                      patch({
-                        q: null,
-                        type: null,
-                        priority: null,
-                        gis: null,
-                        province: null,
-                      })
-                    }
-                    className="rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-wider text-muted-foreground hover:text-foreground"
-                  >
-                    Clear all
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* ── content ── */}
-            {loading ? (
-              <SkeletonTable rows={8} columns={6} className="m-4" />
-            ) : loadFailed ? (
-              <ErrorState
+        {/* ── content ── */}
+        <div className="border-t border-border/40 dark:border-white/[0.06]">
+          {loading ? (
+            <SkeletonTable rows={8} columns={6} className="m-4" />
+          ) : loadFailed ? (
+            <ErrorState
+              className="m-4"
+              message="The schools list could not be loaded. Check your connection and try again."
+              onRetry={retryLoad}
+            />
+          ) : sorted.length === 0 ? (
+            allSchools.length === 0 ? (
+              <EmptyState
                 className="m-4"
-                message="The schools list could not be loaded. Check your connection and try again."
-                onRetry={retryLoad}
+                icon={Radar}
+                title="No schools in your area yet"
+                description={
+                  canCreate
+                    ? "Register the first TVET school to start monitoring it."
+                    : "When schools in your access area are registered they will appear here."
+                }
+                action={canCreate ? { label: "Add a school", onClick: () => setIsAddModalOpen(true), icon: Plus } : undefined}
               />
-            ) : sorted.length === 0 ? (
-              allSchools.length === 0 ? (
-                <EmptyState
-                  className="m-4"
-                  icon={Radar}
-                  title="No schools in your area yet"
-                  description={
-                    canCreate
-                      ? "Register the first TVET school to start monitoring it."
-                      : "When schools in your access area are registered they will appear here."
-                  }
-                  action={canCreate ? { label: "Add a school", onClick: () => setIsAddModalOpen(true), icon: Plus } : undefined}
-                />
-              ) : (
-                <EmptyState
-                  className="m-4"
-                  icon={Radar}
-                  title="No schools match these filters"
-                  description="Adjust the search or remove a filter."
-                  secondaryAction={{ label: "Clear filters", onClick: clearFilters }}
-                />
-              )
-            ) : view === "grid" ? (
-              <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+            ) : (
+              <EmptyState
+                className="m-4"
+                icon={Radar}
+                title="No schools match these filters"
+                description="Adjust the search or remove a filter."
+                secondaryAction={{ label: "Clear filters", onClick: clearFilters }}
+              />
+            )
+          ) : (
+            <>
+              {/* Cards: always in grid view; phones → small laptops in list view */}
+              <div className={cn("grid gap-2.5 p-3 sm:grid-cols-2 sm:p-4 xl:grid-cols-3", view !== "grid" && "xl:hidden")}>
                 <AnimatePresence mode="popLayout">
                   {pageRows.map((s, i) => (
                     <SchoolCard
@@ -855,112 +827,64 @@ export default function SchoolsList() {
                   ))}
                 </AnimatePresence>
               </div>
-            ) : (
-              <>
-              {/* Phones / tablets / small laptops: cards instead of a wide table (WS3.4) */}
-              <div className="grid gap-3 p-4 sm:grid-cols-2 xl:hidden">
-                {pageRows.map((s, i) => (
-                  <SchoolCard
-                    key={s.id}
-                    school={s}
-                    index={i}
-                    selected={selected.has(s.id)}
-                    onSelect={() => toggleOne(s.id)}
-                    onOpen={canOpenDetail ? () => openSchool(s.id) : undefined}
-                  />
-                ))}
-              </div>
-              <Table
-                wrapperClassName="hidden xl:block border-none rounded-none bg-transparent shadow-none"
-                className="[&_td]:px-3 [&_th]:px-3 2xl:[&_td]:px-5 2xl:[&_th]:px-5"
-              >
-                <TableHeader>
-                  <TableRow className="border-b border-border/10 hover:bg-transparent">
-                    <TableHead className="w-10">
-                      <input
-                        type="checkbox"
-                        checked={allPageSelected}
-                        onChange={toggleAll}
-                        className="h-3.5 w-3.5 rounded border-border accent-primary"
-                        aria-label="Select page"
-                      />
-                    </TableHead>
-                    <SortableHead
-                      label="Institution / Code"
-                      col="name"
-                      icon={<SortIcon col="name" />}
-                      onSort={onHeaderSort}
-                    />
-                    <SortableHead
-                      label="Location"
-                      col="district"
-                      icon={<SortIcon col="district" />}
-                      onSort={onHeaderSort}
-                    />
-                    <SortableHead
-                      label="Type"
-                      col="type"
-                      icon={<SortIcon col="type" />}
-                      onSort={onHeaderSort}
-                    />
-                    <SortableHead
-                      label="Priority"
-                      col="priority"
-                      icon={<SortIcon col="priority" />}
-                      onSort={onHeaderSort}
-                    />
-                    <SortableHead
-                      label="Score"
-                      col="score"
-                      icon={<SortIcon col="score" />}
-                      onSort={onHeaderSort}
-                    />
-                    <SortableHead
-                      label="GIS / 3D"
-                      col="gis"
-                      icon={<SortIcon col="gis" />}
-                      onSort={onHeaderSort}
-                    />
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <AnimatePresence mode="popLayout">
-                    {pageRows.map((school, i) => {
-                      const ps = priorityStyle(school.priorityLevel);
-                      const score = calculatedScore(school);
-                      const isSel = selected.has(school.id);
-                      return (
-                        <motion.tr
-                          key={school.id}
-                          initial={{ opacity: 0, y: 6 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0 }}
-                          transition={{ delay: Math.min(i * 0.02, 0.2) }}
-                          className={cn(
-                            "group border-b border-border/5 transition-colors last:border-0",
-                            isSel ? "bg-primary/5" : "hover:bg-muted/40",
-                          )}
-                        >
-                          <TableCell className="w-10">
-                            <input
-                              type="checkbox"
-                              checked={isSel}
-                              onChange={() => toggleOne(school.id)}
-                              className="h-3.5 w-3.5 rounded border-border accent-primary"
-                              aria-label={`Select ${school.name}`}
-                            />
-                          </TableCell>
-                          <TableCell
-                            onClick={() => openSchool(school.id)}
-                            className={canOpenDetail ? "cursor-pointer" : undefined}
+
+              {view !== "grid" && (
+                <Table
+                  striped={false}
+                  wrapperClassName="hidden xl:block"
+                  className="[&_td]:px-3 [&_th]:px-3 2xl:[&_td]:px-4 2xl:[&_th]:px-4"
+                >
+                  <TableHeader>
+                    <TableRow className="border-b border-border/40 hover:bg-transparent dark:border-white/[0.06]">
+                      <TableHead className={cn(TH, "w-10 pl-5")}>
+                        <Checkbox
+                          checked={allPageSelected}
+                          indeterminate={somePageSelected}
+                          onChange={toggleAll}
+                          aria-label={allPageSelected ? "Deselect this page" : "Select this page"}
+                        />
+                      </TableHead>
+                      <SortableHead label="School" col="name" icon={<SortIcon col="name" />} onSort={onHeaderSort} />
+                      <SortableHead label="Location" col="district" icon={<SortIcon col="district" />} onSort={onHeaderSort} />
+                      <SortableHead label="Type" col="type" icon={<SortIcon col="type" />} onSort={onHeaderSort} />
+                      <SortableHead label="Priority" col="priority" icon={<SortIcon col="priority" />} onSort={onHeaderSort} />
+                      <SortableHead label="Score" col="score" icon={<SortIcon col="score" />} onSort={onHeaderSort} />
+                      <SortableHead label="GIS / 3D" col="gis" icon={<SortIcon col="gis" />} onSort={onHeaderSort} />
+                      <TableHead className={cn(TH, "pr-5 text-right")}>
+                        <span className="sr-only">Actions</span>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <AnimatePresence mode="popLayout">
+                      {pageRows.map((school, i) => {
+                        const ps = priorityStyle(school.priorityLevel);
+                        const score = calculatedScore(school);
+                        const isSel = selected.has(school.id);
+                        return (
+                          <motion.tr
+                            key={school.id}
+                            initial={{ opacity: 0, y: 4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ delay: Math.min(i * 0.015, 0.15) }}
+                            className={cn(
+                              "group border-b border-border/30 transition-colors last:border-0 dark:border-white/[0.04]",
+                              isSel ? "bg-primary/[0.06]" : "hover:bg-muted/40 dark:hover:bg-white/[0.03]",
+                            )}
                           >
-                            <div className="flex items-center gap-2.5">
-                              <span
-                                className="h-8 w-1 shrink-0 rounded-full"
-                                style={{ background: ps.dot }}
+                            <TableCell className="w-10 py-3 pl-5">
+                              <Checkbox
+                                checked={isSel}
+                                onChange={() => toggleOne(school.id)}
+                                aria-label={`Select ${school.name}`}
                               />
-                              <div className="min-w-0 max-w-[13rem] 2xl:max-w-[18rem]">
+                            </TableCell>
+                            <TableCell
+                              onClick={() => openSchool(school.id)}
+                              className={cn("py-3", canOpenDetail && "cursor-pointer")}
+                            >
+                              <div className="min-w-0 max-w-[16rem] 2xl:max-w-[22rem]">
                                 {canOpenDetail ? (
                                   <button
                                     type="button"
@@ -968,136 +892,92 @@ export default function SchoolsList() {
                                       e.stopPropagation();
                                       openSchool(school.id);
                                     }}
-                                    className="block max-w-full line-clamp-2 rounded text-left text-sm font-semibold text-foreground transition-colors group-hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    className="block max-w-full truncate rounded text-left text-[13px] font-medium text-foreground transition-colors group-hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                   >
                                     {school.name}
                                   </button>
                                 ) : (
-                                  <div className="line-clamp-2 text-sm font-semibold text-foreground">
-                                    {school.name}
-                                  </div>
+                                  <div className="truncate text-[13px] font-medium text-foreground">{school.name}</div>
                                 )}
-                                <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
-                                  {school.code}
-                                </div>
+                                <div className="text-[11px] tabular-nums text-muted-foreground">{school.code}</div>
                               </div>
-                            </div>
-                          </TableCell>
-                          <TableCell
-                            onClick={() => openSchool(school.id)}
-                            className={canOpenDetail ? "cursor-pointer" : undefined}
-                          >
-                            <div className="flex items-center gap-1.5 text-sm font-medium text-foreground/80">
-                              <MapPin className="h-3 w-3 text-muted-foreground" />
-                              {resolveDistrictName(school.district)}
-                            </div>
-                            <div className="pl-[18px] text-[10px] font-medium text-muted-foreground">
-                              {resolveProvinceName(school.province)}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
-                            {school.type}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={ps.badge}
-                              className="rounded-full border-border/10 px-2 py-0 text-[9px] font-black uppercase tracking-widest"
+                            </TableCell>
+                            <TableCell
+                              onClick={() => openSchool(school.id)}
+                              className={cn("py-3", canOpenDetail && "cursor-pointer")}
                             >
-                              {ps.label}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <ScoreBar score={score} />
-                          </TableCell>
-                          <TableCell>
-                            <GisCell school={school} />
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-1 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
-                              {canOpenDetail && (
-                                <RowAction label={`Open ${school.name}`} onClick={() => openSchool(school.id)} icon={Eye} />
-                              )}
-                              {canEdit && (
-                                <RowAction label={`Edit ${school.name}`} onClick={() => void startEdit(school.id)} icon={Pencil} />
-                              )}
-                              {canRequestChange && (
-                                <RowAction
-                                  label={`Request a change to ${school.name}`}
-                                  onClick={() => setChangeTarget(school)}
-                                  icon={MessageSquarePlus}
-                                />
-                              )}
-                              {canUpload && (
-                                <RowAction
-                                  label={`Upload KMZ or 3D model for ${school.name}`}
-                                  onClick={() => navigate(`/schools/${school.id}/kmz`)}
-                                  icon={Upload}
-                                />
-                              )}
-                              {canDelete && (
-                                <RowAction
-                                  label={`Delete ${school.name}`}
-                                  onClick={() => setDeleteTarget({ id: school.id, name: school.name })}
-                                  icon={Trash2}
-                                  danger
-                                />
-                              )}
-                            </div>
-                          </TableCell>
-                        </motion.tr>
-                      );
-                    })}
-                  </AnimatePresence>
-                </TableBody>
-              </Table>
-              </>
-            )}
+                              <div className="text-[13px] text-foreground/90">{resolveDistrictName(school.district)}</div>
+                              <div className="text-[11px] text-muted-foreground">{shortProvince(resolveProvinceName(school.province))}</div>
+                            </TableCell>
+                            <TableCell className="py-3 text-xs text-muted-foreground">{school.type}</TableCell>
+                            <TableCell className="py-3">
+                              <PriorityTag style={ps} />
+                            </TableCell>
+                            <TableCell className="py-3">
+                              <ScoreBar score={score} />
+                            </TableCell>
+                            <TableCell className="py-3">
+                              <GisCell school={school} />
+                            </TableCell>
+                            <TableCell className="py-3 pr-5 text-right">
+                              <div className="flex items-center justify-end gap-0.5 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
+                                {canOpenDetail && (
+                                  <RowAction label={`Open ${school.name}`} onClick={() => openSchool(school.id)} icon={Eye} />
+                                )}
+                                {canEdit && (
+                                  <RowAction label={`Edit ${school.name}`} onClick={() => void startEdit(school.id)} icon={Pencil} />
+                                )}
+                                {canRequestChange && (
+                                  <RowAction
+                                    label={`Request a change to ${school.name}`}
+                                    onClick={() => setChangeTarget(school)}
+                                    icon={MessageSquarePlus}
+                                  />
+                                )}
+                                {canUpload && (
+                                  <RowAction
+                                    label={`Upload KMZ or 3D model for ${school.name}`}
+                                    onClick={() => navigate(`/schools/${school.id}/kmz`)}
+                                    icon={Upload}
+                                  />
+                                )}
+                                {canDelete && (
+                                  <RowAction
+                                    label={`Delete ${school.name}`}
+                                    onClick={() => setDeleteTarget({ id: school.id, name: school.name })}
+                                    icon={Trash2}
+                                    danger
+                                  />
+                                )}
+                              </div>
+                            </TableCell>
+                          </motion.tr>
+                        );
+                      })}
+                    </AnimatePresence>
+                  </TableBody>
+                </Table>
+              )}
+            </>
+          )}
+        </div>
 
-            {/* ── footer / pagination ── */}
-            {!loading && sorted.length > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/10 p-4 text-xs">
-                <span className="font-medium text-muted-foreground">
-                  Showing{" "}
-                  <span className="rounded-md bg-muted/60 px-1.5 py-0.5 font-bold text-foreground tabular-nums">
-                    {(safePage - 1) * PAGE_SIZE + 1}–
-                    {Math.min(safePage * PAGE_SIZE, sorted.length)}
-                  </span>{" "}
-                  of {sorted.length}
-                  {sorted.length !== stats.total && (
-                    <span className="text-muted-foreground/60">
-                      {" "}
-                      (filtered from {stats.total})
-                    </span>
-                  )}
-                </span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="rounded-full border-border/20 px-4"
-                    disabled={safePage <= 1}
-                    onClick={() => patch({ page: String(safePage - 1) }, false)}
-                  >
-                    Previous
-                  </Button>
-                  <span className="px-1 text-muted-foreground">
-                    Page {safePage} / {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="rounded-full border-border/20 px-4"
-                    disabled={safePage >= totalPages}
-                    onClick={() => patch({ page: String(safePage + 1) }, false)}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+        {/* ── footer / pagination ── */}
+        {!loading && sorted.length > 0 && (
+          <Pagination
+            page={safePage}
+            totalPages={totalPages}
+            pageSize={PAGE_SIZE}
+            total={sorted.length}
+            unfilteredTotal={stats.total}
+            onPage={(n) => {
+              patch({ page: n > 1 ? String(n) : null }, false);
+              listTopRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+            }}
+            onPageSize={(n) => patch({ per: n === DEFAULT_PAGE_SIZE ? null : String(n) })}
+          />
+        )}
+      </section>
 
       {/* ── bulk-selection bar ── */}
       <AnimatePresence>
@@ -1106,23 +986,18 @@ export default function SchoolsList() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-6 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-3 rounded-2xl border border-border/40 bg-background/95 px-4 py-3 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#0c1120]/95"
+            className="fixed bottom-6 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-border/40 bg-background/90 py-1.5 pl-4 pr-1.5 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#0c1120]/90"
           >
-            <span className="text-xs font-black uppercase tracking-wider text-foreground">
-              {selected.size} selected
-            </span>
-            <Button
-              size="sm"
-              onClick={exportSelectedCsv}
-              className="h-8 gap-1.5 rounded-full text-[10px] font-black uppercase tracking-wider"
-            >
+            <span className="text-[13px] tabular-nums text-foreground">{selected.size} selected</span>
+            <Button size="sm" onClick={exportSelectedCsv} className="h-8 gap-1.5 rounded-full px-3 text-xs font-normal">
               <FileDown className="h-3.5 w-3.5" aria-hidden /> Export CSV
             </Button>
             <button
               onClick={() => setSelected(new Set())}
-              className="rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-wider text-muted-foreground hover:text-foreground"
+              aria-label="Clear selection"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
             >
-              Clear
+              <X className="h-4 w-4" />
             </button>
           </motion.div>
         )}
@@ -1230,7 +1105,7 @@ function RowAction({
       title={label}
       onClick={onClick}
       className={cn(
-        "h-8 w-8 rounded-full",
+        "h-7 w-7 rounded-full text-muted-foreground [&_svg]:h-3.5 [&_svg]:w-3.5",
         danger
           ? "hover:bg-destructive/10 hover:text-destructive"
           : "hover:bg-primary/10 hover:text-primary",
@@ -1261,11 +1136,16 @@ function SavedViewsMenu({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className="inline-flex items-center gap-1.5 rounded-full border border-border/40 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={`Saved views${views.length ? ` (${views.length})` : ""}`}
+        title="Saved views"
+        className={cn(ICON_BTN, "relative", open && "bg-muted text-foreground")}
       >
-        <Bookmark className="h-3.5 w-3.5" aria-hidden="true" />
-        Saved views{views.length ? ` (${views.length})` : ""}
-        <ChevronDown className="h-3 w-3" aria-hidden="true" />
+        <Bookmark className="h-4 w-4" aria-hidden="true" />
+        {views.length > 0 && (
+          <span className="absolute right-0.5 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] tabular-nums text-primary-foreground">
+            {views.length}
+          </span>
+        )}
       </button>
       {open && (
         <>
@@ -1274,7 +1154,7 @@ function SavedViewsMenu({
             role="dialog"
             aria-label="Saved views"
             onKeyDown={(e) => e.key === "Escape" && setOpen(false)}
-            className="absolute left-0 top-full z-50 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-border bg-background p-2 shadow-xl"
+            className="absolute right-0 top-full z-50 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-2xl border border-border bg-background p-2 shadow-xl"
           >
             {views.length === 0 ? (
               <p className="px-2 py-2 text-xs text-muted-foreground">
@@ -1392,10 +1272,10 @@ function ExportMenu({
         disabled={busy}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="h-10 gap-2 rounded-full border-border/20 px-5 text-[11px] font-black uppercase tracking-wider shadow-none hover:bg-primary/5"
+        className="h-9 gap-1.5 rounded-full border-border/50 bg-transparent px-3.5 text-[13px] font-normal shadow-none hover:bg-muted dark:border-white/10"
       >
-        <FileDown className={cn("h-3.5 w-3.5", busy && "animate-pulse")} aria-hidden="true" />
-        {busy ? "Exporting…" : "Export"}
+        <FileDown className={cn("h-4 w-4", busy && "animate-pulse")} aria-hidden="true" />
+        <span className="hidden sm:inline">{busy ? "Exporting…" : "Export"}</span>
         <ChevronDown className="h-3 w-3" aria-hidden="true" />
       </Button>
       {open && pos && createPortal(
@@ -1432,60 +1312,195 @@ function ExportMenu({
 
 /* ─────────────────────────────  pieces  ───────────────────────────── */
 
-function StatTile({
-  icon: Icon,
+const ICON_BTN =
+  "flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35 dark:hover:bg-white/[0.07]";
+const TH = "h-10 text-[11px] font-normal normal-case tracking-normal text-muted-foreground";
+
+/** "Northern Province" → "Northern"; "City of Kigali" stays readable. */
+const shortProvince = (p: string) => p.replace(/\s+Province$/i, "");
+
+/** Canonical Intervention Priority band for a 0–100 score. */
+const scoreBandKey = (n: number) => (n < 35 ? "critical" : n < 55 ? "high" : n < 75 ? "medium" : "low");
+
+/** Page numbers with ellipses: 1 … 4 5 6 … 12 (always first, last, and current ±1). */
+function pageList(page: number, total: number): (number | "…")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const out: (number | "…")[] = [1];
+  const from = Math.max(2, page - 1);
+  const to = Math.min(total - 1, page + 1);
+  if (from > 2) out.push("…");
+  for (let i = from; i <= to; i++) out.push(i);
+  if (to < total - 1) out.push("…");
+  out.push(total);
+  return out;
+}
+
+function Pagination({
+  page,
+  totalPages,
+  pageSize,
+  total,
+  unfilteredTotal,
+  onPage,
+  onPageSize,
+}: {
+  page: number;
+  totalPages: number;
+  pageSize: number;
+  total: number;
+  unfilteredTotal: number;
+  onPage: (n: number) => void;
+  onPageSize: (n: number) => void;
+}) {
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
+  return (
+    <nav
+      aria-label="Pagination"
+      className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border/40 px-4 py-3 text-xs text-muted-foreground dark:border-white/[0.06]"
+    >
+      <div className="flex items-center gap-3">
+        <span className="tabular-nums" aria-live="polite">
+          <span className="text-foreground">
+            {formatNumber(from)}–{formatNumber(to)}
+          </span>{" "}
+          of {formatNumber(total)}
+          {total !== unfilteredTotal && <span className="hidden sm:inline"> · filtered from {formatNumber(unfilteredTotal)}</span>}
+        </span>
+        <label className="relative hidden items-center gap-1.5 sm:flex">
+          <span>Rows</span>
+          <select
+            aria-label="Rows per page"
+            value={pageSize}
+            onChange={(e) => onPageSize(Number(e.target.value))}
+            className="h-7 cursor-pointer appearance-none rounded-full bg-muted/50 pl-2.5 pr-6 text-xs tabular-nums text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/[0.05] [&>option]:bg-background"
+          >
+            {PAGE_SIZES.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2 h-3 w-3" />
+        </label>
+      </div>
+
+      <div className="flex items-center gap-0.5">
+        <button type="button" className={ICON_BTN} disabled={page <= 1} onClick={() => onPage(page - 1)} aria-label="Previous page">
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        {/* Numbered pages from tablet up; a compact "3 / 12" on phones. */}
+        <span className="px-1.5 tabular-nums sm:hidden">
+          {page} / {totalPages}
+        </span>
+        <span className="hidden items-center gap-0.5 sm:flex">
+          {pageList(page, totalPages).map((n, i) =>
+            n === "…" ? (
+              <span key={`gap-${i}`} className="w-6 text-center" aria-hidden>
+                …
+              </span>
+            ) : (
+              <button
+                key={n}
+                type="button"
+                onClick={() => onPage(n)}
+                aria-label={`Page ${n}`}
+                aria-current={n === page ? "page" : undefined}
+                className={cn(
+                  "h-8 min-w-8 rounded-full px-2 tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  n === page ? "bg-primary text-primary-foreground" : "hover:bg-muted hover:text-foreground dark:hover:bg-white/[0.07]",
+                )}
+              >
+                {n}
+              </button>
+            ),
+          )}
+        </span>
+        <button
+          type="button"
+          className={ICON_BTN}
+          disabled={page >= totalPages}
+          onClick={() => onPage(page + 1)}
+          aria-label="Next page"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </nav>
+  );
+}
+
+function Metric({
   label,
   value,
-  tone,
   loading,
+  accent,
+  bar,
 }: {
-  icon: ComponentType<{ className?: string }>;
   label: string;
-  value: string | number;
-  tone: string;
+  value: string;
   loading?: boolean;
+  /** Colour for the value (e.g. a priority band). */
+  accent?: string;
+  /** 0–100: draws a thin progress line under the value. */
+  bar?: number;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-border/20 bg-card/60 p-4 backdrop-blur-xl dark:border-white/10">
-      <div
-        className={cn(
-          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
-          tone,
-        )}
-      >
-        <Icon className="h-5 w-5" />
-      </div>
-      <div className="min-w-0">
+    <div className="min-w-0 border-border/40 px-4 py-3 odd:border-r sm:border-r sm:last:border-r-0 [&:nth-child(-n+2)]:border-b sm:[&:nth-child(-n+2)]:border-b-0 dark:border-white/[0.06]">
+      <dt className="truncate text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-0.5">
         {loading ? (
           <Skeleton className="h-6 w-12" />
         ) : (
-          <div className="text-xl font-black leading-none tabular-nums">
+          <span className="text-xl font-semibold tabular-nums tracking-tight text-foreground" style={accent ? { color: accent } : undefined}>
             {value}
-          </div>
+          </span>
         )}
-        <div className="mt-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-          {label}
-        </div>
-      </div>
+        {bar !== undefined && !loading && (
+          <span className="mt-1.5 block h-1 w-full max-w-[7rem] overflow-hidden rounded-full bg-muted dark:bg-white/[0.08]">
+            <span className="block h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, Math.max(0, bar))}%` }} />
+          </span>
+        )}
+      </dd>
     </div>
   );
 }
 
-function FilterSelect({
+/** Compact native select styled as a pill (accessible, great on phones). */
+function PillSelect({
+  label,
   options,
   value,
   onChange,
-  compact,
 }: {
+  label: string;
   options: { label: string; value: string }[];
   value: string;
   onChange: (v: string) => void;
-  compact?: boolean;
 }) {
   return (
-    <div className={compact ? "w-32" : "w-36"}>
-      <RichDropdown options={options} value={value} onChange={onChange} />
-    </div>
+    <label className="relative block min-w-0">
+      <span className="sr-only">{label}</span>
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn(
+          "h-9 w-full min-w-0 cursor-pointer appearance-none truncate rounded-full pl-3.5 pr-8 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+          "[&>option]:bg-background [&>option]:text-foreground",
+          value
+            ? "bg-primary/10 text-foreground dark:bg-primary/20"
+            : "bg-muted/50 text-foreground/80 hover:bg-muted dark:bg-white/[0.05] dark:hover:bg-white/[0.08]",
+        )}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+    </label>
   );
 }
 
@@ -1501,11 +1516,11 @@ function SortableHead({
   onSort: (c: SortKey) => void;
 }) {
   return (
-    <TableHead>
+    <TableHead className={TH}>
       <button
         type="button"
         onClick={() => onSort(col)}
-        className="flex items-center gap-1.5 rounded uppercase transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="inline-flex items-center gap-1 rounded transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {label}
         {icon}
@@ -1514,53 +1529,50 @@ function SortableHead({
   );
 }
 
+function PriorityTag({ style }: { style: { label: string; dot: string } }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-foreground/85">
+      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: style.dot }} />
+      {style.label}
+    </span>
+  );
+}
+
+/** Score on the canonical bands (Critical < 35, High < 55, Medium < 75, Low ≥ 75). */
 function ScoreBar({ score }: { score: number }) {
-  const tone = score >= 70 ? "#10b981" : score >= 40 ? "#f59e0b" : "#ef4444";
+  const tone = score ? priorityStyle(scoreBandKey(score)).dot : "#64748b";
   return (
     <div className="flex items-center gap-2">
-      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full rounded-full"
-          style={{
-            width: `${Math.min(100, Math.max(0, score))}%`,
-            background: tone,
-          }}
-        />
-      </div>
-      <span className="text-xs font-black tabular-nums" style={{ color: tone }}>
-        {score || "—"}
+      <span className="w-6 text-right text-xs tabular-nums text-foreground">{score || "—"}</span>
+      <span className="h-1 w-14 overflow-hidden rounded-full bg-muted dark:bg-white/[0.08]">
+        <span className="block h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, score))}%`, background: tone }} />
       </span>
     </div>
   );
 }
 
+const GIS_STATE: Record<string, { label: string; dot: string }> = {
+  completed: { label: "Mapped", dot: "#10b981" },
+  processing: { label: "Processing", dot: "#f59e0b" },
+  pending: { label: "Pending", dot: "#64748b" },
+};
+
 function GisCell({ school }: { school: School }) {
   const state = (school.kmzStatus ?? "pending").toLowerCase();
+  const m = GIS_STATE[state] ?? { label: school.kmzStatus || "Pending", dot: "#64748b" };
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <Badge
-        variant={
-          state === "completed"
-            ? "success"
-            : state === "processing"
-              ? "warning"
-              : "outline"
-        }
-        className="rounded-full border-border/10 px-2 py-0 text-[9px] font-black uppercase tracking-widest"
-      >
-        {state === "completed" && <CheckCircle2 className="mr-1 h-3 w-3" />}
-        {school.kmzStatus || "pending"}
-      </Badge>
+    <span className="inline-flex items-center gap-1.5 text-xs text-foreground/85">
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: m.dot }} />
+      <span className={state === "pending" ? "text-muted-foreground" : undefined}>{m.label}</span>
       {school.tifFilePath && (
-        <Badge
-          variant="outline"
-          className="rounded-full border-blue-500/20 bg-blue-500/5 px-2 py-0 text-[8px] font-black uppercase tracking-widest text-blue-500"
+        <span
+          className="rounded-full bg-blue-500/10 px-1.5 text-[10px] text-blue-600 dark:text-blue-400"
           title="Native high-resolution drone imagery available"
         >
-          4K native
-        </Badge>
+          4K
+        </span>
       )}
-    </div>
+    </span>
   );
 }
 
@@ -1582,78 +1594,41 @@ function SchoolCard({
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
-      transition={{ delay: Math.min(index * 0.03, 0.25) }}
+      transition={{ delay: Math.min(index * 0.025, 0.2) }}
       className={cn(
-        "group relative overflow-hidden rounded-2xl border bg-card/60 p-4 backdrop-blur-xl transition-colors",
+        "group relative rounded-2xl border p-3.5 transition-colors",
         selected
-          ? "border-primary/50 ring-1 ring-primary/30"
-          : "border-border/20 hover:border-primary/30 dark:border-white/10",
+          ? "border-primary/40 bg-primary/[0.05]"
+          : "border-border/40 bg-background/40 hover:border-border dark:border-white/[0.06] dark:bg-white/[0.02] dark:hover:border-white/[0.12]",
       )}
     >
-      <span
-        className="absolute inset-y-0 left-0 w-1"
-        style={{ background: ps.dot }}
-      />
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start gap-3">
         <button
           type="button"
           onClick={onOpen}
           disabled={!onOpen}
-          className="min-w-0 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+          className="min-w-0 flex-1 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
         >
-          <h3 className="truncate text-sm font-bold text-foreground transition-colors group-hover:text-primary">
+          <h3 className="truncate text-[13px] font-medium text-foreground transition-colors group-hover:text-primary">
             {school.name}
           </h3>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
-            {school.code}
+          <p className="truncate text-[11px] text-muted-foreground">
+            {school.code} · {resolveDistrictName(school.district)}, {shortProvince(resolveProvinceName(school.province))}
           </p>
         </button>
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={onSelect}
-          className="mt-1 h-3.5 w-3.5 shrink-0 rounded border-border accent-primary"
-          aria-label={`Select ${school.name}`}
-        />
-      </div>
-
-      <div className="mt-3 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-        <MapPin className="h-3 w-3" />
-        {resolveDistrictName(school.district)} ·{" "}
-        {resolveProvinceName(school.province)}
+        <Checkbox checked={selected} onChange={onSelect} className="mt-0.5" aria-label={`Select ${school.name}`} />
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        <Badge
-          variant={ps.badge}
-          className="rounded-full border-border/10 px-2 py-0 text-[9px] font-black uppercase tracking-widest"
-        >
-          {ps.label}
-        </Badge>
-        <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
-          {school.type}
-        </span>
-      </div>
-
-      <div className="mt-3">
+        <PriorityTag style={ps} />
         <ScoreBar score={score} />
       </div>
-
-      <div className="mt-3 flex items-center justify-between border-t border-border/10 pt-3">
+      <div className="mt-2 flex items-center justify-between gap-2">
         <GisCell school={school} />
-        {onOpen && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onOpen}
-          className="h-7 gap-1 rounded-lg text-[10px] font-black uppercase tracking-wider text-primary hover:bg-primary/10"
-        >
-          <Eye className="h-3.5 w-3.5" aria-hidden="true" /> Open
-        </Button>
-        )}
+        <span className="text-[11px] text-muted-foreground">{school.type}</span>
       </div>
     </motion.div>
   );
