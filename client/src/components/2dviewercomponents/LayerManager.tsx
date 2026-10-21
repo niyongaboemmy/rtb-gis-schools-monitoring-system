@@ -89,7 +89,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
       className={cn(
         "fixed z-40 bg-white/95 dark:bg-card/95 backdrop-blur-3xl border border-slate-200 dark:border-white/6 overflow-hidden flex flex-col transition-all duration-500 ease-out",
         "inset-x-0 bottom-0 h-[60vh] rounded-t-[32px] md:rounded-[24px]", // Mobile: bottom sheet
-        "md:inset-auto md:right-20 md:top-4 md:w-85 md:h-auto md:max-h-[calc(100vh-60px)]", // Desktop: floating panel
+        "md:inset-auto md:right-20 md:top-16 xl:top-4 md:w-85 md:h-auto md:max-h-[calc(100vh-6rem)] xl:max-h-[calc(100vh-60px)]", // Desktop: floating panel
         "animate-in slide-in-from-bottom md:slide-in-from-right-4",
       )}
     >

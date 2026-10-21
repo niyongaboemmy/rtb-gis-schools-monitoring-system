@@ -31,7 +31,7 @@ export const MapNavigator: React.FC<MapNavigatorProps> = ({
     <div className={cn(
       "fixed z-40 transition-all duration-500",
       "inset-x-0 bottom-0 h-[50vh] md:h-auto", // Mobile bottom sheet
-      "md:inset-auto md:right-16 md:top-4 md:w-64", // Desktop floating
+      "md:inset-auto md:right-16 md:top-16 xl:top-4 md:w-64", // Desktop floating
       "animate-in slide-in-from-bottom md:slide-in-from-right-4"
     )}>
       <Card className="bg-background/80 backdrop-blur-2xl rounded-t-[32px] md:rounded-2xl border border-border/10 overflow-hidden h-full flex flex-col">

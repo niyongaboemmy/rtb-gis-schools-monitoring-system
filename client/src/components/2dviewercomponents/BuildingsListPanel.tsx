@@ -73,7 +73,7 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
       className={cn(
         "fixed z-30 flex flex-col bg-white/95 dark:bg-card/95 backdrop-blur-2xl border border-slate-200 dark:border-white/6 overflow-hidden transition-all duration-500",
         "inset-x-0 bottom-0 h-[60vh] rounded-t-[32px] md:rounded-3xl", // Mobile
-        "md:inset-auto md:right-22 md:top-4 md:w-80 md:h-auto md:max-h-[calc(100vh-2rem)]", // Desktop
+        "md:inset-auto md:right-22 md:top-16 xl:top-4 md:w-80 md:h-auto md:max-h-[calc(100vh-6rem)] xl:max-h-[calc(100vh-2rem)]", // Desktop
         "animate-in fade-in slide-in-from-bottom md:slide-in-from-right-8",
       )}
     >

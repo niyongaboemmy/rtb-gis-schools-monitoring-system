@@ -33,7 +33,7 @@ export function DistributionChart({
   return (
     <Card
       className={cn(
-        'h-full border border-border/20 dark:border-blue-700/20 bg-card/60 backdrop-blur-sm rounded-3xl overflow-hidden shadow-none',
+        'h-full border border-border/20 dark:border-blue-700/20 bg-card/60 backdrop-blur-sm rounded-3xl overflow-hidden shadow-float',
         className,
       )}
     >

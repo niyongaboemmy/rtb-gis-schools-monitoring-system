@@ -79,7 +79,7 @@ export function KPICard({
       className={cn("h-full", className)}
     >
       <Card className={cn(
-        "relative h-full transition-all duration-300 border dark:border-blue-700/20 rounded-3xl backdrop-blur-sm shadow-none overflow-hidden group",
+        "relative h-full transition-all duration-300 border dark:border-blue-700/20 rounded-3xl backdrop-blur-sm shadow-float overflow-hidden group",
         style.border,
         style.bg
       )}>
