@@ -1,0 +1,178 @@
+/* National map — Leaflet-side styling (pins reuse .scm-pin from index.css). */
+
+.nm-root .leaflet-container {
+  background: transparent;
+  font-family: inherit;
+}
+.nm-root .leaflet-container:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+/* Hovered (list ↔ map sync) pin: grows and gets a soft halo. */
+.scm-pin.nm-pin--hover .scm-pin__core {
+  inset: 8%;
+  transition: inset 0.15s ease;
+}
+.nm-pin--dim { opacity: 0.35; transition: opacity 0.2s ease; }
+
+/* Cluster bubble: priority-mix ring (conic) around a glass count. */
+.nm-cluster { background: transparent; border: 0; }
+.nm-cluster__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: var(--nm-mix);
+  box-shadow: 0 6px 18px -6px rgba(15, 23, 42, 0.45);
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.nm-cluster:hover .nm-cluster__ring { transform: scale(1.08); }
+.nm-cluster__core {
+  position: absolute;
+  inset: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  backdrop-filter: blur(6px);
+}
+:root.dark .nm-cluster__core { background: rgba(9, 13, 24, 0.88); color: #fff; }
+
+/* Province names: quiet, sentence-case text with a halo for legibility. */
+.nm-prov-label { background: transparent; border: 0; pointer-events: none; }
+.nm-prov-label span {
+  display: inline-block;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: rgba(15, 23, 42, 0.72);
+  text-shadow: 0 0 3px #fff, 0 0 8px rgba(255, 255, 255, 0.9);
+}
+.nm-prov-label small {
+  display: block;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.7;
+}
+:root.dark .nm-prov-label span {
+  color: rgba(255, 255, 255, 0.78);
+  text-shadow: 0 0 3px #000, 0 0 10px rgba(0, 0, 0, 0.9);
+}
+.nm-prov-label--active span { color: hsl(var(--primary)); }
+:root.dark .nm-prov-label--active span { color: hsl(213 94% 72%); }
+
+/* Measure vertices / nearest origin. */
+.nm-vertex { background: transparent; border: 0; }
+.nm-vertex span {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: #0ea5e9;
+  box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.nm-origin span { background: #8b5cf6; width: 14px; height: 14px; }
+
+/* Rwanda outline glow (accurate 1:10m border). */
+.leaflet-overlay-pane path.nm-rwanda-edge {
+  filter: drop-shadow(0 0 3px rgba(37, 99, 235, 0.5)) drop-shadow(0 0 10px rgba(37, 99, 235, 0.3));
+}
+:root.dark .leaflet-overlay-pane path.nm-rwanda-edge {
+  filter: drop-shadow(0 0 4px rgba(96, 165, 250, 0.55)) drop-shadow(0 0 12px rgba(96, 165, 250, 0.3));
+}
+.leaflet-overlay-pane path.nm-province { transition: fill-opacity 0.2s ease, stroke-opacity 0.2s ease; }
+
+/* Scale bar: sentence-case, glass, sits above the phone bottom sheet. */
+.nm-root .leaflet-control-scale-line {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 10px;
+  font-weight: 400;
+  border-radius: 0 6px 6px 0;
+}
+.nm-root .leaflet-bottom.leaflet-right { margin-bottom: 26px; margin-right: 12px; }
+@media (max-width: 767px) {
+  .nm-root .leaflet-bottom { margin-bottom: 86px; }
+}
+
+/* Dual-thumb score range: two native ranges share one track. */
+.nm-range {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.nm-range:focus { outline: none; }
+.nm-range::-webkit-slider-runnable-track { background: transparent; height: 100%; }
+.nm-range::-moz-range-track { background: transparent; }
+.nm-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  pointer-events: auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 0;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.3);
+  cursor: grab;
+  transition: transform 0.15s ease;
+}
+.nm-range::-moz-range-thumb {
+  pointer-events: auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 0;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.3);
+  cursor: grab;
+}
+.nm-range:active::-webkit-slider-thumb { transform: scale(1.12); cursor: grabbing; }
+.nm-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px hsl(var(--ring)), 0 2px 8px rgba(15, 23, 42, 0.3); }
+.nm-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px hsl(var(--ring)); }
+
+/* Tooltips here read as plain text; only their first line (a name) is bold. */
+.nm-root .leaflet-tooltip.scm-tip { font-weight: 400; }
+
+/* Dark theme: push Esri's mid-grey canvas toward a deep navy so the map sits
+   in the same ink as the glass UI (sepia + hue-rotate tints the greys blue). */
+:root.dark .nm-root .scm-tiles--dark {
+  filter: brightness(0.62) sepia(0.4) hue-rotate(185deg) saturate(1.6) contrast(1.12);
+}
+/* Reference labels (neighbour names) recede further. */
+:root.dark .nm-root .scm-tiles--dark ~ .nm-ref-tiles {
+  opacity: 0.55;
+}
+
+/* A clicked province is an SVG path: the browser's focus ring would draw its
+   bounding box. The selected-province outline already shows the state. */
+.nm-root path.leaflet-interactive:focus,
+.nm-root path.leaflet-interactive:focus-visible {
+  outline: none;
+}
+
+/* Newly selected province: its outline glows once, then settles. */
+.leaflet-overlay-pane path.nm-province--active {
+  animation: nm-province-flash 1.4s cubic-bezier(0.22, 1, 0.36, 1) 0.6s both;
+}
+@keyframes nm-province-flash {
+  0%   { filter: drop-shadow(0 0 0 rgba(96, 165, 250, 0)); }
+  35%  { filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.9)) drop-shadow(0 0 22px rgba(96, 165, 250, 0.5)); }
+  100% { filter: drop-shadow(0 0 4px rgba(96, 165, 250, 0.45)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .leaflet-overlay-pane path.nm-province--active { animation: none; filter: drop-shadow(0 0 4px rgba(96, 165, 250, 0.45)); }
+}

@@ -101,3 +101,88 @@ export const formatDistance = (metres: number) =>
   metres < 1000
     ? `${Math.round(metres)} m`
     : `${(metres / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 })} km`;
+
+/* ─────────────────────────────  score bands  ───────────────────────────── */
+
+export type PriorityKey = "critical" | "high" | "medium" | "low";
+
+/** Intervention Priority band for a 0–100 score (Critical <35, High <55, Medium <75, Low ≥75). */
+export const scoreBand = (score: number): PriorityKey =>
+  score < 35 ? "critical" : score < 55 ? "high" : score < 75 ? "medium" : "low";
+
+/* ─────────────────────────────  basemap catalogue  ───────────────────────────── */
+
+export type BasemapId = "auto" | "light" | "dark" | "satellite" | "streets" | "topo";
+
+export interface BasemapDef {
+  id: BasemapId;
+  label: string;
+  /** Tile URL ({z}/{y}/{x}); `auto` resolves against the theme at render time. */
+  base: (theme: "light" | "dark") => string;
+  /** Optional labels / reference overlay. */
+  reference?: (theme: "light" | "dark") => string | null;
+  attribution: string;
+  maxZoom: number;
+  /** Canvas basemaps get the subtle tone filter used across the app. */
+  tone?: (theme: "light" | "dark") => "light" | "dark" | null;
+}
+
+/** Free Esri basemaps — no API key or token required. */
+export const BASEMAPS: BasemapDef[] = [
+  {
+    id: "auto",
+    label: "Match theme",
+    base: (t) => basemapUrls(t).base,
+    reference: (t) => basemapUrls(t).reference,
+    attribution: BASEMAP_ATTRIBUTION,
+    maxZoom: 16,
+    tone: (t) => t,
+  },
+  {
+    id: "light",
+    label: "Light",
+    base: () => basemapUrls("light").base,
+    reference: () => basemapUrls("light").reference,
+    attribution: BASEMAP_ATTRIBUTION,
+    maxZoom: 16,
+    tone: () => "light",
+  },
+  {
+    id: "dark",
+    label: "Dark",
+    base: () => basemapUrls("dark").base,
+    reference: () => basemapUrls("dark").reference,
+    attribution: BASEMAP_ATTRIBUTION,
+    maxZoom: 16,
+    tone: () => "dark",
+  },
+  {
+    id: "satellite",
+    label: "Satellite",
+    base: () => IMAGERY_URL,
+    reference: () => IMAGERY_LABELS_URL,
+    attribution: IMAGERY_ATTRIBUTION,
+    maxZoom: 19,
+  },
+  {
+    id: "streets",
+    label: "Streets",
+    base: () => `${ESRI}/World_Street_Map/MapServer/tile/{z}/{y}/{x}`,
+    attribution: BASEMAP_ATTRIBUTION,
+    maxZoom: 19,
+  },
+  {
+    id: "topo",
+    label: "Terrain",
+    base: () => `${ESRI}/World_Topo_Map/MapServer/tile/{z}/{y}/{x}`,
+    attribution: BASEMAP_ATTRIBUTION,
+    maxZoom: 19,
+  },
+];
+
+export const basemapById = (id: string | null | undefined): BasemapDef =>
+  BASEMAPS.find((b) => b.id === id) ?? BASEMAPS[0];
+
+/** A single z7 tile over Rwanda, for basemap preview thumbnails. */
+export const basemapPreviewUrl = (def: BasemapDef, theme: "light" | "dark") =>
+  def.base(theme).replace("{z}", "7").replace("{y}", "64").replace("{x}", "74");

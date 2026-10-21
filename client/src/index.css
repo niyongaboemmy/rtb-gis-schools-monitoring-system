@@ -184,7 +184,7 @@
 }
 
 /* ───────────────────────────────────────────────────────────────
-   SchoolCoverMap — NASA-style locator map (dashboard hero + map page)
+   National map (/map) — school pins, pulses and map chrome
    ─────────────────────────────────────────────────────────────── */
 
 /* Subtle tuning of the CARTO basemaps so markers pop */
@@ -284,6 +284,11 @@
     bottom: auto;
   }
 }
+
+/* Native controls (select menus, date pickers, scrollbars, autofill) follow
+   the app theme instead of the OS one. */
+:root { color-scheme: light; }
+:root.dark { color-scheme: dark; }
 
 /* Glass tooltip */
 .leaflet-tooltip.scm-tip {
