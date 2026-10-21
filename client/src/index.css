@@ -285,6 +285,70 @@
   }
 }
 
+/* Skeleton shimmer: a soft highlight sweeps across each placeholder. All
+   placeholders share one clock (background-attachment: fixed), so the sweep
+   travels across the whole page as one wave instead of per-block. */
+.skeleton-shimmer {
+  background-color: rgb(15 23 42 / 0.06);
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgb(255 255 255 / 0.55) 50%,
+    transparent 70%
+  );
+  background-size: 200vw 100%;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  animation: skeleton-sweep 1.8s ease-in-out infinite;
+}
+:root.dark .skeleton-shimmer {
+  background-color: rgb(255 255 255 / 0.05);
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgb(255 255 255 / 0.07) 50%,
+    transparent 70%
+  );
+}
+@keyframes skeleton-sweep {
+  from { background-position: 150vw 0; }
+  to   { background-position: -50vw 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer { animation: none; background-image: none; }
+}
+
+/* Dashboard skeleton motion: a light travelling round the Rwanda outline,
+   province beacons blinking in turn, and arcs orbiting empty rings. */
+.skel-trace {
+  stroke-dasharray: 9 91;
+  animation: skel-trace 3.2s linear infinite;
+}
+@keyframes skel-trace {
+  to { stroke-dashoffset: -100; }
+}
+.skel-beacon {
+  transform-box: view-box;
+  animation: skel-beacon 1.8s ease-in-out infinite both;
+}
+@keyframes skel-beacon {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50%      { opacity: 1;    transform: scale(1.15); }
+}
+.skel-orbit {
+  transform-origin: 50% 50%;
+  transform-box: fill-box;
+  animation: skel-orbit 1.4s cubic-bezier(0.5, 0.15, 0.5, 0.85) infinite;
+}
+@keyframes skel-orbit {
+  from { transform: rotate(-90deg); }
+  to   { transform: rotate(270deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel-trace { animation: none; stroke-dasharray: none; opacity: 0.4; }
+  .skel-beacon, .skel-orbit { animation: none; }
+}
+
 /* Native controls (select menus, date pickers, scrollbars, autofill) follow
    the app theme instead of the OS one. */
 :root { color-scheme: light; }

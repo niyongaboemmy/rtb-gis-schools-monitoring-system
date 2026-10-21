@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, Inbox, RefreshCw, type LucideIcon } from "lucide-react";
 import { Button } from "../ui/button";
-import { Skeleton, SkeletonCards, SkeletonGroup } from "../ui/skeleton";
+import { Skeleton, SkeletonGroup } from "../ui/skeleton";
 import { cn } from "../../lib/utils";
 
 /**
@@ -18,18 +18,44 @@ export function DashboardSkeleton({
   label?: string;
   className?: string;
 }) {
+  const glass = "rounded-[1.5rem] bg-white/55 shadow-float backdrop-blur-2xl dark:bg-[hsl(224_40%_6%)]/65";
   return (
-    <div className={cn("space-y-6", className)}>
-      <SkeletonGroup label={label} className="space-y-2">
-        <Skeleton className="h-7 w-2/3 max-w-sm" />
-        <Skeleton className="h-4 w-1/2 max-w-xs" />
-      </SkeletonGroup>
-      <SkeletonCards count={cards} />
-      <SkeletonGroup label="" className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <Skeleton className="h-72 rounded-3xl xl:col-span-2" />
-        <Skeleton className="h-72 rounded-3xl" />
-      </SkeletonGroup>
-    </div>
+    <SkeletonGroup label={label} className={cn("space-y-6", className)}>
+      <div className="space-y-2.5">
+        <Skeleton className="h-6 w-2/3 max-w-xs rounded-full" />
+        <Skeleton className="h-3.5 w-1/2 max-w-[14rem] rounded-full" />
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: cards }).map((_, i) => (
+          <div key={i} className={cn(glass, "flex items-center gap-3 p-4")}>
+            <Skeleton className="h-11 w-11 shrink-0 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-2.5 w-1/2 rounded-full" />
+              <Skeleton className="h-5 w-2/3 rounded-full" />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className={cn(glass, "space-y-4 p-6 xl:col-span-2")}>
+          <Skeleton className="h-4 w-40 rounded-full" />
+          <div className="flex h-52 items-end gap-2">
+            {[45, 70, 55, 85, 60, 75, 40, 65, 80, 50].map((h, i) => (
+              <Skeleton key={i} className="flex-1 rounded-t-lg rounded-b-sm" style={{ height: `${h}%` }} />
+            ))}
+          </div>
+        </div>
+        <div className={cn(glass, "space-y-3 p-6")}>
+          <Skeleton className="h-4 w-32 rounded-full" />
+          {[90, 75, 82, 68, 88].map((w, i) => (
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="h-8 w-8 shrink-0 rounded-xl" />
+              <Skeleton className="h-3 rounded-full" style={{ width: `${w}%` }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </SkeletonGroup>
   );
 }
 
