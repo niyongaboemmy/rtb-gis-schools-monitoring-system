@@ -1,8 +1,10 @@
+import { IsPlausibleYear } from '../../../common/validation/plausible-year';
 import {
   IsArray,
   IsBoolean,
   IsEnum,
   IsNotEmpty,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -27,13 +29,13 @@ class EducationProgramDto {
   name: string;
 
   @ApiPropertyOptional()
-  @IsNumber()
-  @IsOptional()
+  @IsInt()
   @Min(0)
+  @IsOptional()
   totalStudents?: number;
 
   @ApiPropertyOptional()
-  @IsNumber()
+  @IsInt()
   @IsOptional()
   @Min(0)
   capacity?: number;
@@ -119,8 +121,8 @@ export class CreateSchoolDto {
   @IsOptional()
   website?: string;
 
-  @ApiPropertyOptional()
-  @IsNumber()
+  @ApiPropertyOptional({ description: 'Whole year, 1900 – current year' })
+  @IsPlausibleYear()
   @IsOptional()
   establishedYear?: number;
 
@@ -130,25 +132,26 @@ export class CreateSchoolDto {
   headTeacher?: string;
 
   @ApiPropertyOptional()
-  @IsNumber()
-  @IsOptional()
+  @IsInt()
   @Min(0)
+  @IsOptional()
   maleStudents?: number;
 
   @ApiPropertyOptional()
-  @IsNumber()
-  @IsOptional()
+  @IsInt()
   @Min(0)
+  @IsOptional()
   femaleStudents?: number;
 
   @ApiPropertyOptional()
-  @IsNumber()
-  @IsOptional()
+  @IsInt()
   @Min(0)
+  @IsOptional()
   totalStudents?: number;
 
   @ApiPropertyOptional()
-  @IsNumber()
+  @IsInt()
+  @Min(0)
   @IsOptional()
   totalTeachers?: number;
 
@@ -159,47 +162,51 @@ export class CreateSchoolDto {
 
   // Staff
   @ApiPropertyOptional()
-  @IsNumber()
+  @IsInt()
+  @Min(0)
   @IsOptional()
   maleTeachers?: number;
 
   @ApiPropertyOptional()
-  @IsNumber()
+  @IsInt()
+  @Min(0)
   @IsOptional()
   femaleTeachers?: number;
 
   @ApiPropertyOptional()
-  @IsNumber()
+  @IsInt()
+  @Min(0)
   @IsOptional()
   adminStaff?: number;
 
   @ApiPropertyOptional()
-  @IsNumber()
-  @IsOptional()
+  @IsInt()
   @Min(0)
+  @IsOptional()
   maleAdminStaff?: number;
 
   @ApiPropertyOptional()
-  @IsNumber()
-  @IsOptional()
+  @IsInt()
   @Min(0)
+  @IsOptional()
   femaleAdminStaff?: number;
 
   @ApiPropertyOptional()
-  @IsNumber()
+  @IsInt()
+  @Min(0)
   @IsOptional()
   supportStaff?: number;
 
   @ApiPropertyOptional()
-  @IsNumber()
-  @IsOptional()
+  @IsInt()
   @Min(0)
+  @IsOptional()
   maleSupportStaff?: number;
 
   @ApiPropertyOptional()
-  @IsNumber()
-  @IsOptional()
+  @IsInt()
   @Min(0)
+  @IsOptional()
   femaleSupportStaff?: number;
 
   // Roads

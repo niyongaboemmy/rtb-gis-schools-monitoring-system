@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { DataGapBadge, METRICS, MetricInfo } from "./index";
+import { DetailModal } from "../school-dashboard/DetailModal";
 
 describe("metric registry", () => {
   it("every entry is complete", () => {
@@ -44,6 +45,29 @@ describe("<MetricInfo />", () => {
     render(<MetricInfo id="component.buildingAge" />);
     fireEvent.click(screen.getByRole("button", { name: /Building Age Score/ }));
     expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
+  });
+});
+
+describe("<MetricInfo /> inside a dialog", () => {
+  it("Escape closes only the drawer, not the dialog under it", () => {
+    const onDialogClose = vi.fn();
+    render(
+      <DetailModal isOpen onClose={onDialogClose} title="Campus">
+        <MetricInfo id="school.buildingCount" />
+      </DetailModal>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /What does/ }));
+    expect(screen.getByRole("dialog", { name: METRICS["school.buildingCount"].title })).toBeInTheDocument();
+    fireEvent.keyDown(document.activeElement ?? document, { key: "Escape" });
+    expect(onDialogClose).not.toHaveBeenCalled();
+  });
+
+  it("shows where the metric appears and its sources", () => {
+    render(<MetricInfo id="school.studentTeacherRatio" />);
+    fireEvent.click(screen.getByRole("button", { name: /Student/ }));
+    expect(screen.getByText("Shown on")).toBeInTheDocument();
+    expect(screen.getByText("schools.maleTeachers")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy metric id" })).toBeInTheDocument();
   });
 });
 

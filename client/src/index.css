@@ -500,3 +500,23 @@
       0 10px 28px -14px rgba(0, 0, 0, 0.55);
   }
 }
+
+/* Categorical chart palette (dataviz reference order, validated on the app's
+   light #f4f7fb and dark #0c111d surfaces). Dark is its own stepped set, not
+   a flip. Used for the six School Condition Score factors, in this order. */
+:root {
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-4: #eda100;
+  --viz-5: #e87ba4;
+  --viz-6: #008300;
+}
+:root.dark {
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
+  --viz-5: #d55181;
+  --viz-6: #008300;
+}

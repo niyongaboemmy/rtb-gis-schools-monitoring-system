@@ -1,49 +1,59 @@
+import { createPortal } from "react-dom";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { Socket } from "socket.io-client";
 import { connectSocket } from "../lib/socket";
 import { useParams, Link } from "react-router-dom";
 import { useGoBack } from "../hooks/useGoBack";
-import { motion } from "framer-motion";
 import { useAuthStore } from "../store/authStore";
 import {
-  Activity,
-  Building2,
-  GraduationCap,
-  ClipboardCheck,
   AlertTriangle,
+  Building2,
+  ClipboardCheck,
   FileText,
-  CheckCircle,
-  CheckCircle2,
+  Gauge,
+  GraduationCap,
+  ListChecks,
+  MapPin,
+  School,
+  ShieldAlert,
+  Users,
 } from "lucide-react";
 import { api, apiErrorMessage } from "../lib/api";
-import { Modal } from "../components/ui/modal";
 import { Button } from "../components/ui/button";
-import { Badge } from "../components/ui/badge";
+import { formatNumber, formatPercent, formatScore } from "../lib/format";
+import { hasPermission } from "../lib/permissions";
 import { cn } from "../lib/utils";
-import { formatDate, formatNumber, formatPercent } from "../lib/format";
 import { label } from "../lib/labels";
 import { useToast } from "../components/ui/toast";
 import { MetricInfo } from "../components/metric-help/MetricInfo";
 import {
   DashboardError,
-  DashboardSkeleton,
 } from "../components/dashboard/DashboardStates";
-import {
-  buildBuildingsAttention,
-  rollupIssueReports,
-  formatTrendPct,
-  formatDaysAgo,
-  type IssueReportLike,
-} from "../lib/issueReportMetrics";
-import type { SchoolMetrics } from "../components/dashboard/types";
-import type { FacilityBuilding } from "../components/dashboard/FacilityBreakdownSection";
+import type { FacilityBuilding, ReportingData, SchoolMetrics } from "../components/dashboard/types";
 
 // Dashboard Components
-import { DecisionIntelligenceScore } from "../components/dashboard/DecisionIntelligenceScore";
-import { FacilityBreakdownSection } from "../components/dashboard/FacilityBreakdownSection";
-import { SchoolStatsCards } from "../components/dashboard/SchoolStatsCards";
-import { ReportingTab } from "../components/dashboard/ReportingTab";
-import { RiskAssessment } from "../components/dashboard/RiskAssessment";
+import { FloatingStat } from "../components/dashboard/FloatingStat";
+import { SchoolHero, type DetailView } from "../components/school-dashboard/SchoolHero";
+import { IssueReportsCard } from "../components/school-dashboard/IssueReportsCard";
+import { RiskCard } from "../components/school-dashboard/RiskCard";
+import { BuildingsCard } from "../components/school-dashboard/BuildingsCard";
+import { DataQualityCard } from "../components/school-dashboard/DataQualityCard";
+import { DetailModal } from "../components/school-dashboard/DetailModal";
+import { ScoreBreakdown, ScoreSummary } from "../components/school-dashboard/ScoreBreakdown";
+import { ReportsDetail, ReportsFooter, ReportsSummary } from "../components/school-dashboard/details/ReportsDetail";
+import { RiskDetail, RiskSummary } from "../components/school-dashboard/details/RiskDetail";
+import { BuildingsDetail, BuildingsSummary } from "../components/school-dashboard/details/BuildingsDetail";
+import { ProfileDetail, ProfileSummary } from "../components/school-dashboard/details/ProfileDetail";
+import { ActionsSummary } from "../components/school-dashboard/details/ActionsSummary";
+import { ScoreFactorsCard } from "../components/school-dashboard/ScoreFactorsCard";
+import { SchoolDashboardSkeleton } from "../components/school-dashboard/SchoolDashboardSkeleton";
+import { GlassCard } from "../components/school-dashboard/GlassCard";
+import { BRAND } from "../components/school-dashboard/tokens";
+import { Recommendations } from "../components/school-dashboard/Recommendations";
+import {
+  STATUS_LABEL,
+  type RecommendationActionRow,
+} from "../components/school-dashboard/recommendation-utils";
 import SchoolMap from "../components/SchoolMap";
 
 /** The school record as returned by GET /schools/:id (only fields used here are typed). */
@@ -55,33 +65,24 @@ interface SchoolRecord {
   [key: string]: unknown;
 }
 
-interface RecommendationActionRow {
-  id: string;
-  recommendation: string;
-  status: "open" | "in_progress" | "done";
-}
-
 interface ScoresUpdatedEvent {
   overallScore: number;
-  infrastructureScore: number;
-  buildingAgeScore: number;
-  accessibilityScore: number;
-  populationPressureScore: number;
   priorityLevel: SchoolMetrics["priorityLevel"];
 }
 
 interface SchoolDecisionDashboardProps {
   id?: string;
+  /**
+   * true  → full-screen page: renders the map shell (SchoolMap → School2DViewer),
+   *         which mounts the embedded dashboard. Only the school record is
+   *         loaded here.
+   * false → the embedded dashboard itself: loads metrics, reporting and
+   *         actions, and listens for live score changes.
+   */
   standalone?: boolean;
   onUpdateSchool?: (update: Partial<SchoolRecord>) => void;
   onBuildingClick?: (building: FacilityBuilding) => void;
 }
-
-const ACTION_STATUS_LABEL: Record<string, string> = {
-  open: "Open",
-  in_progress: "In Progress",
-  done: "Done",
-};
 
 export default function SchoolDecisionDashboard({
   id: propId,
@@ -98,54 +99,58 @@ export default function SchoolDecisionDashboard({
   const [school, setSchool] = useState<SchoolRecord | null>(null);
   /** Server metrics — GET /analytics/schools/:id/metrics (single source, WS1.4). */
   const [metrics, setMetrics] = useState<SchoolMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(id));
   /** HTTP status of a failed load (0 = network/other), or null when loaded. */
   const [loadError, setLoadError] = useState<number | null>(null);
-  const [isBuildingModalOpen, setIsBuildingModalOpen] = useState(false);
-  const [reportingData, setReportingData] = useState<{
-    rawReports: IssueReportLike[];
-    monthComparison: ReturnType<typeof rollupIssueReports>["monthComparison"] | null;
-  } | null>(null);
-  const [activeTab, setActiveTab] = useState<"main" | "reporting">("main");
+  /** GET /schools/dashboard/reporting — shared by the Overview card and the Issue Reports tab. */
+  const [reporting, setReporting] = useState<ReportingData | null>(null);
+  const [reportingLoading, setReportingLoading] = useState(false);
+  const [reportingError, setReportingError] = useState(false);
+  const [reportingLoadedAt, setReportingLoadedAt] = useState<Date | null>(null);
+  /** Which detail dialog is open (summaries live on the page; detail in dialogs). */
+  const [view, setView] = useState<DetailView | null>(null);
+  const closeView = useCallback(() => setView(null), []);
+  /** Bumped by the Issue Reports dialog's Refresh to reload its report list. */
+  const [reportsRefreshKey, setReportsRefreshKey] = useState(0);
   const [actions, setActions] = useState<RecommendationActionRow[]>([]);
 
   const lastFetchedId = useRef<string | null>(null);
+  const heroRef = useRef<HTMLDivElement>(null);
+  const [pastHero, setPastHero] = useState(false);
+  const metricsRef = useRef<SchoolMetrics | null>(null);
+  metricsRef.current = metrics;
 
   const schoolData = school;
   const buildings = useMemo(() => schoolData?.buildings || [], [schoolData]);
   const reportSummary = metrics?.reportSummary ?? null;
 
-  // Everything shown below comes from the server metrics payload. The client
-  // no longer recomputes scores, priority, recommendations, totals or ratios.
-  const assessment: Partial<SchoolMetrics> = metrics ?? {};
 
-  const buildingsAttention = useMemo(
-    () =>
-      buildBuildingsAttention(
-        buildings,
-        reportingData?.rawReports ?? [],
-        3,
-      ),
-    [buildings, reportingData?.rawReports],
-  );
-
-  const fetchReportingData = useCallback(async () => {
+  const fetchReporting = useCallback(async () => {
     if (!id) return;
+    setReportingLoading(true);
+    setReportingError(false);
     try {
-      const response = await api.get(`/reports?schoolId=${id}&limit=1000`);
-      const reports = response.data?.data ?? [];
-      const rollup = rollupIssueReports(reports);
-
-      // Counts and rates come from the server reportSummary; the browser only
-      // keeps the raw list (for the building ranking) and the month comparison.
-      setReportingData({
-        rawReports: reports,
-        monthComparison: rollup.monthComparison,
+      const res = await api.get(`/schools/dashboard/reporting`, {
+        params: { schoolId: id },
       });
+      setReporting(res.data?.data?.reports ?? null);
+      setReportingLoadedAt(new Date());
     } catch (error) {
       console.error("Failed to fetch reporting data:", error);
-      setReportingData({ rawReports: [], monthComparison: null });
+      setReportingError(true);
+    } finally {
+      setReportingLoading(false);
     }
+  }, [id]);
+
+  const fetchMetrics = useCallback(async () => {
+    if (!id) return null;
+    const res = await api
+      .get(`/analytics/schools/${id}/metrics`)
+      .catch(() => null);
+    const next: SchoolMetrics | null = res?.data ?? null;
+    setMetrics(next);
+    return next;
   }, [id]);
 
   const fetchActions = useCallback(async () => {
@@ -168,7 +173,7 @@ export default function SchoolDecisionDashboard({
             recommendation,
           });
           setActions((prev) => [...prev, res.data]);
-          toast.success(`Recommendation marked ${ACTION_STATUS_LABEL[res.data?.status] ?? "Open"}`);
+          toast.success(`Recommendation marked ${STATUS_LABEL[res.data?.status as keyof typeof STATUS_LABEL] ?? "Open"}`);
         } else {
           const nextStatus =
             existing.status === "open"
@@ -182,7 +187,7 @@ export default function SchoolDecisionDashboard({
           setActions((prev) =>
             prev.map((a) => (a.id === existing.id ? res.data : a)),
           );
-          toast.success(`Recommendation marked ${ACTION_STATUS_LABEL[nextStatus]}`);
+          toast.success(`Recommendation marked ${STATUS_LABEL[nextStatus]}`);
         }
       } catch (err) {
         toast.error(apiErrorMessage(err, "Could not update this recommendation. Please try again."));
@@ -191,20 +196,19 @@ export default function SchoolDecisionDashboard({
     [id, actions, toast],
   );
 
-  // 2. Data Fetching
+  // 2. Data Fetching — the standalone shell only needs the school record; the
+  // embedded dashboard loads the analytics (no duplicate requests).
   const fetchSchool = useCallback(
     async (silent = false) => {
       if (!id) return;
       if (!silent) setLoading(true);
       setLoadError(null);
       try {
-        const [schoolRes, metricsRes] = await Promise.all([
-          api.get(`/schools/${id}`),
-          api.get(`/analytics/schools/${id}/metrics`).catch(() => null),
-        ]);
+        const schoolRes = await api.get(`/schools/${id}`);
         setSchool(schoolRes.data);
-        setMetrics(metricsRes?.data ?? null);
-        await Promise.all([fetchReportingData(), fetchActions()]);
+        if (!standalone) {
+          await Promise.all([fetchMetrics(), fetchReporting(), fetchActions()]);
+        }
       } catch (error) {
         console.error("Failed to fetch school", error);
         setLoadError(
@@ -214,7 +218,7 @@ export default function SchoolDecisionDashboard({
         setLoading(false);
       }
     },
-    [id, fetchReportingData, fetchActions],
+    [id, standalone, fetchMetrics, fetchReporting, fetchActions],
   );
 
   useEffect(() => {
@@ -224,67 +228,91 @@ export default function SchoolDecisionDashboard({
     }
   }, [id, fetchSchool]);
 
-  const showScoreToast = useCallback(() => {
-    toast.success("Scores updated");
-  }, [toast]);
-
-  const recalculateScores = useCallback(async () => {
-    if (!id) return;
-    try {
-      await api.post(`/analytics/schools/${id}/recalculate`);
-      await fetchSchool(true);
-      showScoreToast();
-    } catch {
-      toast.error("Scores could not be recalculated. They will update on the next change.");
-    }
-  }, [id, fetchSchool, showScoreToast, toast]);
+  // Edits made on the map / form: keep the local record in sync. The server
+  // rescores the school on every scoring-input write and pushes
+  // `scores:updated`, so no explicit recalculation call is made here.
+  // Show the nav fade only after the hero has scrolled under the viewer nav.
+  useEffect(() => {
+    const el = heroRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([entry]) => setPastHero(!entry.isIntersecting), {
+      rootMargin: "-96px 0px 0px 0px",
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [school]);
 
   const handleUpdateSchool = useCallback(
     (update: Partial<SchoolRecord>) => {
       setSchool((prev) => (prev ? { ...prev, ...update } : prev));
-      recalculateScores();
       if (propOnUpdateSchool) propOnUpdateSchool(update);
     },
-    [recalculateScores, propOnUpdateSchool],
+    [propOnUpdateSchool],
   );
 
   useEffect(() => {
-    if (!id) return;
+    // Only the embedded dashboard (the one that shows scores) listens.
+    if (!id || standalone) return;
 
     const socket: Socket = connectSocket();
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
     // Join on every (re)connect so the room survives network drops.
     const schoolRoom = `school:${id}`;
     socket.on("connect", () => socket.emit("join", schoolRoom));
 
     socket.on("scores:updated", (update: ScoresUpdatedEvent) => {
-      // Patch the server-computed scores in place; the full metrics payload
-      // (gaps, risk, totals) refreshes on the next fetch.
-      setMetrics((prev) =>
-        prev
-          ? {
-              ...prev,
-              overallScore: update.overallScore,
-              infrastructureScore: update.infrastructureScore,
-              buildingAgeScore: update.buildingAgeScore,
-              accessibilityScore: update.accessibilityScore,
-              populationPressureScore: update.populationPressureScore,
-              priorityLevel: update.priorityLevel,
-            }
-          : prev,
-      );
-      showScoreToast();
+      // Refetch the full payload (components, gaps, coverage, risk,
+      // recommendations) so every figure moves together. Debounced: a burst of
+      // edits produces one refresh and at most one toast.
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(async () => {
+        const before = metricsRef.current;
+        const next = await fetchMetrics();
+        void fetchReporting();
+        if (
+          next &&
+          (before?.overallScore !== update.overallScore ||
+            before?.priorityLevel !== update.priorityLevel)
+        ) {
+          toast.success(`Scores updated: ${formatScore(next.overallScore)} (${label("priority", next.priorityLevel)})`);
+        }
+      }, 400);
     });
 
     return () => {
+      if (timer) clearTimeout(timer);
       socket.emit("leave", schoolRoom);
       socket.disconnect();
     };
-  }, [id, showScoreToast]);
+  }, [id, standalone, fetchMetrics, fetchReporting, toast]);
 
   // 3. Render Logic
+  if (!id) {
+    return (
+      <DashboardError
+        className="m-4 md:m-8"
+        title="No school is assigned to your account"
+        message="Your school dashboard opens once an administrator links your account to a school."
+      />
+    );
+  }
+
   if (loading) {
-    return <DashboardSkeleton cards={4} label="Loading school dashboard…" className="p-4 md:p-8" />;
+    // Mirror the final layout: full-screen viewer shell when standalone (the
+    // map viewer replaces it), inline inside the viewer's Dashboard tab.
+    // Portaled: the route transition's transform would otherwise trap `fixed`
+    // inside the app layout (sidebar showing, then a jump).
+    return standalone ? (
+      createPortal(
+        <div className="fixed inset-0 z-100 overflow-hidden bg-slate-50 dark:bg-gray-950">
+          <SchoolDashboardSkeleton variant="page" />
+        </div>,
+        document.body,
+      )
+    ) : (
+      <SchoolDashboardSkeleton />
+    );
   }
 
   if (loadError !== null) {
@@ -345,481 +373,239 @@ export default function SchoolDecisionDashboard({
     );
   }
 
+  const canManageActions = hasPermission(user, "MANAGE_DECISIONS");
+  const schoolName = schoolData.name || "School";
+  const m = metrics;
+  const recommendations = m?.recommendations ?? [];
+  const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      className="container mx-auto space-y-8 pb-12 px-2 md:px-6 pt-16 bg-transparent"
-    >
-      {/* Tab Navigation */}
-      <div role="tablist" aria-label="School dashboard sections" className="flex gap-2 p-1 bg-slate-50 dark:bg-white/5 rounded-full border border-slate-200 dark:border-blue-500/12 mb-8 overflow-x-auto">
-        {[
-          { id: "main", label: "Overview", icon: Activity },
-          { id: "reporting", label: "Issue Reports", icon: FileText },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              role="tab"
-              aria-selected={activeTab === tab.id}
-              onClick={() => setActiveTab(tab.id as "main" | "reporting")}
-              className={cn(
-                "flex shrink-0 items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all",
-                activeTab === tab.id
-                  ? "bg-primary text-white shadow-sm"
-                  : "text-slate-600 dark:text-white/60 hover:bg-slate-100 dark:hover:bg-white/10",
-              )}
-            >
-              <Icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          );
-        })}
+    <div className="relative min-h-full">
+      {/* Ambient backdrop — the same calm depth as the national dashboard */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute left-1/4 top-0 h-[28rem] w-[28rem] rounded-full bg-primary/10 blur-[120px] dark:bg-primary/15" />
+        <div className="absolute bottom-0 right-0 h-[24rem] w-[32rem] rounded-full bg-primary/10 blur-[120px]" />
+      </div>
+      {/* Fade under the viewer's floating nav — only once the hero has scrolled away */}
+      <div
+        aria-hidden
+        className={cn(
+          "pointer-events-none sticky top-0 z-30 -mb-24 h-24 bg-linear-to-b from-slate-50 from-40% via-slate-50/85 to-transparent transition-opacity duration-300 dark:from-gray-950 dark:from-40% dark:via-gray-950/85",
+          pastHero ? "opacity-100" : "opacity-0",
+        )}
+      />
+
+      {/* Full-bleed hero at the very top (it clears the viewer nav itself) */}
+      <div ref={heroRef}>
+      <SchoolHero
+        name={schoolData.name || "School"}
+        code={schoolData.code}
+        district={typeof schoolData.district === "string" ? schoolData.district : undefined}
+        province={typeof schoolData.province === "string" ? schoolData.province : undefined}
+        mapped={schoolData.kmzStatus === "completed"}
+        metrics={m}
+        onOpen={setView}
+      />
       </div>
 
-      {/* Content Based on Active Tab */}
-      {activeTab === "main" && (
-        <div>
-          <div className="space-y-8">
-            {/* Modern Dashboard Header */}
-            <div className="relative group mb-12">
-              <div className="absolute -inset-x-20 -top-20 h-64 bg-primary/5 dark:bg-primary/2 blur-[120px] rounded-full pointer-events-none" />
+      <div className="relative mx-auto -mt-4 max-w-[1400px] space-y-5 px-4 pb-10 sm:-mt-6 sm:px-8 lg:px-10">
 
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 relative z-10 border-b border-slate-200 dark:border-blue-500/12 pb-10">
-                <div>
-                  <h2 className="text-2xl sm:text-3xl md:text-4xl font-medium text-slate-800 dark:text-white tracking-tight break-words">
-                    {schoolData.name || "School"}
-                  </h2>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-4">
-                    <p className="text-[12px] font-normal text-slate-600 dark:text-white/60 tracking-wide">
-                      School dashboard
-                    </p>
-                    {schoolData.code && (
-                      <>
-                        <div className="h-1 w-1 rounded-full bg-slate-300 dark:bg-white/10" />
-                        <p className="text-[12px] font-medium text-primary tracking-wide">
-                          Code {schoolData.code}
-                        </p>
-                      </>
-                    )}
-                  </div>
-                </div>
+        {!m && (
+          <p role="status" className="flex items-center gap-2 rounded-2xl bg-amber-500/10 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-500/20 dark:text-amber-300">
+            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+            Scores are not available right now. School details are shown; try again later.
+          </p>
+        )}
 
-                <div className="flex flex-col items-start md:items-end gap-3">
-                  <div className="text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-white/50 pr-2">
-                    Scores as of {metrics?.calculatedAt ? formatDate(metrics.calculatedAt) : "—"}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {!metrics && (
-            <div role="status" className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-300 font-medium flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
-              Scores are not available right now. School details are shown; try again later for scores.
-            </div>
-          )}
-          {/* Data completeness warning — shown when fewer than 60 % of key fields are populated */}
-          {(metrics?.dataCompletenessScore ?? 100) < 60 && (
-            <div role="status" className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-300 font-medium flex flex-wrap items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
-              <span>
-                Data completeness: <strong>{formatPercent(metrics?.dataCompletenessScore ?? null)}</strong>. Some
-                scores are estimated. Complete the school profile to improve accuracy.
-              </span>
-              <MetricInfo id="school.dataCompleteness" size="xs" />
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 md:gap-8">
-            <div className="xl:col-span-2 space-y-8 min-w-0">
-              <DecisionIntelligenceScore assessment={assessment} />
-              <FacilityBreakdownSection buildings={buildings} />
-              <RiskAssessment risk={metrics?.riskAssessment} />
-            </div>
-
-            <div className="space-y-8 min-w-0">
-              {/* Resolution Rate Card */}
-              <div className="relative rounded-[32px] overflow-hidden group">
-                <div className="absolute inset-0 bg-linear-to-b from-emerald-500/30 to-emerald-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
-                  <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
-                </div>
-                <div className="relative z-10 p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-medium text-emerald-600/80 dark:text-emerald-400 flex items-center gap-3">
-                      <div className="p-2 rounded-xl bg-emerald-100 dark:bg-white/5 border border-emerald-500/20">
-                        <CheckCircle className="w-4 h-4 opacity-70" />
-                      </div>
-                      Resolution Rate
-                      <MetricInfo id="reports.resolutionRate" size="xs" />
-                    </h3>
-                    <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5">
-                      5% of the score
-                    </span>
-                  </div>
-                  {reportSummary?.resolutionRate == null ? (
-                    <p className="text-sm text-slate-600 dark:text-white/60">
-                      No Issue Reports yet. The score uses a neutral 50 for this part until reports exist.
-                    </p>
-                  ) : (
-                    <div className="flex items-end gap-4">
-                      <div className="text-5xl font-bold text-emerald-600 dark:text-emerald-400 leading-none tabular-nums">
-                        {formatPercent(reportSummary.resolutionRate)}
-                      </div>
-                      <div className="flex-1 pb-1">
-                        <div className="text-[11px] text-slate-600 dark:text-white/60 mb-1.5">
-                          {formatNumber(reportSummary.resolved)} of {formatNumber(reportSummary.total)} reports Resolved
-                        </div>
-                        <div className="h-2 bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-emerald-500 rounded-full transition-all duration-700"
-                            style={{ width: `${reportSummary.resolutionRate}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Reporting Summary Section */}
-              <div className="relative rounded-[32px] overflow-hidden group">
-                {/* Professional Gradient Border & Background */}
-                <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
-                  <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
-                </div>
-
-                <div className="relative z-10 p-5 sm:p-8">
-                  <h3 className="text-sm font-medium text-primary/70 dark:text-blue-500 mb-6 flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/12">
-                      <FileText className="w-4 h-4 opacity-60" />
-                    </div>
-                    Issue Reports summary
-                  </h3>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-4">
-                      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs text-slate-600 dark:text-white/60 flex items-center gap-1">
-                            Open issues
-                            <MetricInfo id="reports.openIssues" size="xs" />
-                          </span>
-                          <AlertTriangle className="w-3 h-3 text-amber-500" />
-                        </div>
-                        <div className="text-xl font-bold text-slate-900 dark:text-white">
-                          {formatNumber(reportSummary?.active ?? 0)}
-                        </div>
-                        <div
-                          className={cn(
-                            "text-xs",
-                            (reportingData?.monthComparison?.activeChangePct ?? 0) > 0
-                              ? "text-amber-600"
-                              : "text-emerald-600",
-                          )}
-                        >
-                          New this month:{" "}
-                          {formatTrendPct(
-                            reportingData?.monthComparison?.activeChangePct,
-                          )}
-                        </div>
-                      </div>
-                      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs text-slate-600 dark:text-white/60 flex items-center gap-1">
-                            Resolved
-                            <MetricInfo id="reports.resolved" size="xs" />
-                          </span>
-                          <CheckCircle className="w-3 h-3 text-emerald-500" />
-                        </div>
-                        <div className="text-xl font-bold text-slate-900 dark:text-white">
-                          {formatNumber(reportSummary?.resolved ?? 0)}
-                        </div>
-                        <div className="text-xs text-slate-600 dark:text-white/50 flex items-center gap-1">
-                          {formatTrendPct(
-                            reportingData?.monthComparison?.solvedChangePct,
-                          )}
-                          <MetricInfo id="reports.monthComparison" size="xs" />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-slate-600 dark:text-white/60 flex items-center gap-1">
-                          {label("reportStatus", "NEED_INTERVENTION")}
-                          <MetricInfo id="reports.needsIntervention" size="xs" />
-                        </span>
-                        <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-xl font-bold text-red-600 dark:text-red-400">
-                          {formatNumber(reportSummary?.critical ?? 0)}
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-xs text-slate-500 dark:text-white/60 mb-1">
-                            Resolution rate
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 bg-slate-100 dark:bg-white/5 rounded-full h-1.5">
-                              <div
-                                className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500"
-                                style={{
-                                  width: `${reportSummary?.resolutionRate ?? 0}%`,
-                                }}
-                              />
-                            </div>
-                            <span className="text-xs font-medium text-slate-900 dark:text-white tabular-nums">
-                              {formatPercent(reportSummary?.resolutionRate ?? null)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Buildings with Critical Reports */}
-              <div className="relative rounded-[32px] overflow-hidden group">
-                {/* Professional Gradient Border & Background */}
-                <div className="absolute inset-0 bg-linear-to-b from-red-500/30 to-red-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
-                  <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
-                </div>
-
-                <div className="relative z-10 p-8">
-                  <h3 className="text-sm font-medium text-red-600/70 dark:text-red-500 mb-6 flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-red-100 dark:bg-white/5 border border-red-500/20">
-                      <AlertTriangle className="w-4 h-4 opacity-60" />
-                    </div>
-                    Buildings needing attention
-                    <MetricInfo id="reports.buildingsAttention" size="xs" />
-                  </h3>
-                  <div className="space-y-3">
-                    {buildingsAttention.length === 0 ? (
-                      <p className="text-xs text-slate-500 dark:text-white/50 px-1">
-                        No buildings need attention: no open Issue Reports are linked to a building and none is in poor or critical condition.
-                      </p>
-                    ) : (
-                      buildingsAttention.map((row, index) => (
-                        <motion.div
-                          key={row.buildingId}
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.1 }}
-                          onClick={() => {
-                            const b = buildings.find(
-                              (x) => x.id === row.buildingId,
-                            );
-                            if (b) onBuildingClick?.(b);
-                          }}
-                          role={onBuildingClick ? "button" : undefined}
-                          tabIndex={onBuildingClick ? 0 : undefined}
-                          onKeyDown={(e) => {
-                            if (!onBuildingClick || (e.key !== "Enter" && e.key !== " ")) return;
-                            e.preventDefault();
-                            const b = buildings.find((x) => x.id === row.buildingId);
-                            if (b) onBuildingClick(b);
-                          }}
-                          className={`p-4 rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-blue-500/12 hover:bg-slate-100 dark:hover:bg-white/10 transition-all ${onBuildingClick ? "cursor-pointer" : ""}`}
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex min-w-0 items-center gap-3">
-                              <div className="shrink-0 w-8 h-8 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-                                <Building2 className="w-4 h-4 text-red-500" />
-                              </div>
-                              <div className="min-w-0">
-                                <h4 className="text-sm font-medium text-slate-900 dark:text-white truncate">
-                                  {row.name}
-                                </h4>
-                                <p className="text-xs text-slate-500 dark:text-white/60">
-                                  {row.yearBuilt
-                                    ? `Built ${row.yearBuilt}`
-                                    : "Year unknown"}
-                                </p>
-                              </div>
-                            </div>
-                            <Badge
-                              className={cn(
-                                "text-xs font-medium",
-                                row.severityLabel === "critical"
-                                  ? "bg-red-500/10 text-red-600 border-red-500/20"
-                                  : row.severityLabel === "high"
-                                    ? "bg-orange-500/10 text-orange-600 border-orange-500/20"
-                                    : "bg-amber-500/10 text-amber-600 border-amber-500/20",
-                              )}
-                            >
-                              {label("priority", row.severityLabel)}
-                            </Badge>
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-4 text-xs">
-                            <div>
-                              <p className="text-slate-500 dark:text-white/60 mb-1">
-                                Pending
-                              </p>
-                              <p className="font-medium text-slate-900 dark:text-white">
-                                {row.pending}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-slate-500 dark:text-white/60 mb-1">
-                                Needs Intervention
-                              </p>
-                              <p className="font-medium text-red-600 dark:text-red-400">
-                                {row.intervention}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-slate-500 dark:text-white/60 mb-1">
-                                Last reporter
-                              </p>
-                              <p className="font-medium text-slate-900 dark:text-white truncate">
-                                {row.lastReportAt
-                                  ? `${row.reporterLabel} · ${formatDaysAgo(row.lastReportAt)}`
-                                  : row.reporterLabel}
-                              </p>
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <SchoolStatsCards metrics={metrics} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === "reporting" && id && <ReportingTab schoolId={id} />}
-
-      {activeTab === "main" && (
-        <motion.div className="relative rounded-[32px] overflow-hidden group">
-          <div className="absolute inset-0 bg-linear-to-b from-blue-500/30 to-blue-500/0 p-px opacity-20 group-hover:opacity-40 transition-opacity">
-            <div className="w-full h-full bg-white dark:bg-gray-900/80 backdrop-blur-3xl rounded-[calc(2rem-1px)]" />
-          </div>
-
-          <div className="relative z-10 p-8">
-            <h3 className="text-sm font-medium text-primary/70 dark:text-blue-500 mb-6 flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 border border-blue-500/12">
-                <ClipboardCheck className="w-4 h-4 opacity-60" />
-              </div>
-              Recommendations
-            </h3>
-            <div className="space-y-3">
-              {assessment.recommendations?.map((rec: string, i: number) => {
-                const action = actions.find((a) => a.recommendation === rec);
-                const status: string = action?.status ?? "open";
-                const statusColors: Record<string, string> = {
-                  open:        "bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-white/30 border-slate-200 dark:border-white/6",
-                  in_progress: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20",
-                  done:        "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-                };
-                const statusLabel = ACTION_STATUS_LABEL;
-
-                return (
-                  <motion.div
-                    key={i}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.4 + i * 0.1 }}
-                    className="relative group/rec p-px rounded-2xl overflow-hidden transition-all duration-300"
-                  >
-                    <div className="absolute inset-0 bg-linear-to-br from-blue-500/40 to-blue-500/0 opacity-10 group-hover/rec:opacity-30 transition-opacity" />
-                    <div className="absolute inset-px bg-white/80 dark:bg-white/2 backdrop-blur-2xl rounded-[calc(1rem-1px)] transition-colors" />
-
-                    <div className="relative p-4 z-10 flex items-start gap-3">
-                      {/* Action status toggle checkbox */}
-                      <button
-                        onClick={() => toggleAction(rec)}
-                        title={`Status: ${statusLabel[status]} — click to advance`}
-                        aria-label={`Recommendation status: ${statusLabel[status]}. Activate to move to the next status.`}
-                        className={cn(
-                          "shrink-0 mt-0.5 w-5 h-5 rounded border flex items-center justify-center transition-all",
-                          statusColors[status],
-                        )}
-                      >
-                        {status === "done" && (
-                          <CheckCircle2 className="w-3 h-3" />
-                        )}
-                        {status === "in_progress" && (
-                          <div className="w-2 h-2 rounded-sm bg-amber-500" />
-                        )}
-                      </button>
-
-                      <div className="flex-1 min-w-0">
-                        <p className={cn(
-                          "text-xs font-normal leading-relaxed transition-colors italic",
-                          status === "done"
-                            ? "line-through text-slate-300 dark:text-white/20"
-                            : "text-slate-500 dark:text-white/50 group-hover/rec:text-slate-900 dark:group-hover/rec:text-white/80",
-                        )}>
-                          {rec}
-                        </p>
-                      </div>
-
-                      <span className={cn(
-                        "shrink-0 text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border",
-                        statusColors[status],
-                      )}>
-                        {statusLabel[status]}
-                      </span>
-                    </div>
-                  </motion.div>
-                );
-              })}
-              {(!assessment.recommendations ||
-                assessment.recommendations.length === 0) && (
-                <p className="text-xs text-slate-400 dark:text-white/70 italic text-center py-6">
-                  No recommendations at this time.
-                </p>
+        {/* KPI strip — tap any for the full school profile */}
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+          {[
+            { label: "Students", value: m?.totalStudents ?? null, caption: isNum(m?.capacityUtilisation) ? `${formatPercent(m.capacityUtilisation)} full` : "no capacity", pct: isNum(m?.capacityUtilisation) ? Math.min(100, m.capacityUtilisation) : null, icon: GraduationCap, id: "school.totalStudents" as const },
+            { label: "Teachers", value: m?.totalTeachers ?? null, caption: isNum(m?.studentToTeacherRatio) ? `${formatNumber(m.studentToTeacherRatio, 1)} : 1` : "—", pct: null, icon: Users, id: "school.studentTeacherRatio" as const },
+            { label: "Buildings", value: m?.buildingCount ?? null, caption: isNum(m?.assessedBuildingCount) ? `${formatNumber(m.assessedBuildingCount)} assessed` : "—", pct: isNum(m?.assessedBuildingCount) && isNum(m?.buildingCount) && m.buildingCount > 0 ? (m.assessedBuildingCount / m.buildingCount) * 100 : null, icon: Building2, id: "school.buildingCount" as const },
+            { label: "Open issues", value: reportSummary?.active ?? null, caption: reportSummary?.resolutionRate == null ? "none yet" : `${formatPercent(reportSummary.resolutionRate)} fixed`, pct: reportSummary?.resolutionRate ?? null, icon: FileText, id: "reports.openIssues" as const },
+            { label: "Road access", value: isNum(m?.roadStatusPercentage) ? m.roadStatusPercentage : null, caption: isNum(m?.roadStatusPercentage) ? "all-season" : "not recorded", pct: isNum(m?.roadStatusPercentage) ? m.roadStatusPercentage : null, icon: MapPin, id: "school.roadAccess" as const, percent: true },
+            { label: "Programmes", value: m?.educationProgramsCount ?? null, caption: "trades", pct: null, icon: ClipboardCheck, id: "school.programmes" as const },
+          ].map((k, idx) => (
+            <div
+              key={k.label}
+              role="button"
+              tabIndex={0}
+              onClick={() => setView(k.label === "Open issues" ? "reports" : "profile")}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setView(k.label === "Open issues" ? "reports" : "profile");
+                }
+              }}
+              aria-label={`${k.label}: open details`}
+              className={cn(
+                "cursor-pointer rounded-[1.4rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                // Phones show the four essentials; the rest are in the profile dialog.
+                idx >= 4 && "hidden sm:block",
               )}
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      <Modal
-          isOpen={isBuildingModalOpen}
-          onClose={() => setIsBuildingModalOpen(false)}
-          title={
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-primary/5 text-primary">
-                <Building2 className="w-5 h-5 opacity-60" />
-              </div>
-              <div>
-                <h3 className="text-lg font-medium text-white/90">
-                  Asset report
-                </h3>
-                <p className="text-[10px] font-normal text-white/30 tracking-wide mt-0.5">
-                  Asset intelligence report
-                </p>
-              </div>
-            </div>
-          }
-          maxWidth="max-w-md"
-        >
-          <div className="p-5 sm:p-8 text-center space-y-6">
-            <div className="w-16 h-16 rounded-full bg-white/2 flex items-center justify-center mx-auto border border-blue-500/12">
-              <GraduationCap className="w-8 h-8 text-white/20" />
-            </div>
-            <p className="text-xs font-normal text-slate-500 dark:text-white/40 italic leading-relaxed">
-              Detailed asset lifecycle analytics for this block are synchronised
-              with 2D digital twin environment.
-            </p>
-            <Button
-              onClick={() => setIsBuildingModalOpen(false)}
-              className="w-full rounded-full font-medium"
             >
-              Acknowledge
-            </Button>
-          </div>
-        </Modal>
+              <FloatingStat
+                index={idx}
+                compact
+                label={k.label}
+                caption={k.caption}
+                value={k.value}
+                format={k.percent ? (n) => formatPercent(n) : (n) => formatNumber(n)}
+                percent={k.pct}
+                icon={k.icon}
+                tone="text-primary"
+                color={BRAND}
+                info={<MetricInfo id={k.id} size="xs" />}
+              />
+            </div>
+          ))}
+        </dl>
 
-    </motion.div>
+        {/* Summaries — two rows of three short cards; every detail opens in a dialog */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <ScoreFactorsCard metrics={m} onOpen={() => setView("score")} index={0} />
+          <GlassCard
+            title="Next actions"
+            icon={ListChecks}
+            tone="text-primary"
+            actionLabel={recommendations.length > 3 ? `All ${recommendations.length}` : "Open"}
+            onAction={() => setView("actions")}
+            index={1}
+          >
+            <Recommendations
+              items={recommendations}
+              actions={actions}
+              onToggle={toggleAction}
+              canEdit={canManageActions}
+              limit={3}
+              compact
+            />
+          </GlassCard>
+          <IssueReportsCard summary={reportSummary} reporting={reporting} onOpen={() => setView("reports")} index={2} />
+          <BuildingsCard
+            buildings={buildings}
+            assessedCount={m?.assessedBuildingCount ?? null}
+            attention={reporting?.buildingsAttention ?? null}
+            onOpen={() => setView("buildings")}
+            onBuildingClick={onBuildingClick}
+            index={3}
+          />
+          <RiskCard risk={m?.riskAssessment} onOpen={() => setView("risk")} index={4} />
+          <DataQualityCard metrics={m} index={5} />
+        </div>
+      </div>
+
+      {/* ── Detail dialogs ─────────────────────────────────────────────── */}
+      <DetailModal
+        isOpen={view === "score"}
+        onClose={closeView}
+        icon={Gauge}
+        eyebrow={schoolName}
+        title="Score breakdown"
+        description="How each factor adds to the School Condition Score. Estimated factors are flagged."
+        summary={<ScoreSummary metrics={m} />}
+        maxWidth="max-w-4xl"
+      >
+        <ScoreBreakdown metrics={m} />
+      </DetailModal>
+
+      <DetailModal
+        isOpen={view === "reports"}
+        onClose={closeView}
+        icon={FileText}
+        eyebrow={schoolName}
+        title="Issue Reports"
+        description="Status, monthly trend and the latest reports for this school."
+        summary={<ReportsSummary data={reporting} />}
+        footer={
+          <ReportsFooter
+            onRefresh={() => {
+              void fetchReporting();
+              setReportsRefreshKey((k) => k + 1);
+            }}
+            busy={reportingLoading}
+            error={reportingError}
+            loadedAt={reportingLoadedAt}
+          />
+        }
+        maxWidth="max-w-4xl"
+      >
+        <ReportsDetail
+          schoolId={id}
+          data={reporting}
+          loading={reportingLoading}
+          error={reportingError}
+          onRetry={() => void fetchReporting()}
+          refreshKey={reportsRefreshKey}
+        />
+      </DetailModal>
+
+      <DetailModal
+        isOpen={view === "risk"}
+        onClose={closeView}
+        icon={ShieldAlert}
+        eyebrow={schoolName}
+        title="Risk & mitigation"
+        description="Indicative rules of thumb — not part of the School Condition Score."
+        summary={<RiskSummary risk={m?.riskAssessment} />}
+        maxWidth="max-w-5xl"
+      >
+        <RiskDetail risk={m?.riskAssessment} />
+      </DetailModal>
+
+      <DetailModal
+        isOpen={view === "buildings"}
+        onClose={closeView}
+        icon={Building2}
+        eyebrow={schoolName}
+        title="Buildings"
+        description="Condition of every building. Only assessed buildings feed the infrastructure score."
+        summary={<BuildingsSummary buildings={buildings} metrics={m} />}
+        maxWidth="max-w-4xl"
+      >
+        <BuildingsDetail
+          buildings={buildings}
+          onBuildingClick={
+            onBuildingClick
+              ? (b) => {
+                  closeView();
+                  onBuildingClick(b);
+                }
+              : undefined
+          }
+        />
+      </DetailModal>
+
+      <DetailModal
+        isOpen={view === "profile"}
+        onClose={closeView}
+        icon={School}
+        eyebrow={schoolName}
+        title="School profile"
+        description="Enrolment, staff, campus and access — as recorded for this school."
+        summary={<ProfileSummary metrics={m} />}
+        maxWidth="max-w-4xl"
+      >
+        <ProfileDetail metrics={m} />
+      </DetailModal>
+
+      <DetailModal
+        isOpen={view === "actions"}
+        onClose={closeView}
+        icon={ListChecks}
+        eyebrow={schoolName}
+        title="Recommendations"
+        description={
+          canManageActions
+            ? "Tap a box to move a recommendation along: Open → In progress → Done."
+            : "Rule-based, from the scores. Ask a decision manager to update their status."
+        }
+        summary={<ActionsSummary items={recommendations} actions={actions} />}
+        maxWidth="max-w-2xl"
+      >
+        <Recommendations items={recommendations} actions={actions} onToggle={toggleAction} canEdit={canManageActions} bare />
+      </DetailModal>
+    </div>
   );
 }

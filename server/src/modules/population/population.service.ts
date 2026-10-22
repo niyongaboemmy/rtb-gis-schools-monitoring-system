@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
@@ -37,6 +38,7 @@ export class PopulationService {
     private readonly schoolRepository: Repository<School>,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    @Optional() private readonly eventEmitter?: EventEmitter2,
   ) {}
 
   @Cron('0 2 * * 0')
@@ -99,6 +101,8 @@ export class PopulationService {
             }),
           );
         }
+        // Population feeds the School Condition Score → rescore the school.
+        this.eventEmitter?.emit('school.updated', { schoolId: school.id });
         synced++;
       } catch (err) {
         errors.push(`School ${school.name}: ${err.message}`);
@@ -174,14 +178,23 @@ export class PopulationService {
       );
 
       const features = response.data?.features ?? [];
-      const totalPop = features.reduce(
-        (sum, f) => sum + (f.attributes?.POP2020 ?? 0),
-        0,
-      );
-      const youthPop = features.reduce(
-        (sum, f) => sum + (f.attributes?.POP_0_17 ?? 0),
-        0,
-      );
+      // No features (or no youth attribute) means the layer has no data here —
+      // store null, not 0: a 0 used to be read as "no demand" and scored as
+      // maximum capacity headroom.
+      const sumOrNull = (key: 'POP2020' | 'POP_0_17'): number | null => {
+        const vals = features
+          .map((f) => Number(f.attributes?.[key]))
+          .filter((n) => Number.isFinite(n));
+        return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
+      };
+      const totalPopOrNull = sumOrNull('POP2020');
+      const youthPopOrNull = sumOrNull('POP_0_17');
+      if (totalPopOrNull === null && youthPopOrNull === null) {
+        this.logger.warn(
+          `ArcGIS returned no population features for school ${school.name}`,
+        );
+      }
+      const totalPop = totalPopOrNull ?? 0;
 
       const areaKm2 = Math.PI * 4; // π × r² where r = 2 km
       const density = areaKm2 > 0 ? totalPop / areaKm2 : 0;
@@ -192,9 +205,15 @@ export class PopulationService {
         population2km: totalPop,
         population1km: Math.round(totalPop * 0.5),
         population500m: Math.round(totalPop * 0.15),
-        schoolAgePopulation2km: youthPop,
-        schoolAgePopulation1km: Math.round(youthPop * 0.5),
-        schoolAgePopulation500m: Math.round(youthPop * 0.15),
+        schoolAgePopulation2km: youthPopOrNull as number,
+        schoolAgePopulation1km:
+          youthPopOrNull === null
+            ? (null as unknown as number)
+            : Math.round(youthPopOrNull * 0.5),
+        schoolAgePopulation500m:
+          youthPopOrNull === null
+            ? (null as unknown as number)
+            : Math.round(youthPopOrNull * 0.15),
         populationDensityPerKm2: parseFloat(density.toFixed(4)),
         studentToSchoolRatio: parseFloat(studentRatio.toFixed(2)),
         rawData: {

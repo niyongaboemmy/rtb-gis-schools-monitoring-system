@@ -323,8 +323,9 @@ const defaultFormData: SchoolFormData = {
   buildingFloors: "",
   buildingArea: "",
   buildingYearBuilt: "",
-  buildingCondition: "good",
-  buildingRoofCondition: "good",
+  // Blank = not assessed (the server keeps it out of the score).
+  buildingCondition: "",
+  buildingRoofCondition: "",
   buildingStructuralScore: "",
   buildingNotes: "",
   buildings: [],
@@ -434,8 +435,8 @@ export function SchoolForm({
       buildingFloors: str(b.floors),
       buildingArea: str(b.areaSquareMeters),
       buildingYearBuilt: str(b.yearBuilt),
-      buildingCondition: str(b.condition) || "good",
-      buildingRoofCondition: str(b.roofCondition) || "good",
+      buildingCondition: str(b.condition) || "",
+      buildingRoofCondition: str(b.roofCondition) || "",
       buildingStructuralScore: str(b.structuralScore),
       buildingNotes: str(b.notes),
       facilities: (Array.isArray(b.facilities)
@@ -642,8 +643,10 @@ export function SchoolForm({
             yearBuilt: b.buildingYearBuilt
               ? parseInt(b.buildingYearBuilt)
               : null,
-            condition: b.buildingCondition || "good",
-            roofCondition: b.buildingRoofCondition || "good",
+            // Never default to "good": a blank condition used to score as a
+            // perfect inspection (infrastructure 100, no data gap).
+            condition: b.buildingCondition || null,
+            roofCondition: b.buildingRoofCondition || null,
             structuralScore: b.buildingStructuralScore
               ? parseFloat(b.buildingStructuralScore)
               : null,

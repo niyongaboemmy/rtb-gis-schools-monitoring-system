@@ -34,11 +34,7 @@
  *     their join of another school's room ({ ok: false }).
  */
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  INestApplication,
-  RequestMethod,
-  Type,
-} from '@nestjs/common';
+import { INestApplication, RequestMethod, Type } from '@nestjs/common';
 import {
   GUARDS_METADATA,
   METHOD_METADATA,
@@ -62,7 +58,11 @@ import {
 } from '../src/common/decorators/permissions.decorator';
 import { PermissionsGuard } from '../src/common/guards/permissions.guard';
 import { ScopeGuard } from '../src/common/scope/scope.guard';
-import { NATIONAL_ONLY_KEY } from '../src/common/scope/scope.decorator';
+import {
+  NATIONAL_ONLY_KEY,
+  SCOPED_RESOURCE_KEY,
+  ScopedResourceConfig,
+} from '../src/common/scope/scope.decorator';
 import { User } from '../src/modules/users/entities/user.entity';
 import { Role } from '../src/modules/roles/entities/role.entity';
 import { School } from '../src/modules/schools/entities/school.entity';
@@ -86,6 +86,8 @@ interface RouteSpec {
   requireAll: Permission[];
   requireAny: Permission[];
   nationalOnly: boolean;
+  /** A school id the route reads from the query string (ScopeGuard fails closed without it). */
+  scopedQueryParam?: string;
 }
 
 const VERBS: Partial<Record<RequestMethod, RouteSpec['verb']>> = {
@@ -163,6 +165,11 @@ function discoverRoutes(app: INestApplication): RouteSpec[] {
             Reflect.getMetadata(NATIONAL_ONLY_KEY, ctrl)
           );
 
+        const scopedCfg = (Reflect.getMetadata(SCOPED_RESOURCE_KEY, fn) ??
+          Reflect.getMetadata(SCOPED_RESOURCE_KEY, ctrl)) as
+          | ScopedResourceConfig
+          | undefined;
+
         routes.push({
           controller: ctrl.name,
           handler: name,
@@ -172,6 +179,10 @@ function discoverRoutes(app: INestApplication): RouteSpec[] {
           requireAll,
           requireAny,
           nationalOnly,
+          scopedQueryParam:
+            scopeGuarded && scopedCfg?.from === 'query'
+              ? scopedCfg.param
+              : undefined,
         });
       }
     }
@@ -210,7 +221,12 @@ function expectedAllowed(role: RoleDef, route: RouteSpec): boolean {
 }
 
 function concretePath(route: RouteSpec): string {
-  return PREFIX + route.path.replace(/:[A-Za-z0-9_]+/g, MISSING_UUID);
+  const path = PREFIX + route.path.replace(/:[A-Za-z0-9_]+/g, MISSING_UUID);
+  // A query-scoped school id is required; send the caller's in-scope school
+  // so an allowed role passes ScopeGuard (its absence is tested separately).
+  return route.scopedQueryParam
+    ? `${path}?${route.scopedQueryParam}=${homeSchool.id}`
+    : path;
 }
 
 // ── Test state ─────────────────────────────────────────────────────────────

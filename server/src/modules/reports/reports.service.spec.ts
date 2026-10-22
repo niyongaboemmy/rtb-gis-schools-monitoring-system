@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { ReportsService } from './reports.service';
+import { ReportsService, applyStatus } from './reports.service';
 import {
   IssueReport,
   ReportStatus,
@@ -32,12 +32,14 @@ function makeService(existing?: Partial<IssueReport>) {
     },
   };
   const gateway = { emitReportStatusChanged: jest.fn() };
+  const events = { emit: jest.fn() };
   const service = new ReportsService(
     repo as never,
     {} as never,
     gateway as never,
+    events as never,
   );
-  return { service, repo, saved, gateway };
+  return { service, repo, saved, gateway, events };
 }
 
 const analyst = {
@@ -118,5 +120,56 @@ describe('ReportsService (WS7.7)', () => {
         scope,
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('report status transitions (resolution date)', () => {
+  it('entering SOLVED stamps resolvedAt; leaving SOLVED clears it', () => {
+    const r: { status: ReportStatus; resolvedAt?: Date | null } = {
+      status: ReportStatus.PENDING,
+    };
+    applyStatus(r, ReportStatus.SOLVED);
+    expect(r.resolvedAt).toBeInstanceOf(Date);
+    applyStatus(r, ReportStatus.PENDING); // reopened
+    expect(r.resolvedAt).toBeNull();
+  });
+
+  it('a re-solve gets a fresh date; SOLVED → SOLVED keeps the original', () => {
+    const first = new Date('2026-01-01T00:00:00Z');
+    const r = { status: ReportStatus.SOLVED, resolvedAt: first };
+    applyStatus(r, ReportStatus.SOLVED);
+    expect(r.resolvedAt).toBe(first);
+    applyStatus(r, ReportStatus.FAILED);
+    applyStatus(r, ReportStatus.SOLVED);
+    expect(r.resolvedAt).not.toBe(first);
+  });
+
+  it('a report created as SOLVED gets a resolution date and triggers a rescore', async () => {
+    const { service, saved, events } = makeService();
+    await service.create(
+      { schoolId: 's1', status: ReportStatus.SOLVED } as never,
+      'u1',
+    );
+    expect(saved[0].resolvedAt).toBeInstanceOf(Date);
+    expect(events.emit).toHaveBeenCalledWith('school.updated', {
+      schoolId: 's1',
+    });
+  });
+
+  it('a status change triggers a rescore of the school', async () => {
+    const { service, events } = makeService({
+      schoolId: 's1',
+      status: ReportStatus.PENDING,
+      type: ReportType.ISSUE,
+    });
+    await service.updateStatus(
+      'rep-1',
+      ReportStatus.SOLVED,
+      undefined,
+      manager,
+    );
+    expect(events.emit).toHaveBeenCalledWith('school.updated', {
+      schoolId: 's1',
+    });
   });
 });

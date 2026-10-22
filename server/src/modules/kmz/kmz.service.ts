@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 import * as JSZip from 'jszip';
@@ -98,6 +99,7 @@ export class KmzService implements OnModuleInit {
     private readonly storageService: StorageService,
     @InjectQueue(KMZ_QUEUE) private readonly kmzQueue: Queue,
     @Optional() private readonly siteFeatures?: SiteFeaturesService,
+    @Optional() private readonly eventEmitter?: EventEmitter2,
   ) {
     // Warm the GLB optimizer (installs its deps once if the deploy didn't).
     void ensureGlbTools();
@@ -277,7 +279,8 @@ export class KmzService implements OnModuleInit {
           .createQueryBuilder()
           .delete()
           .where('school_id = :schoolId', { schoolId })
-          .andWhere('condition = :defaultCondition', {
+          // Stubs: condition unset (or the pre-v2 enum default 'fair').
+          .andWhere('(condition IS NULL OR condition = :defaultCondition)', {
             defaultCondition: BuildingCondition.FAIR,
           })
           .andWhere(`("roofCondition" IS NULL OR "roofCondition" = 'good')`)
@@ -290,6 +293,7 @@ export class KmzService implements OnModuleInit {
           .andWhere('"footprintGeojson" IS NULL')
           .andWhere('"lastInspectionDate" IS NULL')
           .execute();
+        this.eventEmitter?.emit('school.updated', { schoolId });
       }
 
       await this.schoolRepository.update(schoolId, {
@@ -767,6 +771,7 @@ export class KmzService implements OnModuleInit {
           if (buildings.length > 0) {
             await this.buildingRepository.delete({ schoolId });
             await this.buildingRepository.save(buildings);
+            this.eventEmitter?.emit('school.updated', { schoolId });
           }
 
           return {
@@ -830,6 +835,7 @@ export class KmzService implements OnModuleInit {
       if (buildings.length > 0) {
         await this.buildingRepository.delete({ schoolId });
         await this.buildingRepository.save(buildings);
+        this.eventEmitter?.emit('school.updated', { schoolId });
       }
 
       const updatedSchool = await this.schoolRepository.findOne({

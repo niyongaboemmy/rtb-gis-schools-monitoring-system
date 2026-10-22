@@ -96,6 +96,23 @@ export function studentTeacherRatio(
   return teachers > 0 ? Math.round((students / teachers) * 10) / 10 : null;
 }
 
+/**
+ * Inputs for capacity utilisation. Numerator and denominator must come from the
+ * same source — the programme rows — so a school is only rated when its
+ * programmes record both capacity and enrolment. Mixing programme capacity with
+ * the school-level `totalStudents` column produced ratios like 125 % for a
+ * school whose programmes simply hadn't recorded students yet.
+ * null → not enough programme data to rate.
+ */
+export function capacityInputs(
+  s: SchoolFigures,
+): { students: number; capacity: number } | null {
+  const programs = s.educationPrograms ?? [];
+  const students = programs.reduce((a, p) => a + num(p?.totalStudents), 0);
+  const capacity = programs.reduce((a, p) => a + num(p?.capacity), 0);
+  return capacity > 0 && students > 0 ? { students, capacity } : null;
+}
+
 /** [school.capacityUtilisation] students ÷ capacity × 100, 1 dp; null when capacity unknown. */
 export function capacityUtilisationPct(
   students: number,
@@ -106,7 +123,8 @@ export function capacityUtilisationPct(
 
 /**
  * [national.capacityUtilisation] Σ students ÷ Σ capacity × 100 (integer %),
- * over schools with programme capacity > 0 only. null when no school has
+ * over schools whose programmes record both capacity and enrolment
+ * (`capacityInputs`). null when no school has
  * capacity data. Callers pass active, in-scope schools only.
  */
 export function nationalCapacityUtilisation(
@@ -115,8 +133,8 @@ export function nationalCapacityUtilisation(
   let students = 0;
   let seats = 0;
   for (const s of schools) {
-    const t = programmeTotals(s);
-    if (t.capacity > 0) {
+    const t = capacityInputs(s);
+    if (t) {
       seats += t.capacity;
       students += t.students;
     }
@@ -148,25 +166,99 @@ export function landSummary(s: SchoolFigures): {
 }
 
 /**
+ * Ages (currentYear − yearBuilt) of buildings with a usable build year. A year
+ * in the future or non-numeric is bad data and is dropped, never turned into a
+ * negative age (which used to score as brand-new stock).
+ */
+export function buildingAges(
+  buildings: Array<{ yearBuilt?: number | string | null }>,
+  currentYear: number,
+): number[] {
+  return buildings
+    .filter((b) => b.yearBuilt)
+    .map((b) => currentYear - parseInt(String(b.yearBuilt), 10))
+    .filter((a) => Number.isFinite(a) && a >= 0);
+}
+
+/**
  * [school.avgBuildingAge] Mean (currentYear − yearBuilt) over buildings that
- * record a build year, rounded to whole years; null when none do.
+ * record a usable build year, rounded to whole years; null when none do.
+ * Callers pass ASSESSED buildings (`assessedBuildings`) so this matches the
+ * Building Age component.
  */
 export function averageBuildingAge(
   buildings: Array<{ yearBuilt?: number | string | null }>,
   currentYear: number,
 ): number | null {
-  const ages = buildings
-    .filter((b) => b.yearBuilt)
-    .map((b) => currentYear - parseInt(String(b.yearBuilt), 10))
-    .filter((a) => Number.isFinite(a));
+  const ages = buildingAges(buildings, currentYear);
   return ages.length > 0
     ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length)
     : null;
 }
 
+/** Building fields that tell a real structural record from a bare stub. */
+export interface BuildingSignals {
+  condition?: string | null;
+  roofCondition?: string | null;
+  yearBuilt?: number | string | null;
+  structuralScore?: number | string | null;
+  areaSquareMeters?: number | string | null;
+  floors?: number | string | null;
+  buildingCode?: string | null;
+  notes?: string | null;
+  footprintGeojson?: unknown;
+  lastInspectionDate?: Date | string | null;
+}
+
+/**
+ * [school.assessedBuildings] Buildings that carry a real structural record.
+ * A KMZ/GLB import or a name-only save leaves `condition` empty and every
+ * inventory field null — that is not an inspection and must not feed the
+ * infrastructure score, building age, risk, budget or completeness. Every
+ * consumer uses this one rule.
+ */
+export function assessedBuildings<T extends BuildingSignals>(
+  buildings: T[] | null | undefined,
+): T[] {
+  if (!buildings?.length) return [];
+  // '' from a blank form field is "not recorded", not a signal.
+  const has = (v: unknown) =>
+    v !== null &&
+    v !== undefined &&
+    !(typeof v === 'string' && v.trim() === '');
+  return buildings.filter(
+    (b) =>
+      has(b.condition) ||
+      has(b.roofCondition) ||
+      has(b.yearBuilt) ||
+      has(b.structuralScore) ||
+      has(b.areaSquareMeters) ||
+      has(b.floors) ||
+      has(b.buildingCode) ||
+      has(b.notes) ||
+      b.footprintGeojson != null ||
+      has(b.lastInspectionDate),
+  );
+}
+
+/**
+ * [component.population] input check. A population record only counts as data
+ * when it carries a positive school-age population: a 0 / null / non-numeric
+ * value is what the ArcGIS sync wrote when the query returned no features, and
+ * used to score as "maximum headroom" (100).
+ */
+export function measuredSchoolAgePopulation(
+  row: { schoolAgePopulation2km?: number | string | null } | null | undefined,
+): number | null {
+  if (!row) return null;
+  const n = numOrNull(row.schoolAgePopulation2km);
+  return n !== null && n > 0 ? n : null;
+}
+
 /**
  * Which of the six score components were substituted with the neutral 50
  * because the input data is missing (WS1.7). `true` = estimated, not measured.
+ * Computed by scoring-engine.ts (computeAssessment) — the only definition.
  */
 export interface ComponentDataGaps {
   infrastructure: boolean;
@@ -175,24 +267,4 @@ export interface ComponentDataGaps {
   population: boolean;
   facilityCompliance: boolean;
   resolution: boolean;
-}
-
-export function computeDataGaps(input: {
-  assessedBuildingCount: number;
-  buildingsWithYearCount: number;
-  establishedYear: number | string | null | undefined;
-  roadStatusPercentage: number | string | null | undefined;
-  hasPopulationData: boolean;
-  surveyCount: number;
-  reportCount: number;
-}): ComponentDataGaps {
-  return {
-    infrastructure: input.assessedBuildingCount === 0,
-    buildingAge:
-      input.buildingsWithYearCount === 0 && !numOrNull(input.establishedYear),
-    accessibility: numOrNull(input.roadStatusPercentage) === null,
-    population: !input.hasPopulationData,
-    facilityCompliance: input.surveyCount === 0,
-    resolution: input.reportCount === 0,
-  };
 }

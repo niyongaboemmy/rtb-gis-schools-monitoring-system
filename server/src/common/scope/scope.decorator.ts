@@ -27,7 +27,7 @@ export interface ScopedResourceConfig {
    * When set, the param is the id of a related record, not a school — the
    * guard resolves it to a schoolId first.
    */
-  via?: 'building' | 'survey';
+  via?: 'building' | 'survey' | 'action';
 }
 
 /**
@@ -38,7 +38,7 @@ export interface ScopedResourceConfig {
 export const ScopedResource = (
   param = 'id',
   from: 'params' | 'query' = 'params',
-  via?: 'building' | 'survey',
+  via?: 'building' | 'survey' | 'action',
 ) =>
   SetMetadata(SCOPED_RESOURCE_KEY, {
     param,

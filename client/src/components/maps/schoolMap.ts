@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import L from "leaflet";
+import { bandOf } from "../../lib/scoring";
 import { useTheme } from "../ThemeProvider";
 
 /* ─────────────────────────────  status system  ───────────────────────────── */
@@ -106,9 +107,8 @@ export const formatDistance = (metres: number) =>
 
 export type PriorityKey = "critical" | "high" | "medium" | "low";
 
-/** Intervention Priority band for a 0–100 score (Critical <35, High <55, Medium <75, Low ≥75). */
-export const scoreBand = (score: number): PriorityKey =>
-  score < 35 ? "critical" : score < 55 ? "high" : score < 75 ? "medium" : "low";
+/** Intervention Priority band for a 0–100 score — the shared client model (lib/scoring). */
+export const scoreBand = (score: number): PriorityKey => bandOf(score);
 
 /* ─────────────────────────────  basemap catalogue  ───────────────────────────── */
 

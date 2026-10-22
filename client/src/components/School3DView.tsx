@@ -62,6 +62,7 @@ import {
 
 // Styles
 import "./School3DView.css";
+import { buildingPayloadFields } from "../lib/buildingPayload";
 
 // ─── GLB browser cache ──────────────────────────────────────────────────────
 // The Cache API keeps a downloaded optimized GLB across tab reloads / sessions
@@ -2106,12 +2107,9 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
       // Map to backend schema (Same as 2D view)
       const payload = {
-        name: data.buildingName, code: data.buildingCode, function: data.buildingFunction,
-        floors: parseInt(String(data.buildingFloors)) || 0, area: parseFloat(String(data.buildingArea)) || 0,
-        yearBuilt: parseInt(String(data.buildingYearBuilt)) || 0,
-        condition: data.buildingCondition, roofCondition: data.buildingRoofCondition,
-        structuralScore: parseFloat(String(data.buildingStructuralScore)) || 0,
-        notes: data.buildingNotes || "", latitude: data.geolocation.latitude, longitude: data.geolocation.longitude,
+        // Blank fields → null (not recorded), never 0 or a default.
+        ...buildingPayloadFields(data),
+        latitude: data.geolocation.latitude, longitude: data.geolocation.longitude,
         annotations: (data.annotations || []).filter((a: any) => a !== null && typeof a === "object" && !Array.isArray(a)),
         media: data.media || [],
         facilities: (data.facilities || []).map((f: any) => ({
@@ -2270,8 +2268,9 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
                   onDelete={handleDeleteBuilding} onAdd={() => {
                     const newB: BuildingData = {
                       id: `new-${Date.now()}`, buildingName: "", buildingCode: "", buildingFunction: "",
-                      buildingFloors: "1", buildingArea: "0", buildingYearBuilt: String(new Date().getFullYear()),
-                      buildingCondition: "fair", buildingRoofCondition: "fair", buildingStructuralScore: "0",
+                      // Blank = not recorded; the surveyor fills in what was assessed.
+                      buildingFloors: "", buildingArea: "", buildingYearBuilt: "",
+                      buildingCondition: "", buildingRoofCondition: "", buildingStructuralScore: "",
                       buildingNotes: "", geolocation: { latitude: 0, longitude: 0 },
                       facilities: [], annotations: [], media: []
                     };

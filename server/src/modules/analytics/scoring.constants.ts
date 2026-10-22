@@ -43,6 +43,28 @@ export const SCORE_WEIGHTS_SUM = Object.values(SCORE_WEIGHTS).reduce(
 /** Neutral score used when a component has no data (paired with a *DataGap flag). */
 export const NEUTRAL_SCORE = 50;
 
+/**
+ * Version of the scoring rules. Bump whenever a formula, input filter or
+ * data-gap rule changes: assessments stored with an older version are
+ * recalculated on boot and flagged by `scripts/verify-dashboards.ts`.
+ *   1 — original six-factor model
+ *   2 — dashboard audit fixes (population/resolution gap rules, assessed
+ *       buildings everywhere, uniform NaN fallback, coverage)
+ */
+export const SCORING_VERSION = 2;
+
+// ─── Resolution component ────────────────────────────────────────────────────
+
+/**
+ * An open Issue Report only counts against the resolution component once it
+ * is older than this many days — a report filed yesterday is not a failure to
+ * resolve. Solved reports always count.
+ */
+export const RESOLUTION_SLA_DAYS = 30;
+
+/** Fewer eligible reports than this → neutral 50 + data gap (too few to rate). */
+export const RESOLUTION_MIN_REPORTS = 3;
+
 // ─── Component maps ──────────────────────────────────────────────────────────
 
 /** Physical building condition → infrastructure sub-score (0–100). */
@@ -67,6 +89,9 @@ export const COMPLIANCE_SCORE_MAP: Record<ComplianceLevel, number> = {
  * Monotonically decreasing: newer stock scores higher.
  */
 export function ageToScore(avgAgeYears: number): number {
+  // Non-finite input is missing data, never "very old" (every comparison
+  // below is false for NaN, which used to fall through to the worst band).
+  if (!Number.isFinite(avgAgeYears)) return NEUTRAL_SCORE;
   if (avgAgeYears <= 10) return 95;
   if (avgAgeYears <= 20) return 80;
   if (avgAgeYears <= 30) return 60;
@@ -83,6 +108,9 @@ export function ageToScore(avgAgeYears: number): number {
  * Higher score = more capacity headroom (less demographic pressure).
  */
 export function demandRatioToScore(ratio: number): number {
+  // Callers treat a non-finite / ≤ 0 demand as a data gap before getting here;
+  // this guard keeps a NaN from ever reading as "maximum headroom".
+  if (!Number.isFinite(ratio)) return NEUTRAL_SCORE;
   if (ratio >= 5) return 10;
   if (ratio >= 3) return 30;
   if (ratio >= 2) return 50;
@@ -138,14 +166,19 @@ export interface ScoreComponents {
   resolution: number;
 }
 
-/** The one weighted-composite formula. Clamps components, returns 0–100 integer. */
+/**
+ * The one weighted-composite formula. Clamps components, returns 0–100 integer.
+ * Every component uses the same fallback: a non-finite value is missing data
+ * and counts as the neutral 50 (callers set the matching data-gap flag).
+ */
 export function computeOverallScore(c: ScoreComponents): number {
-  const infra = clamp0to100(safeScore(c.infrastructure));
-  const age = clamp0to100(safeScore(c.buildingAge));
-  const access = clamp0to100(safeScore(c.accessibility));
-  const pop = clamp0to100(safeScore(c.population));
-  const facility = clamp0to100(safeScore(c.facilityCompliance, NEUTRAL_SCORE));
-  const resolution = clamp0to100(safeScore(c.resolution, NEUTRAL_SCORE));
+  const v = (n: unknown) => clamp0to100(safeScore(n, NEUTRAL_SCORE));
+  const infra = v(c.infrastructure);
+  const age = v(c.buildingAge);
+  const access = v(c.accessibility);
+  const pop = v(c.population);
+  const facility = v(c.facilityCompliance);
+  const resolution = v(c.resolution);
 
   return clamp0to100(
     Math.round(
@@ -158,3 +191,28 @@ export function computeOverallScore(c: ScoreComponents): number {
     ),
   );
 }
+
+/** Score component key → weight key (the gap flags use the same names). */
+export type ComponentKey = keyof typeof SCORE_WEIGHTS;
+
+/**
+ * Data coverage of a score, 0–1: the summed weight of the components that are
+ * measured rather than estimated. 1 = every component from real data; 0.25 =
+ * only building age measured. Shown next to every score so a neutral-heavy
+ * score is never read as a measurement.
+ */
+export function computeCoverage(gaps: Record<ComponentKey, boolean>): number {
+  let measured = 0;
+  for (const k of Object.keys(SCORE_WEIGHTS) as ComponentKey[]) {
+    if (!gaps[k]) measured += SCORE_WEIGHTS[k];
+  }
+  return Math.round(measured * 100) / 100;
+}
+
+/** The bands + weights the client renders (served by the API, never hard-coded). */
+export const SCORING_MODEL = {
+  version: SCORING_VERSION,
+  weights: SCORE_WEIGHTS,
+  bands: PRIORITY_BANDS,
+  neutral: NEUTRAL_SCORE,
+} as const;

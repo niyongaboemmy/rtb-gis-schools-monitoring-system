@@ -10,12 +10,16 @@ import { DataSource } from 'typeorm';
 import { School } from '../../modules/schools/entities/school.entity';
 import { SchoolBuilding } from '../../modules/schools/entities/school-building.entity';
 import { SchoolFacilitySurvey } from '../../modules/schools/entities/school-facility-survey.entity';
+import { RecommendationAction } from '../../modules/analytics/entities/recommendation-action.entity';
 import { resolveAccessScope, schoolMatchesScope } from './access-scope';
 import {
   NATIONAL_ONLY_KEY,
   SCOPED_RESOURCE_KEY,
   ScopedResourceConfig,
 } from './scope.decorator';
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Per-resource geographic authorization for routes decorated with
@@ -57,8 +61,22 @@ export class ScopeGuard implements CanActivate {
 
     const bag = cfg.from === 'query' ? req.query : req.params;
     const rawId = bag?.[cfg.param];
-    // No id on this request → nothing to check; let the handler deal with it.
-    if (!rawId || typeof rawId !== 'string') return true;
+    if (!rawId || typeof rawId !== 'string') {
+      // A query-string id is optional at the HTTP level, so a scoped caller
+      // could omit it and have the handler fall back to "any school" — fail
+      // closed. A missing route param just means this route has no such
+      // segment (class-level decorator on a list endpoint): nothing to check.
+      if (cfg.from === 'query') {
+        throw new ForbiddenException(
+          `"${cfg.param}" is required for scoped users.`,
+        );
+      }
+      return true;
+    }
+
+    // Not a uuid → no row can match; leave the 400/404 to the route's pipe or
+    // handler instead of letting Postgres reject the cast with a 500 here.
+    if (!UUID_RE.test(rawId)) return true;
 
     let schoolId: string | undefined = rawId;
     if (cfg.via === 'building') {
@@ -71,6 +89,11 @@ export class ScopeGuard implements CanActivate {
         .getRepository(SchoolFacilitySurvey)
         .findOne({ where: { id: rawId }, select: ['id', 'schoolId'] });
       schoolId = sv?.schoolId;
+    } else if (cfg.via === 'action') {
+      const a = await this.dataSource
+        .getRepository(RecommendationAction)
+        .findOne({ where: { id: rawId }, select: ['id', 'schoolId'] });
+      schoolId = a?.schoolId;
     }
     // Unresolvable id → let the handler return its own 404.
     if (!schoolId) return true;

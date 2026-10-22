@@ -1,6 +1,11 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  ParseUUIDPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
-import { MainDashboardDto } from './dto/main-dashboard.dto';
 import { ReportingDashboardDto } from './dto/reporting-dashboard.dto';
 import { JwtAuthGuard } from '../../modules/auth/guards/jwt-auth.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -14,20 +19,14 @@ import { ScopedResource } from '../../common/scope/scope.decorator';
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
-  @Get('main')
-  @RequirePermissions(Permission.SCHOOL_LEVEL_DASHBOARD)
-  @ScopedResource('schoolId', 'query')
-  async getMain(
-    @Query('schoolId') schoolId: string,
-  ): Promise<MainDashboardDto> {
-    return this.dashboardService.mainPayload(schoolId);
-  }
+  // `GET main` was retired: it duplicated /analytics/schools/:id/metrics with
+  // divergent formulas and hard-coded utility values, and no client used it.
 
   @Get('reporting')
   @RequirePermissions(Permission.SCHOOL_LEVEL_DASHBOARD)
   @ScopedResource('schoolId', 'query')
   async getReporting(
-    @Query('schoolId') schoolId: string,
+    @Query('schoolId', ParseUUIDPipe) schoolId: string,
   ): Promise<ReportingDashboardDto> {
     return this.dashboardService.reportingPayload(schoolId);
   }
