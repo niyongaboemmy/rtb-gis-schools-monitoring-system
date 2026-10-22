@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
@@ -56,9 +56,16 @@ import {
   saveDisplayUnit,
   toolForKey,
   viewerLink,
+  type BuildingPanelTab,
   type DisplayUnit,
   type ViewerToolId,
 } from "../lib/viewer-tools";
+import { useSchoolReports } from "./2dviewercomponents/hooks/useSchoolReports";
+import { schoolPoint } from "../lib/school-location";
+import { useBuildingPanelAccess } from "./2dviewercomponents/hooks/useBuildingPanelAccess";
+import { MediaViewer } from "./2dviewercomponents/media/MediaViewer";
+import { MediaGallery } from "./2dviewercomponents/media/MediaGallery";
+import { collectMedia, collectReportMedia, type GalleryItem } from "./2dviewercomponents/media/media-utils";
 
 // Styles
 import "./School3DView.css";
@@ -358,9 +365,14 @@ interface School3DViewProps {
   schoolId: string;
   schoolName: string;
   onClose: () => void;
+  /** Select, highlight and fly to this building once the model is ready. */
+  focusBuildingId?: string | null;
+  /** Embedded in the school viewer: "2D map" switches its tab instead of navigating. */
+  on2DView?: (buildingId: string | null) => void;
 }
 
-export default function School3DView({ schoolId: propSchoolId, schoolName: propSchoolName, onClose }: School3DViewProps) {
+export default function School3DView({ schoolId: propSchoolId, schoolName: propSchoolName, onClose, focusBuildingId, on2DView }: School3DViewProps) {
+  const navigate = useNavigate();
   const { id: routeId } = useParams<{ id: string }>();
   const schoolId = propSchoolId || routeId || "";
   const schoolName = propSchoolName || "";
@@ -497,6 +509,18 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
   const [dbSchool, setDbSchool] = useState<any>(null);
   const [dbBuildings, setDbBuildings] = useState<any[]>([]);
+  // Building panel, reports and media (shared with the 2D map).
+  const panelAccess = useBuildingPanelAccess();
+  const schoolReports = useSchoolReports(schoolId);
+  const openReportsOf = useCallback((id: string) => schoolReports.counts.get(String(id))?.open ?? 0, [schoolReports.counts]);
+  // A tab request applies only to the building it was made for.
+  const [panel, setPanel] = useState<{ tab: BuildingPanelTab; n: number; buildingId: string | null }>({ tab: "media", n: 0, buildingId: null });
+  const [gallery, setGallery] = useState<{ buildingId: string | null } | null>(null);
+  const [mediaViewer, setMediaViewer] = useState<{ items: GalleryItem[]; index: number } | null>(null);
+  const allMedia = useMemo(
+    () => [...collectMedia(dbBuildings), ...collectReportMedia(schoolReports.reports, dbBuildings)],
+    [dbBuildings, schoolReports.reports],
+  );
   const [dbMarkers, setDbMarkers] = useState<any[]>([]);
   const [isModelReady, setIsModelReady] = useState(false);
   const [measureMode, setMeasureMode] = useState<MeasureMode>(null);
@@ -552,8 +576,9 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
    *  school point — approximate, flagged on anything saved with it. */
   const effectiveOrigin = useMemo(() => {
     if (modelGeo.origin) return { origin: modelGeo.origin, approximate: false };
-    const o = { lat: Number(dbSchool?.latitude), lng: Number(dbSchool?.longitude), alt: 0 };
-    return isValidOrigin(o) ? { origin: o as GeoOrigin, approximate: true } : { origin: null, approximate: true };
+    const p = schoolPoint(dbSchool);
+    const o = { lat: p?.lat ?? NaN, lng: p?.lng ?? NaN, alt: 0 };
+    return p && isValidOrigin(o) ? { origin: o as GeoOrigin, approximate: true } : { origin: null, approximate: true };
   }, [modelGeo.origin, dbSchool]);
   const effectiveOriginRef = useRef(effectiveOrigin);
   useEffect(() => { effectiveOriginRef.current = effectiveOrigin; }, [effectiveOrigin]);
@@ -1089,8 +1114,11 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     if (!dbSchool || !model || !isModelReady || phase !== "viewing") {
       setDbMarkers([]); return;
     }
-    const latCenter = Number(dbSchool.latitude), lonCenter = Number(dbSchool.longitude);
-    if (!latCenter || !lonCenter) { setDbMarkers([]); return; }
+    // Same reference as measurements and fly-to: the model's own origin,
+    // else the school's point (lib/school-location.ts).
+    const origin = effectiveOrigin.origin;
+    if (!origin) { setDbMarkers([]); return; }
+    const latCenter = origin.lat, lonCenter = origin.lng;
 
 
     const latFactor = 111320, lonFactor = 111320 * Math.cos(latCenter * Math.PI / 180);
@@ -1107,7 +1135,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     setDbMarkers(markers);
 
     return () => {};
-  }, [dbSchool, dbBuildings, phase, isModelReady]);
+  }, [dbSchool, dbBuildings, phase, isModelReady, effectiveOrigin]);
 
   const toggleMode = useCallback((mode: MeasureMode) => {
     setMeasureMode(prev => {
@@ -1995,14 +2023,16 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const deepLinkDoneRef = useRef(false);
   useEffect(() => {
     if (deepLinkDoneRef.current || !isModelReady) return;
-    const link = readViewerDeepLink(window.location.search);
+    const fromUrl = readViewerDeepLink(window.location.search);
+    // A building handed over by the 2D map wins over the URL.
+    const link = focusBuildingId ? { ...fromUrl, buildingId: focusBuildingId } : fromUrl;
     if (!link.buildingId && link.lat == null) { deepLinkDoneRef.current = true; return; }
     if (link.buildingId && !dbBuildings.length) return; // wait for buildings
     deepLinkDoneRef.current = true;
     const b = link.buildingId ? dbBuildings.find(x => x.id === link.buildingId) : null;
     if (b) focusBuilding(b, link);
     else if (link.lat != null && link.lng != null) flyToLatLng(link.lat, link.lng);
-  }, [isModelReady, dbBuildings, focusBuilding, flyToLatLng]);
+  }, [isModelReady, dbBuildings, focusBuilding, flyToLatLng, focusBuildingId]);
 
   // Selection sync with an open 2D map tab (same browser).
   const remoteSelectionRef = useRef(false);
@@ -2024,6 +2054,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
 
   const open2DView = useCallback(() => {
     const b = selectedBuilding;
+    if (on2DView) { on2DView(b?.id ?? null); return; }
     const lat = Number(b?.geolocation?.latitude ?? b?.latitude);
     const lng = Number(b?.geolocation?.longitude ?? b?.longitude);
     let ll: { lat: number | null; lng: number | null } = { lat: Number.isFinite(lat) && lat ? lat : null, lng: Number.isFinite(lng) && lng ? lng : null };
@@ -2035,8 +2066,8 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         ll = { lat: Number(g.lat.toFixed(7)), lng: Number(g.lng.toFixed(7)) };
       }
     }
-    window.open(viewerLink("2d", schoolId, { buildingId: b?.id ?? null, ...ll }), "_blank");
-  }, [selectedBuilding, schoolId, getSceneFrame]);
+    navigate(viewerLink("2d", schoolId, { buildingId: b?.id ?? null, ...ll }));
+  }, [selectedBuilding, schoolId, getSceneFrame, on2DView, navigate]);
 
   // Keyboard: tool shortcuts, Esc cancel, Backspace / Ctrl+Z undo, Enter finish, ? help.
   useEffect(() => {
@@ -2137,6 +2168,14 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       setSaveError(apiErrorMessage(err, "Operation failed"));
     }
     finally { setIsSaving(false); }
+  };
+
+  /** The building panel only edits media: send just that list. */
+  const saveBuildingMedia = async (b: BuildingData) => {
+    const { data } = await api.patch(`/schools/buildings/${b.id}`, { media: b.media || [] });
+    const updated = normalizeBuilding(data);
+    setDbBuildings((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+    setSelectedBuilding((cur: { id?: string } | null) => (cur?.id === updated.id ? updated : cur));
   };
 
   // BuildingsListPanel (the only caller) already asks for confirmation.
@@ -2249,12 +2288,59 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
                 <div className="inspector-dock">
                   <div className="inspector-container">
                     <BlockInspector
+                      key={`${selectedBuilding.id}:${panel.n}`}
                       building={selectedBuilding as BuildingData} schoolId={schoolId}
-                      onClose={() => setSelectedBuilding(null)} onUpdateBuilding={(b) => handleUpdateBuilding(b, { quiet: true })}
-                      onEdit={() => { setDrawerBuilding(selectedBuilding); setDrawerOpen(true); }}
+                      initialTab={panel.buildingId === String(selectedBuilding.id) ? panel.tab : "media"}
+                      onClose={() => setSelectedBuilding(null)} onUpdateBuilding={saveBuildingMedia}
+                      onEdit={panelAccess.canEditBuildings ? () => { setDrawerBuilding(selectedBuilding); setDrawerOpen(true); } : undefined}
+                      reports={schoolReports.reports.filter((r) => String(r.buildingId) === String(selectedBuilding.id))}
+                      reportsLoaded={schoolReports.loaded}
+                      canEditMedia={panelAccess.canEditBuildings}
+                      canCreateReport={panelAccess.canCreateReport}
+                      canOpenReview={panelAccess.canOpenReview}
+                      canDecide={panelAccess.canDecide}
+                      onReportPatched={schoolReports.patch}
+                      onReportSubmitted={() => void schoolReports.reload()}
+                      onOpenMedia={(index) => {
+                        const start = allMedia.findIndex((m) => m.source === "building" && m.buildingId === String(selectedBuilding.id) && m.index === index);
+                        if (start >= 0) setMediaViewer({ items: allMedia, index: start });
+                      }}
+                      onOpenGallery={() => setGallery({ buildingId: String(selectedBuilding.id) })}
                     />
                   </div>
                 </div>
+              )}
+              {gallery && (
+                <MediaGallery
+                  items={allMedia}
+                  initialBuildingId={gallery.buildingId}
+                  openReports={openReportsOf}
+                  onOpen={(items, index) => setMediaViewer({ items, index })}
+                  onClose={() => setGallery(null)}
+                />
+              )}
+              {mediaViewer && (
+                <MediaViewer
+                  items={mediaViewer.items}
+                  index={mediaViewer.index}
+                  onIndexChange={(index) => setMediaViewer((v) => (v ? { ...v, index } : v))}
+                  onClose={() => setMediaViewer(null)}
+                  openReports={openReportsOf}
+                  onBuildings={(id) => {
+                    setMediaViewer(null);
+                    setGallery(null);
+                    const b = dbBuildings.find((x) => String(x.id) === id);
+                    if (b) { setPanel((p) => ({ tab: "media", n: p.n + 1, buildingId: id })); setSelectedBuilding(b); }
+                    setShowBuildingsList(true);
+                  }}
+                  onGallery={(id) => { setMediaViewer(null); setGallery({ buildingId: id }); }}
+                  onReports={(id) => {
+                    setMediaViewer(null);
+                    setGallery(null);
+                    const b = dbBuildings.find((x) => String(x.id) === id);
+                    if (b) { setPanel((p) => ({ tab: "reporting", n: p.n + 1, buildingId: id })); setSelectedBuilding(b); }
+                  }}
+                />
               )}
               {pinBuildingId && (
                 <div className="pin-indicator">
@@ -2265,6 +2351,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
               {showBuildingsList && (
                 <BuildingsListPanel
                   buildings={dbBuildings} selectedId={selectedBuilding?.id} onClose={() => setShowBuildingsList(false)}
+                  counts={schoolReports.counts} canEdit={panelAccess.canEditBuildings} onGallery={() => setGallery({ buildingId: null })}
                   onDelete={handleDeleteBuilding} onAdd={() => {
                     const newB: BuildingData = {
                       id: `new-${Date.now()}`, buildingName: "", buildingCode: "", buildingFunction: "",

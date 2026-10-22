@@ -70,32 +70,47 @@ describe('isPlausibleLatLng', () => {
 });
 
 describe('pickKmlCoordinate', () => {
-  it('prefers the authored view over overlay bounds and points', () => {
+  it('prefers the centre of what is drawn, ignoring a stray far feature', () => {
     const c = pickKmlCoordinate({
-      initialView: { latitude: -1.5, longitude: 29.5 },
-      groundOverlays: [{ north: -1, south: -2, east: 30, west: 29 }],
-      points: [[31, -3]],
+      initialView: { latitude: -1.5, longitude: 29.5, type: 'LookAt' },
+      groundOverlays: [
+        { north: -1.96, south: -1.97, east: 30.56, west: 30.55 },
+      ],
+      points: [
+        [30.553, -1.962],
+        [30.555, -1.964],
+        [30.9, -1.2], // a district outline vertex far away
+      ],
     });
-    expect(c).toEqual({ lat: -1.5, lng: 29.5, source: 'kml:view' });
+    expect(c?.source).toBe('kml:features');
+    expect(c?.lat).toBeCloseTo(-1.963, 6);
+    expect(c?.lng).toBeCloseTo(30.554, 6);
   });
-  it('falls back to overlay-bounds centre', () => {
+  it('uses a compound-sized drone image next', () => {
     const c = pickKmlCoordinate({
-      groundOverlays: [{ north: -1, south: -3, east: 31, west: 29 }],
+      initialView: { latitude: -1.5, longitude: 29.5, type: 'LookAt' },
+      groundOverlays: [
+        { north: -1.96, south: -1.97, east: 30.56, west: 30.55 },
+      ],
+    });
+    expect(c?.source).toBe('kml:overlay-bounds');
+    expect(c?.lat).toBeCloseTo(-1.965, 6);
+  });
+  it('prefers a LookAt over a large image, but never a Camera', () => {
+    const big = [{ north: -1, south: -3, east: 31, west: 29 }];
+    expect(
+      pickKmlCoordinate({
+        initialView: { latitude: -1.5, longitude: 29.5, type: 'LookAt' },
+        groundOverlays: big,
+      })?.source,
+    ).toBe('kml:view');
+    const c = pickKmlCoordinate({
+      initialView: { latitude: -1.5, longitude: 29.5, type: 'Camera' },
+      groundOverlays: big,
     });
     expect(c?.source).toBe('kml:overlay-bounds');
     expect(c?.lat).toBeCloseTo(-2, 6);
     expect(c?.lng).toBeCloseTo(30, 6);
-  });
-  it('falls back to point centroid', () => {
-    const c = pickKmlCoordinate({
-      points: [
-        [30, -2],
-        [32, -4],
-      ],
-    });
-    expect(c?.source).toBe('kml:centroid');
-    expect(c?.lat).toBeCloseTo(-3, 6);
-    expect(c?.lng).toBeCloseTo(31, 6);
   });
   it('returns null when nothing is usable', () => {
     expect(pickKmlCoordinate({ points: [[0, 0]] })).toBeNull();

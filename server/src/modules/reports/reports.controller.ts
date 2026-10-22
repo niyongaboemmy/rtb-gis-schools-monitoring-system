@@ -230,6 +230,7 @@ export class ReportsController {
       updateReportStatusDto.status,
       scope,
       req.user,
+      updateReportStatusDto.note,
     );
   }
 

@@ -17,6 +17,7 @@ import KmzUpload from "./pages/KmzUpload";
 import PlacesOverlayUpload from "./pages/PlacesOverlayUpload";
 import PopulationAnalytics from "./pages/PopulationAnalytics";
 import Reports from "./pages/Reports";
+import ReportValidation from "./pages/ReportValidation";
 import Settings from "./pages/Settings";
 import Welcome from "./pages/Welcome";
 import { Permission } from "./lib/permissions";
@@ -229,6 +230,7 @@ export default function App() {
               }
             >
               <Route path="/reports" element={<Reports />} />
+              <Route path="/reports/validate" element={<ReportValidation />} />
             </Route>
 
             {/* Administration */}

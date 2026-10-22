@@ -83,7 +83,7 @@ const ToolButton: React.FC<{
         onClick={onClick}
         className={cn(
           "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl transition-colors",
-          active ? "bg-amber-500/20 text-amber-500 dark:text-amber-300" : "text-slate-600 hover:bg-slate-100 dark:text-white/70 dark:hover:bg-white/10",
+          active ? "bg-primary/15 text-primary dark:text-blue-300" : "text-slate-600 hover:bg-slate-100 dark:text-white/70 dark:hover:bg-white/10",
           focusRing,
           className,
         )}

@@ -43,7 +43,7 @@ describe("<MetricInfo />", () => {
 
   it("close button is focused on open", () => {
     render(<MetricInfo id="component.buildingAge" />);
-    fireEvent.click(screen.getByRole("button", { name: /Building Age Score/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Building age/ }));
     expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
   });
 });

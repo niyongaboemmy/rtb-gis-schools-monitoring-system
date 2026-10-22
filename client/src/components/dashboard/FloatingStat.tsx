@@ -3,18 +3,28 @@ import { motion, useMotionTemplate, useMotionValue, useReducedMotion, useSpring,
 import type { LucideIcon } from "lucide-react";
 import { cn } from "../../lib/utils";
 
-/** Counts from 0 to `value` once, with an ease-out (instant for reduced motion). */
+/**
+ * Counts up to `value` with an ease-out: from 0 (after `delay`) on first
+ * show, then from the number on screen when the value changes (e.g. a new
+ * period), so it never drops back to 0. Instant for reduced motion.
+ */
 function useCountUp(value: number | null, duration = 1400, delay = 0) {
   const reduce = useReducedMotion();
   const [shown, setShown] = useState(0);
   const raf = useRef(0);
+  const current = useRef(0);
+  const started = useRef(false);
   useEffect(() => {
     if (value === null || reduce) return;
+    const from = current.current;
+    const wait = started.current ? 0 : delay;
+    started.current = true;
     let start = 0;
     const tick = (t: number) => {
-      if (!start) start = t + delay;
+      if (!start) start = t + wait;
       const k = Math.max(0, Math.min(1, (t - start) / duration));
-      setShown(value * (1 - Math.pow(1 - k, 3)));
+      current.current = from + (value - from) * (1 - Math.pow(1 - k, 3));
+      setShown(current.current);
       if (k < 1) raf.current = requestAnimationFrame(tick);
     };
     raf.current = requestAnimationFrame(tick);
@@ -44,6 +54,8 @@ interface Props {
   floating?: boolean;
   /** Tighter layout for grids (smaller icon and number). */
   compact?: boolean;
+  /** Lifted, glowing icon (3D depth + ring glow). Off = flat and sharp. */
+  depth?: boolean;
   className?: string;
 }
 
@@ -65,6 +77,7 @@ export function FloatingStat({
   index = 0,
   floating = false,
   compact = false,
+  depth = false,
   className,
 }: Props) {
   const reduce = useReducedMotion();
@@ -103,7 +116,7 @@ export function FloatingStat({
           }}
           whileHover={reduce ? undefined : { scale: 1.035, y: -2 }}
           transition={{ type: "spring", stiffness: 300, damping: 22 }}
-          style={reduce ? undefined : { rotateX: rotX, rotateY: rotY, transformStyle: "preserve-3d" }}
+          style={reduce ? undefined : { rotateX: rotX, rotateY: rotY, ...(depth && { transformStyle: "preserve-3d" as const }) }}
           className={cn(
             cn("group relative min-w-0 overflow-hidden rounded-[1.4rem]", compact ? "p-3.5" : "p-4"),
             // Readable glass: mostly opaque, still frosted over the map
@@ -126,11 +139,11 @@ export function FloatingStat({
             />
           )}
 
-          {/* Depth (translateZ) lives on the icon only: a translateZ layer breaks
-              pointer hit-testing for the info button in the text column. */}
+          {/* Only the icon may be lifted (depth): a translateZ layer over the text
+              column breaks hit-testing for its info button. */}
           <div className={cn("relative flex items-center", compact ? "gap-2.5" : "gap-3.5")}>
             {/* Icon tile, ringed with progress when there's a percentage */}
-            <span className={cn("relative flex shrink-0 items-center justify-center", compact ? "h-11 w-11" : "h-[52px] w-[52px]", tone)} style={{ transform: "translateZ(24px)" }} aria-hidden>
+            <span className={cn("relative flex shrink-0 items-center justify-center", compact ? "h-11 w-11" : "h-[52px] w-[52px]", tone)} style={depth ? { transform: "translateZ(24px)" } : undefined} aria-hidden>
               <svg viewBox="0 0 48 48" className="absolute inset-0 h-full w-full -rotate-90">
                 <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" strokeOpacity="0.14" strokeWidth="3" />
                 {ring !== null && (
@@ -146,13 +159,13 @@ export function FloatingStat({
                     initial={{ strokeDashoffset: C }}
                     animate={{ strokeDashoffset: C * (1 - ring / 100) }}
                     transition={{ duration: reduce ? 0 : 1.4, delay: reduce ? 0 : 0.6 + index * 0.12, ease: [0.22, 1, 0.36, 1] }}
-                    style={{ filter: `drop-shadow(0 0 4px ${color})` }}
+                    style={depth ? { filter: `drop-shadow(0 0 4px ${color})` } : undefined}
                   />
                 )}
               </svg>
               <span
                 className="absolute inset-[7px] rounded-full transition-transform duration-300 group-hover:scale-110"
-                style={{ background: `radial-gradient(circle at 30% 30%, ${color}40, ${color}14)` }}
+                style={{ background: depth ? `radial-gradient(circle at 30% 30%, ${color}40, ${color}14)` : `${color}1f` }}
               />
               <Icon className="relative h-[18px] w-[18px] transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110" />
             </span>

@@ -1,17 +1,12 @@
 import React from "react";
-import { X, Building2, MapPin, Trash2, ShieldAlert } from "lucide-react";
-import { Card } from "../ui/card";
-import { Button } from "../ui/button";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Building2, ChevronRight, Images, Loader2, Plus, Search, Trash2, X } from "lucide-react";
 import type { BuildingData } from "../school-form-steps/BuildingsStep";
 import { cn } from "../../lib/utils";
-import { SearchInput } from "../ui/search-input";
-import { Plus } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-  TooltipProvider,
-} from "../ui/tooltip";
+import { formatArea } from "../../lib/format";
+import { EASE } from "../school-dashboard/tokens";
+import type { BuildingReportCount } from "./hooks/useSchoolReports";
+import { buildingArea, buildingCode, buildingCondition, buildingFunction, buildingInitials, buildingName } from "./building-utils";
 
 interface BuildingsListPanelProps {
   buildings: BuildingData[];
@@ -20,8 +15,17 @@ interface BuildingsListPanelProps {
   onDelete: (id: string) => Promise<void>;
   onAdd?: () => void;
   selectedId?: string;
+  /** Open reports per building (map badges use the same numbers). */
+  counts?: Map<string, BuildingReportCount>;
+  /** Show add / delete (defaults to true for callers that gate elsewhere). */
+  canEdit?: boolean;
+  /** Open the school-wide photo gallery. */
+  onGallery?: () => void;
 }
 
+type Filter = "all" | "reports";
+
+/** The school's buildings: search, open reports per building, add and remove. */
 export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
   buildings,
   onClose,
@@ -29,232 +33,253 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
   onDelete,
   onAdd,
   selectedId,
+  counts,
+  canEdit = true,
+  onGallery,
 }) => {
-  const [isDeleting, setIsDeleting] = React.useState<string | null>(null);
-  const [showConfirm, setShowConfirm] = React.useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = React.useState("");
-
-  const listRef = React.useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
+  const [deleting, setDeleting] = React.useState<string | null>(null);
+  const [confirm, setConfirm] = React.useState<string | null>(null);
+  const [query, setQuery] = React.useState("");
+  const [filter, setFilter] = React.useState<Filter>("all");
+  const listRef = React.useRef<HTMLUListElement>(null);
 
   React.useEffect(() => {
-    if (selectedId && listRef.current) {
-      const element = listRef.current.querySelector(
-        `[data-id="${selectedId}"]`,
-      );
-      if (element) {
-        element.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }
-    }
+    if (!selectedId) return;
+    listRef.current?.querySelector(`[data-id="${CSS.escape(String(selectedId))}"]`)?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
   }, [selectedId]);
 
-  const handleDelete = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
+  const withReports = counts ? buildings.filter((b) => (counts.get(String(b.id))?.open ?? 0) > 0).length : 0;
+  const activeFilter: Filter = withReports === 0 ? "all" : filter;
+  const q = query.trim().toLowerCase();
+  const rows = buildings.filter((b) => {
+    if (activeFilter === "reports" && !(counts?.get(String(b.id))?.open ?? 0)) return false;
+    if (!q) return true;
+    return [buildingName(b), buildingCode(b), buildingFunction(b)].some((v) => v?.toLowerCase().includes(q));
+  });
+
+  const remove = async (id: string) => {
+    setDeleting(id);
     try {
-      setIsDeleting(id);
       await onDelete(id);
-      setShowConfirm(null);
+      setConfirm(null);
     } catch (err) {
       console.error("Delete failed", err);
     } finally {
-      setIsDeleting(null);
+      setDeleting(null);
     }
   };
 
-  const filteredBuildings = buildings.filter(
-    (b) =>
-      (b.buildingName || "Unnamed Block")
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase()) ||
-      (b.buildingCode || "").toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  const iconBtn =
+    "flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-900/5 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 dark:text-white/55 dark:hover:bg-white/8 dark:hover:text-white";
 
   return (
-    <Card
+    <motion.section
+      aria-label="Buildings"
+      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: EASE }}
       className={cn(
-        "fixed z-30 flex flex-col bg-white/95 dark:bg-card/95 backdrop-blur-2xl border border-slate-200 dark:border-white/6 overflow-hidden transition-all duration-500",
-        "inset-x-0 bottom-0 h-[60vh] rounded-t-[32px] md:rounded-3xl", // Mobile
-        "md:inset-auto md:right-22 md:top-16 xl:top-4 md:w-80 md:h-auto md:max-h-[calc(100vh-6rem)] xl:max-h-[calc(100vh-2rem)]", // Desktop
-        "animate-in fade-in slide-in-from-bottom md:slide-in-from-right-8",
+        "fixed z-40 flex flex-col overflow-hidden",
+        "bg-white/60 ring-1 ring-white/40 backdrop-blur-2xl backdrop-saturate-150 dark:bg-[hsl(224_40%_7%)]/60 dark:ring-white/10",
+        "shadow-[0_20px_50px_-20px_rgba(15,23,42,0.45)]",
+        "inset-x-0 bottom-0 h-[64dvh] rounded-t-[1.75rem]",
+        // Desktop: just left of the tool rail, whatever its width.
+        "md:inset-auto md:right-[calc(var(--map-rail-w,3.5rem)+1.5rem)] md:top-4 md:h-auto md:max-h-[calc(100vh-2rem)] md:w-84 md:rounded-[1.5rem]",
       )}
     >
-      {/* Mobile Drag Handle */}
-      <div className="flex md:hidden justify-center pt-3 pb-1 shrink-0">
-        <div className="w-12 h-1.5 rounded-full bg-slate-200 dark:bg-white/20" />
+      <div className="flex shrink-0 justify-center pb-1 pt-2.5 md:hidden" aria-hidden>
+        <div className="h-1.5 w-10 rounded-full bg-slate-300/80 dark:bg-white/15" />
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-border/20 shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
-            <Building2 className="w-4 h-4 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-[15px] font-black tracking-tight flex items-center gap-2 text-slate-900 dark:text-white">
-              Buildings
-              <span className="bg-primary/20 text-primary px-1.5 py-0.5 rounded-full text-[10px]">
-                {buildings.length}
-              </span>
-            </h2>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {onAdd && (
-            <TooltipProvider delayDuration={0}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={onAdd}
-                    aria-label="Add building"
-                    className="h-8 rounded-full px-2.5 flex items-center gap-1.5"
-                  >
-                    <Plus className="w-3.5 h-3.5" aria-hidden />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:block">
-                  Design New Block
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            aria-label="Close buildings list"
-            className="h-8 w-8 rounded-xl hover:bg-destructive/10 hover:text-destructive"
+      <header className="flex shrink-0 items-center gap-2 px-4 pb-2 pt-2 md:pt-4">
+        <h2 className="flex-1 pl-1 text-[15px] font-medium text-slate-900 dark:text-white">
+          Buildings <span className="text-sm tabular-nums text-slate-400 dark:text-white/40">{buildings.length}</span>
+        </h2>
+        {onGallery && (
+          <button type="button" onClick={onGallery} aria-label="Gallery" title="Gallery" className={iconBtn}>
+            <Images className="h-4 w-4" aria-hidden />
+          </button>
+        )}
+        {onAdd && canEdit && (
+          <motion.button
+            type="button"
+            onClick={onAdd}
+            whileTap={reduce ? undefined : { scale: 0.94 }}
+            aria-label="Add building"
+            title="Add building"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-white transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
           >
-            <X className="w-4 h-4" aria-hidden />
-          </Button>
-        </div>
-      </div>
+            <Plus className="h-4 w-4" aria-hidden />
+          </motion.button>
+        )}
+        <button type="button" onClick={onClose} aria-label="Close buildings list" className={iconBtn}>
+          <X className="h-4 w-4" aria-hidden />
+        </button>
+      </header>
 
-      {/* Search Input */}
-      <div className="px-4 py-3 border-b border-slate-100 dark:border-border/10">
-        <SearchInput
-          placeholder="Search by name or code..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          onClear={() => setSearchTerm("")}
-          className="h-9 text-xs bg-slate-50 dark:bg-transparent border-slate-200 dark:border-white/6"
-          containerClassName="w-full"
-        />
+      {/* Search + filter */}
+      <div className="shrink-0 space-y-2 px-4 pb-3">
+        <label className="relative block">
+          <span className="sr-only">Search buildings</span>
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-white/35" aria-hidden />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search"
+            className="h-9 w-full rounded-full bg-slate-900/[0.04] pl-8.5 pr-8 text-[13px] text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/50 dark:bg-white/6 dark:text-white dark:placeholder:text-white/35 dark:focus:bg-white/8"
+          />
+          {query && (
+            <button type="button" onClick={() => setQuery("")} aria-label="Clear search" className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-white">
+              <X className="h-3 w-3" aria-hidden />
+            </button>
+          )}
+        </label>
+        {withReports > 0 && (
+          <div role="group" aria-label="Show" className="flex gap-1.5">
+            {(
+              [
+                ["all", "All", buildings.length],
+                ["reports", "With reports", withReports],
+              ] as const
+            ).map(([k, l, n]) => (
+              <button
+                key={k}
+                type="button"
+                aria-pressed={activeFilter === k}
+                onClick={() => setFilter(k)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs transition-colors",
+                  activeFilter === k ? "bg-primary text-white" : "bg-slate-900/[0.04] text-slate-600 hover:bg-slate-900/[0.08] dark:bg-white/6 dark:text-white/65 dark:hover:bg-white/10",
+                )}
+              >
+                {k === "reports" && <span className={cn("h-1.5 w-1.5 rounded-full", activeFilter === k ? "bg-white" : "bg-primary")} aria-hidden />}
+                {l}
+                <span className="tabular-nums opacity-70">{n}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* List */}
-      <div
-        ref={listRef}
-        className="flex-1 overflow-y-auto w-full p-2 space-y-1 custom-scrollbar"
-      >
-        {filteredBuildings.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
-            <Building2 className="w-8 h-8 mb-2 opacity-50" />
-            <p className="text-xs font-medium">
-              {searchTerm ? "No results found" : "No buildings detected"}
-            </p>
-            <p className="text-[10px]">
-              {searchTerm
-                ? "Try adjusting your search"
-                : "Pan the map to load areas"}
-            </p>
-          </div>
+      <ul ref={listRef} className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2.5 pb-3 custom-scrollbar">
+        {rows.length === 0 ? (
+          <li className="flex flex-col items-center gap-1.5 px-6 py-10 text-center">
+            <Building2 className="h-6 w-6 text-slate-300 dark:text-white/25" aria-hidden />
+            <p className="text-[13px] text-slate-700 dark:text-white/80">{q ? "No match" : "No buildings yet"}</p>
+            <p className="text-xs text-slate-500 dark:text-white/45">{q ? "Try another name." : canEdit && onAdd ? "Tap + to draw one on the map." : "Buildings appear once mapped."}</p>
+          </li>
         ) : (
-          filteredBuildings.map((b) => (
-              <div
-                key={b.id}
-                data-id={b.id}
-                onClick={() => onSelect(b)}
-                className={cn(
-                  "group relative flex flex-col gap-1.5 px-4 py-3 transition-all rounded-2xl cursor-pointer border",
-                  selectedId === b.id
-                    ? "bg-primary/20 border-primary/40"
-                    : "bg-slate-50 dark:bg-white/5 hover:bg-slate-100 dark:hover:bg-white/10 border-slate-100 dark:border-transparent hover:border-slate-200 dark:hover:border-white/6",
-                )}
-              >
-              <div className="flex justify-between items-start w-full">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span
-                    className={cn(
-                      "font-bold text-[12px] truncate max-w-[140px]",
-                      selectedId === b.id ? "text-primary" : "text-slate-900 dark:text-white/90",
+          <AnimatePresence initial={false}>
+            {rows.map((b, i) => {
+              const id = String(b.id);
+              const c = counts?.get(id);
+              const cond = buildingCondition(b).overall;
+              const on = selectedId != null && String(selectedId) === id;
+              const area = buildingArea(b);
+              const fn = buildingFunction(b);
+              const asking = confirm === id;
+              return (
+                <motion.li
+                  key={id}
+                  data-id={id}
+                  layout={!reduce}
+                  initial={reduce ? false : { opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={reduce ? undefined : { opacity: 0, x: -16 }}
+                  transition={{ duration: 0.28, delay: Math.min(i * 0.025, 0.25), ease: EASE }}
+                  className="group relative"
+                >
+                  <AnimatePresence mode="wait" initial={false}>
+                    {asking ? (
+                      <motion.div
+                        key="confirm"
+                        initial={reduce ? false : { opacity: 0, scale: 0.98 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={reduce ? undefined : { opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className="flex items-center gap-2 rounded-2xl bg-destructive/[0.07] px-3 py-2.5 dark:bg-destructive/15"
+                      >
+                        <p className="min-w-0 flex-1 truncate text-[13px] text-slate-800 dark:text-white/85">Delete {buildingName(b)}?</p>
+                        <button type="button" onClick={() => setConfirm(null)} className="h-8 rounded-full px-3 text-xs text-slate-600 hover:bg-slate-900/5 dark:text-white/65 dark:hover:bg-white/8">
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deleting === id}
+                          onClick={() => void remove(id)}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-full bg-destructive px-3 text-xs text-white transition-colors hover:bg-destructive/90 disabled:opacity-60"
+                        >
+                          {deleting === id && <Loader2 className="h-3 w-3 animate-spin" aria-hidden />}
+                          Delete
+                        </button>
+                      </motion.div>
+                    ) : (
+                      <motion.button
+                        key="row"
+                        type="button"
+                        onClick={() => onSelect(b)}
+                        aria-current={on ? "true" : undefined}
+                        whileTap={reduce ? undefined : { scale: 0.99 }}
+                        initial={false}
+                        animate={{ opacity: 1 }}
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                          on ? "bg-primary/[0.08] dark:bg-primary/15" : "hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.05]",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xs font-medium",
+                            on ? "bg-primary text-white" : "bg-primary/10 text-primary dark:text-blue-300",
+                          )}
+                          aria-hidden
+                        >
+                          {buildingInitials(b)}
+                          {/* Condition, as a small status dot */}
+                          <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-[hsl(224_40%_7%)]" style={{ background: cond.color }} title={cond.label} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className={cn("block truncate text-[13px]", on ? "text-primary dark:text-blue-300" : "text-slate-900 dark:text-white/90")}>{buildingName(b)}</span>
+                          <span className="mt-0.5 block truncate text-[11px] text-slate-500 dark:text-white/45">
+                            {[fn ? fn.charAt(0).toUpperCase() + fn.slice(1) : null, area ? formatArea(area) : null].filter(Boolean).join(" · ") || cond.label}
+                          </span>
+                        </span>
+                        {c && c.open > 0 && (
+                          <motion.span
+                            key={c.open}
+                            initial={reduce ? false : { scale: 0.5 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: "spring", stiffness: 500, damping: 22 }}
+                            className="min-w-5.5 rounded-full bg-primary px-1.5 text-center text-[11px] leading-5.5 tabular-nums text-white"
+                            title={[c.action && `${c.action} need action`, c.waiting && `${c.waiting} waiting`].filter(Boolean).join(" · ")}
+                            aria-label={`${c.open} open report${c.open === 1 ? "" : "s"}`}
+                          >
+                            {c.open}
+                          </motion.span>
+                        )}
+                        <ChevronRight className={cn("h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5", on ? "text-primary" : "text-slate-300 dark:text-white/25", canEdit && "md:group-hover:opacity-0")} aria-hidden />
+                      </motion.button>
                     )}
-                  >
-                    {b.buildingName || "Unnamed Block"}
-                  </span>
-                  {b.buildingFunction && (
-                    <span className="text-[9px] px-1.5 py-0.5 bg-sky-500/10 text-sky-500 rounded font-bold uppercase tracking-widest whitespace-nowrap">
-                      {b.buildingFunction}
-                    </span>
+                  </AnimatePresence>
+                  {canEdit && !asking && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirm(id)}
+                      aria-label={`Delete ${buildingName(b)}`}
+                      className="absolute right-2 top-1/2 hidden h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 opacity-0 transition-[opacity,background-color,color] hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100 md:flex dark:text-white/40"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                    </button>
                   )}
-                </div>
-
-                {/* Delete Button / Confirm Dialog */}
-                {showConfirm === b.id ? (
-                  <div
-                    className="flex flex-col items-end gap-1 absolute right-3 top-2 bg-white dark:bg-[#0f1117] border border-slate-200 dark:border-white/6 p-2 rounded-xl z-10"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center gap-1.5 text-destructive text-[10px] font-bold uppercase mb-1">
-                      <ShieldAlert className="w-3 h-3" />
-                      Confirm Delete?
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-[10px] px-2 rounded-lg"
-                        onClick={() => setShowConfirm(null)}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        className="h-6 text-[10px] px-2 rounded-lg"
-                        disabled={isDeleting === b.id}
-                        onClick={(e) => handleDelete(e, b.id)}
-                      >
-                        {isDeleting === b.id ? "Deleting..." : "Delete"}
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowConfirm(b.id);
-                    }}
-                    className="md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 p-1.5 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive hover:text-white transition-all shrink-0"
-                    aria-label={`Delete building "${b.buildingName || "Unnamed Block"}"`}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" aria-hidden />
-                  </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-3 text-[10px] text-slate-500 dark:text-muted-foreground/80 font-medium">
-                {b.buildingCode && (
-                  <span className="bg-slate-100 dark:bg-foreground/5 px-1 rounded font-mono">
-                    {b.buildingCode}
-                  </span>
-                )}
-                {b.buildingArea && (
-                  <span>
-                    {Math.round(parseFloat(String(b.buildingArea)))} m²
-                  </span>
-                )}
-                {b.geolocation?.latitude && (
-                  <span className="flex items-center gap-0.5 mt-auto">
-                    <MapPin className="w-3 h-3" />
-                    Mapped
-                  </span>
-                )}
-              </div>
-            </div>
-          ))
+                </motion.li>
+              );
+            })}
+          </AnimatePresence>
         )}
-      </div>
-    </Card>
+      </ul>
+    </motion.section>
   );
 };

@@ -311,28 +311,18 @@ export function LocationPicker({
     }
   }, [province, district, sector, cell, village]);
 
-  // Auto-center based on selection
+  // Pan the map to the chosen district while no point is set. The district
+  // centre is only a starting view — it is never saved as the location (a
+  // school saved there would show in the wrong place).
+  const hasPoint = Boolean(latitude && longitude);
   useEffect(() => {
-    if (!userMovedPin) {
-      const center = getApproximateCenter(
-        selectedProvinceCode ? parseInt(selectedProvinceCode.toString()) : null,
-        selectedDistrictCode ? parseInt(selectedDistrictCode.toString()) : null,
-      );
-      if (center) {
-        setAutoCenter(center);
-        if (!latitude || !longitude) {
-          onLocationChange(center[0].toFixed(6), center[1].toFixed(6));
-        }
-      }
-    }
-  }, [
-    selectedProvinceCode,
-    selectedDistrictCode,
-    userMovedPin,
-    latitude,
-    longitude,
-    onLocationChange,
-  ]);
+    if (userMovedPin || hasPoint) return;
+    const center = getApproximateCenter(
+      selectedProvinceCode ? parseInt(selectedProvinceCode.toString()) : null,
+      selectedDistrictCode ? parseInt(selectedDistrictCode.toString()) : null,
+    );
+    if (center) setAutoCenter(center);
+  }, [selectedProvinceCode, selectedDistrictCode, userMovedPin, hasPoint]);
 
   // Load districts
   useEffect(() => {
@@ -514,11 +504,10 @@ export function LocationPicker({
     onAdministrativeChange("village", value);
   };
 
-  const mapCenter =
-    autoCenter ||
-    (latitude && longitude
-      ? [parseFloat(latitude), parseFloat(longitude)]
-      : rwandaCenter);
+  // The school's own pin first; the district view only while there is none.
+  const mapCenter: [number, number] = hasPoint
+    ? [parseFloat(latitude), parseFloat(longitude)]
+    : (autoCenter ?? (rwandaCenter as [number, number]));
   const mapZoom = getZoomLevel(
     !!selectedProvinceCode,
     !!selectedDistrictCode,

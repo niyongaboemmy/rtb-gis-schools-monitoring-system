@@ -23,17 +23,17 @@ import { BRAND, EASE } from "./tokens";
 import { useChartTooltip } from "./charts/useChartTooltip";
 
 const MISSING: Record<ComponentKey, { label: string; fix: string; icon: LucideIcon }> = {
-  infrastructure: { label: "Conditions", fix: "Record each building's condition", icon: Building2 },
-  buildingAge: { label: "Build years", fix: "Add build years or the founding year", icon: CalendarClock },
+  infrastructure: { label: "Building condition", fix: "Record each building's condition", icon: Building2 },
+  buildingAge: { label: "Building age", fix: "Add build years or the founding year", icon: CalendarClock },
   accessibility: { label: "Road access", fix: "Capture the road-status percentage", icon: MapPin },
-  population: { label: "Population", fix: "Run a population sync", icon: Users },
-  facilityCompliance: { label: "Survey", fix: "Complete the facility survey", icon: ClipboardCheck },
-  resolution: { label: "Reports", fix: "Rated once 3 reports are old enough", icon: FileText },
+  population: { label: "Population", fix: "Load the population data", icon: Users },
+  facilityCompliance: { label: "Facilities checklist", fix: "Complete the facilities checklist", icon: ClipboardCheck },
+  resolution: { label: "Problems fixed", fix: "Rated once 3 reports are old enough", icon: FileText },
 };
 
 const RINGS = [
   { key: "completeness", label: "Profile complete", color: BRAND, r: 42 },
-  { key: "coverage", label: "Score measured", color: "#60a5fa", r: 31 },
+  { key: "coverage", label: "Score from real data", color: "#60a5fa", r: 31 },
 ] as const;
 
 /** Peer benchmark as an arrow pill: ↑ above / ↓ below the area average. */
@@ -73,7 +73,7 @@ export function DataQualityCard({ metrics, index }: Props) {
   const missing = COMPONENT_ORDER.filter((k) => metrics?.dataGaps?.[k]);
 
   return (
-    <GlassCard title="Data quality" icon={Database} tone="text-primary" info={<MetricInfo id="school.dataCompleteness" size="xs" />} index={index}>
+    <GlassCard title="Data completeness" icon={Database} tone="text-primary" info={<MetricInfo id="school.dataCompleteness" size="xs" />} index={index}>
       <div className="flex items-center gap-4">
         <div ref={boxRef} className="relative h-26 w-26 shrink-0">
           <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90" role="img" aria-label={`Profile ${values.completeness ?? "—"}% complete; ${values.coverage ?? "—"}% of the score measured`}>

@@ -3,14 +3,14 @@ import { LABELS, label, labelOptions, titleCase } from "./labels";
 
 describe("labels", () => {
   it("maps report statuses to the glossary wording", () => {
-    expect(label("reportStatus", "NEED_INTERVENTION")).toBe("Needs Intervention");
-    expect(label("reportStatus", "SOLVED")).toBe("Resolved");
-    expect(label("reportStatus", "PENDING")).toBe("Pending");
-    expect(label("reportStatus", "FAILED")).toBe("Failed");
+    expect(label("reportStatus", "NEED_INTERVENTION")).toBe("Needs action");
+    expect(label("reportStatus", "SOLVED")).toBe("Fixed");
+    expect(label("reportStatus", "PENDING")).toBe("Waiting");
+    expect(label("reportStatus", "FAILED")).toBe("Not valid");
   });
 
   it("maps report types", () => {
-    expect(label("reportType", "issue")).toBe("Issue report");
+    expect(label("reportType", "issue")).toBe("Problem report");
     expect(label("reportType", "data_change_request")).toBe("Change request");
     expect(label("reportType", "DATA_CHANGE_REQUEST")).toBe("Change request");
   });
@@ -20,8 +20,8 @@ describe("labels", () => {
     expect(label("priority", "critical")).toBe("Critical");
     expect(label("buildingCondition", "fair")).toBe("Fair");
     expect(label("roofCondition", "needs_repair")).toBe("Needs Repair");
-    expect(label("compliance", "non_compliant")).toBe("Non-Compliant");
-    expect(label("compliance", "partial")).toBe("Partially Compliant");
+    expect(label("compliance", "non_compliant")).toBe("Doesn't meet");
+    expect(label("compliance", "partial")).toBe("Partly meets");
     expect(label("schoolTypeShort", "INTEGRATED")).toBe("Integrated");
     expect(label("accessTier", "district")).toBe("District");
     expect(label("surveyStatus", "in_progress")).toBe("In Progress");
@@ -29,7 +29,7 @@ describe("labels", () => {
 
   it("is case-insensitive", () => {
     expect(label("priority", "CRITICAL")).toBe("Critical");
-    expect(label("reportStatus", "need_intervention")).toBe("Needs Intervention");
+    expect(label("reportStatus", "need_intervention")).toBe("Needs action");
   });
 
   it("falls back to title case, never raw SCREAMING_CASE", () => {
@@ -55,6 +55,6 @@ describe("labels", () => {
 
   it("labelOptions de-duplicates aliases", () => {
     const opts = labelOptions("reportStatus");
-    expect(opts.filter((o) => o.label === "Resolved")).toHaveLength(1);
+    expect(opts.filter((o) => o.label === "Fixed")).toHaveLength(1);
   });
 });

@@ -422,7 +422,7 @@ export default function SchoolDecisionDashboard({
           {[
             { label: "Students", value: m?.totalStudents ?? null, caption: isNum(m?.capacityUtilisation) ? `${formatPercent(m.capacityUtilisation)} full` : "no capacity", pct: isNum(m?.capacityUtilisation) ? Math.min(100, m.capacityUtilisation) : null, icon: GraduationCap, id: "school.totalStudents" as const },
             { label: "Teachers", value: m?.totalTeachers ?? null, caption: isNum(m?.studentToTeacherRatio) ? `${formatNumber(m.studentToTeacherRatio, 1)} : 1` : "—", pct: null, icon: Users, id: "school.studentTeacherRatio" as const },
-            { label: "Buildings", value: m?.buildingCount ?? null, caption: isNum(m?.assessedBuildingCount) ? `${formatNumber(m.assessedBuildingCount)} assessed` : "—", pct: isNum(m?.assessedBuildingCount) && isNum(m?.buildingCount) && m.buildingCount > 0 ? (m.assessedBuildingCount / m.buildingCount) * 100 : null, icon: Building2, id: "school.buildingCount" as const },
+            { label: "Buildings", value: m?.buildingCount ?? null, caption: isNum(m?.assessedBuildingCount) ? `${formatNumber(m.assessedBuildingCount)} checked` : "—", pct: isNum(m?.assessedBuildingCount) && isNum(m?.buildingCount) && m.buildingCount > 0 ? (m.assessedBuildingCount / m.buildingCount) * 100 : null, icon: Building2, id: "school.buildingCount" as const },
             { label: "Open issues", value: reportSummary?.active ?? null, caption: reportSummary?.resolutionRate == null ? "none yet" : `${formatPercent(reportSummary.resolutionRate)} fixed`, pct: reportSummary?.resolutionRate ?? null, icon: FileText, id: "reports.openIssues" as const },
             { label: "Road access", value: isNum(m?.roadStatusPercentage) ? m.roadStatusPercentage : null, caption: isNum(m?.roadStatusPercentage) ? "all-season" : "not recorded", pct: isNum(m?.roadStatusPercentage) ? m.roadStatusPercentage : null, icon: MapPin, id: "school.roadAccess" as const, percent: true },
             { label: "Programmes", value: m?.educationProgramsCount ?? null, caption: "trades", pct: null, icon: ClipboardCheck, id: "school.programmes" as const },
@@ -503,7 +503,7 @@ export default function SchoolDecisionDashboard({
         icon={Gauge}
         eyebrow={schoolName}
         title="Score breakdown"
-        description="How each factor adds to the School Condition Score. Estimated factors are flagged."
+        description="How each part adds to the School Condition Score. Parts without data are marked."
         summary={<ScoreSummary metrics={m} />}
         maxWidth="max-w-4xl"
       >
@@ -515,7 +515,7 @@ export default function SchoolDecisionDashboard({
         onClose={closeView}
         icon={FileText}
         eyebrow={schoolName}
-        title="Issue Reports"
+        title="Reported problems"
         description="Status, monthly trend and the latest reports for this school."
         summary={<ReportsSummary data={reporting} />}
         footer={
@@ -546,8 +546,8 @@ export default function SchoolDecisionDashboard({
         onClose={closeView}
         icon={ShieldAlert}
         eyebrow={schoolName}
-        title="Risk & mitigation"
-        description="Indicative rules of thumb — not part of the School Condition Score."
+        title="Risks and how to reduce them"
+        description="An estimate to help plan — not part of the School Condition Score."
         summary={<RiskSummary risk={m?.riskAssessment} />}
         maxWidth="max-w-5xl"
       >
@@ -560,7 +560,7 @@ export default function SchoolDecisionDashboard({
         icon={Building2}
         eyebrow={schoolName}
         title="Buildings"
-        description="Condition of every building. Only assessed buildings feed the infrastructure score."
+        description="Condition of every building. Only buildings with a recorded condition count toward the score."
         summary={<BuildingsSummary buildings={buildings} metrics={m} />}
         maxWidth="max-w-4xl"
       >

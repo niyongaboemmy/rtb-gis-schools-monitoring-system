@@ -27,21 +27,81 @@ interface LatLonBox {
   west: number;
 }
 
+/** About 2 km: wider than this is an area, not a school compound. */
+const COMPOUND_DEG = 0.02;
+
+const median = (xs: number[]): number => {
+  const v = [...xs].sort((a, b) => a - b);
+  const m = v.length >> 1;
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+};
+
 /**
- * Pick the best coordinate from KML-derived sources, in priority order:
- *   1. the authored LookAt / Camera view
- *   2. the centre of the ground-overlay bounding box(es)
- *   3. the centroid of point/vertex coordinates
+ * Pick the school's point from KML-derived sources, in priority order:
+ *   1. the centre of what is drawn on the site map (every vertex of the
+ *      placemarks), ignoring stray features far from the rest
+ *   2. the centre of compound-sized ground overlays (drone images)
+ *   3. an authored LookAt (a Camera is where the viewer stands, not the site)
+ *   4. the centre of any ground overlays
+ * The caller (SchoolLocationService) still checks the point is in Rwanda.
  */
 export function pickKmlCoordinate(sources: {
-  initialView?: { latitude?: number; longitude?: number } | null;
+  initialView?: { latitude?: number; longitude?: number; type?: string } | null;
   groundOverlays?: Array<Partial<LatLonBox>> | null;
   points?: Array<[number, number]> | null; // [lng, lat]
 }): DerivedCoordinate | null {
   const { initialView, groundOverlays, points } = sources;
 
+  // 1. Drawn features: bbox centre of the points near the median.
+  const pts = (points || []).filter(([lng, lat]) =>
+    isPlausibleLatLng(lat, lng),
+  );
+  if (pts.length) {
+    const mLng = median(pts.map((p) => p[0]));
+    const mLat = median(pts.map((p) => p[1]));
+    const near = pts.filter(
+      ([lng, lat]) =>
+        Math.abs(lng - mLng) <= COMPOUND_DEG &&
+        Math.abs(lat - mLat) <= COMPOUND_DEG,
+    );
+    const use = near.length ? near : pts;
+    const lngs = use.map((p) => p[0]);
+    const lats = use.map((p) => p[1]);
+    const lng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+    const lat = (Math.min(...lats) + Math.max(...lats)) / 2;
+    if (isPlausibleLatLng(lat, lng))
+      return { lat, lng, source: 'kml:features' };
+  }
+
+  const boxes = (groundOverlays || []).filter(
+    (b) =>
+      b &&
+      isPlausibleLatLng(b.north, b.east) &&
+      isPlausibleLatLng(b.south, b.west),
+  ) as LatLonBox[];
+  const centre = (bs: LatLonBox[]): DerivedCoordinate | null => {
+    if (!bs.length) return null;
+    const lat = bs.reduce((s, b) => s + (b.north + b.south) / 2, 0) / bs.length;
+    const lng = bs.reduce((s, b) => s + (b.east + b.west) / 2, 0) / bs.length;
+    return isPlausibleLatLng(lat, lng)
+      ? { lat, lng, source: 'kml:overlay-bounds' }
+      : null;
+  };
+
+  // 2. Compound-sized drone images.
+  const compact = centre(
+    boxes.filter(
+      (b) =>
+        Math.abs(b.north - b.south) <= COMPOUND_DEG &&
+        Math.abs(b.east - b.west) <= COMPOUND_DEG,
+    ),
+  );
+  if (compact) return compact;
+
+  // 3. Authored LookAt.
   if (
     initialView &&
+    initialView.type !== 'Camera' &&
     isPlausibleLatLng(initialView.latitude, initialView.longitude)
   ) {
     return {
@@ -51,34 +111,8 @@ export function pickKmlCoordinate(sources: {
     };
   }
 
-  const boxes = (groundOverlays || []).filter(
-    (b) =>
-      b &&
-      isPlausibleLatLng(b.north, b.east) &&
-      isPlausibleLatLng(b.south, b.west),
-  ) as LatLonBox[];
-  if (boxes.length) {
-    const lat =
-      boxes.reduce((s, b) => s + (b.north + b.south) / 2, 0) / boxes.length;
-    const lng =
-      boxes.reduce((s, b) => s + (b.east + b.west) / 2, 0) / boxes.length;
-    if (isPlausibleLatLng(lat, lng)) {
-      return { lat, lng, source: 'kml:overlay-bounds' };
-    }
-  }
-
-  const pts = (points || []).filter(([lng, lat]) =>
-    isPlausibleLatLng(lat, lng),
-  );
-  if (pts.length) {
-    const lng = pts.reduce((s, p) => s + p[0], 0) / pts.length;
-    const lat = pts.reduce((s, p) => s + p[1], 0) / pts.length;
-    if (isPlausibleLatLng(lat, lng)) {
-      return { lat, lng, source: 'kml:centroid' };
-    }
-  }
-
-  return null;
+  // 4. Any drone image.
+  return centre(boxes);
 }
 
 /** WGS84 ECEF (metres) → geodetic lat/lng in degrees. */

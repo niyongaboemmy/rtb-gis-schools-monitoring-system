@@ -1,50 +1,76 @@
 import React from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
-  X,
-  Globe,
-  Square,
-  Search,
-  Layers,
-  Trash2,
-  ZoomIn,
-  ZoomOut,
-  Home,
-  Satellite,
-  Moon,
-  Map as MapIcon2,
-  Download,
-  Info,
-  SlidersHorizontal,
-  MousePointer2,
-  MessageSquare,
-  PlusCircle,
-  Type,
-  MousePointer,
-  PenTool,
   Box,
+  Building2,
+  ChevronRight,
+  Download,
+  Globe,
+  HelpCircle,
+  Home,
+  Images,
+  Info,
+  Layers,
+  ListOrdered,
+  Map as MapIcon2,
   MapPin,
   MapPinned,
-  Building2,
-  ListOrdered,
-  HelpCircle,
+  Moon,
+  MousePointer,
+  MousePointer2,
+  Palette,
+  PanelRightClose,
+  PanelRightOpen,
+  PenLine,
+  PenTool,
+  PlusCircle,
+  Ruler,
+  Satellite,
+  Square,
+  Trash2,
+  Type,
+  X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
-import { VIEWER_TOOLS, toolTitle, type ViewerToolId } from "../../lib/viewer-tools";
+import { VIEWER_TOOLS, type ViewerToolId } from "../../lib/viewer-tools";
+import { cn } from "../../lib/utils";
+import { EASE } from "../school-dashboard/tokens";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 
 export type MeasurementMode2D = "none" | "distance" | "area" | "perimeter";
+
+type Icon = React.ComponentType<{ className?: string }>;
+
 const MEASURE_TOOL_2D: { mode: Exclude<MeasurementMode2D, "none">; tool: ViewerToolId }[] = [
   { mode: "distance", tool: "measure_distance" },
   { mode: "area", tool: "measure_area" },
   { mode: "perimeter", tool: "measure_perimeter" },
 ];
-import { Button } from "../ui/button";
-import { Card } from "../ui/card";
-import { cn } from "../../lib/utils";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../ui/tooltip";
+
+const NOTE_TOOLS: { id: string; name: string; icon: Icon }[] = [
+  { id: "annotate_point", name: "Pin", icon: MousePointer },
+  { id: "annotate_line", name: "Line", icon: PenTool },
+  { id: "annotate_poly", name: "Area", icon: Square },
+  { id: "annotate_text", name: "Text", icon: Type },
+];
+
+const BASEMAPS: { id: string; name: string; icon: Icon }[] = [
+  { id: "google", name: "Satellite", icon: Globe },
+  { id: "satellite", name: "Sentinel", icon: Satellite },
+  { id: "street", name: "Streets", icon: MapIcon2 },
+  { id: "dark", name: "Dark", icon: Moon },
+  { id: "offline", name: "Offline", icon: Download },
+  { id: "ghost", name: "Light", icon: Layers },
+];
+
+const VISUALS = [
+  { key: "brightness", label: "Brightness" },
+  { key: "contrast", label: "Contrast" },
+  { key: "saturation", label: "Colour" },
+] as const;
+
+const EXPANDED_KEY = "rtb-map-rail-expanded";
 
 interface MapToolbarProps {
   onClose?: () => void;
@@ -53,14 +79,14 @@ interface MapToolbarProps {
   showOpacitySlider: boolean;
   setShowOpacitySlider: React.Dispatch<React.SetStateAction<boolean>>;
   basemapStyle: string;
-  switchBasemap: (style: any) => void;
+  switchBasemap: (style: string) => void;
   measurementMode: MeasurementMode2D;
   setMeasurementMode: React.Dispatch<React.SetStateAction<MeasurementMode2D>>;
   /** USE_MEASURE_TOOLS — hides the measuring tools when false. */
   canMeasure?: boolean;
-  /** SAVE_SITE_FEATURES — hides the annotation tools when false. */
+  /** SAVE_SITE_FEATURES — hides the note tools when false. */
   canAnnotate?: boolean;
-  /** EDIT_SCHOOL_BUILDINGS — hides "Design new block" when false. */
+  /** EDIT_SCHOOL_BUILDINGS — hides "Draw a building" when false. */
   canCreateBlock?: boolean;
   showMeasureList?: boolean;
   setShowMeasureList?: React.Dispatch<React.SetStateAction<boolean>>;
@@ -68,13 +94,14 @@ interface MapToolbarProps {
   onHelp?: () => void;
   clearMeasurements: () => void;
   activeTool: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the viewer's tool union lives in School2DViewer
   setActiveTool: React.Dispatch<React.SetStateAction<any>>;
-  /** Show the "set school location" pin tool (permission-gated by the parent). */
+  /** Show the "set school location" tool (permission-gated by the parent). */
   canSetLocation?: boolean;
   onZoomIn: () => void;
   onZoomOut: () => void;
+  /** Back to the school's framing (site map, else buildings, else its point). */
   onHome: () => void;
-  onFitExtent: () => void;
   onExportPng: () => void;
   on3DView?: () => void;
   showBasicInfo: boolean;
@@ -82,24 +109,37 @@ interface MapToolbarProps {
   kmzOpacity: number;
   setKmzOpacity: (val: number) => void;
   visuals: { brightness: number; contrast: number; saturation: number };
-  setVisuals: React.Dispatch<
-    React.SetStateAction<{
-      brightness: number;
-      contrast: number;
-      saturation: number;
-    }>
-  >;
+  setVisuals: React.Dispatch<React.SetStateAction<{ brightness: number; contrast: number; saturation: number }>>;
   showPlacesOverlay: boolean;
   setShowPlacesOverlay: React.Dispatch<React.SetStateAction<boolean>>;
   showBuildingsList: boolean;
   setShowBuildingsList: React.Dispatch<React.SetStateAction<boolean>>;
+  /** Buildings with open reports (badge on the Buildings button). */
+  openReports?: number;
+  /** Open the photo gallery of every building. */
+  onGallery?: () => void;
 }
 
+type Group = "draw" | "measure" | "style";
+
+const readExpanded = () => {
+  try {
+    // Names are shown unless the user hid them.
+    return localStorage.getItem(EXPANDED_KEY) !== "0";
+  } catch {
+    return true;
+  }
+};
+
+/**
+ * The map's tool rail. Related tools are grouped: a group button opens a
+ * flyout with its tools, and shows the chosen tool while it is active. The
+ * rail can be widened to show each tool's name (remembered per browser).
+ */
 export const MapToolbar: React.FC<MapToolbarProps> = ({
   onClose,
   showNavigator,
   setShowNavigator,
-  showOpacitySlider,
   setShowOpacitySlider,
   basemapStyle,
   switchBasemap,
@@ -119,7 +159,6 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
   onZoomIn,
   onZoomOut,
   onHome,
-  onFitExtent,
   onExportPng,
   showBasicInfo,
   setShowBasicInfo,
@@ -132,13 +171,40 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
   showBuildingsList,
   setShowBuildingsList,
   on3DView,
+  openReports = 0,
+  onGallery,
 }) => {
-  const [showVisuals, setShowVisuals] = React.useState(false);
-  const [showBasemaps, setShowBasemaps] = React.useState(false);
-  const [showAnnotationTools, setShowAnnotationTools] = React.useState(false);
+  const reduce = useReducedMotion();
+  const [expanded, setExpandedState] = React.useState(readExpanded);
+  const [flyout, setFlyout] = React.useState<Group | null>(null);
+  // Lined up with its button: from the top, or (lower half) from the bottom.
+  const [flyoutPos, setFlyoutPos] = React.useState<{ top: number } | { bottom: number }>({ top: 0 });
+  const shellRef = React.useRef<HTMLDivElement>(null);
 
-  // Helper to handle tool selection and deactivate others
-  const handleToolClick = (tool: string) => {
+  const setExpanded = (v: boolean) => {
+    setExpandedState(v);
+    try {
+      localStorage.setItem(EXPANDED_KEY, v ? "1" : "0");
+    } catch {
+      /* private mode: not remembered */
+    }
+  };
+
+  const openFlyout = (g: Group, el: HTMLElement) => {
+    if (flyout === g) return setFlyout(null);
+    // Line the flyout up with the button that opened it (desktop rail).
+    const shell = shellRef.current?.getBoundingClientRect();
+    const btn = el.getBoundingClientRect();
+    if (shell) {
+      const lowerHalf = btn.top + btn.height / 2 > shell.top + shell.height / 2;
+      setFlyoutPos(lowerHalf ? { bottom: Math.max(0, shell.bottom - btn.bottom - 8) } : { top: Math.max(0, btn.top - shell.top - 8) });
+    }
+    setFlyout(g);
+    // The opacity slider lives in "Map style" now.
+    setShowOpacitySlider(false);
+  };
+
+  const pickTool = (tool: string) => {
     if (activeTool === tool) {
       setActiveTool("none");
     } else {
@@ -147,16 +213,11 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
         setMeasurementMode("none");
         clearMeasurements();
       }
-      setShowBasemaps(false);
-      setShowVisuals(false);
-      setShowOpacitySlider(false);
     }
-    if (!tool.startsWith("annotate")) {
-      setShowAnnotationTools(false);
-    }
+    setFlyout(null);
   };
 
-  const handleMeasureClick = (mode: Exclude<MeasurementMode2D, "none">) => {
+  const pickMeasure = (mode: Exclude<MeasurementMode2D, "none">) => {
     if (measurementMode === mode) {
       setMeasurementMode("none");
       clearMeasurements();
@@ -164,770 +225,427 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
       setMeasurementMode(mode);
       setActiveTool("none");
       clearMeasurements();
-      setShowAnnotationTools(false);
-      setShowBasemaps(false);
-      setShowVisuals(false);
-      setShowOpacitySlider(false);
     }
+    setFlyout(null);
   };
 
+  const stopMeasuring = () => {
+    setMeasurementMode("none");
+    clearMeasurements();
+    setFlyout(null);
+  };
+
+  // Panels docked on the right sit just left of the rail (--map-rail-w).
+  React.useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--map-rail-w", expanded ? "13rem" : "3.5rem");
+    return () => {
+      root.style.removeProperty("--map-rail-w");
+    };
+  }, [expanded]);
+
+  React.useEffect(() => {
+    if (!flyout) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFlyout(null);
+    };
+    const onDown = (e: PointerEvent) => {
+      if (shellRef.current && !shellRef.current.contains(e.target as Node)) setFlyout(null);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onDown);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onDown);
+    };
+  }, [flyout]);
+
+  // The group button shows the tool in use.
+  const drawTools: { id: string; name: string; icon: Icon }[] = [
+    { id: "select", name: "Select", icon: MousePointer2 },
+    ...(canAnnotate ? NOTE_TOOLS.map((t) => ({ ...t, name: `Note · ${t.name}` })) : []),
+    ...(canCreateBlock ? [{ id: "create_block", name: "Draw a building", icon: PlusCircle }] : []),
+    ...(canSetLocation ? [{ id: "set_location", name: "Set school location", icon: MapPinned }] : []),
+  ];
+  const activeDraw = drawTools.find((t) => t.id === activeTool);
+  const activeMeasure = MEASURE_TOOL_2D.find((m) => m.mode === measurementMode);
+  const measureIcon = activeMeasure ? VIEWER_TOOLS[activeMeasure.tool].icon : Ruler;
+  const styleChanged = basemapStyle !== "google" || kmzOpacity < 0.99 || visuals.brightness !== 1 || visuals.contrast !== 1 || visuals.saturation !== 1;
+
+  const flyoutTitle = flyout === "draw" ? "Draw & notes" : flyout === "measure" ? "Measure" : "Map style";
+
   return (
-    <TooltipProvider delayDuration={0}>
-      <div className="fixed inset-x-4 bottom-4 md:inset-auto md:right-4 md:top-4 md:bottom-4 z-30 flex flex-col items-end gap-3 pointer-events-none">
-        <Card
+    <TooltipProvider delayDuration={150}>
+      <div
+        ref={shellRef}
+        className="pointer-events-none fixed inset-x-3 bottom-3 z-30 flex flex-col items-end gap-3 md:inset-auto md:bottom-4 md:right-4 md:top-4"
+      >
+        <motion.nav
+          aria-label="Map tools"
+          initial={reduce ? false : { opacity: 0, x: 12 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.35, ease: EASE }}
           className={cn(
-            "bg-white/90 dark:bg-card/95 backdrop-blur-2xl rounded-[26px] md:rounded-[32px] border border-slate-200 dark:border-white/6 p-1.5 md:p-2",
-            "flex flex-row md:flex-col gap-1.5 md:gap-2",
-            "pointer-events-auto max-w-[calc(100vw-32px)] md:w-[56px] md:max-h-full items-center transition-all duration-500",
-            "selection:bg-transparent overflow-visible",
+            "pointer-events-auto flex max-w-full items-center rounded-[1.375rem] p-1.5 md:max-h-full md:rounded-[1.75rem] md:transition-[width] md:duration-300",
+            expanded ? "md:w-52" : "md:w-14",
+            "bg-white/60 ring-1 ring-white/40 backdrop-blur-2xl backdrop-saturate-150 dark:bg-[hsl(224_40%_7%)]/60 dark:ring-white/10",
+            "shadow-[0_12px_40px_-16px_rgba(15,23,42,0.4)]",
           )}
         >
-          <div className="flex flex-row md:flex-col gap-1.5 md:gap-2 items-center w-full overflow-x-auto md:overflow-y-auto no-scrollbar md:custom-scrollbar md:max-h-full py-1">
-            {/* Module 1: Session & System */}
-            <div className="flex flex-row md:flex-col gap-1 shrink-0">
-              {onClose && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      aria-label="Close viewer"
-                      variant="ghost"
-                      size="icon"
-                      className="h-10 w-10 rounded-2xl hover:bg-destructive/10 hover:text-destructive transition-all"
-                      onClick={onClose}
-                    >
-                      <div className="absolute inset-0 bg-linear-to-br from-primary/5 to-transparent opacity-0 group-hover/btn:opacity-100 transition-opacity" />
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                    Close Viewer
-                  </TooltipContent>
-                </Tooltip>
-              )}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                    <Button
-                      aria-label="Show school overview"
-                      variant={showBasicInfo ? "default" : "ghost"}
-                      size="icon"
-                      className={cn(
-                        "h-10 w-10 rounded-2xl",
-                        showBasicInfo
-                          ? "bg-primary text-white"
-                          : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-primary dark:hover:text-white",
-                      )}
-                      onClick={() => setShowBasicInfo(!showBasicInfo)}
-                    >
-                      <Info className="h-4 w-4" />
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                  Overview
-                </TooltipContent>
-              </Tooltip>
-              {onHelp && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      aria-label="Help & shortcuts (?)"
-                      variant="ghost"
-                      size="icon"
-                      className="h-10 w-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-primary dark:hover:text-white"
-                      onClick={onHelp}
-                    >
-                      <HelpCircle className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                    Help &amp; shortcuts (?)
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </div>
+          <div className="flex w-full flex-row items-center gap-1 overflow-x-auto no-scrollbar md:max-h-full md:flex-col md:items-stretch md:overflow-y-auto md:overflow-x-hidden md:py-0.5">
+            <RailButton
+              label={expanded ? "Hide names" : "Show names"}
+              icon={expanded ? PanelRightClose : PanelRightOpen}
+              expanded={expanded}
+              onClick={() => setExpanded(!expanded)}
+              className="hidden md:flex"
+            />
+            {onClose && <RailButton label="Close" icon={X} expanded={expanded} onClick={onClose} />}
+            <RailButton label="School overview" icon={Info} expanded={expanded} active={showBasicInfo} onClick={() => setShowBasicInfo(!showBasicInfo)} />
+            {onHelp && <RailButton label="Help" hint="?" icon={HelpCircle} expanded={expanded} onClick={onHelp} />}
 
-            <div className="hidden md:block h-px w-6 bg-white/10 shrink-0" />
-            <div className="md:hidden w-px h-6 bg-white/10 shrink-0" />
+            <Divider expanded={expanded} label="Explore" />
+            <RailButton label="Layers" icon={Layers} expanded={expanded} active={showNavigator} onClick={() => setShowNavigator((v) => !v)} />
+            <RailButton
+              label="Buildings"
+              icon={Building2}
+              expanded={expanded}
+              active={showBuildingsList}
+              badge={openReports || undefined}
+              badgeLabel={openReports ? `${openReports} with open reports` : undefined}
+              onClick={() => setShowBuildingsList((v) => !v)}
+            />
+            {onGallery && <RailButton label="Gallery" icon={Images} expanded={expanded} onClick={onGallery} />}
+            <RailButton label="Places" icon={MapPin} expanded={expanded} active={showPlacesOverlay} onClick={() => setShowPlacesOverlay(!showPlacesOverlay)} />
 
-            {/* Module 2: GIS Layers & Data */}
-            <div className="flex flex-row md:flex-col gap-1 shrink-0">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label="Toggle GIS layers panel"
-                    variant={showNavigator ? "default" : "ghost"}
-                    size="icon"
-                    className={cn(
-                      "h-10 w-10 rounded-2xl",
-                      showNavigator
-                        ? "bg-primary text-white"
-                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-primary dark:hover:text-white",
-                    )}
-                    onClick={() => setShowNavigator((v) => !v)}
-                  >
-                    <Layers className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                  GIS Layers
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label="Toggle buildings list"
-                    variant={showBuildingsList ? "default" : "ghost"}
-                    size="icon"
-                    className={cn(
-                      "h-10 w-10 rounded-2xl",
-                      showBuildingsList
-                        ? "bg-indigo-500/20 text-indigo-600 dark:text-indigo-400"
-                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-indigo-600 dark:hover:text-indigo-400",
-                    )}
-                    onClick={() => setShowBuildingsList((v) => !v)}
-                  >
-                    <Building2 className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                  Buildings Catalog
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label="Toggle places overlay"
-                    variant={showPlacesOverlay ? "default" : "ghost"}
-                    size="icon"
-                    className={cn(
-                      "h-10 w-10 rounded-2xl",
-                      showPlacesOverlay
-                        ? "bg-orange-500/20 text-orange-600 dark:text-orange-400"
-                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-orange-600 dark:hover:text-orange-400",
-                    )}
-                    onClick={() => setShowPlacesOverlay(!showPlacesOverlay)}
-                  >
-                    <MapPin className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                  Searchable Places
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label="Choose basemap"
-                    variant={showBasemaps ? "default" : "ghost"}
-                    size="icon"
-                    className={cn(
-                      "h-10 w-10 rounded-2xl transition-all",
-                      showBasemaps
-                        ? "bg-sky-500/20 text-sky-600 dark:text-sky-400"
-                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-sky-600 dark:hover:text-sky-400",
-                    )}
-                    onClick={() => {
-                      setShowBasemaps(!showBasemaps);
-                      setShowVisuals(false);
-                      setShowOpacitySlider(false);
-                      setShowAnnotationTools(false);
-                    }}
-                  >
-                    <Globe className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                  Basemap Library
-                </TooltipContent>
-              </Tooltip>
-            </div>
-
-            <div className="hidden md:block h-px w-6 bg-slate-200 dark:bg-white/10 shrink-0" />
-            <div className="md:hidden w-px h-6 bg-slate-200 dark:bg-white/10 shrink-0" />
-
-            {/* Module 3: Construction & Drawing */}
-            <div className="flex flex-row md:flex-col gap-1 shrink-0">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label="Navigate"
-                    variant={activeTool === "select" ? "default" : "ghost"}
-                    size="icon"
-                    className={cn(
-                      "h-10 w-10 rounded-2xl",
-                      activeTool === "select"
-                        ? "bg-blue-500/20 text-blue-600 dark:text-blue-400"
-                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-blue-600 dark:hover:text-blue-400",
-                    )}
-                    onClick={() => handleToolClick("select")}
-                  >
-                    <MousePointer2 className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                  Selection Tool
-                </TooltipContent>
-              </Tooltip>
-
-              {canAnnotate && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label={VIEWER_TOOLS.annotate.label}
-                    variant={showAnnotationTools ? "default" : "ghost"}
-                    size="icon"
-                    className={cn(
-                      "h-10 w-10 rounded-2xl transition-all",
-                      showAnnotationTools
-                        ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
-                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-emerald-600 dark:hover:text-emerald-400",
-                    )}
-                    onClick={() => {
-                      setShowAnnotationTools(!showAnnotationTools);
-                      setShowBasemaps(false);
-                      setShowVisuals(false);
-                      setShowOpacitySlider(false);
-                    }}
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                  {VIEWER_TOOLS.annotate.label}
-                </TooltipContent>
-              </Tooltip>
-              )}
-
-              {canCreateBlock && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label="Design new block"
-                    variant={
-                      activeTool === "create_block" ? "default" : "ghost"
-                    }
-                    size="icon"
-                    className={cn(
-                      "h-10 w-10 rounded-2xl transition-all",
-                      activeTool === "create_block"
-                        ? "bg-purple-500/20 text-purple-600 dark:text-purple-400"
-                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-purple-600 dark:hover:text-purple-400",
-                    )}
-                    onClick={() => handleToolClick("create_block")}
-                  >
-                    <PlusCircle className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                  Design New Block
-                </TooltipContent>
-              </Tooltip>
-              )}
-
-              {canSetLocation && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      aria-label="Set school location"
-                      variant={
-                        activeTool === "set_location" ? "default" : "ghost"
-                      }
-                      size="icon"
-                      className={cn(
-                        "h-10 w-10 rounded-2xl transition-all",
-                        activeTool === "set_location"
-                          ? "bg-rose-500/20 text-rose-600 dark:text-rose-400"
-                          : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-rose-600 dark:hover:text-rose-400",
-                      )}
-                      onClick={() => handleToolClick("set_location")}
-                    >
-                      <MapPinned className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                    Set School Location
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </div>
-
-            <div className="hidden md:block h-px w-6 bg-white/10 shrink-0" />
-            <div className="md:hidden w-px h-6 bg-white/10 shrink-0" />
-
-            {/* Module 4: Measuring — shared vocabulary (lib/viewer-tools) */}
+            <Divider expanded={expanded} label="Tools" />
+            <RailButton
+              label={activeDraw ? activeDraw.name : "Draw & notes"}
+              icon={activeDraw?.icon ?? PenLine}
+              expanded={expanded}
+              group
+              open={flyout === "draw"}
+              active={!!activeDraw && activeTool !== "none"}
+              onClick={(el) => openFlyout("draw", el)}
+            />
             {(canMeasure || setShowMeasureList) && (
-            <div className="flex flex-row md:flex-col gap-1 shrink-0 items-center">
-              {canMeasure &&
-                MEASURE_TOOL_2D.map(({ mode, tool }) => {
-                  const def = VIEWER_TOOLS[tool];
-                  const Icon = def.icon;
-                  const active = measurementMode === mode;
-                  return (
-                    <Tooltip key={mode}>
-                      <TooltipTrigger asChild>
-                        <Button
-                          aria-label={toolTitle(def)}
-                          aria-pressed={active}
-                          variant={active ? "default" : "ghost"}
-                          size="icon"
-                          className={cn(
-                            "h-10 w-10 rounded-2xl transition-all",
-                            active
-                              ? "bg-amber-500/20 text-amber-600 dark:text-amber-400"
-                              : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-amber-600 dark:hover:text-amber-400",
-                          )}
-                          onClick={() => handleMeasureClick(mode)}
-                        >
-                          <Icon className="h-4 w-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                        {toolTitle(def)}
-                      </TooltipContent>
-                    </Tooltip>
-                  );
-                })}
-
-              {setShowMeasureList && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      aria-label="Measurements list"
-                      aria-pressed={!!showMeasureList}
-                      variant={showMeasureList ? "default" : "ghost"}
-                      size="icon"
-                      className={cn(
-                        "relative h-10 w-10 rounded-2xl transition-all",
-                        showMeasureList
-                          ? "bg-amber-500/20 text-amber-600 dark:text-amber-400"
-                          : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-amber-600 dark:hover:text-amber-400",
-                      )}
-                      onClick={() => setShowMeasureList((v) => !v)}
-                    >
-                      <ListOrdered className="h-4 w-4" />
-                      {measureCount > 0 && (
-                        <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[8px] font-black text-white">
-                          {measureCount}
-                        </span>
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                    Measurements list
-                  </TooltipContent>
-                </Tooltip>
-              )}
-
-              {measurementMode !== "none" && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      aria-label="Cancel measuring (Esc)"
-                      variant="ghost"
-                      size="icon"
-                      className="h-10 w-10 rounded-xl text-destructive hover:bg-destructive/10"
-                      onClick={() => {
-                        setMeasurementMode("none");
-                        clearMeasurements();
-                      }}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent
-                    side="left"
-                    className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl"
-                  >
-                    Cancel measuring (Esc)
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </div>
-            )}
-
-            <div className="hidden md:block h-px w-6 bg-slate-200 dark:bg-white/10 shrink-0" />
-            <div className="md:hidden w-px h-6 bg-slate-200 dark:bg-white/10 shrink-0" />
-
-            {/* Module 5: View & Navigation */}
-            <div className="flex flex-row md:flex-col gap-1 shrink-0">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label="Adjust overlay opacity"
-                    variant={showOpacitySlider ? "default" : "ghost"}
-                    size="icon"
-                    className={cn(
-                      "h-10 w-10 rounded-2xl",
-                      showOpacitySlider
-                        ? "bg-primary text-white"
-                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-primary dark:hover:text-white",
-                    )}
-                    onClick={() => {
-                      setShowOpacitySlider(!showOpacitySlider);
-                      setShowBasemaps(false);
-                      setShowVisuals(false);
-                      setShowAnnotationTools(false);
-                    }}
-                  >
-                    <SlidersHorizontal className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                  Adjust Opacity
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label="Adjust image brightness and contrast"
-                    variant={showVisuals ? "default" : "ghost"}
-                    size="icon"
-                    className={cn(
-                      "h-10 w-10 rounded-2xl transition-all",
-                      showVisuals
-                        ? "bg-blue-500/20 text-blue-600 dark:text-blue-400"
-                        : "hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-blue-600 dark:hover:text-blue-400",
-                    )}
-                    onClick={() => {
-                      setShowVisuals(!showVisuals);
-                      setShowBasemaps(false);
-                      setShowOpacitySlider(false);
-                      setShowAnnotationTools(false);
-                    }}
-                  >
-                    <Satellite className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                  Visual Post-FX
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label="Zoom in"
-                    variant="ghost"
-                    size="icon"
-                    className="h-10 w-10 rounded-2xl hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-white/50 hover:text-primary dark:hover:text-white"
-                    onClick={onZoomIn}
-                  >
-                    <ZoomIn className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                  Zoom In
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label="Zoom out"
-                    variant="ghost"
-                    size="icon"
-                    className="h-10 w-10 rounded-2xl"
-                    onClick={onZoomOut}
-                  >
-                    <ZoomOut className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                  Zoom Out
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label="Fit map to school extent"
-                    variant="ghost"
-                    size="icon"
-                    className="h-10 w-10 rounded-2xl"
-                    onClick={onFitExtent}
-                  >
-                    <Search className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                  Fit to Extent
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label="Export map as PNG"
-                    variant="ghost"
-                    size="icon"
-                    className="h-10 w-10 rounded-2xl"
-                    onClick={onExportPng}
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                  Export Map Image
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label="Reset to home view"
-                    variant="ghost"
-                    size="icon"
-                    className="h-10 w-10 rounded-2xl"
-                    onClick={onHome}
-                  >
-                    <Home className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                  Reset Home View
-                </TooltipContent>
-              </Tooltip>
-
-              {on3DView && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      aria-label="Open 3D viewer"
-                      variant="ghost"
-                      size="icon"
-                      className="h-10 w-10 rounded-2xl bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-white transition-all group"
-                      onClick={on3DView}
-                    >
-                      <Globe className="h-4 w-4 group-hover:rotate-12 transition-transform" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left" className="hidden md:flex items-center px-3 py-1.5 rounded-xl bg-slate-900/90 backdrop-blur-xl border border-white/6 text-white text-xs font-medium shadow-xl">
-                    3D Digital Twin
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </div>
-          </div>
-        </Card>
-
-        {/* Popovers */}
-        <div className="relative pointer-events-auto">
-          {/* Annotation Type Popover */}
-          {canAnnotate && showAnnotationTools && (
-            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-460px] md:right-16 mb-3 md:mb-0 bg-white/95 dark:bg-card/95 backdrop-blur-2xl rounded-3xl border border-slate-200 dark:border-white/6 p-3 animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-44 flex flex-col gap-2">
-              <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-muted-foreground/60 mb-1 px-1">
-                Toolbox
-              </div>
-              <div className="grid grid-cols-1 gap-1">
-                {[
-                  {
-                    id: "annotate_point",
-                    name: "Location Pin",
-                    icon: <MousePointer className="h-3.5 w-3.5" />,
-                  },
-                  {
-                    id: "annotate_line",
-                    name: "Path / Boundary",
-                    icon: <PenTool className="h-3.5 w-3.5" />,
-                  },
-                  {
-                    id: "annotate_poly",
-                    name: "Area Polygon",
-                    icon: <Box className="h-3.5 w-3.5" />,
-                  },
-                  {
-                    id: "annotate_text",
-                    name: "Text Label",
-                    icon: <Type className="h-3.5 w-3.5" />,
-                  },
-                ].map((tool) => (
-                  <Button
-                    key={tool.id}
-                    variant={activeTool === tool.id ? "default" : "outline"}
-                    size="sm"
-                    className={cn(
-                      "flex items-center justify-start gap-3 h-10 px-3 rounded-xl border-slate-100 dark:border-white/4",
-                      activeTool === tool.id
-                        ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
-                        : "bg-transparent text-slate-600 dark:text-white/70 hover:bg-slate-50 dark:hover:bg-white/5",
-                    )}
-                    onClick={() => {
-                      handleToolClick(tool.id);
-                      setShowAnnotationTools(false);
-                    }}
-                  >
-                    {tool.icon}
-                    <span className="text-[10px] font-black uppercase tracking-tight">
-                      {tool.name}
-                    </span>
-                  </Button>
-                ))}
-                <div className="h-px bg-slate-100 dark:bg-white/5 my-1" />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-[9px] font-black uppercase text-rose-500 dark:text-rose-400 hover:bg-rose-500/10 h-9 rounded-xl transition-colors"
-                  onClick={() => {
-                    setActiveTool("none");
-                    setShowAnnotationTools(false);
-                  }}
-                >
-                  Deactivate Tools
-                </Button>
-              </div>
-            </Card>
-          )}
-
-          {/* Basemap Switcher Popover */}
-          {showBasemaps && (
-            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-440px] md:right-4 mb-3 md:mb-0 bg-white/95 dark:bg-card/95 backdrop-blur-2xl rounded-3xl border border-slate-200 dark:border-white/6 p-4 animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-64">
-              <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-muted-foreground/60 mb-4">
-                Basemap Library
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  {
-                    id: "google",
-                    name: "Google",
-                    icon: <Globe className={cn("h-4 w-4", basemapStyle === "google" ? "text-white" : "text-sky-500")} />,
-                  },
-                  {
-                    id: "satellite",
-                    name: "Sentinel",
-                    icon: <Satellite className="h-4 w-4" />,
-                  },
-                  {
-                    id: "street",
-                    name: "Roadmap",
-                    icon: <MapIcon2 className="h-4 w-4" />,
-                  },
-                  {
-                    id: "dark",
-                    name: "Dark Sky",
-                    icon: <Moon className="h-4 w-4" />,
-                  },
-                  {
-                    id: "offline",
-                    name: "Local Cache",
-                    icon: <Download className="h-4 w-4" />,
-                  },
-                  {
-                    id: "ghost",
-                    name: "Ultra Lite",
-                    icon: <Layers className="h-4 w-4" />,
-                  },
-                ].map((bm) => (
-                  <Button
-                    key={bm.id}
-                    variant={basemapStyle === bm.id ? "default" : "outline"}
-                    className={cn(
-                      "flex flex-col items-center gap-2 h-auto py-3 rounded-2xl border-slate-100 dark:border-white/4 transition-all text-slate-600 dark:text-white/70",
-                      basemapStyle === bm.id
-                        ? "ring-2 ring-primary bg-primary text-white"
-                        : "hover:bg-slate-50 dark:hover:bg-white/5",
-                    )}
-                    onClick={() => switchBasemap(bm.id)}
-                  >
-                    {bm.icon}
-                    <span className="text-[9px] font-bold uppercase tracking-tighter">
-                      {bm.name}
-                    </span>
-                  </Button>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          {/* Opacity Slider Popover */}
-          {showOpacitySlider && (
-            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-100px] md:right-4 mb-3 md:mb-0 bg-white/95 dark:bg-card/95 backdrop-blur-2xl rounded-2xl border border-slate-200 dark:border-white/6 p-5 animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-56">
-              <div className="flex items-center justify-between mb-4 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-muted-foreground/60">
-                <span>Layer Opacity</span>
-                <span className="tabular-nums font-mono text-primary bg-primary/10 px-2 py-0.5 rounded-lg">
-                  {Math.round(kmzOpacity * 100)}%
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={kmzOpacity}
-                onChange={(e) => setKmzOpacity(parseFloat(e.target.value))}
-                className="w-full h-1.5 bg-slate-100 dark:bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary"
+              <RailButton
+                label={activeMeasure ? VIEWER_TOOLS[activeMeasure.tool].label : "Measure"}
+                icon={measureIcon}
+                expanded={expanded}
+                group
+                open={flyout === "measure"}
+                active={!!activeMeasure || !!showMeasureList}
+                badge={measureCount || undefined}
+                badgeLabel={measureCount ? `${measureCount} measurements` : undefined}
+                onClick={(el) => openFlyout("measure", el)}
               />
-            </Card>
-          )}
+            )}
+            <RailButton
+              label="Map style"
+              icon={Palette}
+              expanded={expanded}
+              group
+              open={flyout === "style"}
+              dot={styleChanged}
+              onClick={(el) => openFlyout("style", el)}
+            />
 
-          {/* Visual Adjustments Popover */}
-          {showVisuals && (
-            <Card className="absolute bottom-full right-0 md:bottom-auto md:top-[-40px] md:right-4 mb-3 md:mb-0 bg-white/95 dark:bg-card/95 backdrop-blur-3xl rounded-3xl border border-slate-200 dark:border-white/6 p-5 animate-in slide-in-from-bottom md:slide-in-from-right-4 duration-300 w-64 flex flex-col gap-5">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/4 pb-3">
-                <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-2">
-                  <Satellite className="h-3 w-3" />
-                  Visual Post-FX
-                </span>
+            <Divider expanded={expanded} label="View" />
+            <RailButton label="Zoom in" icon={ZoomIn} expanded={expanded} onClick={onZoomIn} />
+            <RailButton label="Zoom out" icon={ZoomOut} expanded={expanded} onClick={onZoomOut} />
+            <RailButton label="Reset view" icon={Home} expanded={expanded} onClick={onHome} />
+            <RailButton label="Save as image" icon={Download} expanded={expanded} onClick={onExportPng} />
+            {on3DView && <RailButton label="Open in 3D" icon={Box} expanded={expanded} tone="brand" onClick={on3DView} />}
+          </div>
+        </motion.nav>
+
+        {/* Flyout: beside the rail on desktop (lined up with its button), above the bar on phones */}
+        <AnimatePresence>
+          {flyout && (
+            <motion.div
+              key={flyout}
+              role="dialog"
+              aria-label={flyoutTitle}
+              initial={reduce ? { opacity: 0 } : { opacity: 0, x: 10, scale: 0.97 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={reduce ? { opacity: 0 } : { opacity: 0, x: 8, scale: 0.97, transition: { duration: 0.12 } }}
+              transition={{ duration: 0.22, ease: EASE }}
+              style={"top" in flyoutPos ? { ["--fly-top" as string]: `${flyoutPos.top}px` } : { ["--fly-bottom" as string]: `${flyoutPos.bottom}px` }}
+              className={cn(
+                "pointer-events-auto absolute bottom-17 right-0 max-h-[70vh] w-[min(17rem,calc(100vw-1.5rem))] origin-bottom-right overflow-y-auto rounded-3xl p-2 no-scrollbar",
+                "top" in flyoutPos ? "md:bottom-auto md:top-(--fly-top) md:origin-top-right" : "md:top-auto md:bottom-(--fly-bottom)",
+                expanded ? "md:right-55" : "md:right-17",
+                "bg-white/60 ring-1 ring-white/40 backdrop-blur-2xl backdrop-saturate-150 dark:bg-[hsl(224_40%_8%)]/60 dark:ring-white/10",
+                "shadow-[0_20px_50px_-20px_rgba(15,23,42,0.45)]",
+              )}
+            >
+              <div className="flex items-center justify-between px-2 pb-1 pt-1">
+                <p className="text-xs text-slate-700 dark:text-white/50">{flyoutTitle}</p>
                 <button
-                  onClick={() =>
-                    setVisuals({ brightness: 1, contrast: 1, saturation: 1 })
-                  }
-                  className="text-[9px] font-black text-slate-400 dark:text-muted-foreground hover:text-primary dark:hover:text-white uppercase transition-colors"
+                  type="button"
+                  onClick={() => setFlyout(null)}
+                  aria-label="Close"
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-slate-600 hover:bg-slate-900/5 hover:text-slate-800 dark:text-white/40 dark:hover:bg-white/8 dark:hover:text-white"
                 >
-                  Default
+                  <X className="h-3.5 w-3.5" aria-hidden />
                 </button>
               </div>
 
-              <div className="space-y-5">
-                {[
-                  {
-                    label: "Brightness",
-                    key: "brightness",
-                    icon: <Globe className="h-3 w-3" />,
-                  },
-                  {
-                    label: "Contrast",
-                    key: "contrast",
-                    icon: <SlidersHorizontal className="h-3 w-3" />,
-                  },
-                  {
-                    label: "Saturation",
-                    key: "saturation",
-                    icon: <Square className="h-3 w-3" />,
-                  },
-                ].map((fx) => (
-                  <div key={fx.key} className="space-y-2.5">
-                    <div className="flex justify-between items-center text-[9px] font-black text-slate-500 dark:text-white/40 uppercase tracking-widest">
-                      <span className="flex items-center gap-2">
-                        {fx.icon} {fx.label}
-                      </span>
-                      <span className="text-slate-900 dark:text-white/80 tabular-nums">
-                        {visuals[fx.key as keyof typeof visuals].toFixed(2)}x
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0.5"
-                      max="2.0"
-                      step="0.05"
-                      value={visuals[fx.key as keyof typeof visuals]}
-                      onChange={(e) =>
-                        setVisuals((v) => ({
-                          ...v,
-                          [fx.key]: parseFloat(e.target.value),
-                        }))
-                      }
-                      className="w-full h-1.5 bg-slate-100 dark:bg-white/5 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              {flyout === "draw" && (
+                <ul className="space-y-0.5">
+                  {drawTools.map((t, i) => (
+                    <FlyItem key={t.id} index={i} icon={t.icon} label={t.name} active={activeTool === t.id} onClick={() => pickTool(t.id)} />
+                  ))}
+                  {activeTool !== "none" && activeTool !== "select" && (
+                    <FlyItem index={drawTools.length} icon={X} label="Stop" muted onClick={() => pickTool(activeTool)} />
+                  )}
+                </ul>
+              )}
+
+              {flyout === "measure" && (
+                <ul className="space-y-0.5">
+                  {canMeasure &&
+                    MEASURE_TOOL_2D.map(({ mode, tool }, i) => {
+                      const def = VIEWER_TOOLS[tool];
+                      return <FlyItem key={mode} index={i} icon={def.icon} label={def.label} hint={def.shortcut?.toUpperCase()} active={measurementMode === mode} onClick={() => pickMeasure(mode)} />;
+                    })}
+                  {setShowMeasureList && (
+                    <FlyItem
+                      index={3}
+                      icon={ListOrdered}
+                      label="Saved measurements"
+                      hint={measureCount ? String(measureCount) : undefined}
+                      active={!!showMeasureList}
+                      onClick={() => {
+                        setShowMeasureList((v) => !v);
+                        setFlyout(null);
+                      }}
                     />
+                  )}
+                  {measurementMode !== "none" && <FlyItem index={4} icon={Trash2} label="Stop measuring" hint="Esc" muted onClick={stopMeasuring} />}
+                </ul>
+              )}
+
+              {flyout === "style" && (
+                <div className="space-y-4 px-1 pb-1">
+                  <div className="grid grid-cols-3 gap-1">
+                    {BASEMAPS.map((bm) => {
+                      const on = basemapStyle === bm.id;
+                      return (
+                        <button
+                          key={bm.id}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => switchBasemap(bm.id)}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 rounded-2xl py-2.5 text-[11px] transition-colors",
+                            on ? "bg-primary text-white" : "text-slate-600 hover:bg-slate-900/5 dark:text-white/70 dark:hover:bg-white/8",
+                          )}
+                        >
+                          <bm.icon className="h-4 w-4" aria-hidden />
+                          {bm.name}
+                        </button>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
-            </Card>
+                  <Slider label="Site map opacity" value={kmzOpacity} min={0} max={1} step={0.01} onChange={setKmzOpacity} />
+                  {VISUALS.map((fx) => (
+                    <Slider key={fx.key} label={fx.label} value={visuals[fx.key]} min={0.5} max={2} step={0.05} onChange={(v) => setVisuals((cur) => ({ ...cur, [fx.key]: v }))} />
+                  ))}
+                  {styleChanged && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        switchBasemap("google");
+                        setKmzOpacity(1);
+                        setVisuals({ brightness: 1, contrast: 1, saturation: 1 });
+                      }}
+                      className="w-full rounded-full py-2 text-xs text-slate-700 transition-colors hover:bg-slate-900/5 hover:text-slate-900 dark:text-white/55 dark:hover:bg-white/8 dark:hover:text-white"
+                    >
+                      Reset style
+                    </button>
+                  )}
+                </div>
+              )}
+            </motion.div>
           )}
-        </div>
+        </AnimatePresence>
       </div>
     </TooltipProvider>
   );
 };
+
+function Divider({ expanded, label }: { expanded: boolean; label: string }) {
+  return expanded ? (
+    <span className="hidden px-3 pb-0.5 pt-2 text-[11px] text-slate-600 md:block dark:text-white/35">{label}</span>
+  ) : (
+    <span className="mx-0.5 h-6 w-px shrink-0 self-center bg-slate-900/8 md:mx-0 md:my-0.5 md:h-px md:w-6 dark:bg-white/10" aria-hidden />
+  );
+}
+
+function Slider({ label, value, min, max, step, onChange }: { label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void }) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="flex items-center justify-between text-xs">
+        <span className="text-slate-600 dark:text-white/65">{label}</span>
+        <span className="tabular-nums text-slate-900 dark:text-white">{Math.round(value * 100)}%</span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-slate-900/8 accent-primary dark:bg-white/10"
+      />
+    </label>
+  );
+}
+
+function FlyItem({
+  icon: IconCmp,
+  label,
+  hint,
+  active,
+  muted,
+  index,
+  onClick,
+}: {
+  icon: Icon;
+  label: string;
+  hint?: string;
+  active?: boolean;
+  muted?: boolean;
+  index: number;
+  onClick: () => void;
+}) {
+  const reduce = useReducedMotion();
+  return (
+    <motion.li initial={reduce ? false : { opacity: 0, x: 6 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2, delay: index * 0.025, ease: EASE }}>
+      <button
+        type="button"
+        aria-pressed={active}
+        onClick={onClick}
+        className={cn(
+          "group flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+          active
+            ? "bg-primary text-white"
+            : muted
+              ? "text-slate-700 hover:bg-slate-900/5 hover:text-slate-900 dark:text-white/55 dark:hover:bg-white/8 dark:hover:text-white"
+              : "text-slate-800 hover:bg-slate-900/5 dark:text-white/80 dark:hover:bg-white/8",
+        )}
+      >
+        <span
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors",
+            active ? "bg-white/20" : "bg-white/60 text-slate-700 group-hover:text-primary dark:bg-white/6 dark:text-white/60",
+          )}
+          aria-hidden
+        >
+          <IconCmp className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        {hint && (
+          <kbd className={cn("rounded px-1.5 font-sans text-[10px]", active ? "bg-white/20 text-white" : "bg-slate-900/5 text-slate-600 dark:bg-white/8 dark:text-white/45")}>{hint}</kbd>
+        )}
+      </button>
+    </motion.li>
+  );
+}
+
+function RailButton({
+  label,
+  hint,
+  icon: IconCmp,
+  onClick,
+  expanded,
+  active,
+  open,
+  group,
+  badge,
+  badgeLabel,
+  dot,
+  tone,
+  className,
+}: {
+  label: string;
+  hint?: string;
+  icon: Icon;
+  onClick: (el: HTMLButtonElement) => void;
+  expanded: boolean;
+  active?: boolean;
+  /** Its flyout is open. */
+  open?: boolean;
+  /** Opens a flyout of tools. */
+  group?: boolean;
+  badge?: number;
+  badgeLabel?: string;
+  /** A small "changed" marker. */
+  dot?: boolean;
+  tone?: "brand";
+  className?: string;
+}) {
+  const reduce = useReducedMotion();
+  const btn = (
+    <motion.button
+      type="button"
+      aria-label={badgeLabel ? `${label}, ${badgeLabel}` : label}
+      aria-pressed={group ? undefined : active !== undefined ? !!active : undefined}
+      aria-expanded={group ? !!open : undefined}
+      aria-haspopup={group ? "dialog" : undefined}
+      onClick={(e) => onClick(e.currentTarget)}
+      whileTap={reduce ? undefined : { scale: 0.94 }}
+      className={cn(
+        "relative flex h-10 shrink-0 items-center gap-3 rounded-2xl transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+        expanded ? "w-10 md:w-full md:justify-start md:px-3" : "w-10 justify-center",
+        active
+          ? "bg-primary text-white"
+          : open
+            ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-blue-200"
+            : tone === "brand"
+              ? "bg-primary/10 text-primary hover:bg-primary hover:text-white dark:text-blue-300"
+              : "text-slate-700 hover:bg-slate-900/5 hover:text-slate-900 dark:text-white/55 dark:hover:bg-white/8 dark:hover:text-white",
+        !expanded && "justify-center",
+        className,
+      )}
+    >
+      <span className="relative flex shrink-0 items-center justify-center">
+        <IconCmp className="h-4 w-4" />
+        {/* A group button carries a tiny corner mark: it opens more tools. */}
+        {group && !expanded && <span className={cn("absolute -bottom-1.5 -right-1.5 h-0 w-0 border-l-[4px] border-t-[4px] border-l-transparent", active ? "border-t-white/70" : "border-t-current opacity-50")} style={{ transform: "rotate(-45deg)" }} aria-hidden />}
+      </span>
+      {expanded && <span className="hidden min-w-0 flex-1 truncate text-left text-[13px] md:block">{label}</span>}
+      {expanded && hint && <kbd className="hidden rounded bg-slate-900/5 px-1.5 font-sans text-[10px] text-slate-600 md:inline dark:bg-white/8 dark:text-white/45">{hint}</kbd>}
+      {expanded && group && <ChevronRight className={cn("hidden h-3.5 w-3.5 shrink-0 opacity-60 transition-transform md:block", open && "rotate-90")} aria-hidden />}
+      {badge != null && (
+        <motion.span
+          key={badge}
+          initial={reduce ? false : { scale: 0.4 }}
+          animate={{ scale: 1 }}
+          transition={{ type: "spring", stiffness: 500, damping: 22 }}
+          className={cn(
+            "flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] tabular-nums text-white ring-2 ring-white dark:ring-[hsl(224_40%_7%)]",
+            expanded ? "absolute -right-0.5 -top-0.5 md:static md:ring-0" : "absolute -right-0.5 -top-0.5",
+            active && "bg-white text-primary",
+          )}
+          aria-hidden
+        >
+          {badge > 99 ? "99+" : badge}
+        </motion.span>
+      )}
+      {dot && !badge && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />}
+    </motion.button>
+  );
+  if (expanded) return <span className="contents">{btn}</span>;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{btn}</TooltipTrigger>
+      <TooltipContent side="left" className="hidden text-xs md:block">
+        {label}
+        {hint && <span className="ml-1.5 opacity-60">{hint}</span>}
+      </TooltipContent>
+    </Tooltip>
+  );
+}

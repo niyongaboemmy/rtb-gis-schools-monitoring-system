@@ -27,13 +27,13 @@ const survey: SurveyItem[] = [
 describe("<SurveyCard />", () => {
   it("matches records to checklist items and opens groups that need attention", () => {
     wrap(<SurveyCard facilities={facilities} survey={survey} complianceScore={75} />);
-    expect(screen.getByText("1 of 3 items surveyed")).toBeInTheDocument();
+    expect(screen.getByText("1 of 3 items checked")).toBeInTheDocument();
     const wash = screen.getByText("Washrooms").closest("details")!;
     const lib = screen.getByText("Library").closest("details")!;
     expect(wash).toHaveAttribute("open");
     expect(lib).not.toHaveAttribute("open");
     expect(within(wash).getByText("“Tap leaks”")).toBeInTheDocument();
-    expect(within(wash).getAllByText("Not surveyed")).toHaveLength(1);
+    expect(within(wash).getAllByText("Not checked yet")).toHaveLength(1);
   });
 });
 

@@ -78,6 +78,13 @@ export class School {
   @Column({ type: 'decimal', precision: 10, scale: 7 })
   longitude: number;
 
+  /** Where latitude / longitude came from (see school-location.rules.ts). */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  locationSource: 'manual' | 'kmz' | 'glb' | 'seed' | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  locationUpdatedAt: Date | null;
+
   @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
   elevation: number;
 

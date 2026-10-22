@@ -74,3 +74,16 @@ export const BAND_HEX: Record<PriorityKey, string> = {
   medium: "#f59e0b",
   low: "#10b981",
 };
+
+/**
+ * Plain names for the six score parts, shown everywhere a factor is named.
+ * `short` fits tight spaces (cards, chips); `full` is used in tables and help.
+ */
+export const FACTOR_LABEL: Record<ComponentKey, { full: string; short: string }> = {
+  infrastructure: { full: "Building condition", short: "Buildings" },
+  buildingAge: { full: "Building age", short: "Building age" },
+  facilityCompliance: { full: "Facilities checklist", short: "Facilities" },
+  accessibility: { full: "Road access", short: "Road access" },
+  population: { full: "Nearby population", short: "Population" },
+  resolution: { full: "Problems fixed", short: "Problems fixed" },
+};

@@ -9,6 +9,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "school.update": "Updated school",
   "school.delete": "Deleted school",
   "school.change_request": "Requested a school change",
+  "school.location_update": "Changed a school location",
   "school.survey_initialize": "Started facility survey",
   "school.survey_update": "Updated facility survey",
   "school.survey_item_update": "Updated a survey item",

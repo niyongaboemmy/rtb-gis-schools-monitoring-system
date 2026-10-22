@@ -166,6 +166,13 @@ export class ReportsService {
       .leftJoinAndSelect('report.school', 'school')
       .leftJoinAndSelect('report.building', 'building')
       .leftJoinAndSelect('report.reporter', 'reporter')
+      .leftJoin('report.reviewer', 'reviewer')
+      .addSelect([
+        'reviewer.id',
+        'reviewer.firstName',
+        'reviewer.lastName',
+        'reviewer.email',
+      ])
       .orderBy('report.createdAt', 'DESC')
       .take(limit)
       .skip(skip);
@@ -213,7 +220,7 @@ export class ReportsService {
   async findOne(id: string, scope?: AccessScope): Promise<IssueReport> {
     const report = await this.reportRepository.findOne({
       where: { id },
-      relations: ['school', 'building', 'reporter'],
+      relations: ['school', 'building', 'reporter', 'reviewer'],
     });
     if (!report) {
       throw new NotFoundException(`Issue report with ID "${id}" not found`);
@@ -243,7 +250,11 @@ export class ReportsService {
     id: string,
     status: ReportStatus,
     scope?: AccessScope,
-    actor?: { role?: { name?: string; permissions?: string[] } | null },
+    actor?: {
+      id?: string;
+      role?: { name?: string; permissions?: string[] } | null;
+    },
+    note?: string,
   ): Promise<IssueReport> {
     const report = await this.findOne(id, scope);
     if (
@@ -256,6 +267,12 @@ export class ReportsService {
       );
     }
     applyStatus(report, status);
+    // Every review is recorded: who, when and (optionally) why.
+    report.reviewNote = note?.trim() ? note.trim() : null;
+    report.reviewedAt = new Date();
+    report.reviewedById = actor?.id ?? null;
+    // Set the relation too: a loaded `reviewer` would otherwise win on save.
+    report.reviewer = actor?.id ? ({ id: actor.id } as User) : null;
     const saved = await this.reportRepository.save(report);
     this.rescore(saved.schoolId);
 

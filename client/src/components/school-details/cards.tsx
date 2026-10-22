@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Building2, Check, Copy, Globe, LandPlot, Mail, MapPin, Phone, Route, UserRound, Users } from "lucide-react";
 import { cn } from "../../lib/utils";
-import { formatArea, formatHectares, formatNumber, formatPercent } from "../../lib/format";
+import { formatArea, formatDate, formatHectares, formatNumber, formatPercent } from "../../lib/format";
+import { locationSourceLabel, schoolPoint } from "../../lib/school-location";
 import { label } from "../../lib/labels";
 import { MetricInfo } from "../metric-help/MetricInfo";
 import type { FacilityBuilding, SchoolMetrics } from "../dashboard/types";
@@ -33,10 +34,11 @@ export function LocationCard({
   index?: number;
 }) {
   const [copied, setCopied] = useState(false);
-  const lat = num(s.latitude);
-  const lng = num(s.longitude);
+  // Only a real point in Rwanda counts (not 0,0 or swapped values).
+  const point = schoolPoint(s);
   const site = SITE_MAP[s.kmzStatus ?? "pending"] ?? SITE_MAP.pending;
-  const coords = lat != null && lng != null ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : null;
+  const coords = point ? `${formatNumber(point.lat, 6)}, ${formatNumber(point.lng, 6)}` : null;
+  const source = locationSourceLabel(s.locationSource);
 
   return (
     <GlassCard title="Location" icon={MapPin} index={index}>
@@ -68,10 +70,16 @@ export function LocationCard({
               aria-label={copied ? "Coordinates copied" : "Copy coordinates"}
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-900/6 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 dark:text-white/50 dark:hover:bg-white/8"
             >
-              {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
+              {copied ? <Check className="h-3.5 w-3.5 text-primary" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
             </button>
           )}
         </div>
+        {coords && source && (
+          <p className="mt-1 text-[11px] text-slate-500 dark:text-white/45">
+            {source}
+            {s.locationUpdatedAt && ` · ${formatDate(s.locationUpdatedAt)}`}
+          </p>
+        )}
         <p className="mt-1 text-[11px] text-slate-500 dark:text-white/45">
           Elevation {num(s.elevation) != null ? `${formatNumber(num(s.elevation))} m` : <Missing>not recorded</Missing>}
         </p>

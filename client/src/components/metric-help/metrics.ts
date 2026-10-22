@@ -35,6 +35,8 @@ const OVERVIEW = "GET /api/v1/analytics/overview";
 const SCHOOL_METRICS = "GET /api/v1/analytics/schools/:id/metrics";
 const SCHOOL_ONLY = "The selected school (any status), if it is within the user's access level.";
 const NATIONAL = "National dashboard";
+const SCHOOL_REPORTING = "School Reporting (overview)";
+const REPORTING_OVERVIEW = "GET /api/v1/schools/dashboard/reporting/overview";
 const SCHOOL_DASH = "School dashboard";
 const DECISIONS = "Decision queue (Analytics ▸ Decisions)";
 const NEUTRAL =
@@ -64,7 +66,7 @@ export const METRICS = {
       "Recalculated automatically whenever the school profile, its buildings, surveys, Issue Reports or population data change, and nightly. Viewing a dashboard never recalculates. The share of the score that comes from measured data (coverage) is shown next to it.",
   },
   "school.priority": {
-    title: "Intervention Priority",
+    title: "Priority",
     definition: "How urgently the school needs support, from its School Condition Score.",
     formula: "Critical < 35 · High 35–54 · Medium 55–74 · Low ≥ 75.",
     sources: ["decision_assessments.priorityLevel"],
@@ -75,7 +77,7 @@ export const METRICS = {
     shownOn: [SCHOOL_DASH, DECISIONS],
   },
   "school.urgencyMonths": {
-    title: "Months to Intervention",
+    title: "Act within (months)",
     definition: "Recommended time before action is taken, from the score band.",
     formula: "Score < 35 → 0 (now) · < 45 → 3 · < 55 → 6 · < 65 → 12 · < 75 → 18 · otherwise 36 months.",
     sources: ["decision_assessments.urgencyMonths"],
@@ -86,7 +88,7 @@ export const METRICS = {
     shownOn: [SCHOOL_DASH, DECISIONS],
   },
   "component.infrastructure": {
-    title: "Infrastructure",
+    title: "Building condition",
     definition: "Average condition of the school's assessed buildings. Weight 35%.",
     formula:
       "Mean over assessed buildings of: Good 100 · Fair 70 · Poor 30 · Critical 10. Rounded.",
@@ -99,7 +101,7 @@ export const METRICS = {
     shownOn: [SCHOOL_DASH, DECISIONS, NATIONAL],
   },
   "component.buildingAge": {
-    title: "Building Age Score",
+    title: "Building age",
     definition:
       "A 0–100 score from the average age of the buildings. Newer buildings score higher. Weight 25%. (Replaces “Depreciation”.)",
     formula:
@@ -113,7 +115,7 @@ export const METRICS = {
     notes: "This is not accounting depreciation. It only reflects age.",
   },
   "component.facilityCompliance": {
-    title: "Facility Compliance",
+    title: "Facilities checklist",
     definition: "How many facility survey items are compliant. Weight 15%.",
     formula:
       "Mean over all survey items of: Compliant 100 · Partially Compliant 50 · Non-Compliant 0. Rounded.",
@@ -125,7 +127,7 @@ export const METRICS = {
     shownOn: [SCHOOL_DASH, DECISIONS, NATIONAL],
   },
   "component.accessibility": {
-    title: "Accessibility",
+    title: "Road access (score part)",
     definition: "The road-access percentage recorded for the school. Weight 10%.",
     formula: "Accessibility = schools.roadStatusPercentage, kept between 0 and 100.",
     sources: ["schools.roadStatusPercentage"],
@@ -136,7 +138,7 @@ export const METRICS = {
     shownOn: [SCHOOL_DASH, DECISIONS, NATIONAL],
   },
   "component.population": {
-    title: "Population Pressure",
+    title: "Nearby population",
     definition:
       "Capacity headroom compared with the school-age population within 2 km. Higher means less pressure. Weight 10%.",
     formula:
@@ -153,7 +155,7 @@ export const METRICS = {
     shownOn: [SCHOOL_DASH, DECISIONS, NATIONAL],
   },
   "component.resolution": {
-    title: "Resolution Rate (component)",
+    title: "Problems fixed (score part)",
     definition:
       "How reliably the school's Issue Reports get resolved. Weight 5%.",
     formula:
@@ -166,7 +168,7 @@ export const METRICS = {
     shownOn: [SCHOOL_DASH, DECISIONS],
   },
   "school.dataCompleteness": {
-    title: "Data Completeness",
+    title: "Profile completeness",
     definition: "Share of 10 key profile items that are filled in.",
     formula:
       "Items: assessed buildings (not bare KMZ stubs), enrolment, teachers, province, district, road status, established year, a facility survey, population data with a school-age count, a processed site map. Completeness = filled ÷ 10 × 100.",
@@ -203,7 +205,7 @@ export const METRICS = {
     notes: "The national total uses the same rule, so it equals the sum of the school figures.",
   },
   "school.capacityUtilisation": {
-    title: "Capacity Utilisation",
+    title: "Capacity used",
     definition: "How full the school is compared with its seat capacity. Above 100% means over capacity.",
     formula: "Σ programme enrolment ÷ Σ programme capacity × 100, one decimal. Both from the programme list, never mixed with the school-level total.",
     sources: ["schools.educationPrograms[].totalStudents", "schools.educationPrograms[].capacity"],
@@ -287,7 +289,7 @@ export const METRICS = {
 
   // ── Issue Reports (school) ─────────────────────────────────────────────────
   "reports.resolutionRate": {
-    title: "Resolution Rate",
+    title: "Share fixed",
     definition: "Share of this school's Issue Reports that are Resolved.",
     formula: "round(Resolved ÷ all Issue Reports × 100).",
     sources: ["issue_reports.status"],
@@ -300,7 +302,7 @@ export const METRICS = {
       "The Resolution Rate score component is different: it only counts reports old enough to have been resolved (see Resolution Rate (component)). The overview card and the Issue Reports tab show the same figure.",
   },
   "reports.openIssues": {
-    title: "Open issues",
+    title: "Still open",
     definition: "Issue Reports not yet Resolved.",
     formula: "Pending + Needs Intervention + Failed.",
     sources: ["issue_reports.status"],
@@ -311,7 +313,7 @@ export const METRICS = {
     shownOn: [SCHOOL_DASH],
   },
   "reports.resolved": {
-    title: "Resolved",
+    title: "Fixed",
     definition: "Issue Reports that have been fixed.",
     formula: "Count of reports with status Resolved.",
     sources: ["issue_reports.status"],
@@ -322,7 +324,7 @@ export const METRICS = {
     shownOn: [SCHOOL_DASH],
   },
   "reports.needsIntervention": {
-    title: "Needs Intervention",
+    title: "Needs action",
     definition: "Issue Reports triaged as needing action from RTB or the district.",
     formula: "Count of reports with status Needs Intervention.",
     sources: ["issue_reports.status"],
@@ -331,6 +333,28 @@ export const METRICS = {
     missingData: "0 when there are none.",
     endpoint: `${SCHOOL_METRICS} (reportSummary.critical)`,
     shownOn: [SCHOOL_DASH],
+  },
+  "reports.filed": {
+    title: "Reports",
+    definition: "Issue Reports filed in the selected period across every school you can see.",
+    formula: "Count of Issue Reports created in the period; the change compares the previous period of the same length.",
+    sources: ["issue_reports.createdAt", "issue_reports.type"],
+    filters: "Active schools within the user's access level; data change requests excluded. Periods: last 30 days, 90 days, 12 months, or all time.",
+    units: "Reports",
+    missingData: "0 when nothing was filed; no change shown when the previous period had no reports.",
+    endpoint: `${REPORTING_OVERVIEW} (summary.total, totalChangePct)`,
+    shownOn: [SCHOOL_REPORTING],
+  },
+  "reports.schoolsAffected": {
+    title: "Schools affected",
+    definition: "Schools that filed at least one Issue Report in the selected period.",
+    formula: "Distinct schools with a report in the period, out of all active schools in scope.",
+    sources: ["issue_reports.schoolId", "schools.status"],
+    filters: "Active schools within the user's access level; data change requests excluded.",
+    units: "Schools",
+    missingData: "0 when no school filed a report.",
+    endpoint: `${REPORTING_OVERVIEW} (schoolsAffected, schoolCount)`,
+    shownOn: [SCHOOL_REPORTING],
   },
   "reports.monthComparison": {
     title: "This month vs last month",
@@ -346,7 +370,7 @@ export const METRICS = {
     shownOn: [SCHOOL_DASH],
   },
   "reports.buildingsAttention": {
-    title: "Buildings needing attention",
+    title: "Buildings that need attention",
     definition:
       "Buildings ranked by open Issue Reports linked to them, then by poor/critical condition.",
     formula:
@@ -362,7 +386,7 @@ export const METRICS = {
 
   // ── Indicative risk (school) ───────────────────────────────────────────────
   "risk.overall": {
-    title: "Indicative risk",
+    title: "Estimated risk",
     definition:
       "A rule-of-thumb risk estimate. It is not part of the School Condition Score and is not a measurement.",
     formula:
@@ -376,7 +400,7 @@ export const METRICS = {
     notes: "Rules live in server/src/modules/analytics/risk-assessment.ts.",
   },
   "risk.impact": {
-    title: "Impact (indicative)",
+    title: "How serious",
     definition: "How bad the consequences would be if the risk happened.",
     formula:
       "50% × (100 − School Condition Score) + 30% × share of poor/critical buildings × 100 + 20% × urgency (100 if action is due now, else max(0, 100 − 2 × months)). Capped at 100.",
@@ -388,7 +412,7 @@ export const METRICS = {
     shownOn: [SCHOOL_DASH],
   },
   "risk.probability": {
-    title: "Probability (indicative)",
+    title: "How likely",
     definition: "How likely a structural or operational failure is.",
     formula:
       "50% × min(100, 1.5 × average building age) + 25% × (60 if population data is missing, else 20) + 25% × survey staleness (80 if never surveyed or > 365 days, 50 if > 180 days, else 20). Capped at 100.",
@@ -400,7 +424,7 @@ export const METRICS = {
     shownOn: [SCHOOL_DASH],
   },
   "risk.mitigation": {
-    title: "Mitigation effectiveness (indicative)",
+    title: "How much it would help",
     definition: "A rough guide to how much each response could help. Each strategy shows its own rule.",
     formula:
       "Emergency response: 90 − 8 × open Needs Intervention reports (20–85). Repair follow-up: 85 − 3 × failed reports (20–80). Workflow: 85, or 75 if average resolution > 5 days. Preventive maintenance: 85 if Infrastructure < 50, else 70.",
@@ -425,7 +449,7 @@ export const METRICS = {
     shownOn: [NATIONAL],
   },
   "national.priorityCount": {
-    title: "Schools by Intervention Priority",
+    title: "Schools by priority",
     definition: "How many active schools fall in each Intervention Priority band.",
     formula: "Count of schools per priority band (Critical < 35, High 35–54, Medium 55–74, Low ≥ 75).",
     sources: ["decision_assessments.priorityLevel"],
@@ -449,7 +473,7 @@ export const METRICS = {
     shownOn: [NATIONAL, DECISIONS],
   },
   "national.avgInfrastructure": {
-    title: "Average Infrastructure",
+    title: "Average building condition",
     definition: "Mean Infrastructure component over scored active schools.",
     formula: "Mean of decision_assessments.infrastructureScore, one decimal.",
     sources: ["decision_assessments.infrastructureScore"],
@@ -461,7 +485,7 @@ export const METRICS = {
     shownOn: [NATIONAL],
   },
   "national.avgBuildingAgeScore": {
-    title: "Average Building Age Score",
+    title: "Average building age",
     definition: "Mean Building Age Score over scored active schools. Higher means newer buildings.",
     formula: "Mean of decision_assessments.buildingAgeScore, one decimal.",
     sources: ["decision_assessments.buildingAgeScore"],
@@ -473,7 +497,7 @@ export const METRICS = {
     notes: "Replaces the old “Buildings Depreciation” (which was 100 − this value).",
   },
   "national.avgFacilityCompliance": {
-    title: "Average Facility Compliance",
+    title: "Average facilities checklist",
     definition: "Mean Facility Compliance over scored active schools.",
     formula: "Mean of decision_assessments.facilityComplianceScore, one decimal.",
     sources: ["decision_assessments.facilityComplianceScore"],
@@ -484,7 +508,7 @@ export const METRICS = {
     shownOn: [NATIONAL],
   },
   "national.avgAccessibility": {
-    title: "Average Accessibility",
+    title: "Average road access",
     definition: "Mean Accessibility component over scored active schools.",
     formula: "Mean of decision_assessments.accessibilityScore, one decimal.",
     sources: ["decision_assessments.accessibilityScore"],
@@ -495,7 +519,7 @@ export const METRICS = {
     shownOn: [NATIONAL],
   },
   "national.avgPopulation": {
-    title: "Average Population Pressure",
+    title: "Average nearby population",
     definition: "Mean Population Pressure component over scored active schools. Higher means more headroom.",
     formula: "Mean of decision_assessments.populationPressureScore, one decimal.",
     sources: ["decision_assessments.populationPressureScore"],
@@ -506,7 +530,7 @@ export const METRICS = {
     shownOn: [NATIONAL],
   },
   "national.capacityUtilisation": {
-    title: "Capacity Utilisation",
+    title: "Capacity used",
     definition: "Students enrolled compared with seat capacity, across schools that have capacity on record.",
     formula:
       "Σ programme enrolment ÷ Σ programme capacity × 100, whole number, over schools whose programmes record both. The school-level total is never mixed in.",
@@ -541,7 +565,7 @@ export const METRICS = {
     shownOn: [NATIONAL],
   },
   "national.surveyCoverage": {
-    title: "Survey Coverage",
+    title: "Schools checked",
     definition: "Share of active schools with at least one facility survey.",
     formula: "Schools with ≥ 1 survey row ÷ active schools × 100, whole number.",
     sources: ["school_facility_surveys.schoolId"],
@@ -552,7 +576,7 @@ export const METRICS = {
     shownOn: [NATIONAL],
   },
   "national.mapCoverage": {
-    title: "Map Coverage",
+    title: "Schools mapped",
     definition: "Share of active schools with a processed site map (KMZ).",
     formula: "Schools whose map status is Completed ÷ active schools × 100, whole number.",
     sources: ["schools.kmzStatus"],
@@ -563,7 +587,7 @@ export const METRICS = {
     shownOn: [NATIONAL],
   },
   "national.estimatedBudget": {
-    title: "Estimated rehabilitation budget",
+    title: "Estimated repair cost",
     definition: "Planning-grade cost estimate for the recommended works. Not a bill of quantities.",
     formula:
       "Per school: RWF 45M per poor/critical building + 12M per building when the Building Age Score < 40 + 18M per extra classroom needed (over capacity by > 10%, 40 students per classroom) + 20M if Accessibility < 45 + 8M if Facility Compliance < 50 + 3.5M survey if no buildings. Summed over schools.",
@@ -575,7 +599,7 @@ export const METRICS = {
     shownOn: [DECISIONS],
   },
   "national.scoredSchools": {
-    title: "Assessed schools",
+    title: "Scored schools",
     definition: "Active schools that have a School Condition Score.",
     formula: "Count of active schools with an assessment row.",
     sources: ["decision_assessments"],
@@ -656,7 +680,7 @@ export const METRICS = {
     shownOn: ["Population Analytics"],
   },
   "population.studentsPerResident": {
-    title: "Students per resident (2 km)",
+    title: "Students per nearby resident (2 km)",
     definition: "How many enrolled students a school has for each person living within 2 km.",
     formula: "Mean over schools of (total students ÷ population within 2 km). Stored to 2 decimals at sync time.",
     sources: ["population_data.studentToSchoolRatio"],

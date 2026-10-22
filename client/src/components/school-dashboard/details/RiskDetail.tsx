@@ -29,22 +29,22 @@ export function RiskSummary({ risk }: { risk: RiskAssessmentData | null | undefi
   return (
     <SummaryStats>
       <SummaryStat
-        label="Indicative risk"
+        label="Estimated risk"
         value={formatNumber(risk.overall.score)}
         hint={`${level.label} · out of 100`}
         accent={level.color}
         meter={risk.overall.score}
         info={<MetricInfo id="risk.overall" size="xs" />}
       />
-      <SummaryStat label="Impact" value={formatNumber(risk.impactScore)} hint="how bad if it happens" meter={risk.impactScore} info={<MetricInfo id="risk.impact" size="xs" />} />
+      <SummaryStat label="How serious" value={formatNumber(risk.impactScore)} hint="if it happens" meter={risk.impactScore} info={<MetricInfo id="risk.impact" size="xs" />} />
       <SummaryStat
-        label="Probability"
+        label="How likely"
         value={formatNumber(risk.probabilityScore)}
-        hint="how likely it is"
+        hint="to happen"
         meter={risk.probabilityScore}
         info={<MetricInfo id="risk.probability" size="xs" />}
       />
-      <SummaryStat label="Drivers counted" value={`${counted} of ${risk.factors.length}`} hint="others: no data or nothing seen" />
+      <SummaryStat label="Risks counted" value={`${counted} of ${risk.factors.length}`} hint="others: no data or nothing found" />
     </SummaryStats>
   );
 }
@@ -56,7 +56,7 @@ function RiskMap({ factors }: { factors: RiskAssessmentData["factors"] }) {
   return (
     <figure className="min-w-0">
       <div className="flex gap-2">
-        <span className="flex w-3 items-center justify-center text-[10px] text-slate-400 [writing-mode:vertical-rl] rotate-180 dark:text-white/40">Probability →</span>
+        <span className="flex w-3 items-center justify-center text-[10px] text-slate-400 [writing-mode:vertical-rl] rotate-180 dark:text-white/40">How likely →</span>
         <div
           ref={boxRef}
           className="relative aspect-square w-full overflow-visible rounded-2xl ring-1 ring-slate-900/6 dark:ring-white/8"
@@ -108,7 +108,7 @@ function RiskMap({ factors }: { factors: RiskAssessmentData["factors"] }) {
           {tooltip}
         </div>
       </div>
-      <figcaption className="mt-1.5 pl-5 text-center text-[10px] text-slate-400 dark:text-white/40">Impact →</figcaption>
+      <figcaption className="mt-1.5 pl-5 text-center text-[10px] text-slate-400 dark:text-white/40">How serious →</figcaption>
     </figure>
   );
 }
@@ -117,7 +117,7 @@ function RiskMap({ factors }: { factors: RiskAssessmentData["factors"] }) {
 export function RiskDetail({ risk }: { risk: RiskAssessmentData | null | undefined }) {
   const reduce = useReducedMotion();
   if (!risk) {
-    return <EmptyNote title="Indicative risk is not available yet">It appears once the school has been scored.</EmptyNote>;
+    return <EmptyNote title="The risk estimate is not ready yet">It appears once the school has been scored.</EmptyNote>;
   }
   const factors = sortFactors(risk);
   const counted = factors.filter((f) => f.applies !== false);
@@ -125,10 +125,10 @@ export function RiskDetail({ risk }: { risk: RiskAssessmentData | null | undefin
   return (
     <div className="space-y-8">
       <p className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-800 dark:text-amber-300">
-        Indicative — rules of thumb to help plan, not a measurement
+        An estimate to help plan — not a measurement
       </p>
 
-      <DetailSection title="Risk drivers" aside={`${counted.length} counted`}>
+      <DetailSection title="What raises the risk" aside={`${counted.length} counted`}>
         <div className="grid gap-5 lg:grid-cols-[15rem_minmax(0,1fr)]">
           <div className="mx-auto w-full max-w-[15rem]">
             <RiskMap factors={counted} />
@@ -163,15 +163,15 @@ export function RiskDetail({ risk }: { risk: RiskAssessmentData | null | undefin
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <h4 className="text-[13px] font-semibold text-slate-900 dark:text-white">{f.title}</h4>
                         <RuleTip rule={f.rule} label={f.title} />
-                        <StatusPill color={l.color}>{f.level === "unknown" ? "Unknown — no data" : l.label}</StatusPill>
-                        {off && <span className="text-[11px] text-slate-500 dark:text-white/45">Not counted in the overall risk</span>}
+                        <StatusPill color={l.color}>{f.level === "unknown" ? "No data" : l.label}</StatusPill>
+                        {off && <span className="text-[11px] text-slate-500 dark:text-white/45">Not counted in the total</span>}
                       </div>
                       <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-white/60">{f.mitigation}</p>
                       <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2">
                         {(["impact", "probability"] as const).map((k) => (
                           <div key={k}>
                             <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-white/50">
-                              <span className="capitalize">{k}</span>
+                              <span>{k === "impact" ? "How serious" : "How likely"}</span>
                               <span className="font-medium tabular-nums text-slate-700 dark:text-white/75">{formatNumber(f[k])}</span>
                             </div>
                             <Meter value={f[k]} color={off ? undefined : l.color} height={4} />
@@ -205,10 +205,10 @@ export function RiskDetail({ risk }: { risk: RiskAssessmentData | null | undefin
         <DetailSection
           title={
             <>
-              Mitigation options <MetricInfo id="risk.mitigation" size="xs" />
+              Ways to reduce the risk <MetricInfo id="risk.mitigation" size="xs" />
             </>
           }
-          aside="estimated effectiveness"
+          aside="how much each would help"
         >
           <ul className="grid gap-2.5 sm:grid-cols-2">
             {risk.strategies.map((s, i) => {

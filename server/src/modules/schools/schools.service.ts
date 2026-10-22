@@ -21,6 +21,7 @@ import { FacilityEntity } from './entities/facility.entity';
 import { BuildingDto } from './dto/building.dto';
 import { CreateChangeRequestDto } from './dto/change-request.dto';
 import { filterSchoolUpdate } from './school-field-permissions';
+import { checkPoint, round7 } from './location/school-location.rules';
 import { programmeTotals } from '../analytics/school-metrics.helpers';
 import type { ChangeRequestPayload } from '../reports/entities/issue-report.entity';
 import {
@@ -69,7 +70,17 @@ export class SchoolsService {
     // Extract buildings from DTO
     const { buildings, ...schoolData } = createSchoolDto;
 
-    const school = this.schoolRepository.create(schoolData);
+    // One location rule for every writer (school-location.rules.ts).
+    const point = checkPoint(schoolData.latitude, schoolData.longitude);
+    if ('error' in point) throw new BadRequestException(point.error);
+
+    const school = this.schoolRepository.create({
+      ...schoolData,
+      latitude: point.lat,
+      longitude: point.lng,
+      locationSource: 'manual',
+      locationUpdatedAt: new Date(),
+    });
     const savedSchool = await this.schoolRepository.save(school);
 
     // Create buildings if provided
@@ -242,8 +253,13 @@ export class SchoolsService {
     // Extract buildings from DTO
     const { buildings, ...schoolData } = dto;
 
+    // Location: the same checks as everywhere (inside Rwanda, not swapped);
+    // a real change is stamped as a manual edit so uploads and model jobs
+    // follow the precedence rules in school-location.rules.ts.
+    const location = this.prepareLocation(school, schoolData);
+
     // Update school data
-    Object.assign(school, schoolData);
+    Object.assign(school, schoolData, location);
     await this.schoolRepository.save(school);
 
     // Update buildings if provided
@@ -263,6 +279,22 @@ export class SchoolsService {
     // buildings all feed the School Condition Score.
     this.emitScoringInputChanged(id);
     return this.findOne(id);
+  }
+
+  /** Validated location fields for a PATCH, or {} when location was not changed. */
+  private prepareLocation(
+    school: School,
+    data: { latitude?: unknown; longitude?: unknown },
+  ): Partial<Pick<School, 'latitude' | 'longitude' | 'locationSource' | 'locationUpdatedAt'>> {
+    const { latitude, longitude } = data;
+    // Applied below (or not at all) — never copied blindly from the DTO.
+    delete data.latitude;
+    delete data.longitude;
+    if (latitude === undefined && longitude === undefined) return {};
+    const point = checkPoint(latitude ?? school.latitude, longitude ?? school.longitude);
+    if ('error' in point) throw new BadRequestException(point.error);
+    if (round7(Number(school.latitude)) === point.lat && round7(Number(school.longitude)) === point.lng) return {};
+    return { latitude: point.lat, longitude: point.lng, locationSource: 'manual', locationUpdatedAt: new Date() };
   }
 
   /**
@@ -536,7 +568,12 @@ export class SchoolsService {
           : building.media,
     };
 
-    Object.assign(building, updateData);
+    // Only fields that were sent. Never the key: the DTO carries an optional
+    // `id` (undefined when omitted) and copying it made save() insert a copy.
+    delete updateData.id;
+    for (const [key, value] of Object.entries(updateData)) {
+      if (value !== undefined) (building as any)[key] = value;
+    }
     const saved = await this.schoolBuildingRepository.save(building);
     this.emitScoringInputChanged(saved.schoolId);
     return saved;

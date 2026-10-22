@@ -1,268 +1,293 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { createPortal } from "react-dom";
-import { api } from "../../lib/api";
-import {
-  ChevronRight,
-  Plus,
-  X,
-  ClipboardList,
-  FileText,
-} from "lucide-react";
-import { format } from "date-fns";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { ArrowLeft, ChevronLeft, ChevronRight, ClipboardCheck, Paperclip, Plus } from "lucide-react";
+import { api, apiErrorMessage } from "../../lib/api";
 import { cn } from "../../lib/utils";
-import { motion, AnimatePresence } from "framer-motion";
-import SchoolReporting from "../../pages/SchoolReporting";
-import {
-  BuildingReportDetailModal,
-  STATUS_CONFIG,
-} from "./BuildingReportDetailModal";
-import type { Report, ReportStatus } from "./BuildingReportDetailModal";
-
-const STATUS_ORDER: ReportStatus[] = [
-  "NEED_INTERVENTION",
-  "PENDING",
-  "SOLVED",
-  "FAILED",
-];
+import { useToast } from "../ui/toast";
+import { useSchoolsStore } from "../../store/schoolsStore";
+import { REPORTS_CHANGED_EVENT } from "../../hooks/usePendingReviewCount";
+import { EASE } from "../school-dashboard/tokens";
+import { ReportAssessment } from "../report-review/ReportAssessment";
+import { ageDays, ageTone, categories, isOpen, STATUS, type ReviewAction, type ReviewReport } from "../report-review/review-utils";
 
 interface BuildingReportingTabProps {
-  buildingId: string;
-  schoolId: string;
-  onReportStatusChange?: () => void;
+  /** This building's reports (from the map's shared list). */
+  reports: ReviewReport[];
+  loaded: boolean;
+  /** Open this report first (deep link or map badge). */
+  initialReportId?: string | null;
+  /** May this user decide on a report? */
+  canDecide: (r: ReviewReport) => boolean;
+  /** Link to the Review reports page (users who can open it). */
+  canOpenReview: boolean;
+  /** Show "Report a problem" (CREATE_REPORT). */
+  onNew?: () => void;
+  /** A decision was saved: update the shared list. */
+  onPatched: (id: string, next: Partial<ReviewReport>) => void;
 }
 
-export function BuildingReportingTab({
-  buildingId,
-  schoolId,
-  onReportStatusChange,
-}: BuildingReportingTabProps) {
-  const [reports, setReports] = useState<Report[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+type Filter = "open" | "all";
 
-  const fetchReports = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const { data } = await api.get("/reports", { params: { buildingId } });
-      setReports(data.data || []);
-    } catch (err) {
-      console.error("Failed to fetch reports:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [buildingId]);
+const AGE_TEXT = {
+  ok: "text-slate-500 dark:text-white/50",
+  watch: "text-slate-600 dark:text-white/65",
+  overdue: "text-primary dark:text-blue-300",
+};
+
+/** Open reports first (oldest first), then the rest (newest first). */
+function order(rows: ReviewReport[]): ReviewReport[] {
+  const t = (r: ReviewReport) => new Date(r.createdAt).getTime() || 0;
+  const open = rows.filter((r) => isOpen(r.status)).sort((a, b) => t(a) - t(b));
+  const done = rows.filter((r) => !isOpen(r.status)).sort((a, b) => t(b) - t(a));
+  return [...open, ...done];
+}
+
+/**
+ * A building's reports in two steps, like the Review reports page: the list,
+ * then one report with the decision panel (for users who may decide). After a
+ * decision it moves to the next open report.
+ */
+export function BuildingReportingTab({ reports, loaded, initialReportId, canDecide, canOpenReview, onNew, onPatched }: BuildingReportingTabProps) {
+  const toast = useToast();
+  const reduce = useReducedMotion();
+  const { facilities, fetchFacilities } = useSchoolsStore();
+  const openCount = reports.filter((r) => isOpen(r.status)).length;
+  const [filter, setFilter] = useState<Filter>(openCount > 0 || !loaded ? "open" : "all");
+  const [selectedId, setSelectedId] = useState<string | null>(initialReportId ?? null);
+  const [dir, setDir] = useState(1);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (buildingId) fetchReports();
-  }, [buildingId, fetchReports]);
+    if (!facilities?.length) void fetchFacilities();
+  }, [facilities?.length, fetchFacilities]);
 
-  const groupedReports = useMemo(() => {
-    const map: Record<ReportStatus, Report[]> = {
-      NEED_INTERVENTION: [],
-      PENDING: [],
-      SOLVED: [],
-      FAILED: [],
-    };
-    reports.forEach((r) => map[r.status]?.push(r));
-    return map;
-  }, [reports]);
+  const facilityById = useMemo(() => new Map((facilities ?? []).map((f) => [f.facilityId, f])), [facilities]);
+  const facilityTitle = (id?: string) => (id ? facilityById.get(id)?.title ?? id.replace(/[_-]/g, " ") : null);
+  const itemLabel = (fid?: string, iid?: string) => (fid && iid ? facilityById.get(fid)?.items?.find((it) => it.id === iid)?.label ?? null : null);
 
-  const handleReportUpdated = (updated: Report) => {
-    setSelectedReport(updated);
-    setReports((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+  const all = useMemo(() => order(reports), [reports]);
+  // Nothing open: show everything rather than an empty list.
+  const effective: Filter = openCount === 0 ? "all" : filter;
+  const rows = effective === "open" ? all.filter((r) => isOpen(r.status)) : all;
+  const selected = selectedId ? all.find((r) => r.id === selectedId) ?? null : null;
+  // Step through the list the report was opened from (or all, for a deep link).
+  const stepList = selected && rows.some((r) => r.id === selected.id) ? rows : all;
+  const pos = selected ? stepList.findIndex((r) => r.id === selected.id) : -1;
+
+  const open = (r: ReviewReport | undefined, d = 1) => {
+    if (!r) return;
+    setDir(d);
+    setSelectedId(r.id);
   };
 
-  // ── Create modal (portaled) ───────────────────────────────────────────────
+  const decide = async (r: ReviewReport, action: ReviewAction, note: string) => {
+    setBusy(true);
+    try {
+      const res = await api.patch(`/reports/${r.id}/status`, { status: action.status, ...(note ? { note } : {}) });
+      const saved = res.data as Partial<ReviewReport> | undefined;
+      onPatched(r.id, {
+        status: action.status,
+        reviewNote: note || null,
+        reviewedAt: saved?.reviewedAt ?? new Date().toISOString(),
+        reviewer: saved?.reviewer ?? r.reviewer,
+        resolvedAt: saved?.resolvedAt ?? (action.status === "SOLVED" ? new Date().toISOString() : null),
+      });
+      toast.success(STATUS[action.status]?.label ?? "Saved");
+      window.dispatchEvent(new Event(REPORTS_CHANGED_EVENT));
+      // Next open report, or back to the list.
+      const next = all.find((x) => x.id !== r.id && isOpen(x.status));
+      if (next) open(next, 1);
+      else {
+        setDir(-1);
+        setSelectedId(null);
+      }
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not update the report. Please try again."));
+    } finally {
+      setBusy(false);
+    }
+  };
 
-  const renderCreateModal = () => (
-    <AnimatePresence>
-      {showCreateModal && (
-        <>
-          <motion.div
-            key="create-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            className="fixed inset-0 z-100 bg-black/60 backdrop-blur-sm"
-            onClick={() => setShowCreateModal(false)}
-          />
-          <motion.div
-            key="create-panel"
-            initial={{ opacity: 0, scale: 0.97, y: 16 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 12 }}
-            transition={{ type: "spring", stiffness: 380, damping: 34 }}
-            className="fixed inset-0 z-101 flex items-center justify-center px-4 py-6 pointer-events-none"
-          >
-            <div
-              className="relative w-full h-[97vh] bg-white dark:bg-[#0f1117] border border-slate-200 dark:border-white/6 rounded-3xl shadow-2xl flex flex-col overflow-hidden pointer-events-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Modal header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-white/5 bg-slate-50/80 dark:bg-white/3 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-2xl bg-primary/10">
-                    <ClipboardList className="w-4 h-4 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white leading-tight">
-                      New Report
-                    </p>
-                    <p className="text-[11px] text-slate-500 dark:text-white/55 mt-0.5">
-                      File an issue for this building
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  aria-label="Close new report"
-                  className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 dark:text-white/40 hover:text-slate-900 dark:hover:text-white transition-all active:scale-95 group"
-                >
-                  <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" aria-hidden />
-                </button>
-              </div>
-
-              {/* Embedded multi-step form */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar">
-                <SchoolReporting
-                  schoolId={schoolId}
-                  initialBuildingId={buildingId}
-                  hideHeader
-                  mode="modal"
-                  onReportSubmitted={() => {
-                    setShowCreateModal(false);
-                    fetchReports();
-                    onReportStatusChange?.();
-                  }}
-                />
-              </div>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
-  );
-
-  // ── Loading ───────────────────────────────────────────────────────────────
-
-  if (isLoading) {
+  if (!loaded) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center space-y-3 py-20">
-        <div className="w-8 h-8 border-[3px] border-primary/20 border-t-primary rounded-full animate-spin" />
-        <p className="text-[11px] text-slate-500 dark:text-white/50">
-          Loading reports…
-        </p>
+      <div className="space-y-2" aria-busy="true" aria-label="Loading reports">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-16 animate-pulse rounded-2xl bg-slate-900/[0.04] dark:bg-white/[0.04]" />
+        ))}
       </div>
     );
   }
-
-  // ── Empty ─────────────────────────────────────────────────────────────────
-
-  if (reports.length === 0) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center p-10 space-y-4 text-center">
-        <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/5 flex items-center justify-center">
-          <FileText className="w-6 h-6 text-slate-400 dark:text-white/30" />
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-slate-700 dark:text-white/70 mb-1">
-            No reports yet
-          </p>
-          <p className="text-[11px] text-slate-500 dark:text-white/50 leading-relaxed max-w-48">
-            No issues have been filed for this building.
-          </p>
-        </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-white transition-all text-xs font-medium"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          File first report
-        </button>
-        {createPortal(renderCreateModal(), document.body)}
-      </div>
-    );
-  }
-
-  // ── Grouped list ──────────────────────────────────────────────────────────
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 pt-2 pb-3 shrink-0">
-        <p className="text-xs text-slate-500 dark:text-white/50">
-          {reports.length} report{reports.length !== 1 ? "s" : ""}
-        </p>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 text-primary border border-primary/20 hover:bg-primary hover:text-white transition-all text-xs font-medium"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          New report
-        </button>
-      </div>
-
-      {/* Groups */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-4 pb-4 space-y-4">
-        {STATUS_ORDER.map((status) => {
-          const group = groupedReports[status];
-          if (!group.length) return null;
-          const cfg = STATUS_CONFIG[status];
-
-          return (
-            <div key={status}>
-              {/* Group header */}
-              <div className="flex items-center gap-1.5 mb-2">
-                <span className={cn("text-xs font-semibold", cfg.color)}>
-                  {cfg.label}
-                </span>
-                <span className="text-xs text-slate-400 dark:text-white/35">
-                  · {group.length}
-                </span>
-              </div>
-
-              {/* Rows */}
-              <div className="rounded-xl border border-slate-200 dark:border-white/5 overflow-hidden divide-y divide-slate-100 dark:divide-white/5">
-                {group.map((report) => (
-                  <button
-                    key={report.id}
-                    onClick={() => setSelectedReport(report)}
-                    className="w-full flex items-start gap-3 px-3.5 py-3 text-left hover:bg-slate-50 dark:hover:bg-white/4 transition-colors group"
-                  >
-                    <div className={cn("w-1.5 h-1.5 rounded-full mt-1.5 shrink-0", cfg.accent)} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12px] text-slate-700 dark:text-white/75 leading-snug truncate">
-                        {report.description || "No description"}
-                      </p>
-                      <p className="text-[11px] text-slate-400 dark:text-white/35 mt-0.5">
-                        {format(new Date(report.createdAt), "dd MMM yyyy")}
-                        {report.facilityId && (
-                          <span className="ml-1.5 capitalize">
-                            · {report.facilityId.replace(/[_-]/g, " ")}
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-300 dark:text-white/20 group-hover:text-primary transition-colors shrink-0 mt-1" />
-                  </button>
-                ))}
-              </div>
+    <div className="relative">
+      <AnimatePresence mode="wait" initial={false} custom={dir}>
+        {selected ? (
+          <motion.div
+            key={`r:${selected.id}`}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, x: dir * 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, x: dir * -16, transition: { duration: 0.1 } }}
+            transition={{ duration: 0.24, ease: EASE }}
+          >
+            <div className="mb-3 flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setDir(-1);
+                  setSelectedId(null);
+                }}
+                className="inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs text-slate-600 transition-colors hover:bg-slate-900/5 hover:text-slate-900 dark:text-white/65 dark:hover:bg-white/8 dark:hover:text-white"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> All reports
+              </button>
+              <span className="ml-auto text-[11px] tabular-nums text-slate-400 dark:text-white/40">
+                {pos + 1} of {stepList.length}
+              </span>
+              <IconBtn label="Previous report" disabled={pos <= 0} onClick={() => open(stepList[pos - 1], -1)}>
+                <ChevronLeft className="h-4 w-4" aria-hidden />
+              </IconBtn>
+              <IconBtn label="Next report" disabled={pos >= stepList.length - 1} onClick={() => open(stepList[pos + 1], 1)}>
+                <ChevronRight className="h-4 w-4" aria-hidden />
+              </IconBtn>
+              {canOpenReview && (
+                <Link
+                  to={`/reports/validate?report=${selected.id}`}
+                  aria-label="Open in Review reports"
+                  title="Open in Review reports"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-900/5 hover:text-primary dark:text-white/55 dark:hover:bg-white/8"
+                >
+                  <ClipboardCheck className="h-4 w-4" aria-hidden />
+                </Link>
+              )}
             </div>
-          );
-        })}
-      </div>
+            <ReportAssessment
+              key={selected.id}
+              report={selected}
+              facilityTitle={facilityTitle(selected.facilityId)}
+              itemLabel={itemLabel(selected.facilityId, selected.itemId)}
+              onDecide={canDecide(selected) ? (a, note) => decide(selected, a, note) : null}
+              busy={busy}
+              showMapLink={false}
+            />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="list"
+            initial={reduce ? { opacity: 0 } : { opacity: 0, x: dir * 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, x: dir * -16, transition: { duration: 0.1 } }}
+            transition={{ duration: 0.24, ease: EASE }}
+            className="space-y-3"
+          >
+            <div className="flex items-center gap-2">
+              {openCount > 0 && reports.length > openCount ? (
+                <div role="group" aria-label="Show" className="inline-flex rounded-full bg-slate-900/5 p-0.5 dark:bg-white/6">
+                  {(
+                    [
+                      ["open", "Open", openCount],
+                      ["all", "All", reports.length],
+                    ] as const
+                  ).map(([k, l, n]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      aria-pressed={effective === k}
+                      onClick={() => setFilter(k)}
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs transition-colors",
+                        effective === k ? "bg-white text-slate-900 ring-1 ring-slate-900/5 dark:bg-white/12 dark:text-white" : "text-slate-500 hover:text-slate-800 dark:text-white/55",
+                      )}
+                    >
+                      {l} <span className="tabular-nums opacity-60">{n}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 dark:text-white/50">
+                  {reports.length === 0 ? "No reports" : `${reports.length} report${reports.length === 1 ? "" : "s"}`}
+                </p>
+              )}
+              {onNew && (
+                <motion.button
+                  type="button"
+                  onClick={onNew}
+                  whileTap={reduce ? undefined : { scale: 0.96 }}
+                  className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-full bg-primary/10 px-3 text-xs text-primary transition-colors hover:bg-primary hover:text-white"
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden /> Report a problem
+                </motion.button>
+              )}
+            </div>
 
-      <BuildingReportDetailModal
-        report={selectedReport}
-        onClose={() => setSelectedReport(null)}
-        onReportUpdated={handleReportUpdated}
-        onReportStatusChange={onReportStatusChange}
-      />
-
-      {createPortal(renderCreateModal(), document.body)}
+            {rows.length === 0 ? (
+              <div className="flex flex-col items-center gap-1.5 rounded-2xl bg-slate-900/[0.03] px-4 py-8 text-center dark:bg-white/[0.03]">
+                <ClipboardCheck className="h-6 w-6 text-slate-300 dark:text-white/25" aria-hidden />
+                <p className="text-[13px] text-slate-700 dark:text-white/80">No problems reported</p>
+                <p className="text-xs text-slate-500 dark:text-white/50">Reports for this building show here.</p>
+              </div>
+            ) : (
+              <ul className="space-y-1.5" aria-label="Reports">
+                {rows.map((r, i) => {
+                  const st = STATUS[r.status] ?? STATUS.PENDING;
+                  const days = ageDays(r.createdAt);
+                  const tone = ageTone(days, isOpen(r.status));
+                  const what = [facilityTitle(r.facilityId), categories(r.issueCategory)[0]].filter(Boolean).join(" · ");
+                  return (
+                    <motion.li
+                      key={r.id}
+                      initial={reduce ? false : { opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, delay: Math.min(i * 0.035, 0.3), ease: EASE }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => open(r, 1)}
+                        className="group flex w-full items-start gap-3 rounded-2xl bg-white/70 px-3 py-2.5 text-left ring-1 ring-slate-900/6 transition-[background-color,box-shadow] hover:bg-white hover:ring-slate-900/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 dark:bg-white/[0.03] dark:ring-white/8 dark:hover:bg-white/[0.06]"
+                      >
+                        <span
+                          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/[0.07] dark:bg-primary/15"
+                          aria-hidden
+                        >
+                          <span className={cn("h-2 w-2 rounded-full", isOpen(r.status) && !reduce && "animate-pulse")} style={{ background: st.color }} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="line-clamp-2 text-[13px] leading-snug text-slate-800 dark:text-white/85">{r.description || "No description"}</span>
+                          <span className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-white/45">
+                            <span className="text-slate-700 dark:text-white/75">{st.label}</span>
+                            {what && <span className="truncate">· {what}</span>}
+                            {(r.attachments?.length ?? 0) > 0 && (
+                              <span className="inline-flex shrink-0 items-center gap-0.5">
+                                · <Paperclip className="h-3 w-3" aria-hidden />
+                                {r.attachments!.length}
+                              </span>
+                            )}
+                          </span>
+                        </span>
+                        <span className={cn("shrink-0 pt-0.5 text-[11px] tabular-nums", AGE_TEXT[tone])}>{days == null ? "" : days === 0 ? "Today" : `${days}d`}</span>
+                      </button>
+                    </motion.li>
+                  );
+                })}
+              </ul>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
+  );
+}
+
+function IconBtn({ label, disabled, onClick, children }: { label: string; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-900/5 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-35 dark:text-white/55 dark:hover:bg-white/8 dark:hover:text-white"
+    >
+      {children}
+    </button>
   );
 }

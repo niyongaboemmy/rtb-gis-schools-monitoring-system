@@ -7,6 +7,8 @@ import {
   kigaliMonthKey,
   lastKigaliMonths,
   pctChange,
+  OverviewReportRow,
+  reportingOverview,
   reportTrends,
   summariseIssueReports,
 } from './report-stats';
@@ -132,5 +134,79 @@ describe('reportTrends', () => {
       solved: 1,
       failed: 0,
     });
+  });
+});
+
+describe('reportingOverview (all schools in scope)', () => {
+  const now = new Date('2026-10-22T10:00:00Z');
+  const schools = [
+    { id: 'a', name: 'Alpha TSS', district: 'Gasabo', province: 'Kigali City' },
+    { id: 'b', name: 'Bravo VTC', district: 'Huye', province: 'Southern' },
+    { id: 'c', name: 'Charlie TSS' },
+  ];
+  const rows: OverviewReportRow[] = [
+    r('1', ReportStatus.NEED_INTERVENTION, '2026-10-20T08:00:00Z', {
+      schoolId: 'b',
+      description: 'Roof leak',
+    }),
+    r('2', ReportStatus.SOLVED, '2026-10-01T08:00:00Z', {
+      schoolId: 'a',
+      resolvedAt: new Date('2026-10-05T08:00:00Z'),
+    }),
+    r('3', ReportStatus.PENDING, '2026-10-10T08:00:00Z', { schoolId: 'a' }),
+    r('4', ReportStatus.FAILED, '2026-10-15T08:00:00Z', { schoolId: 'a' }),
+    // previous 30-day window
+    r('5', ReportStatus.PENDING, '2026-09-10T08:00:00Z', { schoolId: 'a' }),
+    // change requests are not issues
+    r('6', ReportStatus.PENDING, '2026-10-12T08:00:00Z', {
+      schoolId: 'c',
+      type: ReportType.DATA_CHANGE_REQUEST,
+    }),
+  ] as OverviewReportRow[];
+
+  it('uses the school-view rules: issues only, resolved ÷ all, failed counts as open', () => {
+    const o = reportingOverview(rows, schools, '30d', now);
+    expect(o.summary.total).toBe(4);
+    expect(o.summary.resolutionRate).toBe(25);
+    expect(o.summary.active).toBe(3);
+    expect(o.schoolsAffected).toBe(2);
+    expect(o.schoolCount).toBe(3);
+    expect(o.previous).toEqual({ total: 1, resolved: 0, resolutionRate: 0 });
+    expect(o.totalChangePct).toBe(300);
+  });
+
+  it('ranks schools by urgency and lists urgent reports with the school name', () => {
+    const o = reportingOverview(rows, schools, '30d', now);
+    expect(o.schools.map((s) => s.name)).toEqual(['Bravo VTC', 'Alpha TSS']);
+    expect(o.schools[1]).toMatchObject({
+      total: 3,
+      open: 2,
+      resolved: 1,
+      resolutionRate: 33,
+    });
+    expect(o.urgent).toEqual([
+      expect.objectContaining({
+        id: '1',
+        schoolName: 'Bravo VTC',
+        description: 'Roof leak',
+      }),
+    ]);
+  });
+
+  it('buckets the trend by Kigali day / week / month', () => {
+    const d = reportingOverview(rows, schools, '30d', now);
+    expect(d.bucket).toBe('day');
+    expect(d.trend).toHaveLength(30);
+    expect(d.trend.reduce((a, b) => a + b.created, 0)).toBe(4);
+    expect(d.trend.reduce((a, b) => a + b.resolved, 0)).toBe(1);
+    expect(reportingOverview(rows, schools, '90d', now).trend).toHaveLength(13);
+    const m = reportingOverview(rows, schools, '12m', now);
+    expect(m.bucket).toBe('month');
+    expect(m.trend.at(-1)).toMatchObject({
+      key: '2026-10',
+      created: 4,
+      resolved: 1,
+    });
+    expect(reportingOverview(rows, schools, 'all', now).previous).toBeNull();
   });
 });

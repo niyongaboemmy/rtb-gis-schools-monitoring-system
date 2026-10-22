@@ -4,7 +4,7 @@ import { useSchoolsStore } from "../store/schoolsStore";
 import { api, apiErrorMessage, fileApi } from "../lib/api";
 import { useToast } from "../components/ui/toast";
 import { hasPermission, Permission } from "../lib/permissions";
-import { AdminReportingDashboard } from "../components/reports/AdminReportingDashboard";
+import { ReportingOverview } from "../components/reporting/ReportingOverview";
 import {
   Building2,
   ChevronRight,
@@ -26,11 +26,12 @@ import {
   ChevronLeft,
   Edit2,
   Search,
+  MapPinned,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
-import { PageHeader } from "../components/ui/page-header";
+import { SegmentedTabs } from "../components/school-dashboard/details/primitives";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "../lib/utils";
 import { ImigongoPattern } from "../components/ui/ImigongoPattern";
@@ -56,7 +57,8 @@ import { Input } from "../components/ui/input";
 import { EmptyState } from "../components/ui/empty-state";
 import { ErrorState } from "../components/ui/error-state";
 import { errorMessage } from "../components/ui/error-message";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { viewerLink } from "../lib/viewer-tools";
 import { label } from "../lib/labels";
 
 interface Facility {
@@ -100,6 +102,7 @@ export default function SchoolReporting({
   onReportSubmitted,
 }: SchoolReportingProps) {
   const { user } = useAuthStore();
+  const navigate = useNavigate();
 
   // Refs to prevent duplicate / stale API calls
   const historyAbortRef = useRef<AbortController | null>(null);
@@ -137,6 +140,8 @@ export default function SchoolReporting({
     propSchoolId || user?.location?.schoolId || "",
   );
   const [buildings, setBuildings] = useState<Building[]>([]);
+  /** Where the last report was filed — for "See on map" after submitting. */
+  const [lastPlace, setLastPlace] = useState<{ schoolId: string; buildingId: string | null } | null>(null);
   const [selectedBuilding, setSelectedBuilding] = useState<Building | null>(
     null,
   );
@@ -190,6 +195,8 @@ export default function SchoolReporting({
     "success" | "error" | null
   >(null);
   const [selectedReport, setSelectedReport] = useState<any | null>(null);
+  /** Bumped after a triage change so the overview figures reload. */
+  const [overviewRefresh, setOverviewRefresh] = useState(0);
 
   // Deep link from notifications: /reporting?report=<id> opens that report.
   useEffect(() => {
@@ -339,6 +346,7 @@ export default function SchoolReporting({
 
       showToast(`Report marked ${label("reportStatus", status)}`, "success");
       fetchHistory(); // Refresh history tab as well
+      setOverviewRefresh((k) => k + 1);
     } catch (err) {
       console.error("Failed to update report status", err);
       showToast(apiErrorMessage(err, "Could not update the report status"), "error");
@@ -624,6 +632,9 @@ export default function SchoolReporting({
         );
       }
 
+      if (!isEditing && selectedSchoolId) {
+        setLastPlace({ schoolId: selectedSchoolId, buildingId: selectedBuilding?.id || null });
+      }
       setIssues([]);
       setCurrentIssue({ category: [], description: "", files: [] });
       setSubmittedReportId("success");
@@ -714,13 +725,13 @@ export default function SchoolReporting({
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-2xl sm:text-3xl font-black uppercase tracking-tighter">
-                {isSuccess ? "Report Submitted" : "Submission Failed"}
+              <h3 className="text-2xl font-medium tracking-tight">
+                {isSuccess ? "Report sent" : "Could not send"}
               </h3>
-              <p className="text-xs font-bold text-muted-foreground uppercase opacity-60 leading-relaxed">
+              <p className="text-sm text-muted-foreground leading-relaxed">
                 {isSuccess
-                  ? "Your infrastructure report has been securely synchronized with the central maintenance database. Engineering teams will be notified immediately."
-                  : "We encountered a synchronization error while attempting to securely transmit your record. Please verify your connection and try again."}
+                  ? "The review team can see it now."
+                  : "Check your connection and try again."}
               </p>
             </div>
 
@@ -731,12 +742,26 @@ export default function SchoolReporting({
                   if (isSuccess) resetForm();
                 }}
                 className={cn(
-                  "rounded-full h-14 text-[11px] font-black uppercase tracking-widest transition-all active:scale-95",
+                  "rounded-full h-12 text-sm font-medium transition-all active:scale-95",
                   isSuccess ? "bg-primary" : "bg-rose-500 hover:bg-rose-600",
                 )}
               >
-                {isSuccess ? "Submit Another" : "Retry Submission"}
+                {isSuccess ? "Report another problem" : "Try again"}
               </Button>
+
+              {isSuccess && lastPlace && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSubmissionStatus(null);
+                    navigate(viewerLink("2d", lastPlace.schoolId, { buildingId: lastPlace.buildingId, tab: lastPlace.buildingId ? "reporting" : undefined }));
+                  }}
+                  className="rounded-full h-12 text-sm font-medium"
+                >
+                  <MapPinned className="mr-2 h-4 w-4" aria-hidden />
+                  See it on the map
+                </Button>
+              )}
 
               {isSuccess && (
                 <Button
@@ -745,9 +770,9 @@ export default function SchoolReporting({
                     setSubmissionStatus(null);
                     setActiveTab("history");
                   }}
-                  className="rounded-full h-12 text-[13px] font-black uppercase tracking-widest opacity-60 hover:opacity-100 hover:bg-primary/5 transition-all"
+                  className="rounded-full h-11 text-sm text-muted-foreground hover:text-foreground hover:bg-primary/5 transition-all"
                 >
-                  View History
+                  My reports
                 </Button>
               )}
             </div>
@@ -1096,65 +1121,51 @@ export default function SchoolReporting({
       {mode !== "modal" && (
         <AnimatePresence>{renderStatusModal()}</AnimatePresence>
       )}
-      <ImigongoPattern className="absolute top-0 right-0 w-64 h-64 text-primary pointer-events-none rotate-12 opacity-5" />
-
       {!hideHeader && mode !== "modal" && (
-        <PageHeader
-          title="Infrastructure Care"
-          description="Monitor and report facility maintenance issues across campus."
-          icon={ClipboardList}
-          actions={
-            <div
-              role="group"
-              aria-label="Reporting sections"
-              className="bg-muted/50 backdrop-blur-md p-1 rounded-3xl sm:rounded-full border border-border/5 flex flex-wrap gap-1 max-w-full"
-            >
-              {/* Admin-only overview tab */}
-              {isAdmin && (
-                <button
-                  type="button"
-                  aria-pressed={activeTab === "overview"}
-                  onClick={() => setActiveTab("overview")}
-                  className={cn(
-                    "px-4 py-1.5 rounded-full text-[13px] font-black uppercase tracking-widest transition-all",
-                    activeTab === "overview"
-                      ? "bg-amber-500 text-white"
-                      : "text-amber-600 hover:text-amber-600 hover:bg-amber-500/10",
-                  )}
-                >
-                  ⚡ Overview
-                </button>
-              )}
-              {step > 1 &&
-                [
-                  { id: "report", label: "New Report", count: null },
-                  { id: "history", label: "History", count: history.length },
-                  { id: "analytics", label: "Analytics", count: null },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    aria-pressed={activeTab === tab.id}
-                    onClick={() => setActiveTab(tab.id as any)}
-                    className={cn(
-                      "px-4 py-1.5 rounded-full text-[13px] font-black uppercase tracking-widest transition-all",
-                      activeTab === tab.id
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-primary hover:bg-primary/5",
-                    )}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+        <header className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-white shadow-[0_10px_24px_-10px_rgb(37_99_235/0.8)]">
+              <ClipboardList className="h-5 w-5" aria-hidden />
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">School reporting</h1>
+              <p className="text-[13px] text-slate-500 dark:text-white/55">
+                {activeTab === "overview" ? "Issue Reports across your schools: what's open and where to act first." : "Report a facility problem and follow it to resolution."}
+              </p>
             </div>
-          }
-        />
+          </div>
+          {(isAdmin || step > 1) && (
+            <SegmentedTabs<"overview" | "report" | "history" | "analytics">
+              idPrefix="reporting-sections"
+              ariaLabel="Reporting sections"
+              value={activeTab}
+              onChange={setActiveTab}
+              tabs={[
+                ...(isAdmin ? [{ key: "overview" as const, label: "Overview" }] : []),
+                ...(step > 1
+                  ? [
+                      { key: "report" as const, label: "New report" },
+                      { key: "history" as const, label: history.length ? `History · ${history.length}` : "History" },
+                      { key: "analytics" as const, label: "Analytics" },
+                    ]
+                  : [{ key: "report" as const, label: "New report" }]),
+              ]}
+            />
+          )}
+        </header>
       )}
 
       <div className="relative z-10">
         {/* ── Admin Overview Tab ─────────────────────────────────────────── */}
         {mode !== "modal" && activeTab === "overview" && isAdmin && (
-          <AdminReportingDashboard />
+          <ReportingOverview
+            refreshKey={overviewRefresh}
+            onOpenReport={(reportId) => {
+              const next = new URLSearchParams(searchParams);
+              next.set("report", reportId);
+              setSearchParams(next);
+            }}
+          />
         )}
 
         {mode === "modal" || activeTab === "report" ? (

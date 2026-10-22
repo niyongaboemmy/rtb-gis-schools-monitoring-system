@@ -12,10 +12,10 @@ const LEVEL = RISK_LEVEL;
 
 /** Short driver names for the bars. */
 const SHORT: Record<string, string> = {
-  needsIntervention: "Urgent issues",
+  needsIntervention: "Urgent problems",
   failedRepairs: "Failed repairs",
-  infrastructure: "Deterioration",
-  population: "Demand",
+  infrastructure: "Worn buildings",
+  population: "Crowding",
   resolutionTime: "Slow fixes",
 };
 
@@ -77,7 +77,7 @@ export function RiskCard({ risk, onOpen, index }: Props) {
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: level.color }} aria-hidden />
                 {level.label}
               </span>
-              <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-400 dark:text-white/40">Indicative</p>
+              <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-400 dark:text-white/40">Estimate</p>
             </div>
           </div>
 
@@ -119,7 +119,7 @@ export function RiskCard({ risk, onOpen, index }: Props) {
 
           {unknown > 0 && (
             <p className="mt-auto inline-flex items-center gap-1 pt-2 text-[11px] text-slate-500 dark:text-white/50" title="Factors without data are not counted">
-              <HelpCircle className="h-3 w-3" aria-hidden /> {unknown} unknown
+              <HelpCircle className="h-3 w-3" aria-hidden /> {unknown} without data
             </p>
           )}
         </>

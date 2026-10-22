@@ -330,13 +330,9 @@ export function useKmzLoader({
       // the KML carries no polygons/lines (e.g. a single marker point).
       const fitExt = validSourceExt || overlayExt;
 
-      if (fitExt) {
-        overlayExtentRef.current = fitExt;
-        const view = map.getView();
-        if (!ignore && view) {
-          view.fit(fitExt, { padding: [80, 80, 120, 80], duration: 600, maxZoom: 20 });
-        }
-      }
+      // The viewer frames the school once everything is loaded (frame.ts);
+      // zooming here too made the first view jump between two framings.
+      if (fitExt) overlayExtentRef.current = fitExt;
       if (!ignore) {
         setFeatures(parsed.map((f) => ({ name: getFeatureName(f) || "Unnamed", feature: f })).filter((f) => f.name !== "Unnamed"));
         setIsLoading(false);

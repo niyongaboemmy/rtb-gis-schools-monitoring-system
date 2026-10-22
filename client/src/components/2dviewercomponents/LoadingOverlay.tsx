@@ -1,9 +1,12 @@
 import React from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { EASE } from "../school-dashboard/tokens";
 
 interface LoadingOverlayProps {
   isLoading: boolean;
   loadingProgress: number;
   loadingMessage: string;
+  /** Kept for callers; the overlay no longer shows elapsed time. */
   loadingStartTime: number;
 }
 
@@ -11,84 +14,83 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
   isLoading,
   loadingProgress,
   loadingMessage,
-  loadingStartTime,
 }) => {
-  if (!isLoading) return null;
+  const reduce = useReducedMotion();
+  const pct = Math.max(0, Math.min(100, Math.round(loadingProgress || 0)));
 
   return (
-    <div className="absolute inset-0 z-100 flex flex-col items-center justify-center bg-[#0a0d14]/90 backdrop-blur-xl transition-all duration-700">
-      {/* Decorative background glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-[120px] pointer-events-none" />
-      
-      <div className="relative z-10 w-full max-w-md px-8 text-center animate-in fade-in zoom-in duration-500">
-        {/* Main Visual: Animated Scanning Ring */}
-        <div className="relative mx-auto mb-10 h-32 w-32">
-          <div className="absolute inset-0 rounded-full border-4 border-white/4" />
-          <svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 100 100">
-            <circle
-              cx="50"
-              cy="50"
-              r="48"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="4"
-              strokeDasharray="301.59"
-              strokeDashoffset={301.59 - (301.59 * loadingProgress) / 100}
-              className="text-blue-500 transition-all duration-700 ease-out"
-              strokeLinecap="round"
-            />
-          </svg>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-center">
-              <span className="text-3xl font-bold text-white tabular-nums tracking-tight">
-                {Math.round(loadingProgress)}%
-              </span>
+    <AnimatePresence>
+      {isLoading && (
+        <motion.div
+          key="map-loading"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: reduce ? 0 : 0.35, ease: EASE }}
+          className="absolute inset-0 z-100 flex items-center justify-center bg-[hsl(224_40%_5%)]/70 backdrop-blur-xl backdrop-saturate-150 px-4"
+        >
+          <motion.div
+            role="status"
+            aria-live="polite"
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: reduce ? 0 : 0.4, ease: EASE, delay: reduce ? 0 : 0.05 }}
+            className="w-full max-w-xs"
+          >
+            <div className="flex items-baseline justify-between gap-4">
+              <p className="flex items-center gap-1 text-[15px] font-medium text-white">
+                Loading the school
+                {!reduce && (
+                  <span className="ml-0.5 inline-flex gap-0.5" aria-hidden>
+                    {[0, 1, 2].map((i) => (
+                      <motion.span
+                        key={i}
+                        className="h-1 w-1 rounded-full bg-blue-300"
+                        animate={{ opacity: [0.25, 1, 0.25] }}
+                        transition={{
+                          duration: 1.2,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                          delay: i * 0.18,
+                        }}
+                      />
+                    ))}
+                  </span>
+                )}
+              </p>
+              <span className="text-[13px] tabular-nums text-white/70">{pct}%</span>
             </div>
-          </div>
-          {/* Spinning highlight */}
-          <div 
-            className="absolute inset-0 rounded-full border-t-2 border-blue-400/25" 
-            style={{ animation: "spin 1.5s linear infinite" }}
-          />
-        </div>
 
-        <div className="space-y-2 mb-8">
-          <h2 className="text-2xl font-bold text-white tracking-tight">
-            Synchronising School Assets
-          </h2>
-          <div className="flex flex-col items-center gap-1">
-            <span className="text-blue-400 font-semibold text-xs py-1 px-3 rounded-full bg-blue-500/10 border border-blue-500/12 inline-block uppercase tracking-widest">
-              {loadingMessage}
-            </span>
-          </div>
-        </div>
+            <div
+              className="relative mt-3 h-1 w-full overflow-hidden rounded-full bg-white/10"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={pct}
+              aria-label="Map loading progress"
+            >
+              <motion.div
+                className="relative h-full overflow-hidden rounded-full bg-primary"
+                initial={false}
+                animate={{ width: `${pct}%` }}
+                transition={{ duration: reduce ? 0 : 0.6, ease: EASE }}
+              >
+                {!reduce && (
+                  <motion.span
+                    aria-hidden
+                    className="absolute inset-y-0 w-1/2 bg-linear-to-r from-transparent via-white/40 to-transparent"
+                    initial={{ x: "-100%" }}
+                    animate={{ x: "200%" }}
+                    transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+                  />
+                )}
+              </motion.div>
+            </div>
 
-        <div className="grid grid-cols-1 p-5 rounded-2xl bg-white/5 border border-white/6 backdrop-blur-sm mb-10">
-          <div className="text-center">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">Session Elapsed</p>
-            <p className="text-lg font-mono font-medium text-white/90">
-              {Math.floor((Date.now() - loadingStartTime) / 1000)}s
-            </p>
-          </div>
-        </div>
-
-        {/* Progress Bar Container */}
-        <div className="relative w-full h-1.5 bg-white/10 rounded-full overflow-hidden mb-4">
-          <div 
-            className="h-full bg-linear-to-r from-blue-600 via-indigo-500 to-blue-400 transition-all duration-700 ease-out"
-            style={{ 
-              width: `${loadingProgress}%`,
-              boxShadow: "0 0 16px rgba(59,130,246,0.6)"
-            }}
-          />
-          <div className="absolute inset-y-0 left-0 w-full h-full opacity-20 bg-shimmer pointer-events-none" />
-        </div>
-        
-        <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-white/30 px-1">
-          <span>System Integrity Validated</span>
-          <span className="text-blue-400/60 animate-pulse">Initializing GIS engine…</span>
-        </div>
-      </div>
-    </div>
+            <p className="mt-2.5 truncate text-[12px] text-white/60">{loadingMessage}</p>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };

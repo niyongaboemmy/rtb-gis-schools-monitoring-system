@@ -1,3 +1,4 @@
+import { schoolPoint } from "../../lib/school-location";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { geoMercator, geoPath } from "d3-geo";
@@ -237,10 +238,9 @@ export function RwandaBackdrop({ schools, anchor, onSchoolClick, provinces, onPr
     const [[bx0, by0], [bx1, by1]] = pathFn.bounds(region.rwanda);
     const dots = schools
       .map((s) => {
-        const lat = Number(s.latitude);
-        const lng = Number(s.longitude);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return null;
-        const p = projection([lng, lat]);
+        const pt = schoolPoint(s);
+        if (!pt) return null;
+        const p = projection([pt.lng, pt.lat]);
         return p ? { school: s, x: p[0], y: p[1], meta: priorityMeta(s.priorityLevel) } : null;
       })
       .filter((d): d is NonNullable<typeof d> => d !== null);

@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { viewerLink } from "../lib/viewer-tools";
 import School2DViewer from "./School2DViewer";
 import ViewerModeModal from "./ViewerModeModal";
 
@@ -31,6 +33,7 @@ export default function SchoolMap({
   initialBuildingId,
   onUpdateSchool,
 }: SchoolMapProps) {
+  const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
   const [viewerMode, setViewerMode] = useState<"2D" | "3D" | null>("2D");
 
@@ -58,7 +61,7 @@ export default function SchoolMap({
         }}
         onSelect={(mode) => {
           if (mode === "3D") {
-            window.open(`/schools/${school.id}/3d-explorer`, "_blank");
+            navigate(viewerLink("3d", school.id));
             return;
           }
           setViewerMode(mode);

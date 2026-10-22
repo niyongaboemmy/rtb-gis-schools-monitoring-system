@@ -2,16 +2,16 @@ import { useEffect, useRef } from "react";
 import Overlay from "ol/Overlay";
 import { fromLonLat } from "ol/proj";
 import type { Map as OLMap } from "ol";
-import { api } from "../../../lib/api";
 import type { BuildingData } from "../../school-form-steps/BuildingsStep";
+import type { BuildingReportCount } from "./useSchoolReports";
 
 interface UseReportIndicatorsOptions {
   mapRef: React.MutableRefObject<OLMap | null>;
   mapReady: boolean;
-  schoolId: string;
   schoolBuildings: BuildingData[];
+  /** Open reports per building (shared with the list and the panel). */
+  counts: Map<string, BuildingReportCount>;
   showIndicators: boolean;
-  refreshKey?: number;
   onBuildingClick?: (buildingId: string) => void;
 }
 
@@ -51,21 +51,35 @@ function injectStyles() {
       transform: translate(-50%, -50%);
       background: currentColor;
       border-radius: 9999px;
-      padding: 3px 7px;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 6px;
       display: flex;
       align-items: center;
-      gap: 3px;
-      box-shadow: 0 2px 10px rgba(0,0,0,.35);
+      justify-content: center;
+      box-shadow: 0 0 0 2px rgba(255,255,255,.95), 0 4px 14px -4px rgba(15,23,42,.55);
       pointer-events: auto;
       cursor: default;
       white-space: nowrap;
+      transition: transform .2s cubic-bezier(.22,1,.36,1);
+      animation: ri-pop .35s cubic-bezier(.22,1,.36,1);
     }
+    .ri-badge:hover { transform: translate(-50%, -50%) scale(1.12); }
     .ri-badge span {
       color: white;
-      font-size: 9px;
-      font-weight: 700;
+      font-size: 11px;
+      font-weight: 500;
       line-height: 1;
-      font-family: system-ui, sans-serif;
+      font-variant-numeric: tabular-nums;
+      font-family: inherit;
+    }
+    @keyframes ri-pop {
+      from { transform: translate(-50%, -50%) scale(.4); opacity: 0; }
+      to   { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .ri-pulse, .ri-pulse-2, .ri-badge { animation: none; }
+      .ri-pulse-2 { display: none; }
     }
     @keyframes ri-pulse-anim {
       0%   { transform: scale(1);   opacity: 0.7; }
@@ -82,9 +96,9 @@ function createIndicatorElement(
   pending: number,
   onBuildingClick?: (id: string) => void,
 ): HTMLDivElement {
-  const color = critical > 0 ? "#f43f5e" : "#f59e0b";
+  // Brand primary (darker when something needs action), like the rest of the map.
+  const color = critical > 0 ? "#1d4ed8" : "#2563eb";
   const total = critical + pending;
-  const icon = critical > 0 ? "⚠" : "◷";
 
   const root = document.createElement("div");
   root.className = "ri-root";
@@ -100,13 +114,12 @@ function createIndicatorElement(
   const badge = document.createElement("div");
   badge.className = "ri-badge";
 
-  const iconSpan = document.createElement("span");
-  iconSpan.textContent = icon;
-
   const countSpan = document.createElement("span");
   countSpan.textContent = String(total);
+  badge.title = [critical && `${critical} need action`, pending && `${pending} waiting`].filter(Boolean).join(" · ");
+  badge.setAttribute("role", "button");
+  badge.setAttribute("aria-label", `${total} open report${total === 1 ? "" : "s"}`);
 
-  badge.appendChild(iconSpan);
   badge.appendChild(countSpan);
   root.appendChild(ring1);
   root.appendChild(ring2);
@@ -126,15 +139,20 @@ function createIndicatorElement(
 export function useReportIndicators({
   mapRef,
   mapReady,
-  schoolId,
   schoolBuildings,
+  counts,
   showIndicators,
-  refreshKey = 0,
   onBuildingClick,
 }: UseReportIndicatorsOptions) {
   const overlaysRef = useRef<Overlay[]>([]);
+  const clickRef = useRef(onBuildingClick);
+  const showRef = useRef(showIndicators);
 
-  // Cleanup helper
+  useEffect(() => {
+    clickRef.current = onBuildingClick;
+    showRef.current = showIndicators;
+  });
+
   const clearOverlays = () => {
     const map = mapRef.current;
     overlaysRef.current.forEach((ov) => {
@@ -145,87 +163,34 @@ export function useReportIndicators({
     overlaysRef.current = [];
   };
 
-  // Fetch + build overlays whenever map/buildings are ready
+  // Rebuild the badges whenever the counts or the buildings change — always
+  // clearing first, so a building whose reports were all closed loses its badge.
   useEffect(() => {
-    if (!mapReady || !schoolId || schoolBuildings.length === 0) return;
     const map = mapRef.current;
-    if (!map) return;
-
+    if (!mapReady || !map) return;
     injectStyles();
+    clearOverlays();
 
-    let cancelled = false;
+    counts.forEach(({ action, waiting }, buildingId) => {
+      const building = schoolBuildings.find((b) => String(b.id) === buildingId);
+      if (!building?.geolocation?.latitude || !building?.geolocation?.longitude) return;
 
-    api
-      .get("/reports", { params: { schoolId } })
-      .then(({ data }) => {
-        if (cancelled) return;
+      const el = createIndicatorElement(buildingId, action, waiting, (id) => clickRef.current?.(id));
+      el.style.display = showRef.current ? "block" : "none";
 
-        const reports: Array<{ buildingId: string; status: string }> =
-          data.data || [];
-
-        // Group active reports by buildingId
-        const counts = new Map<
-          string,
-          { critical: number; pending: number }
-        >();
-        reports.forEach((r) => {
-          if (
-            r.status !== "NEED_INTERVENTION" &&
-            r.status !== "PENDING"
-          )
-            return;
-          const existing = counts.get(r.buildingId) ?? {
-            critical: 0,
-            pending: 0,
-          };
-          if (r.status === "NEED_INTERVENTION") existing.critical++;
-          else existing.pending++;
-          counts.set(r.buildingId, existing);
-        });
-
-        if (counts.size === 0) return;
-
-        clearOverlays();
-
-        counts.forEach(({ critical, pending }, buildingId) => {
-          const building = schoolBuildings.find((b) => b.id === buildingId);
-          if (
-            !building?.geolocation?.latitude ||
-            !building?.geolocation?.longitude
-          )
-            return;
-
-          const el = createIndicatorElement(buildingId, critical, pending, onBuildingClick);
-          el.style.display = showIndicators ? "block" : "none";
-
-          const coord = fromLonLat([
-            Number(building.geolocation.longitude),
-            Number(building.geolocation.latitude),
-          ]);
-
-          const overlay = new Overlay({
-            element: el,
-            position: coord,
-            positioning: "center-center",
-            stopEvent: true,
-          });
-
-          map.addOverlay(overlay);
-          overlaysRef.current.push(overlay);
-        });
-      })
-      .catch((err) => {
-        if (!cancelled)
-          console.error("Failed to fetch report indicators:", err);
+      const overlay = new Overlay({
+        element: el,
+        position: fromLonLat([Number(building.geolocation.longitude), Number(building.geolocation.latitude)]),
+        positioning: "center-center",
+        stopEvent: true,
       });
+      map.addOverlay(overlay);
+      overlaysRef.current.push(overlay);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, schoolBuildings, counts]);
 
-    return () => {
-      cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, schoolId, schoolBuildings, refreshKey]);
-
-  // Toggle visibility without re-fetching
+  // Toggle visibility without rebuilding
   useEffect(() => {
     overlaysRef.current.forEach((ov) => {
       const el = ov.getElement();
@@ -238,6 +203,6 @@ export function useReportIndicators({
     return () => {
       clearOverlays();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }

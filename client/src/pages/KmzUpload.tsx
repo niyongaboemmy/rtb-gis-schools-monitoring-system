@@ -166,7 +166,11 @@ export default function KmzUpload() {
 
       setStatus("success");
       setUploadProgress(100);
-      setMessage("Geospatial data successfully integrated into GIS database.");
+      setMessage(
+        uploadMode === "3d"
+          ? "Uploaded. The model is being prepared."
+          : "Uploaded. The site map is being prepared, and the school's location will update from it.",
+      );
       toast.success(`${uploadMode === "3d" ? "3D model" : "2D map"} "${file.name}" ${isUpdate ? "replaced" : "uploaded"}`);
       setTimeout(() => navigate(`/schools/${id}`), 3000);
     } catch (err: any) {

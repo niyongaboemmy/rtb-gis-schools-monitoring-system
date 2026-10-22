@@ -1,3 +1,4 @@
+import { checkPoint } from "../lib/school-location";
 import React, { useState } from "react";
 import { api } from "../lib/api";
 import { Button } from "./ui/button";
@@ -120,6 +121,11 @@ function validateStep(stepId: number, data: SchoolFormData): string[] {
     case 2: // Location
       if (!data.latitude || !data.longitude)
         errors.push("Pick the school location on the map");
+      else {
+        // Same rule as the server (lib/school-location.ts).
+        const problem = checkPoint(data.latitude, data.longitude);
+        if (problem) errors.push(problem);
+      }
       if (!data.province.trim()) errors.push("Province is required");
       if (!data.district.trim()) errors.push("District is required");
       if (!data.sector.trim()) errors.push("Sector is required");
