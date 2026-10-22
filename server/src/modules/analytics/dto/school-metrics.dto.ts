@@ -61,6 +61,13 @@ export class ReportSummaryDto {
   })
   avgResolutionDays: number | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Age in days of the oldest open Issue Report; null when none are open',
+  })
+  oldestOpenDays: number | null;
+
   @ApiProperty({ type: [RecentReportDto] })
   recentCritical: RecentReportDto[];
 }
@@ -128,12 +135,6 @@ export class SchoolMetricsDto {
   @ApiProperty()
   totalStaff: number;
 
-  @ApiProperty({
-    description:
-      'Percentage of male teachers (0–100); 0 when no gender breakdown',
-  })
-  maleTeacherRatio: number;
-
   @ApiPropertyOptional({
     nullable: true,
     description:
@@ -146,15 +147,6 @@ export class SchoolMetricsDto {
     description: 'Students per teaching staff (not all staff)',
   })
   studentToTeacherRatio: number | null;
-
-  @ApiPropertyOptional({
-    nullable: true,
-    description: 'Students per latrine unit',
-  })
-  studentToLatrineRatio: number | null;
-
-  @ApiPropertyOptional({ nullable: true })
-  latrineCount: number | null;
 
   // ── Utilities & connectivity ─────────────────────────────────────────────────
   @ApiPropertyOptional({ nullable: true })
@@ -169,6 +161,12 @@ export class SchoolMetricsDto {
   // ── Building stats ───────────────────────────────────────────────────────────
   @ApiProperty()
   buildingCount: number;
+
+  @ApiProperty({
+    description:
+      'Buildings with a real structural record (condition, year, inventory…); only these feed the score',
+  })
+  assessedBuildingCount: number;
 
   @ApiPropertyOptional({
     nullable: true,
@@ -242,13 +240,6 @@ export class SchoolMetricsDto {
   @ApiProperty()
   facilityComplianceScore: number;
 
-  @ApiProperty({
-    deprecated: true,
-    description:
-      'Deprecated: 100 − Building Age Score (clamped 5–100). Not accounting depreciation; display buildingAgeScore instead.',
-  })
-  depreciation: number;
-
   @ApiPropertyOptional({
     nullable: true,
     description: 'Issue resolution rate score (0–100), 50 = no reports',
@@ -301,13 +292,15 @@ export class SchoolMetricsDto {
   // ── Peer benchmarking ─────────────────────────────────────────────────────────
   @ApiPropertyOptional({
     nullable: true,
-    description: 'Avg overallScore of other schools in same district',
+    description:
+      'Avg School Condition Score of other scored active schools in the district; null when fewer than 3',
   })
   districtAvgScore: number | null;
 
   @ApiPropertyOptional({
     nullable: true,
-    description: 'Avg overallScore of other schools in same province',
+    description:
+      'Avg School Condition Score of other scored active schools in the province; null when fewer than 3',
   })
   provinceAvgScore: number | null;
 
@@ -358,6 +351,29 @@ export class SchoolMetricsDto {
       'Per component: true when the neutral 50 was used because data is missing',
   })
   dataGaps: ComponentDataGapsDto;
+
+  @ApiProperty({
+    description:
+      'Share of the score (0–1) that comes from measured data: summed weight of the components without a data gap',
+  })
+  dataCoverage: number;
+
+  @ApiProperty({
+    description:
+      'True when no assessment is stored yet (or it predates the current scoring rules) and the score was computed for display only',
+  })
+  provisional: boolean;
+
+  @ApiProperty({
+    description: 'Scoring model the client renders: version, weights, bands',
+  })
+  scoringModel: unknown;
+
+  @ApiProperty({ description: 'Other scored active schools in the district' })
+  districtPeerCount: number;
+
+  @ApiProperty({ description: 'Other scored active schools in the province' })
+  provincePeerCount: number;
 
   @ApiProperty({ type: RiskAssessmentDto })
   riskAssessment: RiskAssessmentDto;

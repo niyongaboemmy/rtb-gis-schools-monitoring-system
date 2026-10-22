@@ -1,7 +1,10 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsEnum,
+  IsInt,
   IsNumber,
+  Max,
+  Min,
   IsOptional,
   IsString,
   IsArray,
@@ -13,6 +16,11 @@ import {
   BuildingCondition,
   RoofCondition,
 } from '../entities/school-building.entity';
+import { IsPlausibleYear } from '../../../common/validation/plausible-year';
+
+/** '' from a blank form select means "not assessed" → null. */
+const blankToNull = ({ value }: { value: unknown }) =>
+  value === '' ? null : value;
 
 export class FacilityItemDto {
   @IsString()
@@ -48,32 +56,43 @@ export class BuildingDto {
   function?: string;
 
   @ApiPropertyOptional()
-  @IsNumber()
+  @IsInt()
+  @Min(0)
   @IsOptional()
   floors?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Floor area in m²' })
   @IsNumber()
+  @Min(0)
   @IsOptional()
   area?: number;
 
-  @ApiPropertyOptional()
-  @IsNumber()
+  @ApiPropertyOptional({ description: 'Whole year, 1900 – current year' })
+  @IsPlausibleYear()
   @IsOptional()
   yearBuilt?: number;
 
-  @ApiPropertyOptional({ enum: BuildingCondition })
+  @ApiPropertyOptional({
+    enum: BuildingCondition,
+    nullable: true,
+    description:
+      'Assessed condition; null = not assessed (does not feed the score)',
+  })
+  @Transform(blankToNull)
   @IsEnum(BuildingCondition)
   @IsOptional()
-  condition?: BuildingCondition;
+  condition?: BuildingCondition | null;
 
-  @ApiPropertyOptional({ enum: RoofCondition })
+  @ApiPropertyOptional({ enum: RoofCondition, nullable: true })
+  @Transform(blankToNull)
   @IsEnum(RoofCondition)
   @IsOptional()
-  roofCondition?: RoofCondition;
+  roofCondition?: RoofCondition | null;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: '0–100' })
   @IsNumber()
+  @Min(0)
+  @Max(100)
   @IsOptional()
   structuralScore?: number;
 

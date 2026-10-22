@@ -2,6 +2,7 @@ import { useState } from "react";
 import type React from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "../../lib/utils";
+import { wholePercentages } from "../../lib/percentages";
 
 export interface DonutSegment {
   key: string;
@@ -35,6 +36,7 @@ export function PriorityDonut({ segments, unit = "schools", vertical = false, fo
   const reduce = useReducedMotion();
   const [active, setActive] = useState<string | null>(null);
   const total = segments.reduce((n, s) => n + s.value, 0);
+  const pcts = wholePercentages(segments.map((s) => s.value));
   const shown = segments.filter((s) => s.value > 0);
   const focus = active ? segments.find((s) => s.key === active) : null;
 
@@ -101,8 +103,8 @@ export function PriorityDonut({ segments, unit = "schools", vertical = false, fo
 
       {/* Legend */}
       <ul className={cn("grid min-w-0 grid-cols-2 gap-x-4 gap-y-2.5", vertical ? "w-full" : "flex-1")}>
-        {segments.map((s) => {
-          const pct = total ? Math.round((s.value / total) * 100) : 0;
+        {segments.map((s, i) => {
+          const pct = pcts[i];
           return (
             <li
               key={s.key}

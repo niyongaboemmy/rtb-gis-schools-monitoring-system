@@ -5,6 +5,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Repository } from 'typeorm';
 import {
   ChangeRequestPayload,
@@ -31,7 +32,16 @@ export class ReportsService {
     private readonly reportRepository: Repository<IssueReport>,
     private readonly storageService: StorageService,
     @Optional() private readonly eventsGateway?: EventsGateway,
+    @Optional() private readonly eventEmitter?: EventEmitter2,
   ) {}
+
+  /**
+   * Issue Reports feed the resolution component of the School Condition
+   * Score — any create / status change / delete triggers a rescore.
+   */
+  private rescore(schoolId: string | null | undefined): void {
+    if (schoolId) this.eventEmitter?.emit('school.updated', { schoolId });
+  }
 
   async create(
     createReportDto: CreateReportDto,
@@ -44,7 +54,10 @@ export class ReportsService {
       type: ReportType.ISSUE,
       reportedBy: userId,
     });
-    return this.reportRepository.save(report);
+    applyStatus(report, report.status ?? ReportStatus.PENDING);
+    const saved = await this.reportRepository.save(report);
+    this.rescore(saved.schoolId);
+    return saved;
   }
 
   /** A caller may only file reports against schools inside their scope. */
@@ -242,11 +255,9 @@ export class ReportsService {
         'Only report managers can change the status of issue reports.',
       );
     }
-    report.status = status;
-    if (status === ReportStatus.SOLVED && !report.resolvedAt) {
-      report.resolvedAt = new Date();
-    }
+    applyStatus(report, status);
     const saved = await this.reportRepository.save(report);
+    this.rescore(saved.schoolId);
 
     if (saved.reportedBy) {
       this.eventsGateway?.emitReportStatusChanged(saved.reportedBy, {
@@ -275,7 +286,28 @@ export class ReportsService {
       );
     }
 
+    const { schoolId } = report;
     await this.reportRepository.remove(report);
+    this.rescore(schoolId);
+  }
+}
+
+/**
+ * Status transition with a consistent resolution date: entering SOLVED stamps
+ * `resolvedAt` (a re-solve gets a fresh date), leaving SOLVED clears it — a
+ * reopened report used to keep its old date and skew resolution times.
+ */
+export function applyStatus(
+  report: { status: ReportStatus; resolvedAt?: Date | null },
+  status: ReportStatus,
+): void {
+  const wasSolved =
+    report.status === ReportStatus.SOLVED && !!report.resolvedAt;
+  report.status = status;
+  if (status === ReportStatus.SOLVED) {
+    if (!wasSolved) report.resolvedAt = new Date();
+  } else {
+    report.resolvedAt = null;
   }
 }
 

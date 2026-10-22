@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { QueryFailedError } from 'typeorm';
 import { AnalyticsService } from './analytics.service';
 import {
   DecisionAssessment,
@@ -20,40 +21,75 @@ import {
 import {
   IssueReport,
   ReportStatus,
+  ReportType,
 } from '../reports/entities/issue-report.entity';
 import { AuditService } from '../audit/audit.service';
-import { computeOverallScore } from './scoring.constants';
+import { EventsGateway } from '../events/events.gateway';
+import {
+  SCORING_VERSION,
+  ageToScore,
+  computeCoverage,
+  computeOverallScore,
+  demandRatioToScore,
+  scoreToPriorityLevel,
+} from './scoring.constants';
+import {
+  accessibilityScore,
+  assessmentChanged,
+  buildingAgeScore,
+  computeAssessment,
+  facilityComplianceScore,
+  infrastructureScore,
+  populationScore,
+  resolutionScore,
+  ScoringInputs,
+} from './scoring-engine';
+import { assessedBuildings } from './school-metrics.helpers';
 
 // ---------------------------------------------------------------------------
 // Test harness
 // ---------------------------------------------------------------------------
 
-const qb = () => ({
-  select: jest.fn().mockReturnThis(),
-  addSelect: jest.fn().mockReturnThis(),
-  where: jest.fn().mockReturnThis(),
-  andWhere: jest.fn().mockReturnThis(),
-  groupBy: jest.fn().mockReturnThis(),
-  orderBy: jest.fn().mockReturnThis(),
-  addOrderBy: jest.fn().mockReturnThis(),
-  take: jest.fn().mockReturnThis(),
-  leftJoinAndMapOne: jest.fn().mockReturnThis(),
-  innerJoinAndMapOne: jest.fn().mockReturnThis(),
-  leftJoinAndSelect: jest.fn().mockReturnThis(),
-  innerJoinAndSelect: jest.fn().mockReturnThis(),
-  innerJoin: jest.fn().mockReturnThis(),
-  getRawOne: jest.fn().mockResolvedValue({}),
-  getRawMany: jest.fn().mockResolvedValue([]),
-  getMany: jest.fn().mockResolvedValue([]),
-  getCount: jest.fn().mockResolvedValue(0),
-});
+const CY = new Date().getFullYear();
+const NOW = new Date();
+const daysAgo = (d: number) => new Date(NOW.getTime() - d * 86_400_000);
+
+/** Query-builder mock: every chain method returns itself; terminal results configurable. */
+const qb = (o: Partial<Record<string, jest.Mock>> = {}) => {
+  const q: Record<string, jest.Mock> = {};
+  for (const m of [
+    'select',
+    'addSelect',
+    'where',
+    'andWhere',
+    'groupBy',
+    'orderBy',
+    'addOrderBy',
+    'take',
+    'limit',
+    'leftJoin',
+    'innerJoin',
+    'leftJoinAndMapOne',
+    'innerJoinAndMapOne',
+    'leftJoinAndSelect',
+    'innerJoinAndSelect',
+  ])
+    q[m] = jest.fn(() => q);
+  q.getRawOne = jest.fn().mockResolvedValue({});
+  q.getRawMany = jest.fn().mockResolvedValue([]);
+  q.getMany = jest.fn().mockResolvedValue([]);
+  q.getCount = jest.fn().mockResolvedValue(0);
+  return Object.assign(q, o);
+};
 
 const makeRepo = (overrides: Partial<Record<string, jest.Mock>> = {}) => ({
   find: jest.fn().mockResolvedValue([]),
   findOne: jest.fn().mockResolvedValue(null),
+  exists: jest.fn().mockResolvedValue(true),
   create: jest.fn((v) => v),
-  save: jest.fn((v) => Promise.resolve({ ...v, id: 'assessment-id' })),
+  save: jest.fn((v) => Promise.resolve({ ...v, id: v.id ?? 'assessment-id' })),
   update: jest.fn().mockResolvedValue(undefined),
+  delete: jest.fn().mockResolvedValue(undefined),
   count: jest.fn().mockResolvedValue(0),
   createQueryBuilder: jest.fn(() => qb()),
   ...overrides,
@@ -66,8 +102,8 @@ function buildSchool(overrides: Partial<School> = {}): School {
     code: 'TST-001',
     district: 'D',
     province: 'P',
+    status: 'active',
     buildings: [],
-    populationData: [],
     educationPrograms: [],
     totalStudents: 0,
     roadStatusPercentage: 50,
@@ -75,29 +111,28 @@ function buildSchool(overrides: Partial<School> = {}): School {
   } as unknown as School;
 }
 
-function buildBuilding(
-  condition: BuildingCondition,
+const building = (
+  condition: BuildingCondition | null,
   yearBuilt?: number,
-): SchoolBuilding {
-  return { condition, yearBuilt } as unknown as SchoolBuilding;
-}
+): SchoolBuilding =>
+  ({ condition, yearBuilt: yearBuilt ?? null }) as unknown as SchoolBuilding;
 
-type Repos = {
-  assessment: ReturnType<typeof makeRepo>;
-  scoreHistory: ReturnType<typeof makeRepo>;
-  action: ReturnType<typeof makeRepo>;
-  school: ReturnType<typeof makeRepo>;
-  building: ReturnType<typeof makeRepo>;
-  population: ReturnType<typeof makeRepo>;
-  survey: ReturnType<typeof makeRepo>;
-  issue: ReturnType<typeof makeRepo>;
-};
+type Repos = Record<
+  | 'assessment'
+  | 'scoreHistory'
+  | 'action'
+  | 'school'
+  | 'building'
+  | 'population'
+  | 'survey'
+  | 'issue',
+  ReturnType<typeof makeRepo>
+>;
 
-async function makeService(repos: Partial<Repos> = {}): Promise<{
-  service: AnalyticsService;
-  repos: Repos;
-  audit: { log: jest.Mock };
-}> {
+async function makeService(
+  repos: Partial<Repos> = {},
+  gateway?: { emitScoresRecalculated: jest.Mock },
+) {
   const r: Repos = {
     assessment: repos.assessment ?? makeRepo(),
     scoreHistory: repos.scoreHistory ?? makeRepo(),
@@ -109,7 +144,6 @@ async function makeService(repos: Partial<Repos> = {}): Promise<{
     issue: repos.issue ?? makeRepo(),
   };
   const audit = { log: jest.fn() };
-
   const module: TestingModule = await Test.createTestingModule({
     providers: [
       AnalyticsService,
@@ -125,474 +159,62 @@ async function makeService(repos: Partial<Repos> = {}): Promise<{
       { provide: getRepositoryToken(SchoolFacilitySurvey), useValue: r.survey },
       { provide: getRepositoryToken(IssueReport), useValue: r.issue },
       { provide: AuditService, useValue: audit },
+      ...(gateway ? [{ provide: EventsGateway, useValue: gateway }] : []),
     ],
   }).compile();
-
   return { service: module.get(AnalyticsService), repos: r, audit };
 }
 
-const CY = new Date().getFullYear();
-const score = async (school: School): Promise<number> => {
-  const { service } = await makeService();
-  const res = await service.calculateSchoolScore(school);
-  return Math.round(Number(res.overallScore));
-};
+/** Pure scoring inputs with sensible empty defaults. */
+const inputs = (
+  o: Omit<Partial<ScoringInputs>, 'school'> & {
+    school?: Record<string, unknown>;
+  } = {},
+): ScoringInputs => ({
+  school: { id: 's', buildings: [], educationPrograms: [], ...o.school },
+  population: o.population ?? null,
+  surveys: o.surveys ?? [],
+  reports: o.reports ?? [],
+  now: o.now ?? NOW,
+});
 
 // ---------------------------------------------------------------------------
-// scoring.constants — the one formula
+// The weighted composite
 // ---------------------------------------------------------------------------
 
 describe('computeOverallScore (canonical 6-factor 35/25/10/10/15/5)', () => {
-  it('all components 50 → 50', () => {
-    expect(
-      computeOverallScore({
-        infrastructure: 50,
-        buildingAge: 50,
-        accessibility: 50,
-        population: 50,
-        facilityCompliance: 50,
-        resolution: 50,
-      }),
-    ).toBe(50);
+  const all = (v: number) => ({
+    infrastructure: v,
+    buildingAge: v,
+    accessibility: v,
+    population: v,
+    facilityCompliance: v,
+    resolution: v,
   });
-
-  it('all components 100 → 100', () => {
+  it('all components 50 → 50', () =>
+    expect(computeOverallScore(all(50))).toBe(50));
+  it('all components 100 → 100', () =>
+    expect(computeOverallScore(all(100))).toBe(100));
+  it('weights are applied in the documented proportion', () =>
+    expect(computeOverallScore({ ...all(0), infrastructure: 100 })).toBe(35));
+  it('clamps out-of-range components', () =>
     expect(
       computeOverallScore({
-        infrastructure: 100,
-        buildingAge: 100,
-        accessibility: 100,
-        population: 100,
-        facilityCompliance: 100,
-        resolution: 100,
-      }),
-    ).toBe(100);
-  });
-
-  it('weights are applied in the documented proportion', () => {
-    // only infrastructure = 100, rest 0  → 35
-    expect(
-      computeOverallScore({
-        infrastructure: 100,
-        buildingAge: 0,
-        accessibility: 0,
-        population: 0,
-        facilityCompliance: 0,
-        resolution: 0,
-      }),
-    ).toBe(35);
-  });
-
-  it('clamps out-of-range components', () => {
-    expect(
-      computeOverallScore({
+        ...all(50),
         infrastructure: 500,
         buildingAge: -100,
-        accessibility: 50,
-        population: 50,
-        facilityCompliance: 50,
-        resolution: 50,
       }),
-    ).toBe(
-      clamp(
-        100 * 0.35 + 0 * 0.25 + 50 * 0.1 + 50 * 0.1 + 50 * 0.15 + 50 * 0.05,
-      ),
-    );
+    ).toBe(Math.round(35 + 0 + 5 + 5 + 7.5 + 2.5)));
+  it('every non-finite component falls back to the neutral 50 (one rule)', () => {
+    for (const k of Object.keys(all(0)) as Array<
+      keyof ReturnType<typeof all>
+    >) {
+      expect(computeOverallScore({ ...all(50), [k]: NaN })).toBe(50);
+    }
   });
 });
-
-const clamp = (n: number) => Math.min(100, Math.max(0, Math.round(n)));
-
-// ---------------------------------------------------------------------------
-// calculateInfrastructureScore
-// ---------------------------------------------------------------------------
-
-describe('calculateInfrastructureScore', () => {
-  let service: AnalyticsService;
-  beforeEach(async () => ({ service } = await makeService()));
-
-  it.each([
-    [[], 50],
-    [null, 50],
-    [undefined, 50],
-  ])('missing data (%p) → neutral 50', (input, expected) => {
-    expect((service as any).calculateInfrastructureScore(input)).toBe(expected);
-  });
-
-  it('all GOOD → 100', () => {
-    expect(
-      (service as any).calculateInfrastructureScore([
-        buildBuilding(BuildingCondition.GOOD),
-        buildBuilding(BuildingCondition.GOOD),
-      ]),
-    ).toBe(100);
-  });
-
-  it('all FAIR → 70', () => {
-    expect(
-      (service as any).calculateInfrastructureScore([
-        buildBuilding(BuildingCondition.FAIR),
-      ]),
-    ).toBe(70);
-  });
-
-  it('all POOR → 30 (canonical map)', () => {
-    expect(
-      (service as any).calculateInfrastructureScore([
-        buildBuilding(BuildingCondition.POOR),
-      ]),
-    ).toBe(30);
-  });
-
-  it('all CRITICAL → 10', () => {
-    expect(
-      (service as any).calculateInfrastructureScore([
-        buildBuilding(BuildingCondition.CRITICAL),
-      ]),
-    ).toBe(10);
-  });
-
-  it('mixed GOOD + FAIR → round((100+70)/2) = 85', () => {
-    expect(
-      (service as any).calculateInfrastructureScore([
-        buildBuilding(BuildingCondition.GOOD),
-        buildBuilding(BuildingCondition.FAIR),
-      ]),
-    ).toBe(85);
-  });
-
-  it('2 GOOD + 1 POOR → round((100+100+30)/3) = 77', () => {
-    expect(
-      (service as any).calculateInfrastructureScore([
-        buildBuilding(BuildingCondition.GOOD),
-        buildBuilding(BuildingCondition.GOOD),
-        buildBuilding(BuildingCondition.POOR),
-      ]),
-    ).toBe(77);
-  });
-
-  it('unknown condition falls back to neutral 50 in the average', () => {
-    expect(
-      (service as any).calculateInfrastructureScore([
-        { condition: 'nope' },
-        buildBuilding(BuildingCondition.GOOD),
-      ]),
-    ).toBe(75);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// assessedBuildings — model-file placeholders are not structural evidence
-// ---------------------------------------------------------------------------
-
-describe('assessedBuildings', () => {
-  let service: AnalyticsService;
-  beforeEach(async () => ({ service } = await makeService()));
-
-  const placeholder = {
-    condition: BuildingCondition.FAIR,
-    modelName: 'nyamirama tss-3d model.glb',
-    modelPath: '/files/schools/x/3d/model.glb',
-  } as unknown as SchoolBuilding;
-
-  it('drops a bare GLB-model placeholder row', () => {
-    expect((service as any).assessedBuildings([placeholder])).toEqual([]);
-  });
-
-  it('keeps a placeholder once any inventory field is filled', () => {
-    const real = { ...placeholder, yearBuilt: 2010 };
-    expect((service as any).assessedBuildings([real])).toHaveLength(1);
-  });
-
-  it('keeps hand-entered buildings that carry no model reference', () => {
-    expect(
-      (service as any).assessedBuildings([
-        buildBuilding(BuildingCondition.POOR),
-      ]),
-    ).toHaveLength(1);
-  });
-
-  it('calculateSchoolScore: a school whose only building is a GLB placeholder scores as infra data-gap', async () => {
-    const { service: svc } = await makeService();
-    const res = await svc.calculateSchoolScore(
-      buildSchool({
-        establishedYear: CY - 24,
-        roadStatusPercentage: 70,
-        buildings: [placeholder],
-      }),
-    );
-    expect(Number(res.infrastructureScore)).toBe(50);
-    expect(res.hasInfraDataGap).toBe(true);
-    // age still falls back to establishedYear (24y → 60)
-    expect(Number(res.buildingAgeScore)).toBe(60);
-    // 50*.35 + 60*.25 + 50*.15 + 50*.10 + 70*.10 + 50*.05 = 54.5 → 55
-    expect(Number(res.overallScore)).toBe(55);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// calculateAgeScore
-// ---------------------------------------------------------------------------
-
-describe('calculateAgeScore', () => {
-  let service: AnalyticsService;
-  beforeEach(async () => ({ service } = await makeService()));
-
-  it.each([
-    [5, 95],
-    [10, 95],
-    [18, 80],
-    [30, 60],
-    [40, 45],
-    [50, 30],
-    [60, 20],
-    [80, 10],
-  ])('avg building age %i years → %i', (age, expected) => {
-    expect(
-      (service as any).calculateAgeScore([
-        buildBuilding(BuildingCondition.GOOD, CY - age),
-      ]),
-    ).toBe(expected);
-  });
-
-  it('no buildings → falls back to establishedYear', () => {
-    expect((service as any).calculateAgeScore([], CY - 25)).toBe(60);
-  });
-
-  it('no buildings, no establishedYear → neutral 50', () => {
-    expect((service as any).calculateAgeScore([])).toBe(50);
-    expect((service as any).calculateAgeScore([], undefined)).toBe(50);
-  });
-
-  it('buildings without yearBuilt are excluded', () => {
-    expect(
-      (service as any).calculateAgeScore(
-        [buildBuilding(BuildingCondition.GOOD, undefined)],
-        CY - 5,
-      ),
-    ).toBe(95);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// calculatePopulationScore
-// ---------------------------------------------------------------------------
-
-describe('calculatePopulationScore', () => {
-  let service: AnalyticsService;
-  beforeEach(async () => ({ service } = await makeService()));
-
-  it('no population data → { score: 50, hasPopDataGap: true }', () => {
-    expect((service as any).calculatePopulationScore(undefined)).toEqual({
-      score: 50,
-      hasPopDataGap: true,
-    });
-    expect((service as any).calculatePopulationScore(null)).toEqual({
-      score: 50,
-      hasPopDataGap: true,
-    });
-  });
-
-  it.each([
-    [1000, 200, 10], // ratio 5
-    [400, 100, 30], // ratio 4
-    [250, 100, 50], // ratio 2.5
-    [250, 200, 70], // ratio 1.25
-    [50, 200, 100], // ratio 0.25
-  ])('demand %i / capacity %i → score %i', (demand, cap, expected) => {
-    const pop = { schoolAgePopulation2km: demand } as PopulationData;
-    expect((service as any).calculatePopulationScore(pop, cap).score).toBe(
-      expected,
-    );
-  });
-
-  it('no capacity → default catchment capacity 300', () => {
-    const pop = { schoolAgePopulation2km: 1800 } as PopulationData;
-    expect(
-      (service as any).calculatePopulationScore(pop, undefined).score,
-    ).toBe(10); // 1800/300 = 6
-  });
-
-  it('uses programme seat capacity (not enrolment) as the denominator', async () => {
-    const { service } = await makeService();
-    // 800 school-age kids nearby; 1000 seats, 950 already enrolled.
-    // demand/capacity = 800/1000 = 0.8 → ample headroom → 100
-    const school = buildSchool({
-      populationData: [{ schoolAgePopulation2km: 800 } as PopulationData],
-      educationPrograms: [{ totalStudents: 950, capacity: 1000 }] as any,
-    });
-    const res = await service.calculateSchoolScore(school);
-    expect(Number(res.populationPressureScore)).toBe(100);
-  });
-
-  it('loads population by schoolId when the ORM relation is empty (school_id FK is NULL)', async () => {
-    const population = makeRepo({
-      findOne: jest.fn().mockResolvedValue({ schoolAgePopulation2km: 1500 }),
-    });
-    const { service } = await makeService({ population });
-    // relation deliberately empty; repo returns demand 1500 / default cap 300 = 5 → 10
-    const school = buildSchool({ populationData: [] });
-    const res = await service.calculateSchoolScore(school);
-    expect(population.findOne).toHaveBeenCalledWith({
-      where: { schoolId: 'school-1' },
-      order: { syncedAt: 'DESC' },
-    });
-    expect(Number(res.populationPressureScore)).toBe(10);
-    expect(res.hasPopDataGap).toBe(false);
-  });
-
-  // Real production record: NYAMIRAMA TSS (code 540912). No building rows, no
-  // population data, programmes carry no capacity, established 1984, earth road
-  // at 70%. Exercises every fallback path at once.
-  it('NYAMIRAMA TSS real payload → infra/pop/fac/res neutral, age from 1984, access 70', async () => {
-    const { service } = await makeService();
-    const school = buildSchool({
-      id: 'nyamirama',
-      establishedYear: 1984,
-      roadStatusPercentage: 70,
-      totalStudents: null as any,
-      buildings: [],
-      populationData: [],
-      educationPrograms: [
-        { name: 'Electrical Technology', capacity: null, totalStudents: 101 },
-        { name: 'Fashion Design', capacity: null, totalStudents: 84 },
-        { name: 'Plumbing Construction', capacity: null, totalStudents: 134 },
-        { name: 'Building Technology', capacity: null, totalStudents: 134 },
-        { name: 'Manufacturing Technology', capacity: null, totalStudents: 64 },
-      ] as any,
-    });
-    const res = await service.calculateSchoolScore(school);
-    const CUR = new Date().getFullYear();
-    // age: (CUR-1984) years → ageToScore. 2026 → 42y → 30.
-    const expectedAge = CUR - 1984 <= 40 ? 45 : CUR - 1984 <= 50 ? 30 : 20;
-    expect(Number(res.infrastructureScore)).toBe(50); // no buildings
-    expect(res.hasInfraDataGap).toBe(true);
-    expect(Number(res.buildingAgeScore)).toBe(expectedAge);
-    expect(Number(res.accessibilityScore)).toBe(70);
-    expect(Number(res.populationPressureScore)).toBe(50); // no population data
-    expect(res.hasPopDataGap).toBe(true);
-    expect(Number(res.facilityComplianceScore)).toBe(50); // no surveys
-    expect(Number(res.resolutionRateScore)).toBe(50); // no reports
-    // 50*.35 + 30*.25 + 50*.15 + 50*.10 + 70*.10 + 50*.05 = 47
-    const expectedOverall = Math.round(
-      50 * 0.35 +
-        expectedAge * 0.25 +
-        50 * 0.15 +
-        50 * 0.1 +
-        70 * 0.1 +
-        50 * 0.05,
-    );
-    expect(Number(res.overallScore)).toBe(expectedOverall);
-    expect(res.priorityLevel).toBe(PriorityLevel.HIGH);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// calculateSchoolScore — integration
-// ---------------------------------------------------------------------------
-
-describe('calculateSchoolScore – weighted composite', () => {
-  it('2 GOOD + 1 POOR @25yr, road 50, demand 250/200 → 64 (MEDIUM)', async () => {
-    const school = buildSchool({
-      buildings: [
-        buildBuilding(BuildingCondition.GOOD, CY - 25),
-        buildBuilding(BuildingCondition.GOOD, CY - 25),
-        buildBuilding(BuildingCondition.POOR, CY - 25),
-      ],
-      roadStatusPercentage: 50,
-      populationData: [{ schoolAgePopulation2km: 250 } as PopulationData],
-      totalStudents: 200,
-    });
-    // infra 77*.35 + age 60*.25 + access 50*.1 + pop 70*.1 + fac 50*.15 + res 50*.05
-    expect(await score(school)).toBe(64);
-    const { service } = await makeService();
-    expect((await service.calculateSchoolScore(school)).priorityLevel).toBe(
-      PriorityLevel.MEDIUM,
-    );
-  });
-
-  it('all-CRITICAL @40yr, road 80, ratio 5 → < 35 (CRITICAL)', async () => {
-    const school = buildSchool({
-      buildings: [
-        buildBuilding(BuildingCondition.CRITICAL, CY - 40),
-        buildBuilding(BuildingCondition.CRITICAL, CY - 40),
-      ],
-      roadStatusPercentage: 80,
-      populationData: [{ schoolAgePopulation2km: 1000 } as PopulationData],
-      totalStudents: 200,
-    });
-    const { service } = await makeService();
-    const res = await service.calculateSchoolScore(school);
-    expect(Number(res.overallScore)).toBeLessThan(35);
-    expect(res.priorityLevel).toBe(PriorityLevel.CRITICAL);
-  });
-
-  it('2 GOOD @15yr, road 60, no population → 76 (LOW)', async () => {
-    const school = buildSchool({
-      buildings: [
-        buildBuilding(BuildingCondition.GOOD, CY - 15),
-        buildBuilding(BuildingCondition.GOOD, CY - 15),
-      ],
-      roadStatusPercentage: 60,
-    });
-    expect(await score(school)).toBe(76);
-    const { service } = await makeService();
-    expect((await service.calculateSchoolScore(school)).priorityLevel).toBe(
-      PriorityLevel.LOW,
-    );
-  });
-
-  it('no buildings, no population, 50% road → 50 (HIGH band)', async () => {
-    const school = buildSchool({ roadStatusPercentage: 50 });
-    expect(await score(school)).toBe(50);
-    const { service } = await makeService();
-    expect((await service.calculateSchoolScore(school)).priorityLevel).toBe(
-      PriorityLevel.HIGH,
-    );
-  });
-
-  it('flags hasInfraDataGap / hasPopDataGap when the data is absent', async () => {
-    const { service } = await makeService();
-    const res = await service.calculateSchoolScore(buildSchool());
-    expect(res.hasInfraDataGap).toBe(true);
-    expect(res.hasPopDataGap).toBe(true);
-  });
-
-  it('persists a score-history snapshot on every run', async () => {
-    const { service, repos } = await makeService();
-    await service.calculateSchoolScore(buildSchool());
-    expect(repos.scoreHistory.save).toHaveBeenCalledTimes(1);
-  });
-
-  it('upserts an existing assessment rather than creating a new row', async () => {
-    const assessment = makeRepo({
-      findOne: jest.fn().mockResolvedValue({ id: 'x', schoolId: 'school-1' }),
-    });
-    const { service } = await makeService({ assessment });
-    await service.calculateSchoolScore(buildSchool());
-    expect(assessment.create).not.toHaveBeenCalled();
-    expect(assessment.save).toHaveBeenCalledTimes(1);
-  });
-
-  it('ordering: healthy school scores higher than a derelict one', async () => {
-    const good = buildSchool({
-      buildings: [buildBuilding(BuildingCondition.GOOD, CY - 6)],
-      roadStatusPercentage: 90,
-    });
-    const bad = buildSchool({
-      buildings: [buildBuilding(BuildingCondition.CRITICAL, CY - 45)],
-      roadStatusPercentage: 15,
-    });
-    expect(await score(good)).toBeGreaterThan(await score(bad));
-  });
-});
-
-// ---------------------------------------------------------------------------
-// scoreToPriorityLevel boundaries
-// ---------------------------------------------------------------------------
 
 describe('priority banding', () => {
-  const { scoreToPriorityLevel } = require('./scoring.constants');
   it.each([
     [0, PriorityLevel.CRITICAL],
     [34, PriorityLevel.CRITICAL],
@@ -602,52 +224,729 @@ describe('priority banding', () => {
     [74, PriorityLevel.MEDIUM],
     [75, PriorityLevel.LOW],
     [100, PriorityLevel.LOW],
-  ])('score %i → %s', (s, expected) => {
-    expect(scoreToPriorityLevel(s)).toBe(expected);
+  ])('score %i → %s', (s, expected) =>
+    expect(scoreToPriorityLevel(s)).toBe(expected),
+  );
+});
+
+describe('computeCoverage', () => {
+  const none = {
+    infrastructure: false,
+    buildingAge: false,
+    accessibility: false,
+    population: false,
+    facilityCompliance: false,
+    resolution: false,
+  };
+  it('no gaps → 1', () => expect(computeCoverage(none)).toBe(1));
+  it('all gaps → 0', () =>
+    expect(
+      computeCoverage(
+        Object.fromEntries(
+          Object.keys(none).map((k) => [k, true]),
+        ) as typeof none,
+      ),
+    ).toBe(0));
+  it('only building age measured → 0.25', () =>
+    expect(
+      computeCoverage({
+        infrastructure: true,
+        buildingAge: false,
+        accessibility: true,
+        population: true,
+        facilityCompliance: true,
+        resolution: true,
+      }),
+    ).toBe(0.25));
+});
+
+// ---------------------------------------------------------------------------
+// Components (pure)
+// ---------------------------------------------------------------------------
+
+describe('assessedBuildings', () => {
+  it('drops a stub with no condition and no inventory fields', () =>
+    expect(assessedBuildings([{ condition: null }])).toHaveLength(0));
+  it('keeps a building with an assessed condition, even "fair"', () =>
+    expect(assessedBuildings([{ condition: 'fair' }])).toHaveLength(1));
+  it('blank strings from a form are not a signal', () =>
+    expect(
+      assessedBuildings([{ condition: null, buildingCode: '', notes: ' ' }]),
+    ).toHaveLength(0));
+  it('keeps a stub once any inventory field is filled', () =>
+    expect(assessedBuildings([{ condition: null, floors: 2 }])).toHaveLength(
+      1,
+    ));
+});
+
+describe('infrastructureScore', () => {
+  const s = (...c: BuildingCondition[]) =>
+    infrastructureScore(c.map((x) => building(x)));
+  it('all GOOD → 100', () => expect(s(BuildingCondition.GOOD).score).toBe(100));
+  it('all FAIR → 70', () => expect(s(BuildingCondition.FAIR).score).toBe(70));
+  it('all POOR → 30', () => expect(s(BuildingCondition.POOR).score).toBe(30));
+  it('all CRITICAL → 10', () =>
+    expect(s(BuildingCondition.CRITICAL).score).toBe(10));
+  it('GOOD + FAIR → 85', () =>
+    expect(s(BuildingCondition.GOOD, BuildingCondition.FAIR).score).toBe(85));
+  it('2 GOOD + 1 POOR → 77', () =>
+    expect(
+      s(BuildingCondition.GOOD, BuildingCondition.GOOD, BuildingCondition.POOR)
+        .score,
+    ).toBe(77));
+  it('no rated buildings → neutral 50 + gap', () =>
+    expect(infrastructureScore([])).toEqual({ score: 50, gap: true }));
+  it('buildings without a condition are not rated (year only → gap)', () =>
+    expect(infrastructureScore([building(null, CY - 5)])).toEqual({
+      score: 50,
+      gap: true,
+    }));
+});
+
+describe('buildingAgeScore', () => {
+  it.each([
+    [5, 95],
+    [10, 95],
+    [18, 80],
+    [30, 60],
+    [40, 45],
+    [50, 30],
+    [60, 20],
+    [80, 10],
+  ])('avg age %i → %i', (age, expected) =>
+    expect(
+      buildingAgeScore([building(BuildingCondition.GOOD, CY - age)], null, CY)
+        .score,
+    ).toBe(expected),
+  );
+  it('falls back to the establishment year', () =>
+    expect(buildingAgeScore([], CY - 45, CY)).toEqual({
+      score: 30,
+      gap: false,
+      avgAge: null,
+    }));
+  it('no year anywhere → neutral 50 + gap', () =>
+    expect(buildingAgeScore([], null, CY).gap).toBe(true));
+  it('a future build year is dropped, never scored as new stock', () => {
+    const r = buildingAgeScore(
+      [building(BuildingCondition.GOOD, CY + 9)],
+      null,
+      CY,
+    );
+    expect(r).toEqual({ score: 50, gap: true, avgAge: null });
+  });
+  it('a future establishment year is a gap', () =>
+    expect(buildingAgeScore([], CY + 3, CY).gap).toBe(true));
+  it('ageToScore(NaN) is neutral, not the worst band', () =>
+    expect(ageToScore(NaN)).toBe(50));
+});
+
+describe('accessibilityScore', () => {
+  it('road % is the score', () =>
+    expect(accessibilityScore(70)).toEqual({ score: 70, gap: false }));
+  it('missing → neutral + gap', () =>
+    expect(accessibilityScore(null)).toEqual({ score: 50, gap: true }));
+});
+
+describe('populationScore', () => {
+  const school = (o: Record<string, unknown> = {}) => ({
+    id: 's',
+    educationPrograms: [],
+    ...o,
+  });
+  it.each([
+    [50, 200, 100],
+    [250, 200, 70],
+    [250, 100, 50],
+    [400, 100, 30],
+    [1000, 200, 10],
+  ])('demand %i / enrolment %i → %i', (demand, students, expected) =>
+    expect(
+      populationScore(
+        { schoolAgePopulation2km: demand },
+        school({ totalStudents: students }),
+      ).score,
+    ).toBe(expected),
+  );
+  it('no record → neutral + gap', () =>
+    expect(populationScore(null, school())).toEqual({ score: 50, gap: true }));
+  it('a 0 / null / NaN school-age population is missing data, not "no demand" (was 100)', () => {
+    for (const v of [0, '0.00', null, 'abc', -5]) {
+      expect(
+        populationScore({ schoolAgePopulation2km: v as never }, school()),
+      ).toEqual({ score: 50, gap: true });
+    }
+  });
+  it('uses programme seat capacity (not enrolment) as the denominator', () =>
+    expect(
+      populationScore(
+        { schoolAgePopulation2km: 300 },
+        school({
+          totalStudents: 600,
+          educationPrograms: [{ totalStudents: 600, capacity: 100 }],
+        }),
+      ).score,
+    ).toBe(30));
+  it('no capacity and no enrolment → default catchment 300', () =>
+    expect(
+      populationScore({ schoolAgePopulation2km: 299 }, school()).score,
+    ).toBe(100));
+  it('demandRatioToScore(NaN) is neutral', () =>
+    expect(demandRatioToScore(NaN)).toBe(50));
+});
+
+describe('facilityComplianceScore', () => {
+  const run = (...c: ComplianceLevel[]) =>
+    facilityComplianceScore(c.map((compliance) => ({ compliance })));
+  it('no surveys → 50 + gap', () =>
+    expect(run()).toEqual({ score: 50, gap: true }));
+  it('all COMPLIANT → 100', () =>
+    expect(
+      run(ComplianceLevel.COMPLIANT, ComplianceLevel.COMPLIANT).score,
+    ).toBe(100));
+  it('NON_COMPLIANT → 0', () =>
+    expect(run(ComplianceLevel.NON_COMPLIANT).score).toBe(0));
+  it('COMPLIANT + NON_COMPLIANT → 50', () =>
+    expect(
+      run(ComplianceLevel.COMPLIANT, ComplianceLevel.NON_COMPLIANT).score,
+    ).toBe(50));
+  it('PARTIAL → 50', () => expect(run(ComplianceLevel.PARTIAL).score).toBe(50));
+});
+
+describe('resolutionScore', () => {
+  const rep = (status: ReportStatus, ageDays: number, type?: ReportType) => ({
+    status,
+    createdAt: daysAgo(ageDays),
+    type: type ?? ReportType.ISSUE,
+  });
+  it('no reports → neutral + gap', () =>
+    expect(resolutionScore([], NOW)).toMatchObject({ score: 50, gap: true }));
+  it('a freshly filed report does not lower the score (was 0)', () =>
+    expect(resolutionScore([rep(ReportStatus.PENDING, 1)], NOW)).toMatchObject({
+      score: 50,
+      gap: true,
+      eligible: 0,
+    }));
+  it('fewer than 3 eligible reports → neutral + gap', () =>
+    expect(
+      resolutionScore(
+        [rep(ReportStatus.PENDING, 60), rep(ReportStatus.SOLVED, 60)],
+        NOW,
+      ),
+    ).toMatchObject({ score: 50, gap: true, eligible: 2 }));
+  it('solved ÷ (solved + open beyond the 30-day SLA)', () =>
+    expect(
+      resolutionScore(
+        [
+          rep(ReportStatus.SOLVED, 2),
+          rep(ReportStatus.PENDING, 45),
+          rep(ReportStatus.NEED_INTERVENTION, 90),
+          rep(ReportStatus.PENDING, 3), // inside the SLA → not eligible
+        ],
+        NOW,
+      ),
+    ).toMatchObject({ score: 33, gap: false, eligible: 3, solved: 1 }));
+  it('data change requests never count', () =>
+    expect(
+      resolutionScore(
+        [1, 2, 3, 4].map(() =>
+          rep(ReportStatus.PENDING, 90, ReportType.DATA_CHANGE_REQUEST),
+        ),
+        NOW,
+      ),
+    ).toMatchObject({ gap: true, eligible: 0 }));
+});
+
+// ---------------------------------------------------------------------------
+// computeAssessment — composite + recommendations + budget
+// ---------------------------------------------------------------------------
+
+describe('computeAssessment', () => {
+  it('2 GOOD + 1 POOR @25yr, road 50, demand 250/200 → 64 (MEDIUM)', () => {
+    const a = computeAssessment(
+      inputs({
+        school: {
+          buildings: [
+            building(BuildingCondition.GOOD, CY - 25),
+            building(BuildingCondition.GOOD, CY - 25),
+            building(BuildingCondition.POOR, CY - 25),
+          ],
+          roadStatusPercentage: 50,
+          totalStudents: 200,
+        },
+        population: { schoolAgePopulation2km: 250 },
+      }),
+    );
+    // 77·.35 + 60·.25 + 50·.1 + 70·.1 + 50·.15 + 50·.05 = 63.95
+    expect(a.overallScore).toBe(64);
+    expect(a.priorityLevel).toBe(PriorityLevel.MEDIUM);
+  });
+
+  it('all-CRITICAL @40yr, road 80, ratio 5 → CRITICAL', () => {
+    const a = computeAssessment(
+      inputs({
+        school: {
+          buildings: [
+            building(BuildingCondition.CRITICAL, CY - 40),
+            building(BuildingCondition.CRITICAL, CY - 40),
+          ],
+          roadStatusPercentage: 80,
+          totalStudents: 200,
+        },
+        population: { schoolAgePopulation2km: 1000 },
+      }),
+    );
+    expect(a.overallScore).toBeLessThan(35);
+    expect(a.priorityLevel).toBe(PriorityLevel.CRITICAL);
+  });
+
+  it('2 GOOD @15yr, road 60, no population → 76 (LOW)', () => {
+    const a = computeAssessment(
+      inputs({
+        school: {
+          buildings: [
+            building(BuildingCondition.GOOD, CY - 15),
+            building(BuildingCondition.GOOD, CY - 15),
+          ],
+          roadStatusPercentage: 60,
+        },
+      }),
+    );
+    expect(a.overallScore).toBe(76);
+    expect(a.priorityLevel).toBe(PriorityLevel.LOW);
+  });
+
+  it('no data at all → 50, every gap set, coverage 0', () => {
+    const a = computeAssessment(
+      inputs({ school: { roadStatusPercentage: null } }),
+    );
+    expect(a.overallScore).toBe(50);
+    expect(Object.values(a.dataGaps).every(Boolean)).toBe(true);
+    expect(a.dataCoverage).toBe(0);
+  });
+
+  it('a placeholder-only school is an infra gap and is budgeted for a survey', () => {
+    const a = computeAssessment(
+      inputs({
+        school: { buildings: [building(null)], roadStatusPercentage: 80 },
+      }),
+    );
+    expect(a.hasInfraDataGap).toBe(true);
+    expect(a.infrastructureScore).toBe(50);
+    expect(a.estimatedBudgetRwf).toBe(3_500_000);
+    expect(a.basis).toMatchObject({
+      buildingCount: 1,
+      assessedBuildingCount: 0,
+    });
+  });
+
+  it('NYAMIRAMA TSS real payload → every fallback path at once', () => {
+    const a = computeAssessment(
+      inputs({
+        school: {
+          establishedYear: 1984,
+          roadStatusPercentage: 70,
+          totalStudents: null,
+          educationPrograms: [
+            { capacity: null, totalStudents: 101 },
+            { capacity: null, totalStudents: 84 },
+          ],
+        },
+      }),
+    );
+    const expectedAge = ageToScore(CY - 1984);
+    expect(a.infrastructureScore).toBe(50);
+    expect(a.buildingAgeScore).toBe(expectedAge);
+    expect(a.accessibilityScore).toBe(70);
+    expect(a.populationPressureScore).toBe(50);
+    expect(a.overallScore).toBe(
+      Math.round(50 * 0.35 + expectedAge * 0.25 + 7 + 5 + 7.5 + 2.5),
+    );
+    expect(a.priorityLevel).toBe(PriorityLevel.HIGH);
+    expect(a.dataCoverage).toBe(0.35); // age 25 % + access 10 %
+  });
+
+  it('a school with missing data gets [DATA] lines, never "[OK]"', () => {
+    const a = computeAssessment(
+      inputs({ school: { roadStatusPercentage: 40 } }),
+    );
+    expect(a.recommendations.some((r) => r.startsWith('[DATA]'))).toBe(true);
+    expect(a.recommendations.some((r) => r.includes('[OK]'))).toBe(false);
+  });
+
+  it('estimated (neutral) components never trigger a "fix" line or a cost', () => {
+    const a = computeAssessment(
+      inputs({
+        school: { roadStatusPercentage: null, establishedYear: CY - 70 },
+      }),
+    );
+    expect(a.recommendations.some((r) => r.startsWith('[ACCESS]'))).toBe(false);
+    expect(a.recommendations.some((r) => r.startsWith('[COMPLIANCE]'))).toBe(
+      false,
+    );
+    expect(
+      a.recommendations.some((r) => r.startsWith('[DATA] Road access')),
+    ).toBe(true);
+  });
+
+  it('poor/critical buildings → [URGENT] first and a non-null budget', () => {
+    const a = computeAssessment(
+      inputs({
+        school: {
+          buildings: [
+            building(BuildingCondition.CRITICAL, CY - 30),
+            building(BuildingCondition.POOR, CY - 30),
+          ],
+          roadStatusPercentage: 80,
+        },
+      }),
+    );
+    expect(a.recommendations[0]).toContain('[URGENT]');
+    expect(a.primaryRecommendation).toBe(a.recommendations[0]);
+    expect(a.estimatedBudgetRwf).toBeGreaterThan(0);
+  });
+
+  it('a healthy, fully measured school → [OK] and no budget', () => {
+    const a = computeAssessment(
+      inputs({
+        school: {
+          buildings: [building(BuildingCondition.GOOD, CY - 5)],
+          roadStatusPercentage: 95,
+          educationPrograms: [{ totalStudents: 100, capacity: 400 }],
+        },
+        population: { schoolAgePopulation2km: 200 },
+        surveys: [{ compliance: ComplianceLevel.COMPLIANT }],
+        reports: [1, 2, 3].map(() => ({
+          status: ReportStatus.SOLVED,
+          createdAt: daysAgo(40),
+        })),
+      }),
+    );
+    expect(a.recommendations).toEqual([expect.stringContaining('[OK]')]);
+    expect(a.estimatedBudgetRwf).toBeNull();
+    expect(a.dataCoverage).toBe(1);
+  });
+
+  it('caps at 6 recommendations', () => {
+    const a = computeAssessment(
+      inputs({
+        school: {
+          buildings: [building(BuildingCondition.CRITICAL, CY - 70)],
+          roadStatusPercentage: 5,
+          educationPrograms: [{ totalStudents: 900, capacity: 200 }],
+        },
+      }),
+    );
+    expect(a.recommendations.length).toBeLessThanOrEqual(6);
+  });
+
+  it('assessmentChanged: equal stored row (pg strings) → false; a component change → true', () => {
+    const a = computeAssessment(
+      inputs({ school: { roadStatusPercentage: 60 } }),
+    );
+    const stored = {
+      ...a,
+      overallScore: String(a.overallScore) + '.00',
+      dataCoverage: String(a.dataCoverage),
+    };
+    expect(assessmentChanged(stored, a)).toBe(false);
+    expect(
+      assessmentChanged({ ...stored, accessibilityScore: '61.00' }, a),
+    ).toBe(true);
+    expect(assessmentChanged(null, a)).toBe(true);
+    // jsonb returns keys in its own order — not a change
+    const reordered = Object.fromEntries(Object.entries(a.dataGaps).reverse());
+    expect(assessmentChanged({ ...stored, dataGaps: reordered }, a)).toBe(
+      false,
+    );
+    expect(
+      assessmentChanged(
+        {
+          ...stored,
+          dataGaps: { ...a.dataGaps, population: !a.dataGaps.population },
+        },
+        a,
+      ),
+    ).toBe(true);
   });
 });
 
 // ---------------------------------------------------------------------------
-// calculateFacilityComplianceScore (via getSchoolMetrics)
+// AnalyticsService — persistence behaviour
 // ---------------------------------------------------------------------------
 
-describe('calculateFacilityComplianceScore', () => {
-  const run = async (surveys: { compliance: ComplianceLevel }[]) => {
-    const school = makeRepo({
-      findOne: jest.fn().mockResolvedValue(buildSchool({ id: 's' })),
-    });
-    const survey = makeRepo({ find: jest.fn().mockResolvedValue(surveys) });
-    const { service } = await makeService({ school, survey });
-    return (await service.getSchoolMetrics('s')).facilityComplianceScore;
-  };
+describe('calculateSchoolScore (persist)', () => {
+  it('first run creates the assessment, one history row and one socket event', async () => {
+    const gateway = { emitScoresRecalculated: jest.fn() };
+    const { service, repos } = await makeService({}, gateway);
+    const res = await service.calculateSchoolScore(buildSchool());
+    expect(repos.assessment.save).toHaveBeenCalledTimes(1);
+    expect(repos.scoreHistory.save).toHaveBeenCalledTimes(1);
+    expect(gateway.emitScoresRecalculated).toHaveBeenCalledTimes(1);
+    expect(res.scoringVersion).toBe(SCORING_VERSION);
+    expect(res.dataGaps).toBeTruthy();
+  });
 
-  it('no surveys → 50', async () => expect(await run([])).toBe(50));
-  it('all COMPLIANT → 100', async () =>
+  it('an unchanged score writes nothing (no history row, no event)', async () => {
+    const first = await makeService();
+    const saved = await first.service.calculateSchoolScore(buildSchool());
+    const gateway = { emitScoresRecalculated: jest.fn() };
+    const assessment = makeRepo({
+      findOne: jest.fn().mockResolvedValue(saved),
+    });
+    const { service, repos } = await makeService({ assessment }, gateway);
+    await service.calculateSchoolScore(
+      buildSchool({
+        overallScore: saved.overallScore,
+        priorityLevel: saved.priorityLevel,
+      } as never),
+    );
+    expect(assessment.save).not.toHaveBeenCalled();
+    expect(repos.scoreHistory.save).not.toHaveBeenCalled();
+    expect(repos.school.update).not.toHaveBeenCalled();
+    expect(gateway.emitScoresRecalculated).not.toHaveBeenCalled();
+  });
+
+  it('updates the existing row rather than creating a second one', async () => {
+    const assessment = makeRepo({
+      findOne: jest.fn().mockResolvedValue({ id: 'x', schoolId: 'school-1' }),
+    });
+    const { service } = await makeService({ assessment });
+    await service.calculateSchoolScore(buildSchool());
+    expect(assessment.create).not.toHaveBeenCalled();
+    expect(assessment.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('a concurrent first insert (unique violation) retries as an update', async () => {
+    const dup = new QueryFailedError('INSERT', [], new Error('dup'));
+    (dup as unknown as { driverError: { code: string } }).driverError = {
+      code: '23505',
+    };
+    const existing = { id: 'x', schoolId: 'school-1' };
+    const assessment = makeRepo({
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(existing),
+      save: jest
+        .fn()
+        .mockRejectedValueOnce(dup)
+        .mockImplementation((v) => Promise.resolve(v)),
+    });
+    const { service } = await makeService({ assessment });
+    const res = await service.calculateSchoolScore(buildSchool());
+    expect(assessment.save).toHaveBeenCalledTimes(2);
+    expect(res.id).toBe('x');
+  });
+
+  it('counts only Issue Reports for the resolution component', async () => {
+    const issue = makeRepo({
+      find: jest.fn().mockResolvedValue(
+        [1, 2, 3, 4].map((i) => ({
+          id: `r${i}`,
+          status: ReportStatus.PENDING,
+          type: ReportType.DATA_CHANGE_REQUEST,
+          createdAt: daysAgo(90),
+        })),
+      ),
+    });
+    const { service } = await makeService({ issue });
+    const res = await service.calculateSchoolScore(buildSchool());
+    expect(res.resolutionRateScore).toBe(50);
+    expect(res.dataGaps?.resolution).toBe(true);
+  });
+
+  it('loads population by the schoolId column', async () => {
+    const population = makeRepo({
+      findOne: jest.fn().mockResolvedValue({ schoolAgePopulation2km: 1000 }),
+    });
+    const { service } = await makeService({ population });
+    const res = await service.calculateSchoolScore(
+      buildSchool({ totalStudents: 200 }),
+    );
+    expect(population.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { schoolId: 'school-1' } }),
+    );
+    expect(Number(res.populationPressureScore)).toBe(10);
+    expect(res.hasPopDataGap).toBe(false);
+  });
+});
+
+describe('getSchoolMetrics (read-only)', () => {
+  const schoolRepo = (s: School) =>
+    makeRepo({ findOne: jest.fn().mockResolvedValue(s) });
+
+  it('never writes: no assessment save, no history, no school update, no event', async () => {
+    const gateway = { emitScoresRecalculated: jest.fn() };
+    const { service, repos } = await makeService(
+      { school: schoolRepo(buildSchool({ id: 's' })) },
+      gateway,
+    );
+    const dto = await service.getSchoolMetrics('s');
+    expect(repos.assessment.save).not.toHaveBeenCalled();
+    expect(repos.scoreHistory.save).not.toHaveBeenCalled();
+    expect(repos.school.update).not.toHaveBeenCalled();
+    expect(gateway.emitScoresRecalculated).not.toHaveBeenCalled();
+    expect(dto.provisional).toBe(true); // nothing stored yet
+  });
+
+  it('serves the stored assessment when it is current', async () => {
+    const assessment = makeRepo({
+      findOne: jest.fn().mockResolvedValue({
+        schoolId: 's',
+        overallScore: '42.00',
+        infrastructureScore: '30.00',
+        buildingAgeScore: '45.00',
+        accessibilityScore: '50.00',
+        populationPressureScore: '50.00',
+        facilityComplianceScore: 50,
+        resolutionRateScore: 50,
+        priorityLevel: PriorityLevel.HIGH,
+        urgencyMonths: 3,
+        recommendations: ['[PLAN] x'],
+        dataGaps: {
+          infrastructure: false,
+          buildingAge: false,
+          accessibility: false,
+          population: true,
+          facilityCompliance: true,
+          resolution: true,
+        },
+        dataCoverage: '0.70',
+        scoringVersion: SCORING_VERSION,
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+      }),
+    });
+    const { service } = await makeService({
+      school: schoolRepo(buildSchool({ id: 's' })),
+      assessment,
+    });
+    const dto = await service.getSchoolMetrics('s');
+    expect(dto.provisional).toBe(false);
+    expect(dto.overallScore).toBe(42);
+    expect(dto.priorityLevel).toBe(PriorityLevel.HIGH);
+    expect(dto.dataCoverage).toBe(0.7);
+    expect(dto.calculatedAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('rolls enrolment up from programmes; capacity utilisation uses programme students only', async () => {
+    const { service } = await makeService({
+      school: schoolRepo(
+        buildSchool({
+          id: 's',
+          educationPrograms: [
+            { totalStudents: 100, capacity: 200 },
+            { totalStudents: 150, capacity: 200 },
+          ] as never,
+          totalStudents: 999,
+        }),
+      ),
+    });
+    const dto = await service.getSchoolMetrics('s');
+    expect(dto.totalStudents).toBe(250);
+    expect(dto.totalCapacity).toBe(400);
+    expect(dto.capacityUtilisation).toBe(62.5);
+  });
+
+  it('capacity utilisation is null when programmes record capacity but no students', async () => {
+    const { service } = await makeService({
+      school: schoolRepo(
+        buildSchool({
+          id: 's',
+          educationPrograms: [{ totalStudents: 0, capacity: 400 }] as never,
+          totalStudents: 500,
+        }),
+      ),
+    });
     expect(
-      await run([
-        { compliance: ComplianceLevel.COMPLIANT },
-        { compliance: ComplianceLevel.COMPLIANT },
+      (await service.getSchoolMetrics('s')).capacityUtilisation,
+    ).toBeNull();
+  });
+
+  it('reportSummary counts Issue Reports by status (change requests excluded)', async () => {
+    const issue = makeRepo({
+      find: jest.fn().mockResolvedValue([
+        {
+          id: 'r1',
+          status: ReportStatus.NEED_INTERVENTION,
+          createdAt: daysAgo(1),
+        },
+        { id: 'r2', status: ReportStatus.PENDING, createdAt: daysAgo(1) },
+        {
+          id: 'r3',
+          status: ReportStatus.SOLVED,
+          createdAt: daysAgo(4),
+          resolvedAt: daysAgo(1),
+        },
+        {
+          id: 'r4',
+          status: ReportStatus.PENDING,
+          type: ReportType.DATA_CHANGE_REQUEST,
+          createdAt: daysAgo(1),
+        },
       ]),
-    ).toBe(100));
-  it('all NON_COMPLIANT → 0 (no more || 50 coercion)', async () =>
-    expect(await run([{ compliance: ComplianceLevel.NON_COMPLIANT }])).toBe(0));
-  it('COMPLIANT + NON_COMPLIANT → 50', async () =>
-    expect(
-      await run([
-        { compliance: ComplianceLevel.COMPLIANT },
-        { compliance: ComplianceLevel.NON_COMPLIANT },
-      ]),
-    ).toBe(50));
-  it('PARTIAL → 50', async () =>
-    expect(await run([{ compliance: ComplianceLevel.PARTIAL }])).toBe(50));
+    });
+    const { service } = await makeService({
+      school: schoolRepo(buildSchool({ id: 's' })),
+      issue,
+    });
+    const dto = await service.getSchoolMetrics('s');
+    expect(dto.reportSummary).toMatchObject({
+      total: 3,
+      critical: 1,
+      pending: 1,
+      resolved: 1,
+      active: 2,
+      resolutionRate: 33,
+      avgResolutionDays: 3,
+    });
+  });
+
+  it('peer averages need at least 3 peers', async () => {
+    const assessment = makeRepo({
+      createQueryBuilder: jest.fn(() =>
+        qb({ getRawOne: jest.fn().mockResolvedValue({ avg: '60.0', n: '2' }) }),
+      ),
+    });
+    const { service } = await makeService({
+      school: schoolRepo(buildSchool({ id: 's' })),
+      assessment,
+    });
+    const dto = await service.getSchoolMetrics('s');
+    expect(dto.districtAvgScore).toBeNull();
+    expect(dto.scoreDeltaFromDistrict).toBeNull();
+    expect(dto.districtPeerCount).toBe(2);
+  });
+
+  it('rejects a missing id before querying (TypeORM would match any row)', async () => {
+    const { service, repos } = await makeService();
+    await expect(service.getSchoolMetrics(undefined as never)).rejects.toThrow(
+      'schoolId is required',
+    );
+    expect(repos.school.findOne).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
-// getOverview
+// National overview
 // ---------------------------------------------------------------------------
 
 describe('getOverview', () => {
-  it('returns the aggregate shape incl. nationalCapacityUtilisation', async () => {
+  /** School query builder that answers by the first selected alias. */
+  const schoolQb = (rows: Record<string, unknown[]>, many: unknown[]) => () => {
+    let alias = '';
+    const q = qb();
+    q.select = jest.fn((_: unknown, a?: string) => {
+      alias = a ?? alias;
+      return q;
+    });
+    q.getRawMany = jest.fn(() => Promise.resolve(rows[alias] ?? []));
+    q.getMany = jest.fn(() => Promise.resolve(many));
+    q.getCount = jest.fn().mockResolvedValue(3);
+    return q;
+  };
+
+  it('returns the aggregate shape; byPriority always has every band', async () => {
     const capacitySchools = [
       {
         id: '1',
@@ -659,50 +958,93 @@ describe('getOverview', () => {
         totalStudents: 300,
         educationPrograms: [{ totalStudents: 300, capacity: 300 }],
       },
+      { id: '3', totalStudents: 50, educationPrograms: [] },
     ];
     const school = makeRepo({
-      count: jest.fn().mockResolvedValue(3),
-      find: jest.fn().mockResolvedValue(capacitySchools),
-      createQueryBuilder: jest.fn(() => {
-        const q = qb();
-        q.getRawMany = jest
-          .fn()
-          .mockResolvedValueOnce([{ priority: 'critical', count: '1' }])
-          .mockResolvedValueOnce([
-            {
-              province: 'Kigali',
-              total: '3',
-              critical: '1',
-              high: '1',
-              medium: '1',
-              low: '0',
-              avgScore: '55',
-            },
-          ]);
-        q.getRawOne = jest.fn().mockResolvedValue({ nationalAvgScore: '60' });
-        // query 1 = active school count; query 13 = capacity-utilisation rows
-        q.getCount = jest.fn().mockResolvedValue(3);
-        q.getMany = jest.fn().mockResolvedValue(capacitySchools);
-        return q;
-      }),
+      createQueryBuilder: jest.fn(
+        schoolQb(
+          {
+            priority: [
+              { priority: 'critical', count: '1' },
+              { priority: null, count: '2' },
+            ],
+            province: [
+              {
+                province: 'Kigali',
+                total: '3',
+                scored: '1',
+                critical: '1',
+                high: '0',
+                medium: '0',
+                low: '0',
+                avgScore: '30.0',
+                minScore: '30',
+                maxScore: '30',
+              },
+              {
+                province: 'South',
+                total: '1',
+                scored: '0',
+                critical: '0',
+                high: '0',
+                medium: '0',
+                low: '0',
+                avgScore: null,
+                minScore: null,
+                maxScore: null,
+              },
+            ],
+          },
+          capacitySchools,
+        ),
+      ),
     });
     const { service } = await makeService({ school });
     const res = await service.getOverview();
     expect(res.totalSchools).toBe(3);
-    expect(res.byPriority).toHaveProperty('critical', 1);
-    // (100 + 300) enrolled / (200 + 300) seats = 400/500 = 80
+    expect(res.byPriority).toEqual({
+      critical: 1,
+      high: 0,
+      medium: 0,
+      low: 0,
+      unassessed: 2,
+    });
+    // (100 + 300) / (200 + 300) = 80 %; school 3 has no programme data
     expect(res.nationalCapacityUtilisation).toBe(80);
-    expect(res.provinceStats).toHaveLength(1);
+    // national enrolment = Σ programme roll-up (school 3 falls back to its column)
+    expect(res.totalStudents).toBe(450);
+    // A province with no scored schools has a null average, not 0
+    expect(res.provinceStats[1].avgScore).toBeNull();
+    // No scored schools in the aggregate row → averages are null
+    expect(res.nationalAvgScore).toBeNull();
+    expect(res.scoringModel.weights.resolution).toBe(0.05);
+    expect(res.nationalRecommendations.join(' ')).not.toContain('WASH');
+  });
+
+  it('critical spotlight orders the lowest scores first', async () => {
+    const queries: ReturnType<typeof qb>[] = [];
+    const school = makeRepo({
+      createQueryBuilder: jest.fn(() => {
+        const q = qb();
+        queries.push(q);
+        return q;
+      }),
+    });
+    const { service } = await makeService({ school });
+    await service.getOverview();
+    const spot = queries.find((q) =>
+      q.where.mock.calls.some((c) =>
+        String(c[0]).includes('da.priorityLevel = :crit'),
+      ),
+    );
+    expect(spot?.orderBy).toHaveBeenCalledWith('da.overallScore', 'ASC');
   });
 
   it('nationalCapacityUtilisation is null when no programme capacity exists', async () => {
     const school = makeRepo({
-      count: jest.fn().mockResolvedValue(1),
-      find: jest
-        .fn()
-        .mockResolvedValue([
-          { id: '1', totalStudents: 100, educationPrograms: [] },
-        ]),
+      createQueryBuilder: jest.fn(
+        schoolQb({}, [{ id: '1', totalStudents: 100, educationPrograms: [] }]),
+      ),
     });
     const { service } = await makeService({ school });
     expect(
@@ -711,12 +1053,68 @@ describe('getOverview', () => {
   });
 });
 
+describe('generateNationalRecommendations', () => {
+  const base = {
+    criticalCount: 0,
+    unassessed: 0,
+    scoredSchoolCount: 4,
+    provinceStats: [],
+    dataGaps: { infrastructure: 0, population: 0 },
+    componentAverages: {
+      infrastructure: 80,
+      buildingAge: 80,
+      accessibility: 80,
+      population: 80,
+      facilityCompliance: 80,
+      resolution: 80,
+    },
+    avgDataCoverage: 1,
+  };
+  it('one line per finding, no duplicated critical line', async () => {
+    const { service } = await makeService();
+    const recs = service.generateNationalRecommendations({
+      ...base,
+      criticalCount: 2,
+    });
+    expect(recs.filter((r) => r.includes('2 schools'))).toHaveLength(1);
+  });
+  it('names the weakest measured component', async () => {
+    const { service } = await makeService();
+    const recs = service.generateNationalRecommendations({
+      ...base,
+      componentAverages: { ...base.componentAverages, accessibility: 30 },
+    });
+    expect(
+      recs.some((r) => r.startsWith('[FOCUS]') && r.includes('road access')),
+    ).toBe(true);
+  });
+  it('skips the lowest-province line for unscored provinces', async () => {
+    const { service } = await makeService();
+    const recs = service.generateNationalRecommendations({
+      ...base,
+      provinceStats: [
+        { province: 'A', avgScore: null, scored: 0 },
+        { province: 'B', avgScore: 60, scored: 2 },
+      ],
+    });
+    expect(recs.some((r) => r.startsWith('[STRATEGIC]'))).toBe(false);
+  });
+  it('flags low data coverage', async () => {
+    const { service } = await makeService();
+    const recs = service.generateNationalRecommendations({
+      ...base,
+      avgDataCoverage: 0.3,
+    });
+    expect(recs.some((r) => r.includes('30%'))).toBe(true);
+  });
+});
+
 // ---------------------------------------------------------------------------
-// recalculate + events
+// Recalculation triggers
 // ---------------------------------------------------------------------------
 
 describe('recalculateAllScores', () => {
-  it('processes every school and writes an audit log', async () => {
+  it('processes every active school and writes an audit log', async () => {
     const school = makeRepo({
       find: jest
         .fn()
@@ -726,14 +1124,15 @@ describe('recalculateAllScores', () => {
         ]),
     });
     const { service, audit } = await makeService({ school });
-    const res = await service.recalculateAllScores();
-    expect(res.processed).toBe(2);
+    expect((await service.recalculateAllScores()).processed).toBe(2);
     expect(audit.log).toHaveBeenCalledWith(
       null,
       'analytics.recalculate',
       'system',
       undefined,
-      { processed: 2 },
+      {
+        processed: 2,
+      },
     );
   });
 });
@@ -746,109 +1145,56 @@ describe('recalculateSchoolScore', () => {
   });
 });
 
-describe('generateRecommendations + estimateBudgetRwf', () => {
-  it('a high-priority school with no building data gets a DATA recommendation, not "all good"', async () => {
-    const { service } = await makeService();
-    const res = await service.calculateSchoolScore(
-      buildSchool({ roadStatusPercentage: 40 }), // no buildings, no pop
+describe('handleSchoolUpdated', () => {
+  it('coalesces a burst of events into one run plus one trailing run', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const school = makeRepo({
+      findOne: jest.fn(async () => {
+        await gate;
+        return buildSchool({ id: 'a' });
+      }),
+    });
+    const { service } = await makeService({ school });
+    const runs = [1, 2, 3, 4].map(() =>
+      service.handleSchoolUpdated({ schoolId: 'a' }),
     );
-    expect(res.recommendations.some((r) => r.startsWith('[DATA]'))).toBe(true);
-    expect(res.recommendations.some((r) => r.includes('[OK]'))).toBe(false);
+    release();
+    await Promise.all(runs);
+    expect(school.findOne).toHaveBeenCalledTimes(2);
   });
 
-  it('poor/critical buildings produce an [URGENT] line and a non-null budget', async () => {
+  it('never throws (a failed background rescore is logged)', async () => {
     const { service } = await makeService();
-    const res = await service.calculateSchoolScore(
-      buildSchool({
-        buildings: [
-          buildBuilding(BuildingCondition.CRITICAL, CY - 30),
-          buildBuilding(BuildingCondition.POOR, CY - 30),
-        ],
-        roadStatusPercentage: 80,
-      }),
-    );
-    expect(res.recommendations[0]).toContain('[URGENT]');
-    expect(Number(res.estimatedBudgetRwf)).toBeGreaterThan(0);
-    expect(res.primaryRecommendation).toBe(res.recommendations[0]);
-  });
-
-  it('a healthy school falls back to the [OK] line and a null budget', async () => {
-    const { service } = await makeService();
-    const res = await service.calculateSchoolScore(
-      buildSchool({
-        buildings: [buildBuilding(BuildingCondition.GOOD, CY - 5)],
-        roadStatusPercentage: 95,
-        educationPrograms: [{ totalStudents: 100, capacity: 400 }] as any,
-        populationData: [{ schoolAgePopulation2km: 200 } as PopulationData],
-      }),
-    );
-    expect(res.recommendations).toEqual([expect.stringContaining('[OK]')]);
-    expect(res.estimatedBudgetRwf ?? null).toBeNull();
-  });
-
-  it('caps at 6 recommendations', async () => {
-    const { service } = await makeService();
-    const res = await service.calculateSchoolScore(
-      buildSchool({
-        buildings: [buildBuilding(BuildingCondition.CRITICAL, CY - 70)],
-        roadStatusPercentage: 5,
-        educationPrograms: [{ totalStudents: 900, capacity: 200 }] as any,
-      }),
-    );
-    expect(res.recommendations.length).toBeLessThanOrEqual(6);
+    await expect(
+      service.handleSchoolUpdated({ schoolId: 'missing' }),
+    ).resolves.toBeUndefined();
   });
 });
 
-describe('getDecisions ordering', () => {
-  it('orders the intervention queue by ascending overall score (most urgent first)', async () => {
+describe('getDecisions', () => {
+  it('orders the intervention queue by ascending overall score', async () => {
     const q = qb();
     const assessment = makeRepo({ createQueryBuilder: jest.fn(() => q) });
     const { service } = await makeService({ assessment });
     await service.getDecisions();
     expect(q.orderBy).toHaveBeenCalledWith('da.overallScore', 'ASC');
   });
-});
 
-describe('getSchoolMetrics', () => {
-  it('rolls totalStudents up from educationPrograms when present', async () => {
-    const school = makeRepo({
-      findOne: jest.fn().mockResolvedValue(
-        buildSchool({
-          id: 's',
-          educationPrograms: [
-            { totalStudents: 100, capacity: 200 },
-            { totalStudents: 150, capacity: 200 },
-          ] as any,
-          totalStudents: 999,
-        }),
-      ),
+  it('serves the stored dataGaps on each row', async () => {
+    const gaps = {
+      infrastructure: true,
+      buildingAge: false,
+      accessibility: true,
+      population: false,
+      facilityCompliance: true,
+      resolution: true,
+    };
+    const q = qb({
+      getMany: jest.fn().mockResolvedValue([{ schoolId: 'a', dataGaps: gaps }]),
     });
-    const { service } = await makeService({ school });
-    const dto = await service.getSchoolMetrics('s');
-    expect(dto.totalStudents).toBe(250);
-    expect(dto.totalCapacity).toBe(400);
-  });
-
-  it('reportSummary buckets issue reports by status', async () => {
-    const school = makeRepo({
-      findOne: jest.fn().mockResolvedValue(buildSchool({ id: 's' })),
-    });
-    const issue = makeRepo({
-      find: jest.fn().mockResolvedValue([
-        {
-          id: 'r1',
-          status: ReportStatus.NEED_INTERVENTION,
-          createdAt: new Date(),
-        },
-        { id: 'r2', status: ReportStatus.PENDING, createdAt: new Date() },
-        { id: 'r3', status: ReportStatus.SOLVED, createdAt: new Date() },
-      ]),
-    });
-    const { service } = await makeService({ school, issue });
-    const dto = await service.getSchoolMetrics('s');
-    expect(dto.reportSummary.total).toBe(3);
-    expect(dto.reportSummary.critical).toBe(1);
-    expect(dto.reportSummary.pending).toBe(1);
-    expect(dto.reportSummary.resolved).toBe(1);
+    const assessment = makeRepo({ createQueryBuilder: jest.fn(() => q) });
+    const { service } = await makeService({ assessment });
+    expect((await service.getDecisions())[0].dataGaps).toEqual(gaps);
   });
 });

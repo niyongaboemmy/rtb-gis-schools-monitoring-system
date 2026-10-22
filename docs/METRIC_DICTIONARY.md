@@ -23,13 +23,23 @@
   75, Low ≥ 75.
 - **Missing data → neutral 50, always flagged.** The server returns
   `dataGaps` (per school: `infrastructure`, `buildingAge`, `accessibility`,
-  `population`, `facilityCompliance`, `resolution`; national: counts of
-  infrastructure and population gaps). The UI marks those values
-  "Estimated — missing data".
-- **Computed on the server.** Dashboards render server values. The only
-  browser-side derivations left are list orderings (the "Buildings needing
-  attention" ranking) and the issue-report month comparison on the school
-  summary card.
+  `population`, `facilityCompliance`, `resolution`; national: a count per
+  component). The UI marks those values "Estimated — missing data". A
+  population record with a school-age count of 0 / empty, a building without
+  an assessed condition and fewer than 3 eligible Issue Reports are missing
+  data, not measurements.
+- **Data coverage.** Every score carries `dataCoverage` (0–1): the summed
+  weight of its measured components. The national figure is the mean over
+  scored schools. Below 50% the UI says the priority is provisional.
+- **One stored score.** The score is computed by
+  `server/src/modules/analytics/scoring-engine.ts` (pure) and stored once per
+  school in `decision_assessments` (scoring version `SCORING_VERSION`). It is
+  recalculated on every write that feeds it, nightly, and on boot when the
+  rules changed — never by viewing a dashboard. National counts, averages and
+  rankings all read the stored assessment.
+- **Computed on the server.** Dashboards render server values, including the
+  "Buildings needing attention" ranking, the issue-report month comparison
+  (Kigali calendar months) and the weights / bands (`scoringModel`).
 - **Units** come from `client/src/lib/format.ts` (ha for land, RWF, Kigali dates).
 
 ## Verification
@@ -37,9 +47,13 @@
 - Golden dataset: `server/src/modules/analytics/golden/golden-dataset.ts`
   (6 schools, hand-calculated) with `golden-dataset.spec.ts`.
 - Indicative risk rules: `server/src/modules/analytics/risk-assessment.spec.ts`.
-- SQL cross-check of national KPIs (read-only), from `/server`:
+- SQL cross-check of national KPIs plus semantic integrity checks
+  (read-only), from `/server`:
   `npx ts-node --transpile-only scripts/verify-dashboards.ts`
-  (exit 0 = zero diffs).
+  (exit 0 = zero KPI diffs and every integrity count 0: no stale, outdated or
+  duplicate assessments, no score-cache drift, no zero-population rows, no
+  reopened reports with a resolution date, no repeated history snapshots).
+- Dashboard e2e (throw-away DB): `server/test/dashboard.e2e-spec.ts`.
 
 ## School Condition Score and school profile
 
@@ -54,7 +68,7 @@
 - **Missing data:** Any component without data uses the neutral 50 and is flagged. The composite is still calculated; check the component flags before relying on it.
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics`
 - **Shown on:** School dashboard; Decision queue (Analytics ▸ Decisions)
-- **Notes:** Recalculated whenever the school, its buildings, surveys or reports change, or from Recalculate.
+- **Notes:** Recalculated automatically whenever the school profile, its buildings, surveys, Issue Reports or population data change, and nightly. Viewing a dashboard never recalculates. The share of the score that comes from measured data (coverage) is shown next to it.
 
 ### Intervention Priority
 
@@ -84,7 +98,7 @@
 
 - **id:** `school.dataCompleteness`
 - **Definition:** Share of 10 key profile items that are filled in.
-- **Formula:** Items: assessed buildings, enrolment, teachers, province, district, road status, established year, a facility survey, population data, a processed site map. Completeness = filled ÷ 10 × 100.
+- **Formula:** Items: assessed buildings (not bare KMZ stubs), enrolment, teachers, province, district, road status, established year, a facility survey, population data with a school-age count, a processed site map. Completeness = filled ÷ 10 × 100.
 - **Source fields:** `schools.*`, `school_buildings`, `school_facility_surveys`, `population_data`
 - **Filters:** The selected school (any status), if it is within the user's access level.
 - **Units:** %
@@ -96,11 +110,11 @@
 
 - **id:** `school.peerDelta`
 - **Definition:** This school's score minus the average of the other active schools in its district.
-- **Formula:** School Condition Score − mean(School Condition Score of other active schools in the same district).
-- **Source fields:** `schools.overallScore`, `schools.district`
-- **Filters:** Other active schools in the same district (this school excluded).
+- **Formula:** School Condition Score − mean(School Condition Score of other scored active schools in the same district).
+- **Source fields:** `decision_assessments.overallScore`, `schools.district`
+- **Filters:** Other scored active schools in the same district (this school excluded).
 - **Units:** Score points (+ above, − below)
-- **Missing data:** Not shown when the district has no other scored schools.
+- **Missing data:** Not shown when the district has fewer than 3 other scored schools.
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics`
 - **Shown on:** School dashboard
 
@@ -115,16 +129,17 @@
 - **Missing data:** Shown as 0 when nothing is recorded.
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics`
 - **Shown on:** School dashboard
+- **Notes:** The national total uses the same rule, so it equals the sum of the school figures.
 
 ### Capacity Utilisation
 
 - **id:** `school.capacityUtilisation`
 - **Definition:** How full the school is compared with its seat capacity. Above 100% means over capacity.
-- **Formula:** Total students ÷ Σ programme capacity × 100, one decimal.
+- **Formula:** Σ programme enrolment ÷ Σ programme capacity × 100, one decimal. Both from the programme list, never mixed with the school-level total.
 - **Source fields:** `schools.educationPrograms[].totalStudents`, `schools.educationPrograms[].capacity`
 - **Filters:** The selected school (any status), if it is within the user's access level.
 - **Units:** %
-- **Missing data:** “No capacity data yet” when no programme capacity is recorded.
+- **Missing data:** “No capacity data yet” unless the programmes record both capacity and enrolment.
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics`
 - **Shown on:** School dashboard
 
@@ -155,8 +170,8 @@
 ### Buildings
 
 - **id:** `school.buildingCount`
-- **Definition:** Number of building records for the school, and their average age.
-- **Formula:** Count of building rows. Average age = mean(current year − year built) over buildings with a year.
+- **Definition:** Number of building records for the school, how many are assessed, and their average age.
+- **Formula:** Count of building rows. Assessed = buildings with a recorded condition or inventory data (only these feed the score). Average age = mean(current year − year built) over assessed buildings with a valid year.
 - **Source fields:** `school_buildings`
 - **Filters:** The selected school (any status), if it is within the user's access level.
 - **Units:** Buildings; years
@@ -200,7 +215,6 @@
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics`
 - **Shown on:** School dashboard
 
-
 ## Score components (school and national)
 
 ### Infrastructure
@@ -209,7 +223,7 @@
 - **Definition:** Average condition of the school's assessed buildings. Weight 35%.
 - **Formula:** Mean over assessed buildings of: Good 100 · Fair 70 · Poor 30 · Critical 10. Rounded.
 - **Source fields:** `school_buildings.condition`
-- **Filters:** Assessed buildings only: a building row with only a name and the default condition (e.g. created by a 3D model upload) is not evidence and is ignored.
+- **Filters:** Assessed buildings with a recorded condition. A building with no condition (e.g. created by a KMZ/3D upload or saved with a blank condition) is not evidence and is ignored.
 - **Units:** Score 0–100
 - **Missing data:** No data → the neutral value 50 is used and the component is flagged "Estimated — missing data". A 50 is never a measurement in that case.
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics`
@@ -221,7 +235,7 @@
 - **Definition:** A 0–100 score from the average age of the buildings. Newer buildings score higher. Weight 25%. (Replaces “Depreciation”.)
 - **Formula:** Average age = mean(current year − year built). ≤ 10 y → 95 · ≤ 20 → 80 · ≤ 30 → 60 · ≤ 40 → 45 · ≤ 50 → 30 · ≤ 60 → 20 · > 60 → 10. No build years → uses the school's established year instead.
 - **Source fields:** `school_buildings.yearBuilt`, `schools.establishedYear`
-- **Filters:** Buildings with a year built.
+- **Filters:** Assessed buildings with a valid year built (1900 – this year; future years are ignored).
 - **Units:** Score 0–100
 - **Missing data:** No data → the neutral value 50 is used and the component is flagged "Estimated — missing data". A 50 is never a measurement in that case. (No building year and no established year.)
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics`
@@ -234,7 +248,7 @@
 - **Definition:** How many facility survey items are compliant. Weight 15%.
 - **Formula:** Mean over all survey items of: Compliant 100 · Partially Compliant 50 · Non-Compliant 0. Rounded.
 - **Source fields:** `school_facility_surveys.compliance`
-- **Filters:** All survey rows recorded for the school.
+- **Filters:** One row per surveyed facility item (the latest result for each item).
 - **Units:** Score 0–100
 - **Missing data:** No data → the neutral value 50 is used and the component is flagged "Estimated — missing data". A 50 is never a measurement in that case. (No facility survey yet.)
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics`
@@ -260,22 +274,21 @@
 - **Source fields:** `population_data.schoolAgePopulation2km`, `schools.educationPrograms[].capacity`, `schools.totalStudents`
 - **Filters:** Latest population record for the school.
 - **Units:** Score 0–100
-- **Missing data:** No data → the neutral value 50 is used and the component is flagged "Estimated — missing data". A 50 is never a measurement in that case. (No population record — run a population sync.)
+- **Missing data:** No data → the neutral value 50 is used and the component is flagged "Estimated — missing data". A 50 is never a measurement in that case. (No population record, or a school-age population of 0 / empty — the sync found no data. Run a population sync.)
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics`
 - **Shown on:** School dashboard; Decision queue (Analytics ▸ Decisions); National dashboard
 
 ### Resolution Rate (component)
 
 - **id:** `component.resolution`
-- **Definition:** Share of the school's Issue Reports that are Resolved. Weight 5%.
-- **Formula:** round(Resolved ÷ all Issue Reports × 100).
-- **Source fields:** `issue_reports.status`
-- **Filters:** All Issue Reports for the school.
+- **Definition:** How reliably the school's Issue Reports get resolved. Weight 5%.
+- **Formula:** round(Resolved ÷ eligible Issue Reports × 100). Eligible = Resolved, or still open more than 30 days after filing. Reports filed in the last 30 days and still open are not counted yet.
+- **Source fields:** `issue_reports.status`, `issue_reports.createdAt`, `issue_reports.type`
+- **Filters:** Issue Reports only — data change requests are not counted.
 - **Units:** Score 0–100
-- **Missing data:** No data → the neutral value 50 is used and the component is flagged "Estimated — missing data". A 50 is never a measurement in that case. (No Issue Reports — the school is not penalised for a clean record.)
+- **Missing data:** No data → the neutral value 50 is used and the component is flagged "Estimated — missing data". A 50 is never a measurement in that case. (Fewer than 3 eligible reports — too few to rate. Filing a new report never lowers the score.)
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics`
 - **Shown on:** School dashboard; Decision queue (Analytics ▸ Decisions)
-
 
 ## Issue Reports (school)
 
@@ -285,12 +298,12 @@
 - **Definition:** Share of this school's Issue Reports that are Resolved.
 - **Formula:** round(Resolved ÷ all Issue Reports × 100).
 - **Source fields:** `issue_reports.status`
-- **Filters:** All Issue Reports for the school.
+- **Filters:** All Issue Reports for the school (data change requests excluded).
 - **Units:** %
 - **Missing data:** “No reports yet” when the school has no Issue Reports.
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics (reportSummary.resolutionRate)`
 - **Shown on:** School dashboard
-- **Notes:** The Resolution Rate component of the score uses the same ratio.
+- **Notes:** The Resolution Rate score component is different: it only counts reports old enough to have been resolved (see Resolution Rate (component)). The overview card and the Issue Reports tab show the same figure.
 
 ### Open issues
 
@@ -331,12 +344,12 @@
 ### This month vs last month
 
 - **id:** `reports.monthComparison`
-- **Definition:** Change in reports created this month compared with last month.
-- **Formula:** (this month − last month) ÷ last month × 100, by creation date (Kigali time).
-- **Source fields:** `issue_reports.createdAt`, `issue_reports.status`
-- **Filters:** Issue Reports for the school created this month or last month.
+- **Definition:** Issue Reports filed this month vs last month, and Issue Reports resolved this month vs last month.
+- **Formula:** Filed: by creation date. Resolved: by resolution date. Change = (this month − last month) ÷ last month × 100. Calendar months in Kigali time, computed on the server.
+- **Source fields:** `issue_reports.createdAt`, `issue_reports.resolvedAt`, `issue_reports.status`
+- **Filters:** Issue Reports for the school (data change requests excluded).
 - **Units:** % change
-- **Missing data:** “—” when both months are zero.
+- **Missing data:** “—” when last month had none (no baseline to compare with).
 - **Endpoint:** `GET /api/v1/schools/dashboard/reporting?schoolId=…`
 - **Shown on:** School dashboard
 
@@ -344,15 +357,14 @@
 
 - **id:** `reports.buildingsAttention`
 - **Definition:** Buildings ranked by open Issue Reports linked to them, then by poor/critical condition.
-- **Formula:** Per building: Pending and Needs Intervention counts; buildings in Poor/Critical condition are included even without reports. Top 3.
+- **Formula:** Per building: open Issue Reports (Needs Intervention ×100, Failed ×40, Pending ×10) plus assessed condition. Assessed Poor/Critical buildings are added even without reports. Top 3. Resolved reports never put a building on the list.
 - **Source fields:** `issue_reports.buildingId`, `issue_reports.status`, `school_buildings.condition`
-- **Filters:** This school's buildings and reports.
+- **Filters:** This school's buildings and its Issue Reports (data change requests excluded).
 - **Units:** List
 - **Missing data:** “No buildings need attention” when none qualify.
-- **Endpoint:** `GET /api/v1/reports?schoolId=… (ranked in the browser)`
+- **Endpoint:** `GET /api/v1/schools/dashboard/reporting?schoolId=… (buildingsAttention)`
 - **Shown on:** School dashboard
-- **Notes:** A list ordering, not a score. Ranking is done in the browser.
-
+- **Notes:** A list ordering, not a score. Ranked on the server.
 
 ## Indicative risk (school)
 
@@ -360,11 +372,11 @@
 
 - **id:** `risk.overall`
 - **Definition:** A rule-of-thumb risk estimate. It is not part of the School Condition Score and is not a measurement.
-- **Formula:** Mean of the factor risk scores, where each factor risk = impact × probability ÷ 100. Critical > 70, High > 50, Medium > 30, otherwise Low.
+- **Formula:** Mean of the factor risk scores (impact × probability ÷ 100) over the factors that apply. Observed issues (open Needs Intervention / Failed reports, slow resolution) use probability 100; building condition and population use the base probability. Factors with nothing observed or no data are left out. Critical > 70, High > 50, Medium > 30, otherwise Low.
 - **Source fields:** `School Condition Score and components`, `Issue Reports`, `buildings`, `facility surveys`
 - **Filters:** The selected school (any status), if it is within the user's access level.
 - **Units:** Score 0–100
-- **Missing data:** Uses the same neutral values as the score; flagged factors say so in their rule.
+- **Missing data:** A factor whose data is missing shows “Unknown — no data” and is not counted.
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/risk (also in …/metrics as riskAssessment)`
 - **Shown on:** School dashboard
 - **Notes:** Rules live in server/src/modules/analytics/risk-assessment.ts.
@@ -386,7 +398,7 @@
 - **id:** `risk.probability`
 - **Definition:** How likely a structural or operational failure is.
 - **Formula:** 50% × min(100, 1.5 × average building age) + 25% × (60 if population data is missing, else 20) + 25% × survey staleness (80 if never surveyed or > 365 days, 50 if > 180 days, else 20). Capped at 100.
-- **Source fields:** `school_buildings.yearBuilt`, `population_data`, `school_facility_surveys.createdAt`
+- **Source fields:** `school_buildings.yearBuilt`, `population_data`, `school_facility_surveys.inspectedAt`
 - **Filters:** The selected school (any status), if it is within the user's access level.
 - **Units:** 0–100
 - **Missing data:** Unknown building age is treated as 50 years (pessimistic).
@@ -404,7 +416,6 @@
 - **Missing data:** Counts default to 0.
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/risk`
 - **Shown on:** School dashboard
-
 
 ## National and decision-queue KPIs
 
@@ -425,10 +436,10 @@
 - **id:** `national.priorityCount`
 - **Definition:** How many active schools fall in each Intervention Priority band.
 - **Formula:** Count of schools per priority band (Critical < 35, High 35–54, Medium 55–74, Low ≥ 75).
-- **Source fields:** `schools.priorityLevel`
+- **Source fields:** `decision_assessments.priorityLevel`
 - **Filters:** Active schools only, limited to the user's access level (National, Province, District, Sector or School).
 - **Units:** Schools
-- **Missing data:** Schools never scored are counted as “Not assessed”.
+- **Missing data:** Schools never scored are counted as “Not assessed” (its own slice). A school scored mostly from missing data sits near the neutral 50, inside the High band — check the data coverage before acting.
 - **Endpoint:** `GET /api/v1/analytics/overview (byPriority)`
 - **Shown on:** National dashboard; Decision queue (Analytics ▸ Decisions)
 
@@ -509,9 +520,9 @@
 
 - **id:** `national.capacityUtilisation`
 - **Definition:** Students enrolled compared with seat capacity, across schools that have capacity on record.
-- **Formula:** Σ students ÷ Σ programme capacity × 100, whole number, over schools whose programme capacity > 0. Students = Σ programme enrolment, else the school total.
-- **Source fields:** `schools.educationPrograms[].capacity`, `schools.educationPrograms[].totalStudents`, `schools.totalStudents`
-- **Filters:** Active schools only, limited to the user's access level (National, Province, District, Sector or School). Schools with capacity > 0 only.
+- **Formula:** Σ programme enrolment ÷ Σ programme capacity × 100, whole number, over schools whose programmes record both. The school-level total is never mixed in.
+- **Source fields:** `schools.educationPrograms[].capacity`, `schools.educationPrograms[].totalStudents`
+- **Filters:** Active schools only, limited to the user's access level (National, Province, District, Sector or School). Schools with programme capacity and enrolment only.
 - **Units:** %
 - **Missing data:** “No capacity data yet” when no school has programme capacity recorded.
 - **Endpoint:** `GET /api/v1/analytics/overview (nationalCapacityUtilisation)`
@@ -521,14 +532,14 @@
 
 - **id:** `national.totalStudents`
 - **Definition:** Students enrolled across the active schools you can see.
-- **Formula:** Σ schools.totalStudents.
-- **Source fields:** `schools.totalStudents`
+- **Formula:** Σ over schools of (Σ programme enrolment when recorded, otherwise the school's total students field).
+- **Source fields:** `schools.educationPrograms[].totalStudents`, `schools.totalStudents`
 - **Filters:** Active schools only, limited to the user's access level (National, Province, District, Sector or School).
 - **Units:** Students
 - **Missing data:** Schools with no figure add 0.
 - **Endpoint:** `GET /api/v1/analytics/overview (totalStudents)`
 - **Shown on:** National dashboard
-- **Notes:** Uses the school total field. A school's own dashboard prefers the programme roll-up, so the two can differ if programme enrolment is not kept in sync.
+- **Notes:** Same rule as a school's own dashboard and the map, so the national total equals the sum of the school figures.
 
 ### Total teachers
 
@@ -586,7 +597,7 @@
 - **Source fields:** `decision_assessments`
 - **Filters:** Active schools only, limited to the user's access level (National, Province, District, Sector or School).
 - **Units:** Schools
-- **Missing data:** Unscored schools appear after Recalculate.
+- **Missing data:** New and changed schools are scored automatically; anything missed is caught by the nightly recalculation.
 - **Endpoint:** `GET /api/v1/analytics/overview (scoredSchoolCount)`
 - **Shown on:** Decision queue (Analytics ▸ Decisions)
 
@@ -595,10 +606,10 @@
 - **id:** `national.provinceDistribution`
 - **Definition:** Active schools per province (or district when drilled down), with Critical and High counts and the average score.
 - **Formula:** Group active schools by province / district: count, Critical count, High count, mean School Condition Score.
-- **Source fields:** `schools.province`, `schools.district`, `schools.priorityLevel`, `schools.overallScore`
+- **Source fields:** `schools.province`, `schools.district`, `decision_assessments.priorityLevel`, `decision_assessments.overallScore`
 - **Filters:** Active schools only, limited to the user's access level (National, Province, District, Sector or School).
 - **Units:** Schools; score 0–100
-- **Missing data:** Areas without schools are not listed.
+- **Missing data:** Areas without schools are not listed. An area with no scored school has no average (shown as —), never 0.
 - **Endpoint:** `GET /api/v1/analytics/overview (provinceStats) · GET /api/v1/analytics/hierarchy`
 - **Shown on:** National dashboard
 
@@ -618,14 +629,13 @@
 
 - **id:** `national.recommendations`
 - **Definition:** Rule-based suggestions from the national figures.
-- **Formula:** Critical schools > 0 → urgent intervention line; the province with the lowest average score → strategic line; otherwise a routine-monitoring line.
-- **Source fields:** `byPriority`, `provinceStats`
+- **Formula:** One line per finding: Critical schools → urgent line; lowest-scoring scored province → strategic line; weakest measured national factor (< 55) → focus line; missing building / population data, low average data coverage and unscored schools → data lines. Otherwise a routine-monitoring line.
+- **Source fields:** `byPriority`, `provinceStats`, `dataGaps`, `avgDataCoverage`
 - **Filters:** Active schools only, limited to the user's access level (National, Province, District, Sector or School).
 - **Units:** Text
 - **Missing data:** A routine-monitoring line when nothing is flagged.
 - **Endpoint:** `GET /api/v1/analytics/overview (nationalRecommendations)`
 - **Shown on:** National dashboard
-
 
 ## Population Analytics
 

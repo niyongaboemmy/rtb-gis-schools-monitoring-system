@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { School } from '../../schools/entities/school.entity';
 
@@ -17,6 +18,9 @@ export enum PriorityLevel {
 }
 
 @Entity('decision_assessments')
+// One assessment per school — concurrent first-time scoring used to insert
+// duplicates that the national averages then double-counted.
+@Index('UQ_decision_assessments_schoolId', ['schoolId'], { unique: true })
 export class DecisionAssessment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -54,6 +58,28 @@ export class DecisionAssessment {
 
   @Column({ default: false })
   hasPopDataGap: boolean;
+
+  /**
+   * Per component: true when the neutral 50 was used for missing data. Null on
+   * rows written before scoring v2 (recalculated on boot).
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  dataGaps: {
+    infrastructure: boolean;
+    buildingAge: boolean;
+    accessibility: boolean;
+    population: boolean;
+    facilityCompliance: boolean;
+    resolution: boolean;
+  } | null;
+
+  /** Summed weight of measured (non-gap) components, 0–1. */
+  @Column({ type: 'decimal', precision: 4, scale: 2, nullable: true })
+  dataCoverage: number | null;
+
+  /** SCORING_VERSION the row was computed with (0 = before versioning). */
+  @Column({ type: 'int', default: 0 })
+  scoringVersion: number;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, default: 0 })
   overallScore: number; // weighted total

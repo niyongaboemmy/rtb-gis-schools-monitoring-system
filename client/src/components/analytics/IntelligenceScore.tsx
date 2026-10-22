@@ -6,6 +6,8 @@ import { formatNumber, formatPercent, formatScore } from '../../lib/format';
 import { label } from '../../lib/labels';
 import { MetricInfo } from '../metric-help/MetricInfo';
 import type { MetricId } from '../metric-help/metrics';
+import type { ScoringModel } from '../dashboard/types';
+import { bandOf, modelOf } from '../../lib/scoring';
 
 interface MetricBreakdown {
   label: string;
@@ -35,37 +37,42 @@ interface IntelligenceScoreProps {
   children?: ReactNode;
   /** Extra section rendered below a divider inside the same panel. */
   appendix?: ReactNode;
+  /** Served scoring model (weights + bands); falls back to the mirrored default. */
+  model?: ScoringModel | null;
+  /** Share of the score(s) that comes from measured data, 0–1. */
+  coverage?: number | null;
+  /** The overall score is shown elsewhere (e.g. a page hero): render factors only. */
+  hideOverall?: boolean;
+  /** Header title override. */
+  title?: string;
 }
 
 type Band = 'critical' | 'high' | 'medium' | 'low';
 
-/** Intervention Priority band (Critical < 35, High < 55, Medium < 75, Low ≥ 75). */
-function bandOf(s: number): Band {
-  if (s < 35) return 'critical';
-  if (s < 55) return 'high';
-  if (s < 75) return 'medium';
-  return 'low';
-}
 const BAND_HEX: Record<Band, string> = {
   critical: '#ef4444',
   high: '#f97316',
   medium: '#f59e0b',
   low: '#10b981',
 };
-const BAND_STOPS: { band: Band; from: number; to: number }[] = [
-  { band: 'critical', from: 0, to: 35 },
-  { band: 'high', from: 35, to: 55 },
-  { band: 'medium', from: 55, to: 75 },
-  { band: 'low', from: 75, to: 100 },
-];
+/** Band segments of the 0–100 scale, from the served bands. */
+const bandStops = (model: ScoringModel) => {
+  const b = model.bands;
+  return [
+    { band: 'critical' as Band, from: 0, to: b.high.min },
+    { band: 'high' as Band, from: b.high.min, to: b.medium.min },
+    { band: 'medium' as Band, from: b.medium.min, to: b.low.min },
+    { band: 'low' as Band, from: b.low.min, to: 100 },
+  ];
+};
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
-/** Counts up to `value` (rounded) once on mount. */
-function CountUp({ value, delay = 0 }: { value: number; delay?: number }) {
+/** Counts up to `value` once on mount, shown with `decimals` places. */
+function CountUp({ value, delay = 0, decimals = 0 }: { value: number; delay?: number; decimals?: number }) {
   const reduce = useReducedMotion();
   const mv = useMotionValue(reduce ? value : 0);
-  const text = useTransform(mv, (v) => String(Math.round(v)));
+  const text = useTransform(mv, (v) => formatNumber(v, decimals));
   useEffect(() => {
     if (reduce) return mv.set(value);
     const c = animate(mv, value, { duration: 1.4, delay, ease: EASE });
@@ -88,12 +95,18 @@ export function IntelligenceScore({
   assessedCount,
   children,
   appendix,
+  model: modelProp,
+  coverage,
+  hideOverall = false,
+  title,
 }: IntelligenceScoreProps) {
   const reduce = useReducedMotion();
   const [hovered, setHovered] = useState<string | null>(null);
+  const model = modelOf(modelProp);
+  const stops = bandStops(model);
 
   const hasHero = score != null && Number.isFinite(score);
-  const band = hasHero ? bandOf(score) : null;
+  const band = hasHero ? bandOf(score, model) : null;
   const color = band ? BAND_HEX[band] : '#94a3b8';
 
   // Weighted factors drive the score; rank them so the weakest leads.
@@ -122,7 +135,7 @@ export function IntelligenceScore({
       <header className="flex flex-wrap items-center justify-between gap-3 px-6 pt-6 sm:px-8">
         <div className="flex items-center gap-2">
           <h2 className="text-base font-semibold tracking-tight text-slate-900 dark:text-white">
-            {isAggregate ? 'Condition score' : 'School Condition Score'}
+            {title ?? (isAggregate ? 'Condition score' : 'School Condition Score')}
           </h2>
           <MetricInfo id={isAggregate ? 'national.avgConditionScore' : 'school.conditionScore'} />
         </div>
@@ -147,7 +160,7 @@ export function IntelligenceScore({
               tabIndex={0}
               role="img"
               aria-label="How it's calculated"
-              data-tooltip="Average of every scored active school in your area, weighting the factors below plus resolution rate (5%). Higher is better."
+              data-tooltip="Average School Condition Score of every scored active school in your area — the six weighted factors below. Higher is better."
               className="inline-flex h-7 w-7 cursor-help items-center justify-center rounded-full transition-colors hover:bg-slate-900/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:bg-white/5"
             >
               <Info className="h-3.5 w-3.5" aria-hidden />
@@ -156,8 +169,9 @@ export function IntelligenceScore({
         </div>
       </header>
 
-      <div className="grid gap-8 p-6 sm:p-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-10">
+      <div className={cn('grid gap-8 p-6 sm:p-8 lg:gap-10', !hideOverall && 'lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]')}>
         {/* ── Overall ─────────────────────────────────────────────────── */}
+        {!hideOverall && (
         <div className="flex flex-col items-center gap-6">
           <div className="relative h-44 w-44">
             <svg viewBox="0 0 176 176" className="h-full w-full -rotate-90" role="img" aria-label={hasHero ? `Score ${formatScore(score)} out of 100` : 'Not assessed yet'}>
@@ -179,7 +193,9 @@ export function IntelligenceScore({
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-5xl font-semibold tabular-nums tracking-tight text-slate-900 dark:text-white">
-                {hasHero ? <CountUp value={score} delay={0.2} /> : '—'}
+                {/* An average keeps its decimal so the number never reads as the
+                    next band (74.6 is Medium; "75" would look Low). */}
+                {hasHero ? <CountUp value={score} delay={0.2} decimals={isAggregate ? 1 : 0} /> : '—'}
               </span>
               <span className="mt-1 text-xs text-slate-500 dark:text-white/50">out of 100</span>
             </div>
@@ -196,7 +212,7 @@ export function IntelligenceScore({
             </div>
             <div className="relative h-1.5">
               <div className="flex h-full gap-0.5 overflow-hidden rounded-full">
-                {BAND_STOPS.map((b) => (
+                {stops.map((b) => (
                   <span
                     key={b.band}
                     className="h-full transition-opacity duration-300"
@@ -216,12 +232,24 @@ export function IntelligenceScore({
             </div>
             <div className="flex justify-between text-[10px] tabular-nums text-slate-400 dark:text-white/30">
               <span>0</span>
-              <span>35</span>
-              <span>55</span>
-              <span>75</span>
+              <span>{model.bands.high.min}</span>
+              <span>{model.bands.medium.min}</span>
+              <span>{model.bands.low.min}</span>
               <span>100</span>
             </div>
           </div>
+
+          {coverage != null && Number.isFinite(coverage) && (
+            <p
+              className={cn(
+                'max-w-xs text-center text-xs',
+                coverage < 0.5 ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-slate-500 dark:text-white/50',
+              )}
+            >
+              {formatPercent(coverage * 100)} of {isAggregate ? 'the scores' : 'this score'} comes from measured data
+              {coverage < 0.5 ? ' — treat priorities as provisional until data is collected.' : '.'}
+            </p>
+          )}
 
           {!isAggregate && urgencyMonths != null && (
             <p className="text-xs text-slate-500 dark:text-white/50">
@@ -234,6 +262,8 @@ export function IntelligenceScore({
 
         </div>
 
+        )}
+
         {/* ── Factors, weakest first ──────────────────────────────────── */}
         <div className="flex flex-col">
           <div className="flex items-baseline justify-between pb-3">
@@ -241,7 +271,7 @@ export function IntelligenceScore({
             <span className="text-xs text-slate-400 dark:text-white/35">weakest first · % = weight</span>
           </div>
 
-          <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+          <ul className={cn('grid grid-cols-2 gap-2.5 sm:grid-cols-3', hideOverall && 'xl:grid-cols-6')}>
             {weighted.map((m, i) => {
               const has = m.score != null && Number.isFinite(m.score);
               const c = has ? BAND_HEX[bandOf(m.score!)] : '#94a3b8';

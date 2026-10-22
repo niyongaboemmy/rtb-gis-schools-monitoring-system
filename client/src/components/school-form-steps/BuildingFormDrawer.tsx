@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
@@ -40,7 +40,10 @@ export interface AvailableFacility {
   items: { id: string; label: string; tags: string[] }[];
 }
 
+// "Not assessed" keeps the building out of the infrastructure score until a
+// real inspection result is entered.
 const buildingConditionOptions: DropdownOption[] = [
+  { label: "Not assessed", value: "" },
   { label: "Good", value: "good" },
   { label: "Fair", value: "fair" },
   { label: "Poor", value: "poor" },
@@ -48,6 +51,7 @@ const buildingConditionOptions: DropdownOption[] = [
 ];
 
 const roofConditionOptions: DropdownOption[] = [
+  { label: "Not assessed", value: "" },
   { label: "Good", value: "good" },
   { label: "Fair", value: "fair" },
   { label: "Poor", value: "poor" },
@@ -238,31 +242,34 @@ export function BuildingFormDrawer({
     return () => document.removeEventListener("keydown", onKey);
   }, [isOpen, onClose, geoModalOpen]);
 
-  // Auto-calculate structural score
-  useEffect(() => {
-    if (!draft) return;
-    const scoreMap: Record<string, number> = {
-      good: 100,
-      fair: 75,
-      poor: 50,
-      critical: 25,
-    };
-
-    const bScore = scoreMap[draft.buildingCondition] || 0;
-    const rScore = scoreMap[draft.buildingRoofCondition] || 0;
-
-    if (bScore > 0 && rScore > 0) {
-      const average = (bScore + rScore) / 2;
-      const currentScore = parseFloat(draft.buildingStructuralScore) || 0;
-      if (Math.abs(currentScore - average) > 0.01) {
-        setDraft((prev) =>
-          prev
-            ? { ...prev, buildingStructuralScore: average.toString() }
-            : prev,
-        );
-      }
+  // Same limits the server enforces (building.dto.ts) — checked here because
+  // saving is a button click, so the inputs' min/max are never applied.
+  const currentYear = new Date().getFullYear();
+  const fieldErrors = useMemo(() => {
+    const e: Partial<Record<"year" | "floors" | "area" | "structural", string>> = {};
+    if (!draft) return e;
+    const year = draft.buildingYearBuilt.trim();
+    if (year) {
+      const y = Number(year);
+      if (!Number.isInteger(y) || y < 1900 || y > currentYear)
+        e.year = `Enter a whole year from 1900 to ${currentYear}.`;
     }
-  }, [draft?.buildingCondition, draft?.buildingRoofCondition]);
+    const floors = draft.buildingFloors.trim();
+    if (floors && (!Number.isInteger(Number(floors)) || Number(floors) < 0))
+      e.floors = "Floors must be a whole number, 0 or more.";
+    const area = draft.buildingArea.trim();
+    if (area && (!Number.isFinite(Number(area)) || Number(area) < 0))
+      e.area = "Area must be 0 or more.";
+    const structural = draft.buildingStructuralScore.trim();
+    if (
+      structural &&
+      (!Number.isFinite(Number(structural)) || Number(structural) < 0 || Number(structural) > 100)
+    )
+      e.structural = "Structural score must be between 0 and 100.";
+    return e;
+  }, [draft, currentYear]);
+  const hasFieldErrors = Object.keys(fieldErrors).length > 0;
+
 
   // Remove the early return null to allow AnimatePresence and Portal stability
   // if (!draft) return null;
@@ -472,13 +479,17 @@ export function BuildingFormDrawer({
                       <Input
                         type="number"
                         min="1900"
-                        max="2030"
+                        max={currentYear}
                         placeholder="e.g. 2015"
                         value={draft.buildingYearBuilt}
+                        aria-invalid={!!fieldErrors.year}
                         onChange={(e) =>
                           set("buildingYearBuilt", e.target.value)
                         }
                       />
+                      {fieldErrors.year && (
+                        <p role="alert" className="text-xs text-destructive">{fieldErrors.year}</p>
+                      )}
                     </div>
                   </div>
                 </section>
@@ -499,8 +510,12 @@ export function BuildingFormDrawer({
                         min="1"
                         placeholder="e.g. 2"
                         value={draft.buildingFloors}
+                        aria-invalid={!!fieldErrors.floors}
                         onChange={(e) => set("buildingFloors", e.target.value)}
                       />
+                      {fieldErrors.floors && (
+                        <p role="alert" className="text-xs text-destructive">{fieldErrors.floors}</p>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
@@ -510,8 +525,12 @@ export function BuildingFormDrawer({
                       <Input
                         placeholder="e.g. 500"
                         value={draft.buildingArea}
+                        aria-invalid={!!fieldErrors.area}
                         onChange={(e) => set("buildingArea", e.target.value)}
                       />
+                      {fieldErrors.area && (
+                        <p role="alert" className="text-xs text-destructive">{fieldErrors.area}</p>
+                      )}
                     </div>
                   </div>
                 </section>
@@ -632,19 +651,24 @@ export function BuildingFormDrawer({
                           <Hash className="w-3 h-3 text-muted-foreground" />
                           Structural Score (0–100)
                         </div>
-                        <span className="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded-md uppercase tracking-tight">
-                          Auto-calculated
+                        <span className="text-[10px] font-normal text-muted-foreground">
+                          From the structural inspection, if one was done
                         </span>
                       </label>
                       <Input
                         type="number"
                         min="0"
                         max="100"
-                        readOnly
-                        placeholder="Calculated..."
+                        placeholder="Leave blank if not inspected"
                         value={draft.buildingStructuralScore}
-                        className="bg-muted/30 font-bold text-primary border-primary/20"
+                        aria-invalid={!!fieldErrors.structural}
+                        onChange={(e) =>
+                          set("buildingStructuralScore", e.target.value)
+                        }
                       />
+                      {fieldErrors.structural && (
+                        <p role="alert" className="text-xs text-destructive">{fieldErrors.structural}</p>
+                      )}
                     </div>
                   </div>
                 </section>
@@ -677,7 +701,7 @@ export function BuildingFormDrawer({
                 <Button
                   type="button"
                   onClick={() => onSave(draft)}
-                  disabled={!draft.buildingName.trim() || isSaving}
+                  disabled={!draft.buildingName.trim() || hasFieldErrors || isSaving}
                 >
                   {isSaving ? (
                     <>

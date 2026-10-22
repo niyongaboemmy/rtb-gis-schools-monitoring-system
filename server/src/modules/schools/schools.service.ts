@@ -21,6 +21,7 @@ import { FacilityEntity } from './entities/facility.entity';
 import { BuildingDto } from './dto/building.dto';
 import { CreateChangeRequestDto } from './dto/change-request.dto';
 import { filterSchoolUpdate } from './school-field-permissions';
+import { programmeTotals } from '../analytics/school-metrics.helpers';
 import type { ChangeRequestPayload } from '../reports/entities/issue-report.entity';
 import {
   SchoolFacilitySurvey,
@@ -92,8 +93,10 @@ export class SchoolsService {
           schoolId: savedSchool.id,
           buildingCode: code,
           areaSquareMeters: area,
-          condition: condition || BuildingCondition.FAIR,
-          roofCondition: roofCondition || RoofCondition.GOOD,
+          // Blank = not assessed (null). A defaulted condition used to make
+          // unassessed buildings feed the infrastructure score.
+          condition: condition ?? null,
+          roofCondition: roofCondition ?? null,
           centroidLat: latitude ?? null,
           centroidLng: longitude ?? null,
           annotations: annotations || [],
@@ -112,6 +115,7 @@ export class SchoolsService {
       this.logger.debug(`No buildings to create for school ${savedSchool.id}`);
     }
 
+    this.emitScoringInputChanged(savedSchool.id);
     return this.findOne(savedSchool.id);
   }
 
@@ -255,6 +259,9 @@ export class SchoolsService {
       );
     }
 
+    // Students, programmes, road access, establishment year, status and
+    // buildings all feed the School Condition Score.
+    this.emitScoringInputChanged(id);
     return this.findOne(id);
   }
 
@@ -321,9 +328,15 @@ export class SchoolsService {
         schoolId,
         buildingCode: code,
         areaSquareMeters: area,
-        condition: condition || current?.condition || BuildingCondition.FAIR,
+        // undefined = field not sent → keep; null/'' = cleared → not assessed.
+        condition:
+          condition !== undefined
+            ? condition || null
+            : (current?.condition ?? null),
         roofCondition:
-          roofCondition || current?.roofCondition || RoofCondition.GOOD,
+          roofCondition !== undefined
+            ? roofCondition || null
+            : (current?.roofCondition ?? null),
         centroidLat: latitude ?? null,
         centroidLng: longitude ?? null,
       } as DeepPartial<SchoolBuilding>;
@@ -389,16 +402,9 @@ export class SchoolsService {
           district: school.district,
           priorityLevel: school.priorityLevel,
           overallScore: school.overallScore,
-          totalStudents:
-            school.educationPrograms?.reduce(
-              (sum, p) => sum + (parseFloat(String(p.totalStudents)) || 0),
-              0,
-            ) || 0,
-          totalCapacity:
-            school.educationPrograms?.reduce(
-              (sum, p) => sum + (parseFloat(String(p.capacity)) || 0),
-              0,
-            ) || 0,
+          // Same enrolment/capacity definition as both dashboards.
+          totalStudents: programmeTotals(school).students,
+          totalCapacity: programmeTotals(school).capacity,
           roadStatusPercentage: school.roadStatusPercentage,
           kmzStatus: school.kmzStatus,
         },
@@ -463,8 +469,8 @@ export class SchoolsService {
       schoolId,
       buildingCode: code,
       areaSquareMeters: area,
-      condition: condition || BuildingCondition.FAIR,
-      roofCondition: roofCondition || RoofCondition.GOOD,
+      condition: condition || null,
+      roofCondition: roofCondition || null,
       centroidLat: latitude ?? null,
       centroidLng: longitude ?? null,
       // Safety net: filter out any remaining nulls/nested arrays from the DTO transform
@@ -476,7 +482,9 @@ export class SchoolsService {
       ),
     } as DeepPartial<SchoolBuilding>);
 
-    return this.schoolBuildingRepository.save(created);
+    const saved = await this.schoolBuildingRepository.save(created);
+    this.emitScoringInputChanged(schoolId);
+    return saved;
   }
 
   async updateBuilding(id: string, dto: BuildingDto): Promise<SchoolBuilding> {
@@ -505,8 +513,12 @@ export class SchoolsService {
       ...buildingData,
       buildingCode: code,
       areaSquareMeters: area,
-      condition: condition || building.condition,
-      roofCondition: roofCondition || building.roofCondition,
+      condition:
+        condition !== undefined ? condition || null : building.condition,
+      roofCondition:
+        roofCondition !== undefined
+          ? roofCondition || null
+          : building.roofCondition,
       centroidLat: latitude !== undefined ? latitude : building.centroidLat,
       centroidLng: longitude !== undefined ? longitude : building.centroidLng,
       // Safety net: filter out any remaining nulls/nested arrays from the DTO transform
@@ -526,7 +538,7 @@ export class SchoolsService {
 
     Object.assign(building, updateData);
     const saved = await this.schoolBuildingRepository.save(building);
-    this.eventEmitter.emit('school.updated', { schoolId: saved.schoolId });
+    this.emitScoringInputChanged(saved.schoolId);
     return saved;
   }
 
@@ -536,7 +548,9 @@ export class SchoolsService {
     });
     if (!building)
       throw new NotFoundException(`Building with ID "${id}" not found`);
+    const { schoolId } = building;
     await this.schoolBuildingRepository.remove(building);
+    this.emitScoringInputChanged(schoolId);
   }
 
   // ============ Facility Survey Methods ============
@@ -586,6 +600,7 @@ export class SchoolsService {
 
     if (surveyRecords.length > 0) {
       await this.surveyRepository.save(surveyRecords);
+      this.emitScoringInputChanged(schoolId);
     }
 
     return this.surveyRepository.find({ where: { schoolId } });
@@ -605,8 +620,12 @@ export class SchoolsService {
     if (notes) {
       survey.notes = notes;
     }
+    // Re-surveying an item resets survey staleness (risk panel, last survey date).
+    survey.inspectedAt = new Date();
 
-    return this.surveyRepository.save(survey);
+    const saved = await this.surveyRepository.save(survey);
+    this.emitScoringInputChanged(saved.schoolId);
+    return saved;
   }
 
   async bulkUpdateSurvey(
@@ -634,19 +653,26 @@ export class SchoolsService {
           itemId: update.itemId,
           compliance: update.compliance,
           notes: update.notes,
+          inspectedAt: new Date(),
         });
       } else {
         survey.compliance = update.compliance;
         if (update.notes !== undefined) {
           survey.notes = update.notes;
         }
+        survey.inspectedAt = new Date();
       }
 
       await this.surveyRepository.save(survey);
     }
 
     const result = await this.surveyRepository.find({ where: { schoolId } });
-    this.eventEmitter.emit('school.updated', { schoolId });
+    this.emitScoringInputChanged(schoolId);
     return result;
+  }
+
+  /** Something that feeds the School Condition Score changed → rescore. */
+  private emitScoringInputChanged(schoolId: string | undefined | null): void {
+    if (schoolId) this.eventEmitter.emit('school.updated', { schoolId });
   }
 }

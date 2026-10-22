@@ -13,12 +13,19 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { cn } from "../../lib/utils";
-import { formatNumber, formatScore } from "../../lib/format";
+import { formatNumber, formatPercent, formatScore } from "../../lib/format";
 import { label } from "../../lib/labels";
 import { MetricInfo } from "../metric-help/MetricInfo";
 import { DataGapBadge } from "../metric-help/DataGapBadge";
 import type { MetricId } from "../metric-help/metrics";
-import type { SchoolMetrics } from "./types";
+import type { PriorityKey, SchoolMetrics } from "./types";
+import {
+  bandOf,
+  bandRanges,
+  modelOf,
+  weightOf,
+  type ComponentKey,
+} from "../../lib/scoring";
 
 interface DecisionIntelligenceProps {
   /**
@@ -28,26 +35,30 @@ interface DecisionIntelligenceProps {
   assessment: (Partial<SchoolMetrics> & { resolutionRate?: number | null }) | null | undefined;
 }
 
-type GapKey =
-  | "infrastructure"
-  | "buildingAge"
-  | "accessibility"
-  | "population"
-  | "facilityCompliance"
-  | "resolution";
+type GapKey = ComponentKey;
 
 interface ScoreMetric {
   label: string;
-  /** Displayed as a small badge next to the label so the user always knows the formula */
-  weight: string;
+  /** Weight (0–1) from the served scoring model. */
+  weight: number;
   score: number | null;
   icon: React.ComponentType<{ className?: string }>;
   metricId: MetricId;
   gapKey: GapKey;
 }
 
-const bandOf = (s: number) =>
-  s < 35 ? "critical" : s < 55 ? "high" : s < 75 ? "medium" : "low";
+const BAND_STYLE: Record<PriorityKey, string> = {
+  critical: "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20",
+  high: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20",
+  medium: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20",
+  low: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
+};
+const BAR_STYLE: Record<PriorityKey, string> = {
+  critical: "bg-red-500/60",
+  high: "bg-orange-500/60",
+  medium: "bg-amber-500/60",
+  low: "bg-emerald-500/60",
+};
 
 /** Safe parse: returns null for null / NaN / undefined (never a fake 0). */
 const numOrNull = (v: unknown): number | null => {
@@ -58,8 +69,13 @@ const numOrNull = (v: unknown): number | null => {
 
 export const DecisionIntelligenceScore = React.memo(
   ({ assessment }: DecisionIntelligenceProps) => {
+    const model = modelOf(assessment?.scoringModel);
     const overallScore = numOrNull(assessment?.overallScore);
-    const band = overallScore != null ? bandOf(overallScore) : null;
+    // The server's Intervention Priority is authoritative; derive only as a fallback.
+    const band: PriorityKey | null =
+      assessment?.priorityLevel ?? (overallScore != null ? bandOf(overallScore, model) : null);
+    const coverage =
+      typeof assessment?.dataCoverage === "number" ? assessment.dataCoverage : null;
 
     // Server data-gap flags (WS1.7). Older payloads only carry the two
     // persisted flags, so fall back to those.
@@ -69,16 +85,17 @@ export const DecisionIntelligenceScore = React.memo(
       ...(assessment?.dataGaps ?? {}),
     };
 
-    // The six components, in weight order — mirrors scoring.constants.ts.
+    // The six components; weights come from the served scoring model.
+    const w = (k: ComponentKey) => weightOf(k, model);
     const metrics: ScoreMetric[] = [
-      { label: "Infrastructure", weight: "35%", score: numOrNull(assessment?.infrastructureScore), icon: Building2, metricId: "component.infrastructure", gapKey: "infrastructure" },
-      { label: "Building Age Score", weight: "25%", score: numOrNull(assessment?.buildingAgeScore), icon: TrendingUp, metricId: "component.buildingAge", gapKey: "buildingAge" },
-      { label: "Facility Compliance", weight: "15%", score: numOrNull(assessment?.facilityComplianceScore), icon: ClipboardCheck, metricId: "component.facilityCompliance", gapKey: "facilityCompliance" },
-      { label: "Accessibility", weight: "10%", score: numOrNull(assessment?.accessibilityScore), icon: MapPin, metricId: "component.accessibility", gapKey: "accessibility" },
-      { label: "Population Pressure", weight: "10%", score: numOrNull(assessment?.populationPressureScore), icon: Users, metricId: "component.population", gapKey: "population" },
+      { label: "Infrastructure", weight: w("infrastructure"), score: numOrNull(assessment?.infrastructureScore), icon: Building2, metricId: "component.infrastructure", gapKey: "infrastructure" },
+      { label: "Building Age Score", weight: w("buildingAge"), score: numOrNull(assessment?.buildingAgeScore), icon: TrendingUp, metricId: "component.buildingAge", gapKey: "buildingAge" },
+      { label: "Facility Compliance", weight: w("facilityCompliance"), score: numOrNull(assessment?.facilityComplianceScore), icon: ClipboardCheck, metricId: "component.facilityCompliance", gapKey: "facilityCompliance" },
+      { label: "Accessibility", weight: w("accessibility"), score: numOrNull(assessment?.accessibilityScore), icon: MapPin, metricId: "component.accessibility", gapKey: "accessibility" },
+      { label: "Population Pressure", weight: w("population"), score: numOrNull(assessment?.populationPressureScore), icon: Users, metricId: "component.population", gapKey: "population" },
       {
         label: "Resolution Rate",
-        weight: "5%",
+        weight: w("resolution"),
         // Server component score (neutral 50 when there are no reports).
         score: numOrNull(assessment?.resolutionRateScore ?? assessment?.resolutionRate),
         icon: CheckCircle2,
@@ -95,13 +112,8 @@ export const DecisionIntelligenceScore = React.memo(
     } as const;
     const scoreColor = band ? BAND_TEXT[band] : "text-muted-foreground";
 
-    const barColor = (s: number | null) => {
-      if (s == null) return "bg-muted-foreground/20";
-      if (s >= 75)   return "bg-emerald-500/60";
-      if (s >= 55)   return "bg-amber-500/60";
-      if (s >= 35)   return "bg-orange-500/60";
-      return           "bg-red-500/60";
-    };
+    const barColor = (s: number | null) =>
+      s == null ? "bg-muted-foreground/20" : BAR_STYLE[bandOf(s, model)];
 
     return (
       <Card className="group relative border border-slate-200 dark:border-0 bg-white dark:bg-gray-950/60 rounded-[32px] overflow-hidden transition-all duration-500">
@@ -168,6 +180,21 @@ export const DecisionIntelligenceScore = React.memo(
                   </span>
                 </div>
               </motion.div>
+
+              {/* How much of the score is measured rather than estimated */}
+              {coverage != null && (
+                <p
+                  className={cn(
+                    "mt-4 text-[12px] text-center",
+                    coverage < 0.5
+                      ? "text-amber-700 dark:text-amber-400 font-medium"
+                      : "text-slate-500 dark:text-white/50",
+                  )}
+                >
+                  {formatPercent(coverage * 100)} of this score is from measured data
+                  {coverage < 0.5 ? " — treat the priority as provisional" : ""}
+                </p>
+              )}
 
               {/* Urgency + operational health ── */}
               <div className="mt-8 grid grid-cols-2 gap-4 w-full">
@@ -255,7 +282,7 @@ export const DecisionIntelligenceScore = React.memo(
                             <MetricInfo id={metric.metricId} size="xs" />
                           </p>
                           <span className="shrink-0 text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-white/30 border border-slate-200 dark:border-white/6">
-                            weight {metric.weight}
+                            weight {formatPercent(metric.weight * 100)}
                           </span>
                         </div>
 
@@ -272,7 +299,7 @@ export const DecisionIntelligenceScore = React.memo(
                         {/* How this factor feeds the overall index */}
                         {hasScore && (
                           <p className="text-[11px] tabular-nums text-slate-500 dark:text-white/40">
-                            {scoreValue} × {metric.weight} = {formatNumber((scoreValue * parseFloat(metric.weight)) / 100, 1)} points of the score
+                            {scoreValue} × {formatPercent(metric.weight * 100)} = {formatNumber(scoreValue * metric.weight, 1)} points of the score
                           </p>
                         )}
                         {estimated && <DataGapBadge metricId={metric.metricId} />}
@@ -335,43 +362,16 @@ export const DecisionIntelligenceScore = React.memo(
                     </span>
                   </summary>
                   <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                    {(
-                      [
-                        {
-                          band: "Critical",
-                          range: "0–34",
-                          color:
-                            "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20",
-                        },
-                        {
-                          band: "High",
-                          range: "35–54",
-                          color:
-                            "bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20",
-                        },
-                        {
-                          band: "Medium",
-                          range: "55–74",
-                          color:
-                            "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20",
-                        },
-                        {
-                          band: "Low",
-                          range: "75–100",
-                          color:
-                            "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
-                        },
-                      ] as const
-                    ).map(({ band, range, color }) => (
+                    {bandRanges(model).map(({ key, range }) => (
                       <div
-                        key={band}
-                        className={`rounded-lg p-2 text-center ${color}`}
+                        key={key}
+                        className={`rounded-lg p-2 text-center ${BAND_STYLE[key]}`}
                       >
                         <div className="text-[10px] font-black tabular-nums">
                           {range}
                         </div>
                         <div className="text-[9px] font-medium uppercase tracking-wide mt-0.5">
-                          {band}
+                          {label("priority", key)}
                         </div>
                       </div>
                     ))}

@@ -1,410 +1,55 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { School } from '../schools/entities/school.entity';
-import { SchoolBuilding } from '../schools/entities/school-building.entity';
-import { PopulationData } from '../population/entities/population-data.entity';
-import { BuildingCondition } from '../schools/entities/school-building.entity';
-import { ReportsService } from '../reports/reports.service';
+import { Injectable } from '@nestjs/common';
 import { AnalyticsService } from '../analytics/analytics.service';
 import {
-  MainDashboardDto,
-  InfrastructureMetrics,
-  MapSummary,
-  FacilitiesSummary,
-  UtilitiesSummary,
-} from './dto/main-dashboard.dto';
-import {
-  ReportingDashboardDto,
-  DecisionAssessmentSummary,
-  AnalyticsMetrics,
-  ReportingMetrics,
-  SeverityFromStatus,
-  MonthStatusSnapshot,
-} from './dto/reporting-dashboard.dto';
-import { ReportStatus } from '../reports/entities/issue-report.entity';
-import {
-  CONDITION_SCORE_MAP,
-  NEUTRAL_SCORE,
-  ageToScore,
-  clamp0to100,
-} from '../analytics/scoring.constants';
+  buildingsNeedingAttention,
+  issueReportsOnly,
+  reportTrends,
+  summariseIssueReports,
+} from '../analytics/report-stats';
+import { ReportingDashboardDto } from './dto/reporting-dashboard.dto';
 
+/**
+ * School dashboard — Issue Reports tab. Read-only: it never recalculates or
+ * persists a score (the score lives on /analytics/schools/:id/metrics).
+ */
 @Injectable()
 export class DashboardService {
-  constructor(
-    @InjectRepository(School)
-    private readonly schoolRepository: Repository<School>,
-    @InjectRepository(SchoolBuilding)
-    private readonly buildingRepository: Repository<SchoolBuilding>,
-    @InjectRepository(PopulationData)
-    private readonly populationRepository: Repository<PopulationData>,
-    private readonly reportsService: ReportsService,
-    private readonly analyticsService: AnalyticsService,
-  ) {}
-
-  async mainPayload(schoolId: string): Promise<MainDashboardDto> {
-    const school = await this.schoolRepository.findOne({
-      where: { id: schoolId },
-      relations: ['buildings', 'populationData'],
-    });
-    if (!school) {
-      throw new NotFoundException(`School with id "${schoolId}" not found`);
-    }
-
-    const buildings: any[] = school.buildings || [];
-    const now = new Date().getFullYear();
-
-    // Infrastructure health — identical model to analytics.service so the
-    // school dashboard's healthIndex always matches its infrastructureScore.
-    const healthSum = buildings.reduce(
-      (acc, b) =>
-        acc +
-        (CONDITION_SCORE_MAP[b.condition as BuildingCondition] ??
-          NEUTRAL_SCORE),
-      0,
-    );
-    const healthIndex =
-      buildings.length > 0
-        ? clamp0to100(Math.round(healthSum / buildings.length))
-        : NEUTRAL_SCORE;
-
-    // Age score: based on average year built of buildings
-    const ages = buildings
-      .filter((b) => b.yearBuilt)
-      .map((b) => now - Number(b.yearBuilt));
-    const avgAge =
-      ages.length > 0
-        ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length)
-        : 0;
-    // Use existing aging model to derive a score
-    const ageScore = this.calculateAgeScore(buildings, school.establishedYear);
-
-    // Maintenance due heuristic: if CPOR or last inspection older than 1 year (approx)
-    const maintenanceDue = buildings.some((b) => {
-      const isPoorOrBad =
-        b.condition === BuildingCondition.POOR ||
-        b.condition === BuildingCondition.CRITICAL;
-      const lastInspect = b.lastInspectionDate
-        ? new Date(b.lastInspectionDate).getTime()
-        : 0;
-      const oneYear = 365 * 24 * 60 * 60 * 1000;
-      const outdated = lastInspect ? Date.now() - lastInspect > oneYear : false;
-      return isPoorOrBad || outdated;
-    });
-
-    // Capacity utilization: total students / total capacity
-    const totalStudents = (school.educationPrograms || []).reduce(
-      (sum: number, p: any) => sum + (Number(p.totalStudents) || 0),
-      0,
-    );
-    const totalCapacity = (school.educationPrograms || []).reduce(
-      (sum: number, p: any) => sum + (Number(p.capacity) || 0),
-      0,
-    );
-    const capacityUtilization =
-      totalCapacity > 0 ? totalStudents / totalCapacity : 0;
-
-    // GIS and facilities summary (best-effort from buildings)
-    // Approximate campus area in km^2 if usedLandArea is available (assumes hectares)
-    const areaKm2 =
-      (school as any).usedLandArea != null
-        ? Number((school as any).usedLandArea) * 0.01
-        : 0;
-    const featureCount = (buildings || []).length;
-    const classrooms = buildings.filter((b: any) =>
-      (b.function || '').toString().toLowerCase().includes('class'),
-    ).length;
-    const labs = buildings.filter((b: any) =>
-      (b.function || '').toString().toLowerCase().includes('lab'),
-    ).length;
-    const dormitories = buildings.filter((b: any) =>
-      (b.function || '').toString().toLowerCase().includes('dorm'),
-    ).length;
-
-    const infrastructure: InfrastructureMetrics = {
-      healthIndex,
-      ageScore,
-      maintenanceDue,
-      capacityUtilization,
-    };
-    const gis: MapSummary = { areaKm2, featureCount };
-    const facilities: FacilitiesSummary = { classrooms, labs, dormitories };
-    const utilities: UtilitiesSummary = {
-      waterAvailability: true,
-      powerReliability: 90,
-    };
-
-    return {
-      timestamp: new Date().toISOString(),
-      data: {
-        infrastructure,
-        gis,
-        facilities,
-        utilities,
-      },
-    };
-  }
+  constructor(private readonly analyticsService: AnalyticsService) {}
 
   async reportingPayload(schoolId: string): Promise<ReportingDashboardDto> {
-    // Gather analytics-based metrics from the analytics module for this school
-    const metrics = await this.analyticsService.getSchoolMetrics(schoolId);
-    // Build decision assessment from analytics metrics
-    const decisionAssessment: DecisionAssessmentSummary = {
-      overallScore: metrics.overallScore,
-      weightBreakdown: [
-        { category: 'infrastructure', score: metrics.infrastructureScore },
-        { category: 'building-age', score: metrics.buildingAgeScore },
-        { category: 'population', score: metrics.populationPressureScore },
-        { category: 'accessibility', score: metrics.accessibilityScore },
-        { category: 'facility', score: metrics.facilityComplianceScore },
-        // Sixth canonical component (5%). Replaces the retired "depreciation"
-        // proxy, which was just 100 − building-age score.
-        { category: 'resolution', score: metrics.resolutionRateScore ?? 50 },
-      ],
-      dataGaps: metrics.dataGaps,
-    };
+    const { rows, buildings } =
+      await this.analyticsService.getSchoolReportingInputs(schoolId);
+    const now = new Date();
+    const trends = reportTrends(rows, now);
+    const issues = issueReportsOnly(rows);
+    const latest = issues.reduce<number | null>((max, r) => {
+      const t = new Date(r.createdAt).getTime();
+      return Number.isFinite(t) && (max === null || t > max) ? t : max;
+    }, null);
 
-    // Initialize trends (fallbacks)
-    const monthlyTrendsFromBackend: number[] = new Array(12).fill(0);
-    const weeklyTrendsFromBackend: number[] = new Array(7).fill(0);
-
-    // Analytics trends (from backend, if provided later). We'll start with backend-provided trends if present at metrics
-    const analytics: AnalyticsMetrics = {
-      trendScore: 0,
-      perFeatureScores: [
-        { feature: 'infrastructure', score: metrics.infrastructureScore },
-        { feature: 'building-age', score: metrics.buildingAgeScore },
-        { feature: 'population', score: metrics.populationPressureScore },
-        { feature: 'accessibility', score: metrics.accessibilityScore },
-        { feature: 'facility', score: metrics.facilityComplianceScore },
-      ],
-      trends: {
-        monthly: monthlyTrendsFromBackend,
-        weekly: weeklyTrendsFromBackend,
-      },
-    };
-
-    // Reports summary (dynamic, pulled from Reports module)
-    let lastReportDate = '';
-    let generatedReportCount = metrics.reportSummary?.total ?? 0;
-    let computedAvgResolutionTime = 0;
-    const monthlyTrendsBack: number[] = new Array(12).fill(0);
-    const weeklyTrendsBack: number[] = new Array(7).fill(0);
-    // category counts from report categories
-    const categoryKeys = [
-      'infrastructure',
-      'safety',
-      'maintenance',
-      'academic',
-      'other',
-    ];
-    const categoriesCounts: Record<string, number> = {
-      infrastructure: 0,
-      safety: 0,
-      maintenance: 0,
-      academic: 0,
-      other: 0,
-    };
-
-    // Status counts
-    const statusCounts = {
-      pending: 0,
-      needIntervention: 0,
-      solved: 0,
-      failed: 0,
-    };
-
-    const emptyMonthSnap = (): MonthStatusSnapshot => ({
-      pending: 0,
-      needIntervention: 0,
-      solved: 0,
-      failed: 0,
-      activeCreated: 0,
-    });
-
-    const severityFromStatus: SeverityFromStatus = {
-      critical: 0,
-      high: 0,
-      medium: 0,
-      low: 0,
-    };
-
-    const monthCurrent = emptyMonthSnap();
-    const monthPrevious = emptyMonthSnap();
-
-    try {
-      const resp = await this.reportsService.findAll({
-        schoolId,
-        page: 1,
-        limit: 1000,
-      });
-      const reportsList = resp.data || [];
-      const nowDate = new Date();
-      const curYm = nowDate.getFullYear() * 12 + nowDate.getMonth();
-      const prevYm = curYm - 1;
-
-      if (reportsList.length > 0) {
-        const latest = reportsList
-          .slice()
-          .sort(
-            (a: any, b: any) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-          )[0];
-        lastReportDate = latest?.createdAt
-          ? new Date(latest.createdAt).toISOString()
-          : '';
-        generatedReportCount = resp.total ?? reportsList.length;
-        reportsList.forEach((r: any) => {
-          const d = new Date(r.createdAt);
-          const diffMonths =
-            (nowDate.getFullYear() - d.getFullYear()) * 12 +
-            (nowDate.getMonth() - d.getMonth());
-          if (diffMonths >= 0 && diffMonths < 12) {
-            monthlyTrendsBack[11 - diffMonths] += 1;
-          }
-          const diffDays = Math.floor(
-            (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24),
-          );
-          if (diffDays >= 0 && diffDays < 7) {
-            weeklyTrendsBack[6 - diffDays] += 1;
-          }
-
-          const status = String(r.status || '').toUpperCase() as ReportStatus;
-          if (status === ReportStatus.PENDING) {
-            statusCounts.pending += 1;
-            severityFromStatus.medium += 1;
-          } else if (status === ReportStatus.NEED_INTERVENTION) {
-            statusCounts.needIntervention += 1;
-            severityFromStatus.critical += 1;
-          } else if (status === ReportStatus.SOLVED) {
-            statusCounts.solved += 1;
-            severityFromStatus.low += 1;
-          } else if (status === ReportStatus.FAILED) {
-            statusCounts.failed += 1;
-            severityFromStatus.high += 1;
-          }
-
-          const rYm = d.getFullYear() * 12 + d.getMonth();
-          const snap =
-            rYm === curYm
-              ? monthCurrent
-              : rYm === prevYm
-                ? monthPrevious
-                : null;
-          if (snap) {
-            if (status === ReportStatus.PENDING) snap.pending += 1;
-            else if (status === ReportStatus.NEED_INTERVENTION)
-              snap.needIntervention += 1;
-            else if (status === ReportStatus.SOLVED) snap.solved += 1;
-            else if (status === ReportStatus.FAILED) snap.failed += 1;
-            if (
-              status === ReportStatus.PENDING ||
-              status === ReportStatus.NEED_INTERVENTION ||
-              status === ReportStatus.FAILED
-            ) {
-              snap.activeCreated += 1;
-            }
-          }
-
-          try {
-            if (r.resolvedAt) {
-              const cr = new Date(r.createdAt).getTime();
-              const re = new Date(r.resolvedAt).getTime();
-              computedAvgResolutionTime += (re - cr) / (1000 * 60 * 60 * 24);
-            }
-          } catch {
-            // ignore
-          }
-          const cats = Array.isArray(r.issueCategory) ? r.issueCategory : [];
-          cats.forEach((cat: string) => {
-            const lower = String(cat).toLowerCase();
-            if (categoryKeys.includes(lower)) {
-              categoriesCounts[lower] = (categoriesCounts[lower] ?? 0) + 1;
-            }
-          });
-        });
-        const resolvedCount = reportsList.filter(
-          (r: any) => r.resolvedAt,
-        ).length;
-        if (resolvedCount > 0)
-          computedAvgResolutionTime = computedAvgResolutionTime / resolvedCount;
-      }
-    } catch {
-      // ignore
-    }
-
-    const pctChange = (cur: number, prev: number): number | null => {
-      if (prev === 0 && cur === 0) return null;
-      if (prev === 0) return cur > 0 ? 100 : 0;
-      return Math.round(((cur - prev) / prev) * 1000) / 10;
-    };
-
-    const monthComparison = {
-      current: monthCurrent,
-      previous: monthPrevious,
-      activeChangePct: pctChange(
-        monthCurrent.activeCreated,
-        monthPrevious.activeCreated,
-      ),
-      solvedChangePct: pctChange(monthCurrent.solved, monthPrevious.solved),
-    };
-
-    const reports: ReportingMetrics = {
-      generatedReportCount,
-      lastReportDate,
-      avgResolutionTime: computedAvgResolutionTime,
-      trends: {
-        monthly: monthlyTrendsBack,
-        weekly: weeklyTrendsBack,
-      },
-      categories: {
-        infrastructure: categoriesCounts.infrastructure,
-        safety: categoriesCounts.safety,
-        maintenance: categoriesCounts.maintenance,
-        academic: categoriesCounts.academic,
-        other: categoriesCounts.other,
-      },
-      statusCounts,
-      severityFromStatus,
-      monthComparison,
-      // Top-level counts for legacy UI (maps enum → priority-style labels)
-      critical: severityFromStatus.critical,
-      high: severityFromStatus.high,
-      medium: severityFromStatus.medium,
-      low: severityFromStatus.low,
-    } as ReportingMetrics;
-
-    const dto: ReportingDashboardDto = {
-      timestamp: new Date().toISOString(),
+    return {
+      timestamp: now.toISOString(),
       data: {
-        decisionAssessment,
-        analytics,
-        reports,
+        reports: {
+          summary: summariseIssueReports(rows, now),
+          months: trends.months,
+          comparison: trends.comparison,
+          categoryTags: trends.categoryTags,
+          statusCounts: trends.statusCounts,
+          lastReportDate:
+            latest === null ? null : new Date(latest).toISOString(),
+          buildingsAttention: buildingsNeedingAttention(
+            rows,
+            buildings.map((b) => ({
+              id: b.id,
+              name: b.name,
+              yearBuilt: b.yearBuilt,
+              condition: b.condition,
+            })),
+            3,
+          ),
+        },
       },
     };
-    return dto;
-  }
-
-  private calculateAgeScore(
-    buildings: any[],
-    establishedYear?: number,
-  ): number {
-    const currentYear = new Date().getFullYear();
-    const buildingAges = buildings
-      .filter((b) => b.yearBuilt)
-      .map((b) => currentYear - Number(b.yearBuilt));
-
-    let avgAge: number;
-    if (buildingAges.length > 0) {
-      avgAge =
-        buildingAges.reduce((sum, age) => sum + age, 0) / buildingAges.length;
-    } else if (establishedYear) {
-      avgAge = currentYear - Number(establishedYear);
-    } else {
-      return NEUTRAL_SCORE;
-    }
-
-    return ageToScore(avgAge);
   }
 }

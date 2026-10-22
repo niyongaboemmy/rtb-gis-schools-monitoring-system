@@ -8,7 +8,9 @@
  * Age bands (avg years): ≤10→95, ≤20→80, ≤30→60, ≤40→45, ≤50→30, ≤60→20, >60→10.
  * Demand ratio (school-age pop within 2 km ÷ capacity): ≥5→10, ≥3→30, ≥2→50, ≥1→70, <1→100.
  * Compliance: compliant 100, partial 50, non-compliant 0 (mean over survey rows).
- * Resolution: resolved ÷ all reports × 100; no reports → 50.
+ * Resolution: solved ÷ eligible Issue Reports × 100, eligible = solved or open
+ *   longer than 30 days; fewer than 3 eligible → 50 (gap). Fixture reports are
+ *   60 days old (REPORT_AGE_DAYS) so every one is eligible.
  * Missing data → neutral 50 (with a data-gap flag).
  * Priority: critical <35, high <55, medium <75, low ≥75.
  * Urgency months: <35→0, <45→3, <55→6, <65→12, <75→18, else 36.
@@ -22,6 +24,9 @@ import { ReportStatus } from '../../reports/entities/issue-report.entity';
 import { PriorityLevel } from '../entities/decision-assessment.entity';
 
 export const CY = new Date().getFullYear();
+
+/** Age of every fixture report — beyond the 30-day resolution SLA. */
+export const REPORT_AGE_DAYS = 60;
 
 export interface GoldenSchool {
   key: string;
@@ -304,17 +309,18 @@ export const GOLDEN: GoldenSchool[] = [
     },
   },
   {
-    // G5 — only a placeholder building (condition 'fair', nothing else) → not
-    // assessed → infra neutral 50 (gap). Age falls back to establishedYear:
-    // 45 years → 30. access 70; capacity unknown → catchment = enrolment 350;
-    // demand 350/350 = 1.0 → 70; compliance partial → 50; resolution 1/2 = 50.
+    // G5 — only a placeholder building (a KMZ stub: no condition, nothing
+    // else) → not assessed → infra neutral 50 (gap). Age falls back to
+    // establishedYear: 45 years → 30. access 70; capacity unknown → catchment =
+    // enrolment 350; demand 350/350 = 1.0 → 70; compliance partial → 50;
+    // resolution: only 2 eligible reports (< 3) → neutral 50 (gap).
     // 0.35·50 + 0.25·30 + 0.1·70 + 0.1·70 + 0.15·50 + 0.05·50
     //   = 17.5 + 7.5 + 7 + 7 + 7.5 + 2.5 = 49 → HIGH, 6 months.
     key: 'G5',
     school: {
       id: 'g5',
       name: 'Golden 5',
-      buildings: [{ condition: BuildingCondition.FAIR }],
+      buildings: [{ name: 'Block A (from KMZ)', condition: null }],
       establishedYear: CY - 45,
       roadStatusPercentage: 70,
       educationPrograms: [],
@@ -338,7 +344,7 @@ export const GOLDEN: GoldenSchool[] = [
       overallScore: 49,
       priority: PriorityLevel.HIGH,
       urgencyMonths: 6,
-      dataGaps: { ...NO_GAPS, infrastructure: true },
+      dataGaps: { ...NO_GAPS, infrastructure: true, resolution: true },
       metrics: {
         totalStudents: 350,
         totalCapacity: 0,

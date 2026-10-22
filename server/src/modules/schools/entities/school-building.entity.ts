@@ -56,15 +56,17 @@ export class SchoolBuilding {
   @Column({ type: 'int', nullable: true })
   yearBuilt: number;
 
-  @Column({
-    type: 'enum',
-    enum: BuildingCondition,
-    default: BuildingCondition.FAIR,
-  })
-  condition: BuildingCondition;
+  /**
+   * Assessed structural condition; null = not assessed yet. There is no
+   * default: a defaulted 'fair' used to make bare KMZ/GLB stubs look like real
+   * inspections and feed the infrastructure score.
+   */
+  @Column({ type: 'enum', enum: BuildingCondition, nullable: true })
+  condition: BuildingCondition | null;
 
-  @Column({ type: 'enum', enum: RoofCondition, default: RoofCondition.GOOD })
-  roofCondition: RoofCondition;
+  /** Assessed roof condition; null = not assessed yet. */
+  @Column({ type: 'enum', enum: RoofCondition, nullable: true })
+  roofCondition: RoofCondition | null;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
   structuralScore: number;

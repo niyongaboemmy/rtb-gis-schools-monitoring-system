@@ -34,6 +34,18 @@ export const databaseConfig = (
     };
   }
 
+  // Timestamp columns are `timestamp without time zone`: Postgres stamps
+  // defaults (createdAt) in the SESSION time zone, Node writes Dates (e.g.
+  // resolvedAt) in the PROCESS time zone, and node-postgres parses them back
+  // as process-local. Pinning the session zone to the process zone keeps all
+  // three on one clock, so durations and Kigali month buckets are correct even
+  // when the server's TZ differs from the database's. (Not applied on the
+  // DATABASE_URL branch: poolers reject startup options.)
+  const sessionTimeZone =
+    configService.get<string>('DB_SESSION_TIMEZONE') ||
+    Intl.DateTimeFormat().resolvedOptions().timeZone ||
+    'UTC';
+
   return {
     type: 'postgres',
     host: configService.get<string>('DB_HOST', 'localhost'),
@@ -48,6 +60,7 @@ export const databaseConfig = (
     extra: {
       max: 10,
       idleTimeoutMillis: 30000,
+      options: `-c timezone=${sessionTimeZone}`,
     },
   };
 };

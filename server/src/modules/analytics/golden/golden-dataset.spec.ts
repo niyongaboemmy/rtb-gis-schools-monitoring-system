@@ -17,7 +17,12 @@ import {
   ReportStatus,
 } from '../../reports/entities/issue-report.entity';
 import { AuditService } from '../../audit/audit.service';
-import { GOLDEN, GOLDEN_NATIONAL, GoldenSchool } from './golden-dataset';
+import {
+  GOLDEN,
+  GOLDEN_NATIONAL,
+  GoldenSchool,
+  REPORT_AGE_DAYS,
+} from './golden-dataset';
 import { nationalCapacityUtilisation } from '../school-metrics.helpers';
 import { scoreToPriorityLevel } from '../scoring.constants';
 
@@ -32,6 +37,8 @@ const qb = () => {
     'orderBy',
     'addOrderBy',
     'take',
+    'limit',
+    'leftJoin',
     'innerJoin',
     'innerJoinAndMapOne',
   ])
@@ -46,6 +53,7 @@ const qb = () => {
 const repo = (o: Record<string, jest.Mock> = {}) => ({
   find: jest.fn().mockResolvedValue([]),
   findOne: jest.fn().mockResolvedValue(null),
+  exists: jest.fn().mockResolvedValue(true),
   create: jest.fn((v) => v),
   save: jest.fn((v) => Promise.resolve({ ...v })),
   update: jest.fn().mockResolvedValue(undefined),
@@ -65,7 +73,9 @@ async function serviceFor(g: GoldenSchool) {
   const reportRows = g.reports.map((status, i) => ({
     id: `${g.key}-r${i}`,
     status,
-    createdAt: new Date(),
+    type: 'issue',
+    createdAt: new Date(Date.now() - REPORT_AGE_DAYS * 86_400_000),
+    resolvedAt: status === ReportStatus.SOLVED ? new Date() : null,
   }));
   const surveyRows = g.surveys.map((compliance, i) => ({
     id: `${g.key}-s${i}`,

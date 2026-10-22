@@ -8,8 +8,10 @@ import {
   HttpCode,
   Query,
   Param,
+  ParseUUIDPipe,
   UseGuards,
   Request,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -18,7 +20,10 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { AnalyticsService } from './analytics.service';
-import { ActionStatus } from './entities/recommendation-action.entity';
+import {
+  CreateRecommendationActionDto,
+  UpdateRecommendationActionDto,
+} from './dto/recommendation-action.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -77,7 +82,7 @@ export class AnalyticsController {
       'School Condition Score, its six components, data-gap flags, derived figures (enrolment, staff, capacity utilisation, land), Issue Report summary and indicative risk for one school',
   })
   @RequirePermissions(Permission.SCHOOL_LEVEL_DASHBOARD)
-  getSchoolMetrics(@Param('schoolId') schoolId: string) {
+  getSchoolMetrics(@Param('schoolId', ParseUUIDPipe) schoolId: string) {
     return this.analyticsService.getSchoolMetrics(schoolId);
   }
 
@@ -87,7 +92,7 @@ export class AnalyticsController {
       'Indicative risk heuristics for one school (rules of thumb, not measurements; each factor carries its rule text)',
   })
   @RequirePermissions(Permission.SCHOOL_LEVEL_DASHBOARD)
-  async getSchoolRisk(@Param('schoolId') schoolId: string) {
+  async getSchoolRisk(@Param('schoolId', ParseUUIDPipe) schoolId: string) {
     return (await this.analyticsService.getSchoolMetrics(schoolId))
       .riskAssessment;
   }
@@ -99,13 +104,17 @@ export class AnalyticsController {
   @RequirePermissions(Permission.SCHOOL_LEVEL_DASHBOARD)
   @ApiQuery({ name: 'months', required: false, type: Number })
   getHistory(
-    @Param('schoolId') schoolId: string,
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
     @Query('months') months?: string,
   ) {
-    return this.analyticsService.getScoreHistory(
-      schoolId,
-      months ? parseInt(months, 10) : 12,
-    );
+    let m = 12;
+    if (months !== undefined && months !== '') {
+      m = Number(months);
+      if (!Number.isInteger(m) || m < 1 || m > 60) {
+        throw new BadRequestException('months must be an integer from 1 to 60');
+      }
+    }
+    return this.analyticsService.getScoreHistory(schoolId, m);
   }
 
   // ── Recommendation actions ────────────────────────────────────────────────
@@ -113,7 +122,7 @@ export class AnalyticsController {
   @Get('schools/:schoolId/actions')
   @ApiOperation({ summary: 'List recommendation actions for a school' })
   @RequirePermissions(Permission.SCHOOL_LEVEL_DASHBOARD)
-  getActions(@Param('schoolId') schoolId: string) {
+  getActions(@Param('schoolId', ParseUUIDPipe) schoolId: string) {
     return this.analyticsService.getActions(schoolId);
   }
 
@@ -121,8 +130,8 @@ export class AnalyticsController {
   @ApiOperation({ summary: 'Create a recommendation action for a school' })
   @RequirePermissions(Permission.MANAGE_DECISIONS)
   createAction(
-    @Param('schoolId') schoolId: string,
-    @Body() body: { recommendation: string },
+    @Param('schoolId', ParseUUIDPipe) schoolId: string,
+    @Body() body: CreateRecommendationActionDto,
   ) {
     return this.analyticsService.createAction(schoolId, body.recommendation);
   }
@@ -130,14 +139,10 @@ export class AnalyticsController {
   @Patch('actions/:id')
   @ApiOperation({ summary: 'Update status / assignee / due-date of an action' })
   @RequirePermissions(Permission.MANAGE_DECISIONS)
+  @ScopedResource('id', 'params', 'action')
   updateAction(
-    @Param('id') id: string,
-    @Body()
-    body: {
-      status?: ActionStatus;
-      assignedTo?: string | null;
-      dueDate?: string | null;
-    },
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: UpdateRecommendationActionDto,
   ) {
     return this.analyticsService.updateAction(id, body);
   }
@@ -194,7 +199,7 @@ export class AnalyticsController {
     summary: 'Recalculate the School Condition Score for one school',
   })
   @RequirePermissions(Permission.MANAGE_DECISIONS)
-  recalculateOne(@Param('schoolId') schoolId: string) {
+  recalculateOne(@Param('schoolId', ParseUUIDPipe) schoolId: string) {
     return this.analyticsService.recalculateSchoolScore(schoolId);
   }
 }

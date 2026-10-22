@@ -33,7 +33,7 @@ interface Props {
   /** 0–100: draws a progress ring around the icon. */
   percent?: number | null;
   icon: LucideIcon;
-  /** Tailwind text colour class for the icon / ring, e.g. "text-sky-400". */
+  /** Tailwind text colour class for the icon / ring, e.g. "text-primary". */
   tone: string;
   /** Same accent as a CSS colour (hex), for glows and edges. */
   color: string;
@@ -126,9 +126,11 @@ export function FloatingStat({
             />
           )}
 
-          <div className={cn("relative flex items-center", compact ? "gap-2.5" : "gap-3.5")} style={{ transform: "translateZ(24px)" }}>
+          {/* Depth (translateZ) lives on the icon only: a translateZ layer breaks
+              pointer hit-testing for the info button in the text column. */}
+          <div className={cn("relative flex items-center", compact ? "gap-2.5" : "gap-3.5")}>
             {/* Icon tile, ringed with progress when there's a percentage */}
-            <span className={cn("relative flex shrink-0 items-center justify-center", compact ? "h-11 w-11" : "h-[52px] w-[52px]", tone)} aria-hidden>
+            <span className={cn("relative flex shrink-0 items-center justify-center", compact ? "h-11 w-11" : "h-[52px] w-[52px]", tone)} style={{ transform: "translateZ(24px)" }} aria-hidden>
               <svg viewBox="0 0 48 48" className="absolute inset-0 h-full w-full -rotate-90">
                 <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" strokeOpacity="0.14" strokeWidth="3" />
                 {ring !== null && (

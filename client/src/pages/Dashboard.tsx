@@ -31,6 +31,7 @@ import { RankingQuickInfo } from "../components/dashboard/RankingQuickInfo";
 import { motion } from "framer-motion";
 import { PRIORITY_META, type MapSchool } from "../components/maps/schoolMap";
 import { formatNumber, formatPercent } from "../lib/format";
+import { modelOf, weightOf } from "../lib/scoring";
 import { MetricInfo } from "../components/metric-help/MetricInfo";
 import type { MetricId } from "../components/metric-help/metrics";
 import type { HierarchyItem, NationalOverview } from "../components/dashboard/types";
@@ -57,7 +58,8 @@ export default function Dashboard() {
   const toast = useToast();
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { allSchools, allSchoolsLoading, fetchAllSchools } = useSchoolsStore();
+  const { allSchools, allSchoolsLoading, fetchAllSchools, invalidateAllSchools } =
+    useSchoolsStore();
 
   // Province drill-down (from the map): districts for the clicked province.
   const [openProvince, setOpenProvince] = useState<ProvinceSummary | null>(null);
@@ -101,9 +103,12 @@ export default function Dashboard() {
     }
   }, [toast]);
 
+  // Rankings must reflect the same scores as the overview: refetch the list on
+  // every visit instead of reusing a session-long cache.
   useEffect(() => {
+    invalidateAllSchools();
     fetchAllSchools();
-  }, [fetchAllSchools]);
+  }, [fetchAllSchools, invalidateAllSchools]);
 
   const fetchOverview = useCallback(async () => {
     setLoading(true);
@@ -182,10 +187,27 @@ export default function Dashboard() {
   // Server-computed values only — nothing is derived from raw records here.
   const scoredCount: number = stats.scoredSchoolCount ?? 0;
   const aggregateScore = scoredCount > 0 ? num(stats.nationalAvgScore) : null;
-  const infraGaps: number = stats.dataGaps?.infrastructure ?? 0;
-  const popGaps: number = stats.dataGaps?.population ?? 0;
-  const gapNote = (n: number) =>
-    n > 0 ? `Estimated for ${n} of ${scoredCount} school${scoredCount === 1 ? "" : "s"}` : null;
+
+  const model = modelOf(stats.scoringModel);
+  const gaps = stats.dataGaps;
+  const gapNote = (n: number | undefined) =>
+    n && n > 0 ? `Estimated for ${n} of ${scoredCount} school${scoredCount === 1 ? "" : "s"}` : null;
+  const avg = (v: unknown) => (scoredCount > 0 ? num(v) : null);
+  const coverage = scoredCount > 0 ? num(stats.avgDataCoverage) : null;
+  const unassessed = stats.byPriority?.unassessed ?? 0;
+  const prioritySegments = [
+    ...(["critical", "high", "medium", "low"] as const).map((key) => ({
+      key,
+      label: PRIORITY_META[key].label,
+      value: stats.byPriority?.[key] ?? 0,
+      color: PRIORITY_META[key].color,
+    })),
+    // Not-yet-scored schools are part of the network too; never hide them.
+    ...(unassessed > 0
+      ? [{ key: "unassessed", label: "Not assessed", value: unassessed, color: "#94a3b8" }]
+      : []),
+  ];
+  const provinceCount = (stats.provinceStats ?? []).filter((p) => p.province).length;
 
   return (
     <div className="relative space-y-8 pb-10 min-h-screen">
@@ -271,19 +293,15 @@ export default function Dashboard() {
                 <PriorityDonut
                   vertical
                   footer={<RankingQuickInfo score={aggregateScore} top={top5[0]} bottom={bottom5[0]} />}
-                  segments={(["critical", "high", "medium", "low"] as const).map((key) => ({
-                    key,
-                    label: PRIORITY_META[key].label,
-                    value: stats.byPriority?.[key] ?? 0,
-                    color: PRIORITY_META[key].color,
-                  }))}
+                  segments={prioritySegments}
                 />
             </div>
 
             <div ref={mapSlotRef} className="relative min-h-0">
               <p className="pointer-events-auto absolute bottom-2 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-white/40 px-3 py-1.5 text-[11px] text-muted-foreground backdrop-blur-xl dark:bg-white/5 dark:text-white/45">
                 <MapPinned className="h-3.5 w-3.5 text-primary" aria-hidden />
-                <span className="font-semibold text-foreground dark:text-white/80">Rwanda</span>· 5 provinces ·{" "}
+                <span className="font-semibold text-foreground dark:text-white/80">Rwanda</span>·{" "}
+                {formatNumber(provinceCount)} province{provinceCount === 1 ? "" : "s"} ·{" "}
                 {formatNumber(mapSchools.length)} schools · tap a province
               </p>
             </div>
@@ -321,12 +339,7 @@ export default function Dashboard() {
           <div className="pointer-events-auto grid gap-3 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,2.65fr)] xl:hidden">
             <PriorityDonut
               className="h-full"
-              segments={(["critical", "high", "medium", "low"] as const).map((key) => ({
-                key,
-                label: PRIORITY_META[key].label,
-                value: stats.byPriority?.[key] ?? 0,
-                color: PRIORITY_META[key].color,
-              }))}
+              segments={prioritySegments}
             />
             {/* Network snapshot — server-side aggregates only */}
             <dl className="grid grid-cols-1 gap-3 min-[460px]:grid-cols-2">
@@ -362,43 +375,56 @@ export default function Dashboard() {
           score={aggregateScore}
           isAggregate={true}
           assessedCount={scoredCount}
+          model={model}
+          coverage={coverage}
           metrics={[
             {
               label: "Infrastructure",
-              weight: 0.35,
-              score: scoredCount > 0 ? num(stats.nationalAvgInfraScore) : null,
+              weight: weightOf("infrastructure", model),
+              score: avg(stats.nationalAvgInfraScore),
               icon: Building2,
               metricId: "national.avgInfrastructure",
-              estimatedNote: gapNote(infraGaps),
+              estimatedNote: gapNote(gaps?.infrastructure),
             },
             {
               label: "Building age",
-              weight: 0.25,
-              score: scoredCount > 0 ? num(stats.nationalAvgAgeScore) : null,
+              weight: weightOf("buildingAge", model),
+              score: avg(stats.nationalAvgAgeScore),
               icon: MapPin,
               metricId: "national.avgBuildingAgeScore",
+              estimatedNote: gapNote(gaps?.buildingAge),
             },
             {
               label: "Compliance",
-              weight: 0.15,
-              score: scoredCount > 0 ? num(stats.nationalAvgComplianceScore) : null,
+              weight: weightOf("facilityCompliance", model),
+              score: avg(stats.nationalAvgComplianceScore),
               icon: ClipboardCheck,
               metricId: "national.avgFacilityCompliance",
+              estimatedNote: gapNote(gaps?.facilityCompliance),
             },
             {
               label: "Accessibility",
-              weight: 0.1,
-              score: scoredCount > 0 ? num(stats.nationalAvgAccessScore) : null,
+              weight: weightOf("accessibility", model),
+              score: avg(stats.nationalAvgAccessScore),
               icon: MapPin,
               metricId: "national.avgAccessibility",
+              estimatedNote: gapNote(gaps?.accessibility),
             },
             {
               label: "Population pressure",
-              weight: 0.1,
-              score: scoredCount > 0 ? num(stats.nationalAvgPopScore) : null,
+              weight: weightOf("population", model),
+              score: avg(stats.nationalAvgPopScore),
               icon: Users,
               metricId: "national.avgPopulation",
-              estimatedNote: gapNote(popGaps),
+              estimatedNote: gapNote(gaps?.population),
+            },
+            {
+              label: "Issue resolution",
+              weight: weightOf("resolution", model),
+              score: avg(stats.nationalAvgResolutionScore),
+              icon: ClipboardCheck,
+              metricId: "component.resolution",
+              estimatedNote: gapNote(gaps?.resolution),
             },
             {
               label: "Capacity use",

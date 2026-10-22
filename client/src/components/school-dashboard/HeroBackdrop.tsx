@@ -1,0 +1,337 @@
+import { useId } from "react";
+import { motion, useReducedMotion, useTransform, type MotionValue } from "framer-motion";
+
+interface Props {
+  /** Priority-band colour that tints the scene. */
+  color: string;
+  /** Pointer position 0–1 (centre 0.5) for parallax. */
+  mx: MotionValue<number>;
+  my: MotionValue<number>;
+}
+
+const EASE = [0.22, 1, 0.36, 1] as const;
+
+// ─── Geometry helpers ────────────────────────────────────────────────────────
+
+/** Organic closed contour (terrain ring): an ellipse with two low harmonics. */
+function contour(cx: number, cy: number, r: number, seed: number) {
+  const pts: string[] = [];
+  const n = 72;
+  for (let i = 0; i <= n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const k = 1 + 0.07 * Math.sin(3 * a + seed) + 0.04 * Math.cos(5 * a + seed * 1.7);
+    pts.push(`${(cx + Math.cos(a) * r * 1.35 * k).toFixed(1)},${(cy + Math.sin(a) * r * k).toFixed(1)}`);
+  }
+  return `M${pts.join(" L")}Z`;
+}
+
+/** Isometric projection (unit = 14px): x → right-down, y → left-down, z → up. */
+const S = 14;
+const iso = (x: number, y: number, z: number, ox = 200, oy = 120) =>
+  `${(ox + (x - y) * 0.866 * S).toFixed(1)},${(oy + (x + y) * 0.5 * S - z * S).toFixed(1)}`;
+
+interface Block {
+  x: number;
+  y: number;
+  w: number;
+  d: number;
+  h: number;
+  /** Saw-tooth roof (TVET workshop). */
+  saw?: boolean;
+}
+
+/** A small campus: teaching block + clock tower, wing, workshop. Back-to-front. */
+const BLOCKS: Block[] = [
+  { x: 0, y: 0, w: 7, d: 3, h: 3.2 },
+  { x: 2.6, y: 0.6, w: 1.6, d: 1.6, h: 5.4 },
+  { x: 7.6, y: 0, w: 3, d: 5.5, h: 2.2 },
+  { x: 0, y: 4.2, w: 5.6, d: 3, h: 1.8, saw: true },
+].sort((a, b) => a.x + a.y - (b.x + b.y));
+
+function faces(b: Block) {
+  const { x, y, w, d, h } = b;
+  return {
+    top: [iso(x, y, h), iso(x + w, y, h), iso(x + w, y + d, h), iso(x, y + d, h)].join(" "),
+    front: [iso(x, y + d, 0), iso(x + w, y + d, 0), iso(x + w, y + d, h), iso(x, y + d, h)].join(" "),
+    right: [iso(x + w, y, 0), iso(x + w, y + d, 0), iso(x + w, y + d, h), iso(x + w, y, h)].join(" "),
+    /** Window rows along the front face. */
+    windows: Array.from({ length: Math.max(1, Math.floor(h / 1.3)) }, (_, r) => {
+      const z = 0.7 + r * 1.2;
+      return `M${iso(x + 0.5, y + d, z)} L${iso(x + w - 0.5, y + d, z)}`;
+    }).join(" "),
+    saw: b.saw
+      ? Array.from({ length: 4 }, (_, i) => {
+          const sx = x + (i * w) / 4;
+          return `M${iso(sx, y + d, h)} L${iso(sx + w / 8, y + d, h + 0.9)} L${iso(sx + w / 4, y + d, h)}`;
+        }).join(" ")
+      : "",
+  };
+}
+
+/** Flat-topped hexagon path (map tiles). */
+function hex(cx: number, cy: number, r: number) {
+  return (
+    "M" +
+    Array.from({ length: 6 }, (_, i) => {
+      const a = (Math.PI / 3) * i;
+      return `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`;
+    }).join(" L") +
+    "Z"
+  );
+}
+/** A small honeycomb (flat-topped, odd columns offset half a row). */
+const HEX_R = 16;
+const HEXES = [
+  [0, 1], [1, 0], [1, 1], [2, 0], [2, 1], [2, 2], [3, 0], [3, 1], [4, 1],
+].map(([c, r]) => ({
+  d: hex(22 + c * HEX_R * 1.5, 22 + r * HEX_R * Math.sqrt(3) + (c % 2 ? (HEX_R * Math.sqrt(3)) / 2 : 0), HEX_R - 1.5),
+}));
+
+const RINGS = [40, 72, 104, 136, 168, 200, 232].map((r, i) => contour(810, 200, r, i * 0.9));
+const ORBIT = "M510 230 A300 105 -12 1 1 1110 170 A300 105 -12 1 1 510 230";
+const ROUTE = "M70 360 C170 300 250 380 360 320 S540 280 600 330";
+
+const PARTICLES = Array.from({ length: 14 }, (_, i) => ({
+  left: `${(i * 37 + 11) % 100}%`,
+  top: `${(i * 53 + 17) % 90}%`,
+  size: 2 + (i % 3),
+  delay: (i % 6) * 1.3,
+  duration: 9 + (i % 5) * 2,
+}));
+
+/**
+ * Decorative hero scene — sits behind the content (−z-10) and stays soft, but
+ * carries real depth: a translucent isometric campus that rises and floats,
+ * pulsing hexagon map tiles, a satellite on an orbit around the score, a
+ * survey route with a travelling dot, breathing contour rings, a dot matrix
+ * and drifting particles. Tinted by the priority band; parallax with the
+ * pointer; static under reduced motion; fades out at the bottom.
+ */
+export function HeroBackdrop({ color, mx, my }: Props) {
+  const reduce = useReducedMotion();
+  const gid = useId().replace(/:/g, "");
+  const far = { x: useTransform(mx, [0, 1], [-8, 8]), y: useTransform(my, [0, 1], [-5, 5]) };
+  const mid = { x: useTransform(mx, [0, 1], [-16, 16]), y: useTransform(my, [0, 1], [-9, 9]) };
+  const near = { x: useTransform(mx, [0, 1], [-28, 28]), y: useTransform(my, [0, 1], [-14, 14]) };
+
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden mask-[linear-gradient(to_bottom,black_74%,transparent)]">
+      {/* Soft base */}
+      <div className="absolute inset-0 bg-linear-to-br from-slate-50 via-white to-blue-50/70 dark:from-[#070b16] dark:via-[#090f1f] dark:to-[#0b1428]" />
+
+      {/* Aurora */}
+      <motion.div
+        className="absolute -right-40 -top-48 h-144 w-xl rounded-full blur-[120px]"
+        style={{ background: color }}
+        initial={{ opacity: 0.16 }}
+        animate={reduce ? undefined : { opacity: [0.14, 0.24, 0.14], x: [0, -30, 0], y: [0, 20, 0] }}
+        transition={{ duration: 16, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute -left-32 top-10 h-96 w-120 rounded-full bg-primary blur-[130px]"
+        initial={{ opacity: 0.08 }}
+        animate={reduce ? undefined : { opacity: [0.07, 0.13, 0.07], x: [0, 40, 0] }}
+        transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute bottom-0 left-1/2 h-72 w-96 rounded-full bg-primary blur-[120px]"
+        initial={{ opacity: 0.05 }}
+        animate={reduce ? undefined : { opacity: [0.04, 0.09, 0.04], x: [0, -40, 0] }}
+        transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+      />
+
+      {/* Dot matrix */}
+      <motion.div
+        className="absolute inset-0 opacity-80 mask-[radial-gradient(ellipse_75%_85%_at_72%_45%,black,transparent)] dark:opacity-55"
+        style={{
+          ...far,
+          backgroundImage: "radial-gradient(circle, rgb(100 116 139 / 0.32) 1px, transparent 1.3px)",
+          backgroundSize: "22px 22px",
+        }}
+      />
+
+      {/* Contour rings + satellite orbit + survey route (shared map space) */}
+      <motion.svg style={far} viewBox="0 0 1000 400" preserveAspectRatio="xMaxYMid slice" className="absolute inset-0 h-full w-full text-primary">
+        <defs>
+          <radialGradient id={`${gid}fade`} cx="81%" cy="50%" r="48%">
+            <stop offset="0%" stopColor="white" />
+            <stop offset="100%" stopColor="white" stopOpacity="0" />
+          </radialGradient>
+          <mask id={`${gid}mask`}>
+            <rect width="1000" height="400" fill={`url(#${gid}fade)`} />
+          </mask>
+        </defs>
+        <g mask={`url(#${gid}mask)`}>
+          {RINGS.map((d, i) => (
+            <motion.path
+              key={i}
+              d={d}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="0.9"
+              strokeOpacity={i % 2 ? 0.16 : 0.26}
+              style={{ transformOrigin: "810px 200px" }}
+              initial={{ pathLength: reduce ? 1 : 0 }}
+              animate={reduce ? undefined : { pathLength: 1, scale: [1, 1.025, 1] }}
+              transition={{
+                pathLength: { duration: 2.4, delay: 0.1 + i * 0.12, ease: EASE },
+                scale: { duration: 7 + i, repeat: Infinity, ease: "easeInOut", delay: i * 0.4 },
+              }}
+            />
+          ))}
+        </g>
+
+        {/* Satellite orbit around the score */}
+        <path id={`${gid}orbit`} d={ORBIT} fill="none" stroke="currentColor" strokeOpacity="0.28" strokeWidth="1" strokeDasharray="2 7" />
+        {!reduce && (
+          <g>
+            <circle r="9" fill="currentColor" opacity="0.12">
+              <animateMotion dur="22s" repeatCount="indefinite" rotate="auto">
+                <mpath href={`#${gid}orbit`} />
+              </animateMotion>
+            </circle>
+            <g>
+              <animateMotion dur="22s" repeatCount="indefinite" rotate="auto">
+                <mpath href={`#${gid}orbit`} />
+              </animateMotion>
+              {/* tiny satellite: body + panels */}
+              <rect x="-3" y="-3" width="6" height="6" rx="1.2" fill="currentColor" opacity="0.75" />
+              <rect x="-12" y="-1.5" width="7" height="3" rx="0.6" fill="currentColor" opacity="0.45" />
+              <rect x="5" y="-1.5" width="7" height="3" rx="0.6" fill="currentColor" opacity="0.45" />
+            </g>
+          </g>
+        )}
+
+        {/* Survey route with markers */}
+        <path id={`${gid}route`} d={ROUTE} fill="none" stroke={color} strokeOpacity="0.35" strokeWidth="1.2" strokeDasharray="5 6" />
+        {[
+          [70, 360],
+          [360, 320],
+          [600, 330],
+        ].map(([cx, cy], i) => (
+          <g key={i} opacity="0.55">
+            <circle cx={cx} cy={cy} r="7" fill={color} opacity="0.18" />
+            <circle cx={cx} cy={cy} r="3" fill={color} />
+          </g>
+        ))}
+        {!reduce && (
+          <circle r="3.5" fill={color} opacity="0.85">
+            <animateMotion dur="9s" repeatCount="indefinite">
+              <mpath href={`#${gid}route`} />
+            </animateMotion>
+          </circle>
+        )}
+      </motion.svg>
+
+      {/* Hexagon map tiles — pulsing in sequence (top, towards the score) */}
+      <motion.svg
+        style={mid}
+        viewBox="0 0 150 120"
+        className="absolute right-[28%] top-[16%] hidden h-28 w-auto opacity-80 lg:block xl:right-[29%]"
+      >
+        {HEXES.map((h, i) => (
+          <motion.path
+            key={i}
+            d={h.d}
+            className="fill-primary stroke-primary"
+            strokeWidth="0.8"
+            initial={{ fillOpacity: 0.04, strokeOpacity: 0.25 }}
+            animate={reduce ? undefined : { fillOpacity: [0.04, 0.22, 0.04] }}
+            transition={{ duration: 4, delay: i * 0.5, repeat: Infinity, ease: "easeInOut" }}
+          />
+        ))}
+      </motion.svg>
+
+      {/* Isometric campus — translucent glass blocks that rise, then float */}
+      <motion.svg
+        style={near}
+        viewBox="0 0 400 260"
+        className="absolute bottom-[6%] right-[-24%] h-[48%] w-auto opacity-50 sm:right-[-6%] sm:h-[56%] sm:opacity-100 lg:right-[29%] lg:h-[60%] xl:right-[30%]"
+      >
+        <defs>
+          <linearGradient id={`${gid}top`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="white" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#60a5fa" stopOpacity="0.1" />
+          </linearGradient>
+          <linearGradient id={`${gid}front`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.1" />
+            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.02" />
+          </linearGradient>
+          <linearGradient id={`${gid}right`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.1" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {/* ground plate */}
+        <polygon
+          points={[iso(-1.5, -1.5, 0), iso(12.5, -1.5, 0), iso(12.5, 8.5, 0), iso(-1.5, 8.5, 0)].join(" ")}
+          className="fill-primary/5 stroke-primary/20"
+          strokeWidth="0.8"
+          strokeDasharray="3 4"
+        />
+        {BLOCKS.map((b, i) => {
+          const f = faces(b);
+          return (
+            <motion.g
+              key={i}
+              initial={reduce ? false : { opacity: 0, y: 26 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1.1, delay: 0.4 + i * 0.18, ease: EASE }}
+            >
+              <motion.g
+                animate={reduce ? undefined : { y: [0, -3 - (i % 2) * 2, 0] }}
+                transition={{ duration: 6 + i, repeat: Infinity, ease: "easeInOut", delay: 1.6 + i * 0.3 }}
+              >
+                {/* Solid backing in the hero's own colour: blocks hide the lines
+                    and the buildings behind them, like real buildings would. */}
+                <g className="fill-[#f6f9fd] dark:fill-[#0a1021]">
+                  <polygon points={f.front} />
+                  <polygon points={f.right} />
+                  <polygon points={f.top} />
+                </g>
+                <polygon points={f.front} fill={`url(#${gid}front)`} className="stroke-slate-300/60 dark:stroke-white/8" strokeWidth="0.8" />
+                <polygon points={f.right} fill={`url(#${gid}right)`} className="stroke-slate-300/60 dark:stroke-white/8" strokeWidth="0.8" />
+                <polygon points={f.top} fill={`url(#${gid}top)`} className="stroke-slate-300/60 dark:stroke-white/10 dark:opacity-30" strokeWidth="0.8" />
+                <path d={f.windows} className="stroke-primary/15 dark:stroke-blue-300/12" strokeWidth="1.4" strokeDasharray="4 3" />
+                {f.saw && <path d={f.saw} fill="none" stroke={color} strokeOpacity="0.2" strokeWidth="1" />}
+              </motion.g>
+            </motion.g>
+          );
+        })}
+        {/* flag on the tower */}
+        <motion.path
+          d={`M${iso(3.4, 1.4, 5.4)} L${iso(3.4, 1.4, 7)}`}
+          stroke={color}
+          strokeOpacity="0.35"
+          strokeWidth="1"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: 0.8, delay: 1.6 }}
+        />
+        <motion.path
+          d={`M${iso(3.4, 1.4, 7)} l9 3 l-9 3 Z`}
+          fill={color}
+          fillOpacity="0.3"
+          initial={{ opacity: 0 }}
+          animate={reduce ? { opacity: 1 } : { opacity: 1, skewY: [0, 6, 0] }}
+          transition={{ opacity: { delay: 2.2 }, skewY: { duration: 2.4, repeat: Infinity, ease: "easeInOut" } }}
+        />
+      </motion.svg>
+
+      {/* Drifting particles */}
+      {!reduce &&
+        PARTICLES.map((p, i) => (
+          <motion.span
+            key={i}
+            className="absolute rounded-full bg-primary/50 dark:bg-white/40"
+            style={{ left: p.left, top: p.top, width: p.size, height: p.size }}
+            animate={{ y: [0, -20, 0], opacity: [0, 0.7, 0] }}
+            transition={{ duration: p.duration, delay: p.delay, repeat: Infinity, ease: "easeInOut" }}
+          />
+        ))}
+
+      {/* Legibility wash on the text side */}
+      <div className="absolute inset-y-0 left-0 w-full bg-linear-to-r from-slate-50/90 via-slate-50/45 to-transparent sm:w-[70%] lg:w-[52%] dark:from-[#070b16]/90 dark:via-[#070b16]/45" />
+    </div>
+  );
+}

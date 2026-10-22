@@ -76,6 +76,12 @@ export const LABELS = {
     in_progress: "In Progress",
     completed: "Completed",
   },
+  roadState: {
+    paved: "Paved",
+    gravel: "Gravel",
+    earth: "Earth",
+    mixed: "Mixed",
+  },
   kmzStatus: {
     pending: "Pending",
     processing: "Processing",

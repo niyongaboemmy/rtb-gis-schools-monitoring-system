@@ -78,8 +78,9 @@ export function useSpatialDataSync({
           buildingFloors: b.floors?.toString() || "",
           buildingArea: b.areaSquareMeters?.toString() || "",
           buildingYearBuilt: b.yearBuilt?.toString() || "",
-          buildingCondition: b.condition || "fair",
-          buildingRoofCondition: b.roofCondition || "good",
+          // null = not assessed; never invent a condition for display or save.
+          buildingCondition: b.condition || "",
+          buildingRoofCondition: b.roofCondition || "",
           buildingStructuralScore: b.structuralScore?.toString() || "",
           buildingNotes: b.notes || "",
           facilities: b.facilities || [],

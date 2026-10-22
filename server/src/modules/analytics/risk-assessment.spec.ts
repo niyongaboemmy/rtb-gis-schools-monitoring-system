@@ -4,9 +4,11 @@ import {
   riskImpactScore,
   riskProbabilityScore,
 } from './risk-assessment';
+import { accessibilityScore } from './scoring-engine';
 import {
+  buildingAges,
+  capacityInputs,
   capacityUtilisationPct,
-  computeDataGaps,
   landSummary,
   programmeTotals,
   studentTeacherRatio,
@@ -64,15 +66,70 @@ describe('risk heuristics (indicative)', () => {
     const f = Object.fromEntries(r.factors.map((x) => [x.id, x]));
     expect(f.needsIntervention.level).toBe('medium'); // 2 open
     expect(f.needsIntervention.impact).toBe(46 + 8);
-    expect(f.needsIntervention.riskScore).toBe(Math.round((54 * 29) / 100));
+    // Observed issues are certain: probability 100, not the age-driven 29.
+    expect(f.needsIntervention.probability).toBe(100);
+    expect(f.needsIntervention.riskScore).toBe(54);
     expect(f.failedRepairs.level).toBe('medium');
     expect(f.infrastructure.level).toBe('medium'); // 67 < 75
     expect(f.infrastructure.impact).toBe(33);
+    expect(f.infrastructure.probability).toBe(29);
     expect(f.population.level).toBe('high'); // 50 < 55
     expect(f.resolutionTime.level).toBe('medium'); // 8 days
     expect(f.resolutionTime.impact).toBe(80);
+    expect(r.factors.every((x) => x.applies)).toBe(true);
+    // mean of (54·100 + 49·100 + 33·29 + 50·29 + 80·100) / 100 / 5
+    expect(r.overall.score).toBe(
+      Math.round((54 + 49 + 0.33 * 29 + 0.5 * 29 + 80) / 5),
+    );
     expect(r.indicative).toBe(true);
     for (const x of r.factors) expect(x.rule.length).toBeGreaterThan(10);
+  });
+
+  it('factors with nothing observed do not apply and are left out of the overall risk', () => {
+    const r = computeRiskAssessment({
+      ...base,
+      needsInterventionCount: 0,
+      failedCount: 0,
+      avgResolutionDays: 2,
+    });
+    const f = Object.fromEntries(r.factors.map((x) => [x.id, x]));
+    for (const id of ['needsIntervention', 'failedRepairs', 'resolutionTime']) {
+      expect(f[id].applies).toBe(false);
+      expect(f[id].riskScore).toBe(0);
+    }
+    // only infrastructure (33·29) and population (50·29) remain
+    expect(r.overall.score).toBe(Math.round((33 * 0.29 + 50 * 0.29) / 2));
+  });
+
+  it('missing data reads "unknown", never a band computed from the neutral 50', () => {
+    const r = computeRiskAssessment({
+      ...base,
+      hasPopDataGap: true,
+      hasInfraDataGap: true,
+    });
+    const f = Object.fromEntries(r.factors.map((x) => [x.id, x]));
+    expect(f.population.level).toBe('unknown');
+    expect(f.population.applies).toBe(false);
+    expect(f.infrastructure.level).toBe('unknown');
+  });
+
+  it('an old open report counts as slow resolution even with no resolved reports', () => {
+    const r = computeRiskAssessment({
+      ...base,
+      avgResolutionDays: null,
+      oldestOpenDays: 45,
+    });
+    const f = Object.fromEntries(r.factors.map((x) => [x.id, x]));
+    expect(f.resolutionTime.level).toBe('high');
+    expect(f.resolutionTime.impact).toBe(100);
+    const none = computeRiskAssessment({
+      ...base,
+      avgResolutionDays: null,
+      oldestOpenDays: null,
+    });
+    expect(none.factors.find((x) => x.id === 'resolutionTime')!.level).toBe(
+      'unknown',
+    );
   });
 
   it('mitigation effectiveness decreases with open issues and is clamped', () => {
@@ -154,22 +211,30 @@ describe('school metrics helpers', () => {
   });
 
   it('data gaps: a measured 0 road status is not a gap', () => {
-    const g = computeDataGaps({
-      assessedBuildingCount: 1,
-      buildingsWithYearCount: 0,
-      establishedYear: null,
-      roadStatusPercentage: 0,
-      hasPopulationData: true,
-      surveyCount: 1,
-      reportCount: 0,
-    });
-    expect(g).toEqual({
-      infrastructure: false,
-      buildingAge: true,
-      accessibility: false,
-      population: false,
-      facilityCompliance: false,
-      resolution: true,
-    });
+    expect(accessibilityScore(0)).toEqual({ score: 0, gap: false });
+  });
+
+  it('capacity inputs need programme capacity AND programme enrolment', () => {
+    expect(
+      capacityInputs({
+        educationPrograms: [{ totalStudents: 50, capacity: 100 }],
+      }),
+    ).toEqual({ students: 50, capacity: 100 });
+    // no programme students → not rated (was mixed with schools.totalStudents)
+    expect(
+      capacityInputs({
+        totalStudents: 500,
+        educationPrograms: [{ totalStudents: 0, capacity: 400 }],
+      }),
+    ).toBeNull();
+  });
+
+  it('building ages drop future and non-numeric years', () => {
+    expect(
+      buildingAges(
+        [{ yearBuilt: 2000 }, { yearBuilt: 2999 }, { yearBuilt: 'x' }],
+        2026,
+      ),
+    ).toEqual([26]);
   });
 });

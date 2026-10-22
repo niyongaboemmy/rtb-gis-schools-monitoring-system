@@ -109,6 +109,7 @@ const MODE_TOOL_2D = {
 
 // Utils
 import type { School2DViewerProps } from "./2dviewercomponents/MapUtils";
+import { buildingPayloadFields } from "../lib/buildingPayload";
 
 export default function School2DViewer({
   school,
@@ -359,18 +360,27 @@ export default function School2DViewer({
     });
   }, []);
 
+  // Prompt for missing map data only when the user is on the 2D map (not over
+  // the dashboard), and only once per school — it used to reopen on every
+  // parent update after being dismissed.
+  const missingMapPromptedFor = useRef<string | null>(null);
   useEffect(() => {
-    // Check if map is missing
     const hasMapData =
       school.kmz2dFilePath ||
       school.kmzFilePath ||
       school.geojsonContent ||
       tifFilePath ||
       school.tifFilePath;
-    if (!hasMapData && !isLoading) {
+    if (
+      !hasMapData &&
+      !isLoading &&
+      activeTab === "map" &&
+      missingMapPromptedFor.current !== school.id
+    ) {
+      missingMapPromptedFor.current = school.id;
       setIsMissingMapModalOpen(true);
     }
-  }, [school, tifFilePath, isLoading]);
+  }, [school, tifFilePath, isLoading, activeTab]);
 
   // Fetch facilities for the building form
   useEffect(() => {
@@ -781,16 +791,8 @@ export default function School2DViewer({
         : `/schools/buildings/${data.id}`;
 
       const payload = {
-        name: data.buildingName,
-        code: data.buildingCode,
-        function: data.buildingFunction,
-        floors: parseInt(String(data.buildingFloors)) || 0,
-        area: parseFloat(String(data.buildingArea)) || 0,
-        yearBuilt: parseInt(String(data.buildingYearBuilt)) || 0,
-        condition: data.buildingCondition,
-        roofCondition: data.buildingRoofCondition,
-        structuralScore: parseFloat(String(data.buildingStructuralScore)) || 0,
-        notes: data.buildingNotes || "",
+        // Blank fields → null (not recorded), never 0 or a default.
+        ...buildingPayloadFields(data),
         latitude: data.geolocation.latitude,
         longitude: data.geolocation.longitude,
         annotations: (data.annotations || []).filter(
@@ -1305,7 +1307,7 @@ export default function School2DViewer({
 
       {/* ── Details Panel ─────────────────────────────────────────────────── */}
       {activeTab === "details" && (
-        <div className="absolute inset-0 z-40 bg-slate-50/95 dark:bg-gray-950/80 backdrop-blur-sm pointer-events-auto overflow-y-auto overflow-x-hidden custom-scrollbar">
+        <div className="absolute inset-0 z-40 bg-slate-50/95 dark:bg-gray-950/90 backdrop-blur-sm pointer-events-auto overflow-y-auto overflow-x-hidden custom-scrollbar">
           <SchoolDetailsPanel
             school={school}
             onEditProfile={() => setIsEditModalOpen(true)}
@@ -1404,7 +1406,9 @@ export default function School2DViewer({
       <div ref={containerRef} className="absolute inset-0" />
 
       <LoadingOverlay
-        isLoading={isLoading || isSaving}
+        // Map loading only matters on the map tab; the dashboard and details
+        // tabs have their own loading states.
+        isLoading={(isLoading && activeTab === "map") || isSaving}
         loadingProgress={isSaving ? 100 : loadingProgress}
         loadingMessage={isSaving ? "Saving changes to map..." : loadingMessage}
         loadingStartTime={loadingStartTimeRef.current}

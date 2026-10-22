@@ -5,15 +5,21 @@
  * AnalyticsService.getOverview() (the code behind GET /api/v1/analytics/overview).
  * National view only (no scope) — scope filtering is covered by unit tests.
  *
- * READ-ONLY: the connection is opened with default_transaction_read_only=on,
- * and only getOverview() (SELECTs) is called — never getSchoolMetrics() or a
- * recalculation, which write.
+ * Then runs SEMANTIC checks — not just "service = SQL": every active school
+ * is rescored in memory with the scoring engine and diffed against its stored
+ * assessment (stale rows), and duplicate assessments, outdated scoring
+ * versions, score cache drift, zero-population rows, reopened reports with a
+ * resolution date and repeated history snapshots must all be 0.
+ *
+ * READ-ONLY: the connection is opened with default_transaction_read_only=on;
+ * only SELECT paths are used (getOverview, getDecisions, previewSchoolScore).
  *
  * Run from /server:
  *   npx ts-node --transpile-only scripts/verify-dashboards.ts
  * Connection: DATABASE_URL, or DB_HOST/DB_PORT/DB_USERNAME/DB_PASSWORD/DB_NAME,
  * read from the environment or from server/.env.
- * Exit code 0 = zero diffs, 1 = at least one diff, 2 = could not run.
+ * Exit code 0 = zero diffs and zero integrity failures, 1 = at least one,
+ * 2 = could not run.
  */
 import 'reflect-metadata';
 import * as fs from 'fs';
@@ -28,6 +34,8 @@ import { SchoolBuilding } from '../src/modules/schools/entities/school-building.
 import { PopulationData } from '../src/modules/population/entities/population-data.entity';
 import { SchoolFacilitySurvey } from '../src/modules/schools/entities/school-facility-survey.entity';
 import { IssueReport } from '../src/modules/reports/entities/issue-report.entity';
+import { assessmentChanged } from '../src/modules/analytics/scoring-engine';
+import { SCORING_VERSION } from '../src/modules/analytics/scoring.constants';
 import type { AuditService } from '../src/modules/audit/audit.service';
 
 function loadEnv(): void {
@@ -49,52 +57,72 @@ const n = (v: unknown): number | null => {
 
 // Raw-SQL reference for each KPI. ACTIVE schools only, matching the service.
 const ACTIVE = `s.status = 'active'`;
+const SCORED = `FROM decision_assessments da
+    JOIN schools s ON CAST(s.id AS text) = da."schoolId" WHERE ${ACTIVE}`;
+// Per-school programme roll-up (school-metrics.helpers: programmeTotals /
+// capacityInputs) — enrolment falls back to schools.totalStudents only when
+// the programmes record no students.
+const PER_SCHOOL = `SELECT s.id,
+      COALESCE((SELECT SUM(COALESCE(NULLIF(p->>'capacity','')::numeric,0))
+                FROM jsonb_array_elements(COALESCE(s."educationPrograms",'[]'::jsonb)) p),0) AS cap,
+      COALESCE((SELECT SUM(COALESCE(NULLIF(p->>'totalStudents','')::numeric,0))
+                FROM jsonb_array_elements(COALESCE(s."educationPrograms",'[]'::jsonb)) p),0) AS prog_students,
+      COALESCE(s."totalStudents",0) AS school_students
+    FROM schools s WHERE ${ACTIVE}`;
 const SQL = {
   totalSchools: `SELECT COUNT(*) AS v FROM schools s WHERE ${ACTIVE}`,
   scored: `SELECT ROUND(AVG(da."overallScore")::numeric,1) AS avg,
-      COUNT(da.id) AS cnt,
+      COUNT(DISTINCT da."schoolId") AS cnt,
       ROUND(AVG(da."infrastructureScore")::numeric,1) AS infra,
       ROUND(AVG(da."populationPressureScore")::numeric,1) AS pop,
       ROUND(AVG(da."buildingAgeScore")::numeric,1) AS age,
       ROUND(AVG(da."accessibilityScore")::numeric,1) AS access,
-      ROUND(AVG(da."facilityComplianceScore")::numeric,1) AS compliance,
+      ROUND(AVG(COALESCE(da."facilityComplianceScore",50))::numeric,1) AS compliance,
+      ROUND(AVG(COALESCE(da."resolutionRateScore",50))::numeric,1) AS resolution,
       SUM(CASE WHEN da."hasInfraDataGap" THEN 1 ELSE 0 END) AS infra_gaps,
       SUM(CASE WHEN da."hasPopDataGap" THEN 1 ELSE 0 END) AS pop_gaps,
       COALESCE(SUM(da."estimatedBudgetRwf"),0) AS budget
-    FROM decision_assessments da
-    JOIN schools s ON CAST(s.id AS text) = da."schoolId" WHERE ${ACTIVE}`,
-  students: `SELECT COALESCE(SUM(s."totalStudents"),0) AS v FROM schools s WHERE ${ACTIVE}`,
+    ${SCORED}`,
+  students: `WITH per AS (${PER_SCHOOL})
+    SELECT COALESCE(SUM(CASE WHEN prog_students > 0 THEN prog_students ELSE school_students END),0) AS v FROM per`,
   teachers: `SELECT COALESCE(SUM(CASE WHEN s."maleTeachers" IS NOT NULL OR s."femaleTeachers" IS NOT NULL
       THEN COALESCE(s."maleTeachers",0)+COALESCE(s."femaleTeachers",0)
       ELSE COALESCE(s."totalTeachers",0) END),0) AS v FROM schools s WHERE ${ACTIVE}`,
   kmz: `SELECT COUNT(*) AS v FROM schools s WHERE ${ACTIVE} AND s."kmzStatus" = 'completed'`,
   survey: `SELECT COUNT(DISTINCT sv."schoolId") AS v FROM school_facility_surveys sv
       JOIN schools s ON CAST(s.id AS text) = sv."schoolId" WHERE ${ACTIVE}`,
-  priority: `SELECT COALESCE(s."priorityLevel"::text,'unassessed') AS p, COUNT(*) AS c
-      FROM schools s WHERE ${ACTIVE} GROUP BY 1`,
-  // Σ students ÷ Σ capacity over schools with programme capacity > 0.
-  // Enrolment = Σ programme.totalStudents when > 0, else schools.totalStudents.
-  capacity: `WITH per AS (
-      SELECT s.id,
-        COALESCE((SELECT SUM(COALESCE(NULLIF(p->>'capacity','')::numeric,0))
-                  FROM jsonb_array_elements(COALESCE(s."educationPrograms",'[]'::jsonb)) p),0) AS cap,
-        COALESCE((SELECT SUM(COALESCE(NULLIF(p->>'totalStudents','')::numeric,0))
-                  FROM jsonb_array_elements(COALESCE(s."educationPrograms",'[]'::jsonb)) p),0) AS prog_students,
-        COALESCE(s."totalStudents",0) AS school_students
-      FROM schools s WHERE ${ACTIVE})
-    SELECT SUM(CASE WHEN prog_students > 0 THEN prog_students ELSE school_students END) AS students,
-           SUM(cap) AS seats
-    FROM per WHERE cap > 0`,
+  priority: `SELECT COALESCE(da."priorityLevel"::text,'unassessed') AS p, COUNT(*) AS c
+      FROM schools s LEFT JOIN decision_assessments da ON CAST(s.id AS text) = da."schoolId"
+      WHERE ${ACTIVE} GROUP BY 1`,
+  // Σ programme students ÷ Σ programme capacity over schools whose programmes
+  // record both (capacityInputs).
+  capacity: `WITH per AS (${PER_SCHOOL})
+    SELECT SUM(prog_students) AS students, SUM(cap) AS seats
+    FROM per WHERE cap > 0 AND prog_students > 0`,
   provinces: `SELECT COUNT(DISTINCT s.province) AS v FROM schools s WHERE ${ACTIVE}`,
-  // Consistency: the score stored on schools must equal the assessment row.
+  // ── Integrity / semantic checks (each must be 0) ──────────────────────────
   drift: `SELECT COUNT(*) AS v FROM schools s
       JOIN decision_assessments da ON CAST(s.id AS text) = da."schoolId"
-      WHERE ${ACTIVE} AND ROUND(s."overallScore"::numeric) <> ROUND(da."overallScore"::numeric)`,
+      WHERE ${ACTIVE} AND (ROUND(s."overallScore"::numeric) IS DISTINCT FROM ROUND(da."overallScore"::numeric)
+        OR s."priorityLevel"::text IS DISTINCT FROM da."priorityLevel"::text)`,
   orphans: `SELECT COUNT(*) AS v FROM decision_assessments da
       LEFT JOIN schools s ON CAST(s.id AS text) = da."schoolId" WHERE s.id IS NULL`,
   unscored: `SELECT COUNT(*) AS v FROM schools s
       LEFT JOIN decision_assessments da ON CAST(s.id AS text) = da."schoolId"
       WHERE ${ACTIVE} AND da.id IS NULL`,
+  duplicates: `SELECT COUNT(*) AS v FROM (SELECT "schoolId" FROM decision_assessments
+      GROUP BY 1 HAVING COUNT(*) > 1) d`,
+  zeroPopulation: `SELECT COUNT(*) AS v FROM population_data
+      WHERE "schoolAgePopulation2km" IS NOT NULL AND "schoolAgePopulation2km" <= 0`,
+  reopenedWithDate: `SELECT COUNT(*) AS v FROM issue_reports
+      WHERE status <> 'SOLVED' AND "resolvedAt" IS NOT NULL`,
+  historyRepeats: `SELECT COUNT(*) AS v FROM (
+      SELECT concat_ws('|',"overallScore","infrastructureScore","buildingAgeScore","accessibilityScore",
+               "populationPressureScore","facilityComplianceScore","resolutionRateScore") AS s,
+             LAG(concat_ws('|',"overallScore","infrastructureScore","buildingAgeScore","accessibilityScore",
+               "populationPressureScore","facilityComplianceScore","resolutionRateScore"))
+               OVER (PARTITION BY "schoolId" ORDER BY "recordedAt", id) AS prev
+      FROM score_history) h WHERE s = prev`,
 };
 
 async function main(): Promise<number> {
@@ -165,41 +193,51 @@ async function main(): Promise<number> {
 
     const total = n((await one(SQL.totalSchools)).v) ?? 0;
     const scored = await one(SQL.scored);
+    const scoredCount = n(scored.cnt) ?? 0;
+    // Averages are null (not 0) when nothing is scored.
+    const avgOf = (v: unknown) => (scoredCount > 0 ? n(v) : null);
     const kmz = n((await one(SQL.kmz)).v) ?? 0;
     const survey = n((await one(SQL.survey)).v) ?? 0;
     const cap = await one(SQL.capacity);
     const seats = n(cap.seats) ?? 0;
-    const prio: Record<string, number> = {};
+    const prio: Record<string, number> = {
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      unassessed: 0,
+    };
     for (const r of await q(SQL.priority)) prio[String(r.p)] = n(r.c) ?? 0;
 
     const checks: Array<[string, unknown, unknown]> = [
       ['totalSchools', total, api.totalSchools],
-      ['scoredSchoolCount', n(scored.cnt) ?? 0, api.scoredSchoolCount],
+      ['scoredSchoolCount', scoredCount, api.scoredSchoolCount],
       [
         'nationalAvgScore (School Condition Score)',
-        n(scored.avg) ?? 0,
+        avgOf(scored.avg),
         api.nationalAvgScore,
       ],
-      [
-        'nationalAvgInfraScore',
-        n(scored.infra) ?? 0,
-        api.nationalAvgInfraScore,
-      ],
+      ['nationalAvgInfraScore', avgOf(scored.infra), api.nationalAvgInfraScore],
       [
         'nationalAvgAgeScore (Building Age Score)',
-        n(scored.age) ?? 0,
+        avgOf(scored.age),
         api.nationalAvgAgeScore,
       ],
       [
         'nationalAvgAccessScore',
-        n(scored.access) ?? 0,
+        avgOf(scored.access),
         api.nationalAvgAccessScore,
       ],
-      ['nationalAvgPopScore', n(scored.pop) ?? 0, api.nationalAvgPopScore],
+      ['nationalAvgPopScore', avgOf(scored.pop), api.nationalAvgPopScore],
       [
         'nationalAvgComplianceScore',
-        n(scored.compliance) ?? 0,
+        avgOf(scored.compliance),
         api.nationalAvgComplianceScore,
+      ],
+      [
+        'nationalAvgResolutionScore',
+        avgOf(scored.resolution),
+        api.nationalAvgResolutionScore,
       ],
       [
         'nationalCapacityUtilisation',
@@ -210,12 +248,12 @@ async function main(): Promise<number> {
       ['totalTeachers', n((await one(SQL.teachers)).v) ?? 0, api.totalTeachers],
       [
         'kmzCoverageRate %',
-        total > 0 ? Math.round((kmz / total) * 100) : 0,
+        total > 0 ? Math.round((kmz / total) * 100) : null,
         api.kmzCoverageRate,
       ],
       [
         'surveyCompletionRate %',
-        total > 0 ? Math.round((survey / total) * 100) : 0,
+        total > 0 ? Math.round((survey / total) * 100) : null,
         api.surveyCompletionRate,
       ],
       [
@@ -231,7 +269,7 @@ async function main(): Promise<number> {
       ['dataGaps.population', n(scored.pop_gaps) ?? 0, api.dataGaps.population],
       [
         'decision queue rows (= scored active schools)',
-        n(scored.cnt) ?? 0,
+        scoredCount,
         decisions.length,
       ],
       [
@@ -265,24 +303,76 @@ async function main(): Promise<number> {
       );
     }
 
-    // Data-integrity warnings (not KPI diffs, but they explain odd numbers).
-    const drift = n((await one(SQL.drift)).v) ?? 0;
-    const orphans = n((await one(SQL.orphans)).v) ?? 0;
-    const unscored = n((await one(SQL.unscored)).v) ?? 0;
-    console.log('\nIntegrity');
-    console.log(
-      `  active schools whose stored score ≠ assessment score: ${drift}`,
+    // ── Semantic integrity: every count must be 0 ─────────────────────────
+    // Stale assessments: rescore each active school in memory (read-only) and
+    // compare with what is stored and shown on the dashboards.
+    const stored = new Map(
+      (await ds.getRepository(DecisionAssessment).find()).map((a) => [
+        a.schoolId,
+        a,
+      ]),
     );
+    const activeSchools = await ds
+      .getRepository(School)
+      .find({ where: { status: 'active' as never }, relations: ['buildings'] });
+    const stale: string[] = [];
+    let outdated = 0;
+    for (const school of activeSchools) {
+      const a = stored.get(school.id);
+      if (!a) continue; // counted as "never scored"
+      if ((a.scoringVersion ?? 0) < SCORING_VERSION) outdated++;
+      const fresh = await service.previewSchoolScore(school);
+      if (assessmentChanged(a as unknown as Record<string, unknown>, fresh)) {
+        stale.push(
+          `${school.name}: stored ${n(a.overallScore)} (${a.priorityLevel}) → now ${fresh.overallScore} (${fresh.priorityLevel})`,
+        );
+      }
+    }
+
+    const integrity: Array<[string, number]> = [
+      ['active schools never scored', n((await one(SQL.unscored)).v) ?? 0],
+      [`assessments older than scoring v${SCORING_VERSION}`, outdated],
+      ['stale assessments (stored ≠ recomputed now)', stale.length],
+      [
+        'duplicate assessments (schools with >1 row)',
+        n((await one(SQL.duplicates)).v) ?? 0,
+      ],
+      [
+        'schools.overallScore/priority ≠ assessment',
+        n((await one(SQL.drift)).v) ?? 0,
+      ],
+      [
+        'assessment rows with no school (orphans)',
+        n((await one(SQL.orphans)).v) ?? 0,
+      ],
+      [
+        'population rows with school-age pop ≤ 0',
+        n((await one(SQL.zeroPopulation)).v) ?? 0,
+      ],
+      [
+        'non-solved reports carrying resolvedAt',
+        n((await one(SQL.reopenedWithDate)).v) ?? 0,
+      ],
+      [
+        'repeated score_history snapshots',
+        n((await one(SQL.historyRepeats)).v) ?? 0,
+      ],
+    ];
+    let failures = 0;
+    console.log('\nIntegrity (each must be 0)');
+    for (const [label, count] of integrity) {
+      if (count > 0) failures++;
+      console.log(
+        `  ${label.padEnd(50)}${String(count).padEnd(8)}${count > 0 ? 'FAIL' : 'OK'}`,
+      );
+    }
+    for (const line of stale) console.log(`    · ${line}`);
+
     console.log(
-      `  assessment rows with no school (orphans):             ${orphans}`,
+      `\n${diffs === 0 ? 'ZERO DIFFS' : `${diffs} DIFF(S)`} across ${checks.length} KPIs; ` +
+        `${failures === 0 ? 'integrity OK' : `${failures} integrity failure(s)`}.`,
     );
-    console.log(
-      `  active schools never scored:                          ${unscored}`,
-    );
-    console.log(
-      `\n${diffs === 0 ? 'ZERO DIFFS' : `${diffs} DIFF(S)`} across ${checks.length} KPIs.`,
-    );
-    return diffs === 0 ? 0 : 1;
+    return diffs === 0 && failures === 0 ? 0 : 1;
   } finally {
     await ds.destroy();
   }
