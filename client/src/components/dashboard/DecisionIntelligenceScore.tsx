@@ -88,13 +88,13 @@ export const DecisionIntelligenceScore = React.memo(
     // The six components; weights come from the served scoring model.
     const w = (k: ComponentKey) => weightOf(k, model);
     const metrics: ScoreMetric[] = [
-      { label: "Infrastructure", weight: w("infrastructure"), score: numOrNull(assessment?.infrastructureScore), icon: Building2, metricId: "component.infrastructure", gapKey: "infrastructure" },
-      { label: "Building Age Score", weight: w("buildingAge"), score: numOrNull(assessment?.buildingAgeScore), icon: TrendingUp, metricId: "component.buildingAge", gapKey: "buildingAge" },
-      { label: "Facility Compliance", weight: w("facilityCompliance"), score: numOrNull(assessment?.facilityComplianceScore), icon: ClipboardCheck, metricId: "component.facilityCompliance", gapKey: "facilityCompliance" },
-      { label: "Accessibility", weight: w("accessibility"), score: numOrNull(assessment?.accessibilityScore), icon: MapPin, metricId: "component.accessibility", gapKey: "accessibility" },
-      { label: "Population Pressure", weight: w("population"), score: numOrNull(assessment?.populationPressureScore), icon: Users, metricId: "component.population", gapKey: "population" },
+      { label: "Building condition", weight: w("infrastructure"), score: numOrNull(assessment?.infrastructureScore), icon: Building2, metricId: "component.infrastructure", gapKey: "infrastructure" },
+      { label: "Building age", weight: w("buildingAge"), score: numOrNull(assessment?.buildingAgeScore), icon: TrendingUp, metricId: "component.buildingAge", gapKey: "buildingAge" },
+      { label: "Facilities checklist", weight: w("facilityCompliance"), score: numOrNull(assessment?.facilityComplianceScore), icon: ClipboardCheck, metricId: "component.facilityCompliance", gapKey: "facilityCompliance" },
+      { label: "Road access", weight: w("accessibility"), score: numOrNull(assessment?.accessibilityScore), icon: MapPin, metricId: "component.accessibility", gapKey: "accessibility" },
+      { label: "Nearby population", weight: w("population"), score: numOrNull(assessment?.populationPressureScore), icon: Users, metricId: "component.population", gapKey: "population" },
       {
-        label: "Resolution Rate",
+        label: "Problems fixed",
         weight: w("resolution"),
         // Server component score (neutral 50 when there are no reports).
         score: numOrNull(assessment?.resolutionRateScore ?? assessment?.resolutionRate),

@@ -172,4 +172,30 @@ describe('report status transitions (resolution date)', () => {
       schoolId: 's1',
     });
   });
+
+  it('records who reviewed the report, when, and the note', async () => {
+    const { service } = makeService({ type: ReportType.ISSUE });
+    const saved = await service.updateStatus(
+      'rep-1',
+      ReportStatus.NEED_INTERVENTION,
+      undefined,
+      { ...manager, id: 'reviewer-1' },
+      '  Roof structure unsafe — district engineer to visit.  ',
+    );
+    expect(saved).toMatchObject({
+      status: ReportStatus.NEED_INTERVENTION,
+      reviewNote: 'Roof structure unsafe — district engineer to visit.',
+      reviewedById: 'reviewer-1',
+    });
+    expect(saved.reviewedAt).toBeInstanceOf(Date);
+
+    const again = await service.updateStatus(
+      'rep-1',
+      ReportStatus.SOLVED,
+      undefined,
+      { ...manager, id: 'reviewer-1' },
+      '   ',
+    );
+    expect(again.reviewNote).toBeNull();
+  });
 });

@@ -1158,9 +1158,22 @@
   pointer-events: auto;
   height: 85vh;
   width: 400px;
-  box-shadow: 0 0 50px rgba(0,0,0,0.5);
   border-radius: 24px;
   overflow: hidden;
+}
+
+/* Phones: the building panel is a bottom sheet. */
+@media (max-width: 767px) {
+  .inspector-dock {
+    top: auto;
+    right: 0;
+    padding: 0;
+  }
+  .inspector-container {
+    width: 100%;
+    height: auto;
+    border-radius: 28px 28px 0 0;
+  }
 }
 
 /* Pin indicators and other overlays */

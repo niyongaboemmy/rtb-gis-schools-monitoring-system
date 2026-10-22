@@ -1,7 +1,9 @@
 import React from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { MapPin, Loader2, Check, X } from "lucide-react";
-import { Button } from "../ui/button";
-import { Card } from "../ui/card";
+import { cn } from "../../lib/utils";
+import { formatNumber } from "../../lib/format";
+import { EASE } from "../school-dashboard/tokens";
 
 interface Props {
   draft: [number, number] | null;
@@ -11,7 +13,7 @@ interface Props {
   onCancel: () => void;
 }
 
-const fmt = (n: number) => n.toFixed(7);
+const fmt = (n: number) => formatNumber(n, 7);
 
 const moved = (
   a: [number, number] | null,
@@ -21,6 +23,18 @@ const moved = (
   return Math.abs(a[0] - b[0]) > 1e-7 || Math.abs(a[1] - b[1]) > 1e-7;
 };
 
+const focusRing =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60";
+
+const Coord: React.FC<{ name: string; value: string }> = ({ name, value }) => (
+  <div className="min-w-0 rounded-2xl bg-slate-900/5 px-3 py-2 dark:bg-white/6">
+    <span className="block text-[11px] text-slate-500 dark:text-white/50">{name}</span>
+    <span className="block truncate text-[13px] tabular-nums text-slate-800 dark:text-white/90">
+      {value}
+    </span>
+  </div>
+);
+
 export const SchoolLocationEditorPanel: React.FC<Props> = ({
   draft,
   original,
@@ -28,70 +42,81 @@ export const SchoolLocationEditorPanel: React.FC<Props> = ({
   onSave,
   onCancel,
 }) => {
+  const reduce = useReducedMotion();
   const hasChange = moved(draft, original);
 
   return (
-    <div className="fixed inset-x-4 bottom-28 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:bottom-28 z-60 flex justify-center pointer-events-none">
-      <Card className="pointer-events-auto w-full max-w-md bg-white/95 dark:bg-card/95 backdrop-blur-2xl border border-slate-200 dark:border-white/10 rounded-2xl p-4 shadow-2xl">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-60 flex justify-center md:inset-x-auto md:bottom-28 md:left-1/2 md:-translate-x-1/2">
+      <motion.div
+        initial={reduce ? false : { opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: EASE }}
+        className={cn(
+          "pointer-events-auto w-full p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:w-[26rem] md:pb-4",
+          "rounded-t-3xl md:rounded-3xl",
+          "bg-white/60 dark:bg-[hsl(224_40%_7%)]/60 backdrop-blur-2xl backdrop-saturate-150",
+          "ring-1 ring-white/40 dark:ring-white/10",
+          "shadow-[0_20px_50px_-20px_rgba(15,23,42,0.45)]",
+        )}
+      >
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 shrink-0 rounded-xl bg-rose-500/15 p-2 text-rose-500">
-            <MapPin className="h-4 w-4" />
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary dark:text-blue-300">
+            <MapPin className="h-4 w-4" aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            <p className="text-[14px] font-medium text-slate-900 dark:text-white">
               Set school location
             </p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            <p className="text-[12px] text-slate-600 dark:text-white/60">
               Click the map or drag the pin, then save.
             </p>
-            <div className="mt-2 grid grid-cols-2 gap-2 font-mono text-xs">
-              <div className="rounded-lg bg-slate-100 dark:bg-white/5 px-2 py-1.5">
-                <span className="block text-[9px] font-sans font-black uppercase tracking-wider text-slate-400">
-                  Latitude
-                </span>
-                {draft ? fmt(draft[1]) : "—"}
-              </div>
-              <div className="rounded-lg bg-slate-100 dark:bg-white/5 px-2 py-1.5">
-                <span className="block text-[9px] font-sans font-black uppercase tracking-wider text-slate-400">
-                  Longitude
-                </span>
-                {draft ? fmt(draft[0]) : "—"}
-              </div>
-            </div>
           </div>
         </div>
 
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <Coord name="Latitude" value={draft ? fmt(draft[1]) : "—"} />
+          <Coord name="Longitude" value={draft ? fmt(draft[0]) : "—"} />
+        </div>
+
         <div className="mt-3 flex items-center justify-end gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
+          <button
+            type="button"
             onClick={onCancel}
             disabled={saving}
-            className="gap-1.5"
+            className={cn(
+              "inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[13px] text-slate-700 transition-colors",
+              "hover:bg-slate-900/5 dark:text-white/80 dark:hover:bg-white/8",
+              "disabled:pointer-events-none disabled:opacity-50",
+              focusRing,
+            )}
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-3.5 w-3.5" aria-hidden />
             Cancel
-          </Button>
-          <Button
-            size="sm"
+          </button>
+          <button
+            type="button"
             onClick={onSave}
             disabled={saving || !hasChange || !draft}
-            className="gap-1.5 min-w-30"
+            className={cn(
+              "inline-flex h-9 min-w-30 items-center justify-center gap-1.5 rounded-full bg-primary px-4 text-[13px] font-medium text-white transition-colors",
+              "hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50",
+              focusRing,
+            )}
           >
             {saving ? (
               <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
                 Saving…
               </>
             ) : (
               <>
-                <Check className="h-3.5 w-3.5" />
+                <Check className="h-3.5 w-3.5" aria-hidden />
                 Save location
               </>
             )}
-          </Button>
+          </button>
         </div>
-      </Card>
+      </motion.div>
     </div>
   );
 };

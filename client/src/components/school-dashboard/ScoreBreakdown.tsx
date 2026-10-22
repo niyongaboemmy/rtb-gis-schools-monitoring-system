@@ -12,12 +12,12 @@ import { NO_DATA } from "./status-colors";
 import { DetailSection, SummaryStat, SummaryStats } from "./details/primitives";
 
 const FACTOR: Record<ComponentKey, { name: string; field: keyof SchoolMetrics; metric: MetricId; color: string }> = {
-  infrastructure: { name: "Infrastructure", field: "infrastructureScore", metric: "component.infrastructure", color: "var(--viz-1)" },
+  infrastructure: { name: "Building condition", field: "infrastructureScore", metric: "component.infrastructure", color: "var(--viz-1)" },
   buildingAge: { name: "Building age", field: "buildingAgeScore", metric: "component.buildingAge", color: "var(--viz-2)" },
-  facilityCompliance: { name: "Facility compliance", field: "facilityComplianceScore", metric: "component.facilityCompliance", color: "var(--viz-3)" },
-  accessibility: { name: "Accessibility", field: "accessibilityScore", metric: "component.accessibility", color: "var(--viz-4)" },
-  population: { name: "Population pressure", field: "populationPressureScore", metric: "component.population", color: "var(--viz-5)" },
-  resolution: { name: "Issue resolution", field: "resolutionRateScore", metric: "component.resolution", color: "var(--viz-6)" },
+  facilityCompliance: { name: "Facilities checklist", field: "facilityComplianceScore", metric: "component.facilityCompliance", color: "var(--viz-3)" },
+  accessibility: { name: "Road access", field: "accessibilityScore", metric: "component.accessibility", color: "var(--viz-4)" },
+  population: { name: "Nearby population", field: "populationPressureScore", metric: "component.population", color: "var(--viz-5)" },
+  resolution: { name: "Problems fixed", field: "resolutionRateScore", metric: "component.resolution", color: "var(--viz-6)" },
 };
 
 function rowsOf(metrics: SchoolMetrics) {
@@ -47,8 +47,8 @@ export function ScoreSummary({ metrics }: { metrics: SchoolMetrics | null }) {
         hint={metrics.urgencyMonths != null ? `Act within ${formatNumber(metrics.urgencyMonths)} months` : undefined}
         accent={BAND_HEX[band]}
       />
-      <SummaryStat label="Measured" value={coverage == null ? "—" : formatPercent(coverage)} hint="of the score is real data" meter={coverage} />
-      <SummaryStat label="Estimated factors" value={`${estimated} of ${COMPONENT_ORDER.length}`} hint={`use the neutral ${model.neutral}`} />
+      <SummaryStat label="Real data" value={coverage == null ? "—" : formatPercent(coverage)} hint="of the score is based on records" meter={coverage} />
+      <SummaryStat label="Missing data" value={`${estimated} of ${COMPONENT_ORDER.length}`} hint={`parts counted as ${model.neutral} for now`} />
     </SummaryStats>
   );
 }
@@ -69,12 +69,12 @@ export function ScoreBreakdown({ metrics }: { metrics: SchoolMetrics | null }) {
 
   return (
     <div className="space-y-8">
-      <DetailSection title="Where the points come from" aside="factor score × weight = points">
+      <DetailSection title="Where the points come from" aside="part score × weight = points">
         <div className="overflow-hidden rounded-2xl ring-1 ring-slate-900/6 dark:ring-white/8">
           <table className="w-full text-sm">
             <thead className="bg-slate-900/[0.03] text-left text-[11px] font-medium text-slate-500 dark:bg-white/[0.03] dark:text-white/45">
               <tr>
-                <th scope="col" className="px-4 py-2.5 font-medium">Factor</th>
+                <th scope="col" className="px-4 py-2.5 font-medium">Part</th>
                 <th scope="col" className="hidden px-4 py-2.5 font-medium sm:table-cell">Score</th>
                 <th scope="col" className="px-4 py-2.5 font-medium">Points</th>
                 <th scope="col" className="hidden px-4 py-2.5 font-medium md:table-cell">Data</th>
@@ -93,7 +93,7 @@ export function ScoreBreakdown({ metrics }: { metrics: SchoolMetrics | null }) {
                       </span>
                       {/* Phones: the data flag sits under the name */}
                       <span className={cn("mt-1 block pl-[18px] text-[11px] font-normal md:hidden", r.estimated ? "text-amber-700 dark:text-amber-300" : "text-slate-500 dark:text-white/45")}>
-                        {r.estimated ? "Estimated" : "Measured"} · score {formatScore(r.score)}
+                        {r.estimated ? "No data" : "Recorded"} · score {formatScore(r.score)}
                       </span>
                     </th>
                     <td className="hidden px-4 py-3 sm:table-cell">
@@ -129,11 +129,11 @@ export function ScoreBreakdown({ metrics }: { metrics: SchoolMetrics | null }) {
                     <td className="hidden px-4 py-3 md:table-cell">
                       {r.estimated ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:text-amber-300">
-                          <CircleDashed className="h-3 w-3" aria-hidden /> Estimated
+                          <CircleDashed className="h-3 w-3" aria-hidden /> No data
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-800 dark:text-emerald-300">
-                          <CheckCircle2 className="h-3 w-3" aria-hidden /> Measured
+                          <CheckCircle2 className="h-3 w-3" aria-hidden /> Recorded
                         </span>
                       )}
                     </td>
@@ -160,7 +160,7 @@ export function ScoreBreakdown({ metrics }: { metrics: SchoolMetrics | null }) {
         </div>
       </DetailSection>
 
-      <DetailSection title="Intervention Priority" aside={`${label("priority", band)} band`}>
+      <DetailSection title="Priority" aside={`${label("priority", band)} band`}>
         <div className="pt-7">
           <div className="relative">
             <div className="flex h-3 gap-[2px] overflow-hidden rounded-full">

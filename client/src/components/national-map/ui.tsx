@@ -53,7 +53,6 @@ export function ScoreRing({
           initial={reduce ? false : { strokeDashoffset: c }}
           animate={{ strokeDashoffset: c * (1 - pct) }}
           transition={{ duration: reduce ? 0 : 1, delay: reduce ? 0 : delay, ease: EASE }}
-          style={{ filter: `drop-shadow(0 0 3px ${color}66)` }}
         />
       </svg>
       <span

@@ -1,399 +1,444 @@
-import { useState, useEffect } from "react";
-import {
-  Building2,
-  Maximize2,
-  Pencil,
-  X,
-  Layers,
-  Square,
-  Calendar,
-  Home,
-} from "lucide-react";
-import { Button } from "./ui/button";
+import { useId, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Box, Calendar, ChevronRight, ClipboardPlus, Home, Layers, NotebookText, Pencil, Play, Ruler, X } from "lucide-react";
 import { cn } from "../lib/utils";
-import { label } from "../lib/labels";
+import { formatArea, formatNumber } from "../lib/format";
+import { EASE } from "./school-dashboard/tokens";
 import type { BuildingData } from "./school-form-steps/BuildingsStep";
+import type { BuildingPanelTab } from "../lib/viewer-tools";
+import type { ReviewReport } from "./report-review/review-utils";
+import { isOpen } from "./report-review/review-utils";
 import { BuildingMediaTab } from "./2dviewercomponents/BuildingMediaTab";
 import { BuildingReportingTab } from "./2dviewercomponents/BuildingReportingTab";
+import { NewReportModal } from "./2dviewercomponents/NewReportModal";
+import { buildingArea, buildingCode, buildingCondition, buildingFloors, buildingFunction, buildingInitials, buildingName, buildingYear, type AnyBuilding, type ConditionView } from "./2dviewercomponents/building-utils";
+import { isVideoMedia, type MediaEntry } from "./2dviewercomponents/media/media-utils";
 
 interface BlockInspectorProps {
-  building: BuildingData & Record<string, any>;
+  building: AnyBuilding;
   schoolId: string;
-  onEdit: (building: BuildingData) => void;
   onClose: () => void;
+  /** Open the building form (undefined = no permission). */
+  onEdit?: () => void;
   onUpdateBuilding: (building: BuildingData) => Promise<void>;
-  onAddAnnotation?: () => void;
-  onUploadMedia?: () => void;
   on3DView?: () => void;
-  initialTab?: "details" | "media" | "reporting";
-  onReportStatusChange?: () => void;
+  /** Tab to open on. The panel is re-keyed when it should change. */
+  initialTab?: BuildingPanelTab;
+  initialReportId?: string | null;
+  /** This building's reports (shared with the map badges and the list). */
+  reports: ReviewReport[];
+  reportsLoaded: boolean;
+  canEditMedia: boolean;
+  canCreateReport: boolean;
+  canOpenReview: boolean;
+  canDecide: (r: ReviewReport) => boolean;
+  onReportPatched: (id: string, next: Partial<ReviewReport>) => void;
+  onReportSubmitted: () => void;
+  onOpenMedia: (index: number) => void;
+  onOpenGallery?: () => void;
 }
 
-const CONDITION_TONE: Record<
-  string,
-  { text: string; ring: string; chip: string; dot: string }
-> = {
-  good: {
-    text: "text-emerald-600 dark:text-emerald-400",
-    ring: "stroke-emerald-500",
-    chip: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-    dot: "bg-emerald-500",
-  },
-  fair: {
-    text: "text-blue-600 dark:text-blue-400",
-    ring: "stroke-blue-500",
-    chip: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-    dot: "bg-blue-500",
-  },
-  poor: {
-    text: "text-amber-600 dark:text-amber-400",
-    ring: "stroke-amber-500",
-    chip: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-    dot: "bg-amber-500",
-  },
-  critical: {
-    text: "text-red-600 dark:text-red-400",
-    ring: "stroke-red-500",
-    chip: "bg-red-500/10 text-red-600 dark:text-red-400",
-    dot: "bg-red-500",
-  },
-};
-
-const STATUS_VALUE: Record<string, number> = {
-  good: 4,
-  fair: 3,
-  poor: 2,
-  critical: 1,
-};
-
+/**
+ * The building panel on the map: condition and facts, photos, and reports
+ * (with the review flow for users who can decide). Open reports show as a
+ * banner with a shortcut to review them.
+ */
 export function BlockInspector({
   building,
   schoolId,
-  onEdit,
   onClose,
+  onEdit,
   onUpdateBuilding,
-  initialTab,
-  onReportStatusChange,
+  on3DView,
+  initialTab = "media",
+  initialReportId,
+  reports,
+  reportsLoaded,
+  canEditMedia,
+  canCreateReport,
+  canOpenReview,
+  canDecide,
+  onReportPatched,
+  onReportSubmitted,
+  onOpenMedia,
+  onOpenGallery,
 }: BlockInspectorProps) {
-  const [activeTab, setActiveTab] = useState<"details" | "media" | "reporting">(
-    initialTab ?? "details",
-  );
+  const reduce = useReducedMotion();
+  const ids = useId();
+  const [tab, setTab] = useState<BuildingPanelTab>(initialTab);
+  const [reporting, setReporting] = useState(false);
 
-  useEffect(() => {
-    setActiveTab(initialTab ?? "details");
-  }, [building.id, initialTab]);
+  const name = buildingName(building);
+  const code = buildingCode(building);
+  const fn = buildingFunction(building);
+  const cond = buildingCondition(building);
+  const media = ((building.media ?? []) as MediaEntry[]).filter((m) => m?.path);
+  const open = reports.filter((r) => isOpen(r.status));
+  const action = open.filter((r) => r.status === "NEED_INTERVENTION").length;
+  const waiting = open.length - action;
+  const canDecideAny = open.some(canDecide);
 
-  const buildingStatus = (
-    building.buildingCondition ||
-    building.condition ||
-    "fair"
-  ).toLowerCase();
-  const roofStatus = (
-    building.buildingRoofCondition ||
-    building.roofCondition ||
-    "fair"
-  ).toLowerCase();
-
-  const avgVal =
-    ((STATUS_VALUE[buildingStatus] ?? 3) + (STATUS_VALUE[roofStatus] ?? 3)) / 2;
-  const avgLabel =
-    avgVal >= 3.5
-      ? "Good"
-      : avgVal >= 2.5
-        ? "Fair"
-        : avgVal >= 1.5
-          ? "Poor"
-          : "Critical";
-  const tone = CONDITION_TONE[avgLabel.toLowerCase()] ?? CONDITION_TONE.fair;
-  const pct = Math.round((avgVal / 4) * 100);
-
-  // Progress ring geometry
-  const R = 26;
-  const C = 2 * Math.PI * R;
-
-  const name =
-    building.buildingName ||
-    building.name ||
-    building.buildingCode ||
-    building.code ||
-    "Building Asset";
-  const code = building.buildingCode || building.code || "NO-ID";
-
-  const areaRaw =
-    building.buildingArea || building.area || building.areaSquareMeters;
-  const area =
-    areaRaw && Number(areaRaw) > 0 ? `${Number(areaRaw).toFixed(0)} m²` : "N/A";
-
-  const specs = [
-    {
-      label: "Function",
-      value: building.buildingFunction || building.function || "N/A",
-      icon: Layers,
-    },
-    {
-      label: "Floors",
-      value: `${building.buildingFloors || building.floors || "1"}`,
-      icon: Maximize2,
-    },
-    {
-      label: "Area",
-      value: area,
-      icon: Square,
-    },
-    {
-      label: "Year built",
-      value:
-        building.buildingYearBuilt || building.yearBuilt || "Unknown",
-      icon: Calendar,
-    },
+  const tabs: { key: BuildingPanelTab; label: string; badge?: number; alert?: boolean }[] = [
+    { key: "media", label: "Media", badge: media.length || undefined },
+    { key: "details", label: "Details" },
+    { key: "reporting", label: "Reports", badge: open.length || undefined, alert: open.length > 0 },
   ];
 
-  const tabs = [
-    { id: "details", label: "Details" },
-    { id: "media", label: "Media" },
-    { id: "reporting", label: "Reports" },
-  ] as const;
+  const actionBtn =
+    "inline-flex h-8 items-center gap-1.5 rounded-full bg-slate-900/[0.04] px-3 text-xs text-slate-700 transition-colors hover:bg-slate-900/[0.08] hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 dark:bg-white/6 dark:text-white/75 dark:hover:bg-white/10 dark:hover:text-white";
 
   return (
     <div
       className={cn(
-        "w-full md:w-90 flex flex-col h-full overflow-hidden",
-        "bg-white/85 dark:bg-[#0d0f14]/85 backdrop-blur-2xl",
-        "border-t md:border-t-0 md:border-l border-slate-200/70 dark:border-white/8",
-        "rounded-t-[28px] md:rounded-none shadow-[0_-8px_40px_-12px_rgba(0,0,0,0.25)] md:shadow-[-8px_0_40px_-12px_rgba(0,0,0,0.25)]",
-        "z-70",
+        "flex h-[82dvh] w-full flex-col overflow-hidden md:h-full",
+        "rounded-t-[1.75rem] bg-white/60 ring-1 ring-white/40 backdrop-blur-2xl backdrop-saturate-150 md:rounded-[1.5rem]",
+        "dark:bg-[hsl(224_40%_7%)]/60 dark:ring-white/10",
+        "shadow-[0_-12px_40px_-16px_rgba(15,23,42,0.35)] md:shadow-[0_20px_50px_-20px_rgba(15,23,42,0.45)]",
       )}
+      role="complementary"
+      aria-label={`Building: ${name}`}
     >
-      {/* Mobile grab handle */}
-      <div className="flex md:hidden justify-center pt-2.5 pb-1 shrink-0">
-        <div className="w-9 h-1.5 rounded-full bg-slate-300/70 dark:bg-white/15" />
+      {/* Phone grab handle */}
+      <div className="flex shrink-0 justify-center pb-1 pt-2.5 md:hidden" aria-hidden>
+        <div className="h-1.5 w-10 rounded-full bg-slate-300/80 dark:bg-white/15" />
       </div>
 
-      {/* Header */}
-      <div className="relative px-5 pt-4 pb-4 shrink-0">
-        <div
-          className="absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/40 to-transparent"
-          aria-hidden
-        />
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="grid place-items-center w-11 h-11 rounded-2xl bg-linear-to-br from-primary to-primary/70 text-white shrink-0 shadow-lg shadow-primary/20">
-              <Building2 className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-bold text-[17px] leading-tight text-slate-900 dark:text-white truncate tracking-tight">
-                {name}
-              </h3>
-              <div className="mt-1 flex items-center gap-2">
-                <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-white/8 px-1.5 py-0.5 text-[10px] font-mono font-medium text-slate-500 dark:text-white/45 tracking-wide">
-                  {code}
-                </span>
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-1 text-[10px] font-semibold",
-                    tone.text,
-                  )}
-                >
-                  <span className={cn("w-1.5 h-1.5 rounded-full", tone.dot)} />
-                  {avgLabel}
-                </span>
-              </div>
-            </div>
+      {/* ── Header ───────────────────────────────────────────── */}
+      <header className="shrink-0 px-5 pb-3 pt-3 md:pt-5">
+        <div className="flex items-start gap-3">
+          <motion.span
+            initial={reduce ? false : { scale: 0.85, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 420, damping: 26 }}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-[13px] font-medium text-primary dark:text-blue-300"
+            aria-hidden
+          >
+            {buildingInitials(building)}
+          </motion.span>
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-base font-medium leading-tight text-slate-900 dark:text-white">{name}</h3>
+            <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-slate-500 dark:text-white/50">
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: cond.overall.color }} aria-hidden />
+              <span className="shrink-0">{cond.overall.label}</span>
+              {fn && <span className="truncate capitalize">· {fn}</span>}
+              {code && code !== name && <span className="shrink-0 font-mono text-[11px] text-slate-400 dark:text-white/35">· {code}</span>}
+            </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            aria-label="Close building inspector"
-            className="p-1.5 rounded-xl text-slate-400 dark:text-white/40 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors active:scale-95"
+            aria-label="Close building panel"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-900/5 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 dark:text-white/45 dark:hover:bg-white/8 dark:hover:text-white"
           >
-            <X className="w-4.5 h-4.5" aria-hidden />
+            <X className="h-4.5 w-4.5" aria-hidden />
           </button>
         </div>
-      </div>
 
-      {/* Segmented tabs */}
-      <div className="px-5 pb-3 shrink-0">
-        <div className="flex gap-1 p-1 rounded-xl bg-slate-100/80 dark:bg-white/5">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={cn(
-                "flex-1 py-1.5 rounded-lg text-[12px] font-semibold transition-all",
-                activeTab === tab.id
-                  ? "bg-white dark:bg-white/12 text-slate-900 dark:text-white shadow-sm"
-                  : "text-slate-500 dark:text-white/45 hover:text-slate-700 dark:hover:text-white/70",
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-5 pb-4 custom-scrollbar min-h-0">
-        {activeTab === "details" && (
-          <div className="space-y-5 py-1 animate-in fade-in slide-in-from-bottom-1 duration-300">
-            {/* Condition hero */}
-            <div className="flex items-center gap-4 p-4 rounded-2xl border border-slate-200/70 dark:border-white/8 bg-slate-50/60 dark:bg-white/4">
-              <div className="relative shrink-0 w-17 h-17">
-                <svg viewBox="0 0 64 64" className="w-full h-full -rotate-90">
-                  <circle
-                    cx="32"
-                    cy="32"
-                    r={R}
-                    fill="none"
-                    strokeWidth="6"
-                    className="stroke-slate-200 dark:stroke-white/10"
-                  />
-                  <circle
-                    cx="32"
-                    cy="32"
-                    r={R}
-                    fill="none"
-                    strokeWidth="6"
-                    strokeLinecap="round"
-                    className={cn("transition-all duration-700", tone.ring)}
-                    strokeDasharray={C}
-                    strokeDashoffset={C - (pct / 100) * C}
-                  />
-                </svg>
-                <div className="absolute inset-0 grid place-items-center">
-                  <span className="text-[15px] font-bold text-slate-900 dark:text-white tabular-nums">
-                    {pct}
-                    <span className="text-[9px] font-semibold text-slate-400 dark:text-white/40">
-                      %
-                    </span>
-                  </span>
-                </div>
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-white/40">
-                  Overall condition
-                </p>
-                <p
-                  className={cn(
-                    "text-lg font-bold tracking-tight leading-tight",
-                    tone.text,
-                  )}
-                >
-                  {avgLabel}
-                </p>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {[
-                    { label: "Structure", status: buildingStatus, kind: "buildingCondition" as const },
-                    { label: "Roof", status: roofStatus, kind: "roofCondition" as const },
-                  ].map((it) => {
-                    const t =
-                      CONDITION_TONE[it.status] ?? CONDITION_TONE.fair;
-                    return (
-                      <span
-                        key={it.label}
-                        className={cn(
-                          "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold capitalize",
-                          t.chip,
-                        )}
-                      >
-                        {it.label}: {label(it.kind, it.status)}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Specs grid */}
-            <div>
-              <p className="mb-2 pl-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-white/35">
-                Specifications
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {specs.map((s) => (
-                  <div
-                    key={s.label}
-                    className="rounded-xl border border-slate-200/70 dark:border-white/8 bg-white/60 dark:bg-white/4 p-3"
-                  >
-                    <div className="flex items-center gap-1.5 text-slate-400 dark:text-white/35">
-                      <s.icon className="w-3.5 h-3.5" />
-                      <span className="text-[10px] font-semibold uppercase tracking-wider">
-                        {s.label}
-                      </span>
-                    </div>
-                    <p className="mt-1.5 text-[13px] font-bold text-slate-800 dark:text-white/90 truncate capitalize">
-                      {s.value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Facilities */}
-            {building.facilities && building.facilities.length > 0 && (
-              <div>
-                <div className="mb-2 flex items-center justify-between px-0.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-white/35">
-                    Facilities
-                  </p>
-                  <span className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-bold">
-                    {building.facilities.length}
-                  </span>
-                </div>
-                <div className="space-y-1.5">
-                  {building.facilities.map((f: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/70 dark:border-white/8 bg-white/60 dark:bg-white/4 px-3 py-2.5"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <Home className="w-4 h-4 text-slate-300 dark:text-white/25 shrink-0" />
-                        <p className="text-[13px] font-semibold text-slate-700 dark:text-white/80 truncate">
-                          {f.facility_name || f.name || "Facility"}
-                        </p>
-                      </div>
-                      <span className="shrink-0 rounded-md bg-slate-100 dark:bg-white/8 px-1.5 py-0.5 text-[10px] font-bold text-slate-500 dark:text-white/50 tabular-nums">
-                        {f.number_of_rooms || f.count || 1} rooms
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+        {(onEdit || on3DView || canCreateReport) && (
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {canCreateReport && (
+              <button type="button" className={actionBtn} onClick={() => setReporting(true)}>
+                <ClipboardPlus className="h-3.5 w-3.5" aria-hidden /> Report a problem
+              </button>
+            )}
+            {onEdit && (
+              <button type="button" className={actionBtn} onClick={onEdit}>
+                <Pencil className="h-3.5 w-3.5" aria-hidden /> Edit
+              </button>
+            )}
+            {on3DView && (
+              <button type="button" className={actionBtn} onClick={on3DView}>
+                <Box className="h-3.5 w-3.5" aria-hidden /> 3D
+              </button>
             )}
           </div>
         )}
 
-        {activeTab === "media" && (
-          <div className="flex-1 flex flex-col min-h-0 py-3 animate-in fade-in slide-in-from-right-2 duration-300 overflow-hidden">
-            <BuildingMediaTab
-              building={building}
-              schoolId={schoolId}
-              onUpdateBuilding={onUpdateBuilding}
-            />
-          </div>
-        )}
+        {/* Open reports: a shortcut straight to them */}
+        <AnimatePresence initial={false}>
+          {open.length > 0 && tab !== "reporting" && (
+            <motion.button
+              key="alert"
+              type="button"
+              onClick={() => setTab("reporting")}
+              initial={reduce ? { opacity: 0 } : { opacity: 0, height: 0, marginTop: 0 }}
+              animate={{ opacity: 1, height: "auto", marginTop: 12 }}
+              exit={reduce ? { opacity: 0 } : { opacity: 0, height: 0, marginTop: 0 }}
+              transition={{ duration: 0.3, ease: EASE }}
+              className={cn(
+                "group flex w-full items-center gap-3 overflow-hidden rounded-2xl px-3.5 py-2.5 text-left transition-colors",
+                "bg-primary/[0.07] hover:bg-primary/[0.11] dark:bg-primary/15 dark:hover:bg-primary/20",
+              )}
+            >
+              <span className="relative flex h-2.5 w-2.5 shrink-0" aria-hidden>
+                {!reduce && <span className="absolute inset-0 animate-ping rounded-full bg-primary opacity-50" />}
+                <span className="relative h-2.5 w-2.5 rounded-full bg-primary" />
+              </span>
+              <span className="min-w-0 flex-1 text-[13px] text-slate-800 dark:text-white/85">
+                {open.length} open report{open.length === 1 ? "" : "s"}
+                <span className="block text-[11px] text-slate-500 dark:text-white/50">
+                  {[action && `${action} need${action === 1 ? "s" : ""} action`, waiting && `${waiting} waiting`].filter(Boolean).join(" · ")}
+                </span>
+              </span>
+              <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-primary dark:text-blue-300">
+                {canDecideAny ? "Review" : "View"}
+                <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden />
+              </span>
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </header>
 
-        {activeTab === "reporting" && (
-          <div className="flex-1 flex flex-col min-h-0 py-3 animate-in fade-in slide-in-from-right-2 duration-300 overflow-hidden">
-            <BuildingReportingTab
-              buildingId={building.id}
-              schoolId={schoolId}
-              onReportStatusChange={onReportStatusChange}
-            />
-          </div>
-        )}
+      {/* ── Tabs ─────────────────────────────────────────────── */}
+      <div className="shrink-0 px-5 pb-3">
+        <div role="tablist" aria-label="Building" className="flex rounded-full bg-slate-900/5 p-1 dark:bg-white/6">
+          {tabs.map((t) => {
+            const on = t.key === tab;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                id={`${ids}-tab-${t.key}`}
+                aria-selected={on}
+                aria-controls={`${ids}-panel`}
+                onClick={() => setTab(t.key)}
+                className={cn(
+                  "relative flex flex-1 items-center justify-center gap-1.5 rounded-full py-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                  on ? "text-slate-900 dark:text-white" : "text-slate-500 hover:text-slate-800 dark:text-white/55 dark:hover:text-white/85",
+                )}
+              >
+                {on && (
+                  <motion.span
+                    layoutId={`${ids}-thumb`}
+                    className="absolute inset-0 rounded-full bg-white ring-1 ring-slate-900/5 dark:bg-white/12 dark:ring-white/10"
+                    transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                  />
+                )}
+                <span className="relative">{t.label}</span>
+                {t.badge != null && (
+                  <span
+                    className={cn(
+                      "relative min-w-4.5 rounded-full px-1 text-[10px] leading-4.5 tabular-nums",
+                      t.alert ? "bg-primary text-white" : "bg-slate-900/8 text-slate-500 dark:bg-white/10 dark:text-white/60",
+                    )}
+                  >
+                    {t.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Footer */}
-      {activeTab === "details" && (
-        <div className="p-4 shrink-0 border-t border-slate-200/70 dark:border-white/8 bg-white/70 dark:bg-[#0d0f14]/70 backdrop-blur-md">
-          <Button
-            className="w-full h-11 rounded-full text-[12px] font-bold tracking-wide"
-            onClick={() => onEdit(building)}
+      {/* ── Content ──────────────────────────────────────────── */}
+      <div id={`${ids}-panel`} role="tabpanel" aria-labelledby={`${ids}-tab-${tab}`} className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 custom-scrollbar">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={tab}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: -4, transition: { duration: 0.1 } }}
+            transition={{ duration: 0.22, ease: EASE }}
           >
-            <Pencil className="w-3.5 h-3.5 mr-2" />
-            Edit building
-          </Button>
-        </div>
+            {tab === "details" && (
+              <Details building={building} cond={cond} media={media} onOpenMedia={onOpenMedia} onAllMedia={() => setTab("media")} />
+            )}
+            {tab === "media" && (
+              <BuildingMediaTab building={building} schoolId={schoolId} canEdit={canEditMedia} onUpdateBuilding={onUpdateBuilding} onOpen={onOpenMedia} onGallery={onOpenGallery} />
+            )}
+            {tab === "reporting" && (
+              <BuildingReportingTab
+                reports={reports}
+                loaded={reportsLoaded}
+                initialReportId={initialReportId}
+                canDecide={canDecide}
+                canOpenReview={canOpenReview}
+                onNew={canCreateReport ? () => setReporting(true) : undefined}
+                onPatched={onReportPatched}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      {canCreateReport && (
+        <NewReportModal
+          open={reporting}
+          schoolId={schoolId}
+          buildingId={String(building.id)}
+          buildingName={name}
+          onClose={() => setReporting(false)}
+          onSubmitted={() => {
+            setReporting(false);
+            setTab("reporting");
+            onReportSubmitted();
+          }}
+        />
       )}
     </div>
+  );
+}
+
+/* ── Details tab ─────────────────────────────────────────────────────────── */
+
+const R = 26;
+const C = 2 * Math.PI * R;
+
+function Details({
+  building,
+  cond,
+  media,
+  onOpenMedia,
+  onAllMedia,
+}: {
+  building: AnyBuilding;
+  cond: ReturnType<typeof buildingCondition>;
+  media: MediaEntry[];
+  onOpenMedia: (i: number) => void;
+  onAllMedia: () => void;
+}) {
+  const reduce = useReducedMotion();
+  const area = buildingArea(building);
+  const floors = buildingFloors(building);
+  const year = buildingYear(building);
+  const age = year ? new Date().getFullYear() - year : null;
+  const facilities = (building.facilities ?? []) as Array<{ facility_name?: string; name?: string; number_of_rooms?: number | string; count?: number | string }>;
+  const notes: string = building.buildingNotes || building.notes || "";
+  const pct = cond.overall.pct;
+
+  const facts = [
+    { label: "Use", value: buildingFunction(building), icon: Layers },
+    { label: "Floors", value: floors ? formatNumber(floors) : null, icon: Home },
+    { label: "Area", value: area ? formatArea(area) : null, icon: Ruler },
+    { label: "Built", value: year ? `${year}${age != null && age >= 0 ? ` · ${age} yrs` : ""}` : null, icon: Calendar },
+  ];
+
+  return (
+    <div className="space-y-5">
+      {/* Condition */}
+      <section aria-label="Condition" className="flex items-center gap-4 rounded-2xl bg-slate-900/[0.03] p-4 dark:bg-white/[0.04]">
+        <div className="relative h-16 w-16 shrink-0">
+          <svg viewBox="0 0 64 64" className="h-full w-full -rotate-90" aria-hidden>
+            <circle cx="32" cy="32" r={R} fill="none" strokeWidth="5" className="stroke-slate-900/8 dark:stroke-white/10" />
+            {pct != null && (
+              <motion.circle
+                cx="32"
+                cy="32"
+                r={R}
+                fill="none"
+                strokeWidth="5"
+                strokeLinecap="round"
+                className="stroke-primary"
+                strokeDasharray={C}
+                initial={reduce ? false : { strokeDashoffset: C }}
+                animate={{ strokeDashoffset: C - (pct / 100) * C }}
+                transition={{ duration: 0.9, ease: EASE }}
+              />
+            )}
+          </svg>
+          <span className="absolute inset-0 flex items-center justify-center text-sm tabular-nums text-slate-900 dark:text-white">
+            {pct != null ? pct : "—"}
+          </span>
+        </div>
+        <div className="min-w-0">
+          <p className="text-[11px] text-slate-500 dark:text-white/45">Condition</p>
+          <p className="text-lg leading-tight text-slate-900 dark:text-white">
+            {cond.overall.label}
+          </p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <Part label="Structure" v={cond.structure} />
+            <Part label="Roof" v={cond.roof} />
+          </div>
+        </div>
+      </section>
+
+      {/* Facts */}
+      <dl className="grid grid-cols-2 gap-2">
+        {facts.map((f) => (
+          <div key={f.label} className="rounded-2xl px-3.5 py-3 ring-1 ring-slate-900/6 dark:ring-white/8">
+            <dt className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-white/45">
+              <f.icon className="h-3.5 w-3.5" aria-hidden /> {f.label}
+            </dt>
+            <dd className={cn("mt-1 truncate text-[13px]", f.label === "Use" && "capitalize", f.value ? "text-slate-900 dark:text-white/90" : "text-slate-400 dark:text-white/35")}>{f.value ?? "Not recorded"}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {/* Photos peek */}
+      {media.length > 0 && (
+        <section aria-label="Photos" className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs text-slate-500 dark:text-white/50">Photos</h4>
+            <button type="button" onClick={onAllMedia} className="text-xs text-primary hover:underline">
+              See all {media.length}
+            </button>
+          </div>
+          <div className="grid grid-cols-4 gap-1.5">
+            {media.slice(0, 4).map((m, i) => (
+              <button
+                key={`${m.path}:${i}`}
+                type="button"
+                onClick={() => onOpenMedia(i)}
+                aria-label={`Open ${m.title || "photo"}`}
+                className="group relative aspect-square overflow-hidden rounded-xl bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 dark:bg-white/5"
+              >
+                {isVideoMedia(m) ? (
+                  <span className="flex h-full w-full items-center justify-center text-slate-500 dark:text-white/60">
+                    <Play className="h-4 w-4" aria-hidden />
+                  </span>
+                ) : (
+                  <img src={m.path} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                )}
+                {i === 3 && media.length > 4 && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-slate-900/55 text-sm text-white">+{media.length - 4}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Facilities */}
+      {facilities.length > 0 && (
+        <section aria-label="Facilities" className="space-y-2">
+          <h4 className="text-xs text-slate-500 dark:text-white/50">
+            Facilities <span className="tabular-nums text-slate-400 dark:text-white/35">{facilities.length}</span>
+          </h4>
+          <ul className="divide-y divide-slate-900/5 overflow-hidden rounded-2xl ring-1 ring-slate-900/6 dark:divide-white/6 dark:ring-white/8">
+            {facilities.map((f, i) => {
+              const rooms = Number(f.number_of_rooms || f.count || 0);
+              return (
+                <li key={i} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+                  <span className="truncate text-[13px] text-slate-800 dark:text-white/85">{f.facility_name || f.name || "Facility"}</span>
+                  {rooms > 0 && (
+                    <span className="shrink-0 text-[11px] tabular-nums text-slate-500 dark:text-white/50">
+                      {rooms} room{rooms === 1 ? "" : "s"}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
+      {notes && (
+        <section aria-label="Notes" className="flex gap-2.5 rounded-2xl bg-slate-900/[0.03] p-3.5 dark:bg-white/[0.04]">
+          <NotebookText className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-white/40" aria-hidden />
+          <p className="whitespace-pre-line break-words text-[13px] leading-relaxed text-slate-700 dark:text-white/75">{notes}</p>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function Part({ label, v }: { label: string; v: ConditionView }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] text-slate-600 ring-1 ring-slate-900/6 dark:bg-white/6 dark:text-white/70 dark:ring-white/8">
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: v.color }} aria-hidden />
+      {label}: {v.label}
+    </span>
   );
 }

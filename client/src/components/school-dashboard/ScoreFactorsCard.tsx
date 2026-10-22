@@ -10,12 +10,12 @@ import { EASE } from "./tokens";
 
 /** Short names; colours are the categorical chart slots, in weight order. */
 const FACTOR: Record<ComponentKey, { name: string; field: keyof SchoolMetrics; color: string }> = {
-  infrastructure: { name: "Infrastructure", field: "infrastructureScore", color: "var(--viz-1)" },
+  infrastructure: { name: "Buildings", field: "infrastructureScore", color: "var(--viz-1)" },
   buildingAge: { name: "Building age", field: "buildingAgeScore", color: "var(--viz-2)" },
-  facilityCompliance: { name: "Compliance", field: "facilityComplianceScore", color: "var(--viz-3)" },
-  accessibility: { name: "Access", field: "accessibilityScore", color: "var(--viz-4)" },
+  facilityCompliance: { name: "Facilities", field: "facilityComplianceScore", color: "var(--viz-3)" },
+  accessibility: { name: "Road access", field: "accessibilityScore", color: "var(--viz-4)" },
   population: { name: "Population", field: "populationPressureScore", color: "var(--viz-5)" },
-  resolution: { name: "Resolution", field: "resolutionRateScore", color: "var(--viz-6)" },
+  resolution: { name: "Problems fixed", field: "resolutionRateScore", color: "var(--viz-6)" },
 };
 
 interface Props {
@@ -41,7 +41,7 @@ export function ScoreFactorsCard({ metrics, onOpen, index }: Props) {
 
   return (
     <GlassCard
-      title="Score factors"
+      title="What makes the score"
       icon={Gauge}
       info={<MetricInfo id="school.conditionScore" size="xs" />}
       actionLabel="Breakdown"
@@ -53,7 +53,7 @@ export function ScoreFactorsCard({ metrics, onOpen, index }: Props) {
           {formatScore(overall)}
           <span className="text-sm font-normal text-slate-400 dark:text-white/40"> / 100</span>
         </span>
-        <span className="text-[11px] text-slate-500 dark:text-white/50">points by factor</span>
+        <span className="text-[11px] text-slate-500 dark:text-white/50">points per part</span>
       </div>
 
       <div className="mt-3">
@@ -78,7 +78,7 @@ export function ScoreFactorsCard({ metrics, onOpen, index }: Props) {
 
       <ul className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 2xl:grid-cols-3">
         {rows.map((r, i) => (
-          <li key={r.k} className="min-w-0" title={r.estimated ? "Estimated — missing data" : undefined}>
+          <li key={r.k} className="min-w-0" title={r.estimated ? "No data yet — counted as 50" : undefined}>
             <div className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ background: FACTOR[r.k].color }} aria-hidden />
               <span className="min-w-0 flex-1 truncate text-[11px] text-slate-600 dark:text-white/60">{FACTOR[r.k].name}</span>

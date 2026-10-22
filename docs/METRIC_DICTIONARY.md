@@ -70,7 +70,7 @@
 - **Shown on:** School dashboard; Decision queue (Analytics ▸ Decisions)
 - **Notes:** Recalculated automatically whenever the school profile, its buildings, surveys, Issue Reports or population data change, and nightly. Viewing a dashboard never recalculates. The share of the score that comes from measured data (coverage) is shown next to it.
 
-### Intervention Priority
+### Priority
 
 - **id:** `school.priority`
 - **Definition:** How urgently the school needs support, from its School Condition Score.
@@ -82,7 +82,7 @@
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics`
 - **Shown on:** School dashboard; Decision queue (Analytics ▸ Decisions)
 
-### Months to Intervention
+### Act within (months)
 
 - **id:** `school.urgencyMonths`
 - **Definition:** Recommended time before action is taken, from the score band.
@@ -94,7 +94,7 @@
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics`
 - **Shown on:** School dashboard; Decision queue (Analytics ▸ Decisions)
 
-### Data Completeness
+### Profile completeness
 
 - **id:** `school.dataCompleteness`
 - **Definition:** Share of 10 key profile items that are filled in.
@@ -131,7 +131,7 @@
 - **Shown on:** School dashboard
 - **Notes:** The national total uses the same rule, so it equals the sum of the school figures.
 
-### Capacity Utilisation
+### Capacity used
 
 - **id:** `school.capacityUtilisation`
 - **Definition:** How full the school is compared with its seat capacity. Above 100% means over capacity.
@@ -217,7 +217,7 @@
 
 ## Score components (school and national)
 
-### Infrastructure
+### Building condition
 
 - **id:** `component.infrastructure`
 - **Definition:** Average condition of the school's assessed buildings. Weight 35%.
@@ -229,7 +229,7 @@
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics`
 - **Shown on:** School dashboard; Decision queue (Analytics ▸ Decisions); National dashboard
 
-### Building Age Score
+### Building age
 
 - **id:** `component.buildingAge`
 - **Definition:** A 0–100 score from the average age of the buildings. Newer buildings score higher. Weight 25%. (Replaces “Depreciation”.)
@@ -242,7 +242,7 @@
 - **Shown on:** School dashboard; Decision queue (Analytics ▸ Decisions); National dashboard
 - **Notes:** This is not accounting depreciation. It only reflects age.
 
-### Facility Compliance
+### Facilities checklist
 
 - **id:** `component.facilityCompliance`
 - **Definition:** How many facility survey items are compliant. Weight 15%.
@@ -254,7 +254,7 @@
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics`
 - **Shown on:** School dashboard; Decision queue (Analytics ▸ Decisions); National dashboard
 
-### Accessibility
+### Road access (score part)
 
 - **id:** `component.accessibility`
 - **Definition:** The road-access percentage recorded for the school. Weight 10%.
@@ -266,7 +266,7 @@
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics`
 - **Shown on:** School dashboard; Decision queue (Analytics ▸ Decisions); National dashboard
 
-### Population Pressure
+### Nearby population
 
 - **id:** `component.population`
 - **Definition:** Capacity headroom compared with the school-age population within 2 km. Higher means less pressure. Weight 10%.
@@ -278,7 +278,7 @@
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics`
 - **Shown on:** School dashboard; Decision queue (Analytics ▸ Decisions); National dashboard
 
-### Resolution Rate (component)
+### Problems fixed (score part)
 
 - **id:** `component.resolution`
 - **Definition:** How reliably the school's Issue Reports get resolved. Weight 5%.
@@ -292,7 +292,7 @@
 
 ## Issue Reports (school)
 
-### Resolution Rate
+### Share fixed
 
 - **id:** `reports.resolutionRate`
 - **Definition:** Share of this school's Issue Reports that are Resolved.
@@ -305,7 +305,7 @@
 - **Shown on:** School dashboard
 - **Notes:** The Resolution Rate score component is different: it only counts reports old enough to have been resolved (see Resolution Rate (component)). The overview card and the Issue Reports tab show the same figure.
 
-### Open issues
+### Still open
 
 - **id:** `reports.openIssues`
 - **Definition:** Issue Reports not yet Resolved.
@@ -317,7 +317,7 @@
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics (reportSummary.active)`
 - **Shown on:** School dashboard
 
-### Resolved
+### Fixed
 
 - **id:** `reports.resolved`
 - **Definition:** Issue Reports that have been fixed.
@@ -329,7 +329,7 @@
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics (reportSummary.resolved)`
 - **Shown on:** School dashboard
 
-### Needs Intervention
+### Needs action
 
 - **id:** `reports.needsIntervention`
 - **Definition:** Issue Reports triaged as needing action from RTB or the district.
@@ -340,6 +340,30 @@
 - **Missing data:** 0 when there are none.
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/metrics (reportSummary.critical)`
 - **Shown on:** School dashboard
+
+### Reports
+
+- **id:** `reports.filed`
+- **Definition:** Issue Reports filed in the selected period across every school you can see.
+- **Formula:** Count of Issue Reports created in the period; the change compares the previous period of the same length.
+- **Source fields:** `issue_reports.createdAt`, `issue_reports.type`
+- **Filters:** Active schools within the user's access level; data change requests excluded. Periods: last 30 days, 90 days, 12 months, or all time.
+- **Units:** Reports
+- **Missing data:** 0 when nothing was filed; no change shown when the previous period had no reports.
+- **Endpoint:** `GET /api/v1/schools/dashboard/reporting/overview (summary.total, totalChangePct)`
+- **Shown on:** School Reporting (overview)
+
+### Schools affected
+
+- **id:** `reports.schoolsAffected`
+- **Definition:** Schools that filed at least one Issue Report in the selected period.
+- **Formula:** Distinct schools with a report in the period, out of all active schools in scope.
+- **Source fields:** `issue_reports.schoolId`, `schools.status`
+- **Filters:** Active schools within the user's access level; data change requests excluded.
+- **Units:** Schools
+- **Missing data:** 0 when no school filed a report.
+- **Endpoint:** `GET /api/v1/schools/dashboard/reporting/overview (schoolsAffected, schoolCount)`
+- **Shown on:** School Reporting (overview)
 
 ### This month vs last month
 
@@ -353,7 +377,7 @@
 - **Endpoint:** `GET /api/v1/schools/dashboard/reporting?schoolId=…`
 - **Shown on:** School dashboard
 
-### Buildings needing attention
+### Buildings that need attention
 
 - **id:** `reports.buildingsAttention`
 - **Definition:** Buildings ranked by open Issue Reports linked to them, then by poor/critical condition.
@@ -368,7 +392,7 @@
 
 ## Indicative risk (school)
 
-### Indicative risk
+### Estimated risk
 
 - **id:** `risk.overall`
 - **Definition:** A rule-of-thumb risk estimate. It is not part of the School Condition Score and is not a measurement.
@@ -381,7 +405,7 @@
 - **Shown on:** School dashboard
 - **Notes:** Rules live in server/src/modules/analytics/risk-assessment.ts.
 
-### Impact (indicative)
+### How serious
 
 - **id:** `risk.impact`
 - **Definition:** How bad the consequences would be if the risk happened.
@@ -393,7 +417,7 @@
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/risk`
 - **Shown on:** School dashboard
 
-### Probability (indicative)
+### How likely
 
 - **id:** `risk.probability`
 - **Definition:** How likely a structural or operational failure is.
@@ -405,7 +429,7 @@
 - **Endpoint:** `GET /api/v1/analytics/schools/:id/risk`
 - **Shown on:** School dashboard
 
-### Mitigation effectiveness (indicative)
+### How much it would help
 
 - **id:** `risk.mitigation`
 - **Definition:** A rough guide to how much each response could help. Each strategy shows its own rule.
@@ -431,7 +455,7 @@
 - **Endpoint:** `GET /api/v1/analytics/overview (totalSchools)`
 - **Shown on:** National dashboard
 
-### Schools by Intervention Priority
+### Schools by priority
 
 - **id:** `national.priorityCount`
 - **Definition:** How many active schools fall in each Intervention Priority band.
@@ -455,7 +479,7 @@
 - **Endpoint:** `GET /api/v1/analytics/overview (nationalAvgScore)`
 - **Shown on:** National dashboard; Decision queue (Analytics ▸ Decisions)
 
-### Average Infrastructure
+### Average building condition
 
 - **id:** `national.avgInfrastructure`
 - **Definition:** Mean Infrastructure component over scored active schools.
@@ -467,7 +491,7 @@
 - **Endpoint:** `GET /api/v1/analytics/overview (nationalAvgInfraScore, dataGaps.infrastructure)`
 - **Shown on:** National dashboard
 
-### Average Building Age Score
+### Average building age
 
 - **id:** `national.avgBuildingAgeScore`
 - **Definition:** Mean Building Age Score over scored active schools. Higher means newer buildings.
@@ -480,7 +504,7 @@
 - **Shown on:** National dashboard
 - **Notes:** Replaces the old “Buildings Depreciation” (which was 100 − this value).
 
-### Average Facility Compliance
+### Average facilities checklist
 
 - **id:** `national.avgFacilityCompliance`
 - **Definition:** Mean Facility Compliance over scored active schools.
@@ -492,7 +516,7 @@
 - **Endpoint:** `GET /api/v1/analytics/overview (nationalAvgComplianceScore)`
 - **Shown on:** National dashboard
 
-### Average Accessibility
+### Average road access
 
 - **id:** `national.avgAccessibility`
 - **Definition:** Mean Accessibility component over scored active schools.
@@ -504,7 +528,7 @@
 - **Endpoint:** `GET /api/v1/analytics/overview (nationalAvgAccessScore)`
 - **Shown on:** National dashboard
 
-### Average Population Pressure
+### Average nearby population
 
 - **id:** `national.avgPopulation`
 - **Definition:** Mean Population Pressure component over scored active schools. Higher means more headroom.
@@ -516,7 +540,7 @@
 - **Endpoint:** `GET /api/v1/analytics/overview (nationalAvgPopScore, dataGaps.population)`
 - **Shown on:** National dashboard
 
-### Capacity Utilisation
+### Capacity used
 
 - **id:** `national.capacityUtilisation`
 - **Definition:** Students enrolled compared with seat capacity, across schools that have capacity on record.
@@ -553,7 +577,7 @@
 - **Endpoint:** `GET /api/v1/analytics/overview (totalTeachers)`
 - **Shown on:** National dashboard
 
-### Survey Coverage
+### Schools checked
 
 - **id:** `national.surveyCoverage`
 - **Definition:** Share of active schools with at least one facility survey.
@@ -565,7 +589,7 @@
 - **Endpoint:** `GET /api/v1/analytics/overview (surveyCompletionRate)`
 - **Shown on:** National dashboard
 
-### Map Coverage
+### Schools mapped
 
 - **id:** `national.mapCoverage`
 - **Definition:** Share of active schools with a processed site map (KMZ).
@@ -577,7 +601,7 @@
 - **Endpoint:** `GET /api/v1/analytics/overview (kmzCoverageRate)`
 - **Shown on:** National dashboard
 
-### Estimated rehabilitation budget
+### Estimated repair cost
 
 - **id:** `national.estimatedBudget`
 - **Definition:** Planning-grade cost estimate for the recommended works. Not a bill of quantities.
@@ -589,7 +613,7 @@
 - **Endpoint:** `GET /api/v1/analytics/overview (totalEstimatedBudgetRwf)`
 - **Shown on:** Decision queue (Analytics ▸ Decisions)
 
-### Assessed schools
+### Scored schools
 
 - **id:** `national.scoredSchools`
 - **Definition:** Active schools that have a School Condition Score.
@@ -676,7 +700,7 @@
 - **Endpoint:** `GET /api/v1/population/summary`
 - **Shown on:** Population Analytics
 
-### Students per resident (2 km)
+### Students per nearby resident (2 km)
 
 - **id:** `population.studentsPerResident`
 - **Definition:** How many enrolled students a school has for each person living within 2 km.

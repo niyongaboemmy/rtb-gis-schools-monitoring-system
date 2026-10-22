@@ -104,6 +104,21 @@ export class IssueReport {
   @Column({ nullable: true })
   resolvedAt: Date;
 
+  /** Reviewer's note from the last status change (why it was triaged so). */
+  @Column({ type: 'text', nullable: true })
+  reviewNote: string | null;
+
+  /** When a reviewer last changed the status. */
+  @Column({ type: 'timestamptz', nullable: true })
+  reviewedAt: Date | null;
+
+  @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'reviewed_by' })
+  reviewer: User | null;
+
+  @Column({ name: 'reviewed_by', type: 'uuid', nullable: true })
+  reviewedById: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

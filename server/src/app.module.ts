@@ -34,6 +34,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { EventsModule } from './modules/events/events.module';
 import { ScopeModule } from './common/scope/scope.module';
 import { SiteFeaturesModule } from './modules/site-features/site-features.module';
+import { SchoolLocationModule } from './modules/schools/location/school-location.module';
 import { AuditContextGuard } from './common/audit/audit-context.guard';
 import { AuditInterceptor } from './common/audit/audit.interceptor';
 import { RequestContextMiddleware } from './common/audit/request-context.middleware';
@@ -135,6 +136,7 @@ import { RequestContextMiddleware } from './common/audit/request-context.middlew
     EventsModule,
     ScopeModule,
     SiteFeaturesModule,
+    SchoolLocationModule,
   ],
   controllers: [AppController],
   providers: [

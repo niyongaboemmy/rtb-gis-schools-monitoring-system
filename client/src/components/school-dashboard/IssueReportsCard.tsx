@@ -25,7 +25,7 @@ export function IssueReportsCard({ summary, reporting, onOpen, index }: Props) {
 
   return (
     <GlassCard
-      title="Issue Reports"
+      title="Reported problems"
       icon={FileText}
       tone="text-primary"
       info={<MetricInfo id="reports.openIssues" size="xs" />}
@@ -66,7 +66,7 @@ export function IssueReportsCard({ summary, reporting, onOpen, index }: Props) {
             value: m.created,
             tip: (
               <span>
-                {m.label}: <b>{m.created}</b> filed · {m.resolved} resolved
+                {m.label}: <b>{m.created}</b> reported · {m.resolved} fixed
               </span>
             ),
           }))}
@@ -88,7 +88,7 @@ export function IssueReportsCard({ summary, reporting, onOpen, index }: Props) {
             {change == null ? "— vs last mo." : `${change > 0 ? "+" : ""}${change}%`}
           </span>
           <span className="rounded-full bg-slate-900/5 px-2 py-0.5 font-medium text-slate-600 dark:bg-white/6 dark:text-white/60" title="Resolution rate">
-            {summary?.resolutionRate == null ? "—" : formatPercent(summary.resolutionRate)} resolved
+            {summary?.resolutionRate == null ? "—" : formatPercent(summary.resolutionRate)} fixed
           </span>
           {oldest != null && oldest > 30 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 font-medium text-red-700 dark:text-red-300" title="Oldest open report">

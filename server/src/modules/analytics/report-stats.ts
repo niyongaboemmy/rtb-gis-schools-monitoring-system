@@ -403,3 +403,261 @@ export function buildingsNeedingAttention(
   }
   return out;
 }
+
+// ─── Reporting overview (all schools in the caller's scope) ───────────────────
+
+export const REPORTING_PERIODS = ['30d', '90d', '12m', 'all'] as const;
+export type ReportingPeriod = (typeof REPORTING_PERIODS)[number];
+const PERIOD_DAYS: Record<ReportingPeriod, number | null> = {
+  '30d': 30,
+  '90d': 90,
+  '12m': 365,
+  all: null,
+};
+
+export interface OverviewSchool {
+  id: string;
+  name: string;
+  code?: string | null;
+  district?: string | null;
+  province?: string | null;
+}
+
+export interface OverviewReportRow extends ReportRow {
+  schoolId: string;
+}
+
+export interface TrendBucket {
+  key: string;
+  label: string;
+  created: number;
+  resolved: number;
+}
+
+export interface SchoolReportingRow {
+  schoolId: string;
+  name: string;
+  code: string | null;
+  district: string | null;
+  province: string | null;
+  total: number;
+  /** Pending + Needs Intervention + Failed (same rule as the summary). */
+  open: number;
+  needIntervention: number;
+  resolved: number;
+  resolutionRate: number | null;
+  oldestOpenDays: number | null;
+}
+
+export interface ReportingOverview {
+  period: ReportingPeriod;
+  from: string | null;
+  to: string;
+  bucket: 'day' | 'week' | 'month';
+  summary: Omit<IssueReportSummary, 'recentCritical'>;
+  statusCounts: StatusCounts;
+  schoolsAffected: number;
+  /** Active schools in scope — the denominator for "schools affected". */
+  schoolCount: number;
+  /** Same figures for the previous window of equal length; null for "all". */
+  previous: {
+    total: number;
+    resolved: number;
+    resolutionRate: number | null;
+  } | null;
+  /** % change in reports filed vs the previous window; null without a base. */
+  totalChangePct: number | null;
+  trend: TrendBucket[];
+  /** Schools with reports in the window, most urgent first. */
+  schools: SchoolReportingRow[];
+  /** Newest "Needs Intervention" reports in the window. */
+  urgent: Array<{
+    id: string;
+    schoolId: string;
+    schoolName: string;
+    description: string;
+    facilityId: string | null;
+    createdAt: string;
+  }>;
+}
+
+const dayFmt = new Intl.DateTimeFormat('en-CA', {
+  timeZone: REPORT_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+const dayLabelFmt = new Intl.DateTimeFormat('en-GB', {
+  timeZone: REPORT_TIME_ZONE,
+  day: 'numeric',
+  month: 'short',
+});
+/** "YYYY-MM-DD" of an instant in Kigali time. */
+export const kigaliDayKey = (d: Date | string): string =>
+  dayFmt.format(new Date(d));
+
+/**
+ * Trend buckets ending today (Kigali): 30 days → daily, 90 days → 13 weekly
+ * buckets, 12 months / all → monthly (12 or 24). Filed by creation date,
+ * resolved by resolution date.
+ */
+function trendBuckets(
+  rows: ReportRow[],
+  period: ReportingPeriod,
+  now: Date,
+): { bucket: ReportingOverview['bucket']; trend: TrendBucket[] } {
+  if (period === '12m' || period === 'all') {
+    const months = lastKigaliMonths(now, period === '12m' ? 12 : 24).map(
+      (m) => ({ ...m, created: 0, resolved: 0 }),
+    );
+    const at = new Map(months.map((m, i) => [m.key, i]));
+    for (const r of rows) {
+      const c = at.get(kigaliMonthKey(r.createdAt));
+      if (c !== undefined) months[c].created++;
+      if (r.status === ReportStatus.SOLVED && ms(r.resolvedAt) !== null) {
+        const s = at.get(kigaliMonthKey(r.resolvedAt as Date | string));
+        if (s !== undefined) months[s].resolved++;
+      }
+    }
+    return { bucket: 'month', trend: months };
+  }
+
+  // Kigali has no DST, so whole-day steps back from now land on each day.
+  const days = period === '30d' ? 30 : 91;
+  const step = period === '30d' ? 1 : 7;
+  const dayKeys = Array.from({ length: days }, (_, i) =>
+    kigaliDayKey(new Date(now.getTime() - (days - 1 - i) * DAY_MS)),
+  );
+  const dayIndex = new Map(dayKeys.map((k, i) => [k, i]));
+  const trend: TrendBucket[] = [];
+  for (let i = 0; i < days; i += step) {
+    const first = new Date(now.getTime() - (days - 1 - i) * DAY_MS);
+    trend.push({
+      key: dayKeys[i],
+      label: dayLabelFmt.format(first),
+      created: 0,
+      resolved: 0,
+    });
+  }
+  const slot = (d: Date | string | null | undefined) => {
+    if (ms(d) === null) return undefined;
+    const i = dayIndex.get(kigaliDayKey(d as Date | string));
+    return i === undefined ? undefined : Math.floor(i / step);
+  };
+  for (const r of rows) {
+    const c = slot(r.createdAt);
+    if (c !== undefined) trend[c].created++;
+    if (r.status === ReportStatus.SOLVED) {
+      const s = slot(r.resolvedAt);
+      if (s !== undefined) trend[s].resolved++;
+    }
+  }
+  return { bucket: period === '30d' ? 'day' : 'week', trend };
+}
+
+/**
+ * Network-wide Issue Report figures for one period, from the same rules as
+ * the school dashboard (summariseIssueReports), so a school's numbers agree
+ * on both pages. Change requests are excluded.
+ */
+export function reportingOverview(
+  allRows: OverviewReportRow[],
+  schools: OverviewSchool[],
+  period: ReportingPeriod,
+  now: Date,
+): ReportingOverview {
+  const rows = issueReportsOnly(allRows);
+  const days = PERIOD_DAYS[period];
+  const from = days === null ? null : now.getTime() - days * DAY_MS;
+  const inWindow = rows.filter((r) => {
+    const t = ms(r.createdAt);
+    return t !== null && (from === null || t >= from);
+  });
+  const prevRows =
+    from === null || days === null
+      ? null
+      : rows.filter((r) => {
+          const t = ms(r.createdAt);
+          return t !== null && t >= from - days * DAY_MS && t < from;
+        });
+
+  const { recentCritical: _drop, ...summary } = summariseIssueReports(
+    inWindow,
+    now,
+  );
+  void _drop;
+  const prevSummary = prevRows ? summariseIssueReports(prevRows, now) : null;
+
+  const schoolById = new Map(schools.map((s) => [s.id, s]));
+  const bySchool = new Map<string, OverviewReportRow[]>();
+  for (const r of inWindow) {
+    const list = bySchool.get(r.schoolId) ?? [];
+    list.push(r);
+    bySchool.set(r.schoolId, list);
+  }
+  const schoolRows: SchoolReportingRow[] = [...bySchool.entries()].map(
+    ([id, list]) => {
+      const s = summariseIssueReports(list, now);
+      const info = schoolById.get(id);
+      return {
+        schoolId: id,
+        name: info?.name ?? 'Unknown school',
+        code: info?.code ?? null,
+        district: info?.district ?? null,
+        province: info?.province ?? null,
+        total: s.total,
+        open: s.active,
+        needIntervention: s.critical,
+        resolved: s.resolved,
+        resolutionRate: s.resolutionRate,
+        oldestOpenDays: s.oldestOpenDays,
+      };
+    },
+  );
+  schoolRows.sort(
+    (a, b) =>
+      b.needIntervention - a.needIntervention ||
+      b.open - a.open ||
+      (b.oldestOpenDays ?? -1) - (a.oldestOpenDays ?? -1) ||
+      a.name.localeCompare(b.name),
+  );
+
+  const urgent = inWindow
+    .filter((r) => r.status === ReportStatus.NEED_INTERVENTION)
+    .sort((a, b) => (ms(b.createdAt) ?? 0) - (ms(a.createdAt) ?? 0))
+    .slice(0, 6)
+    .map((r) => ({
+      id: r.id,
+      schoolId: r.schoolId,
+      schoolName: schoolById.get(r.schoolId)?.name ?? 'Unknown school',
+      description: r.description ?? '',
+      facilityId: r.facilityId ?? null,
+      createdAt: new Date(r.createdAt).toISOString(),
+    }));
+
+  // All rows: a report filed earlier but resolved in the window still counts as resolved there.
+  const { bucket, trend } = trendBuckets(rows, period, now);
+  return {
+    period,
+    from: from === null ? null : new Date(from).toISOString(),
+    to: now.toISOString(),
+    bucket,
+    summary,
+    statusCounts: countByStatus(inWindow),
+    schoolsAffected: bySchool.size,
+    schoolCount: schools.length,
+    previous: prevSummary
+      ? {
+          total: prevSummary.total,
+          resolved: prevSummary.resolved,
+          resolutionRate: prevSummary.resolutionRate,
+        }
+      : null,
+    totalChangePct: prevSummary
+      ? pctChange(summary.total, prevSummary.total)
+      : null,
+    trend,
+    schools: schoolRows.slice(0, 50),
+    urgent,
+  };
+}

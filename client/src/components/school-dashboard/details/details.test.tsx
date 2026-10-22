@@ -124,7 +124,7 @@ describe("<RiskDetail />", () => {
         <RiskDetail risk={risk} />
       </>,
     );
-    expect(screen.getByText(/^Indicative —/)).toBeInTheDocument();
+    expect(screen.getByText(/^An estimate to help plan/)).toBeInTheDocument();
     expect(screen.getByText("1 of 2")).toBeInTheDocument(); // drivers counted
     expect(screen.getByRole("button", { name: /Infrastructure deterioration: how is this worked out/ })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Risk map: 1 Infrastructure deterioration, impact 33, probability 29$/ })).toBeInTheDocument();
@@ -133,13 +133,13 @@ describe("<RiskDetail />", () => {
 
   it("labels a factor without data as unknown and not counted", () => {
     wrap(<RiskDetail risk={risk} />);
-    expect(screen.getByText("Unknown — no data")).toBeInTheDocument();
-    expect(screen.getByText("Not counted in the overall risk")).toBeInTheDocument();
+    expect(screen.getAllByText("No data")[0]).toBeInTheDocument();
+    expect(screen.getByText("Not counted in the total")).toBeInTheDocument();
   });
 
   it("explains when risk is not available", () => {
     wrap(<RiskDetail risk={null} />);
-    expect(screen.getByText(/not available yet/)).toBeInTheDocument();
+    expect(screen.getByText(/not ready yet/)).toBeInTheDocument();
   });
 });
 
@@ -170,7 +170,7 @@ describe("<ReportsDetail />", () => {
     wrap(<ReportsSummary data={reporting} />);
     expect(screen.getByText("33%")).toBeInTheDocument();
     expect(screen.getByText("2 of 6")).toBeInTheDocument();
-    expect(screen.getByText("1 need intervention")).toBeInTheDocument();
+    expect(screen.getByText("1 needs action")).toBeInTheDocument();
     // No resolved report with a valid date → a dash, never "0.0"
     expect(screen.queryByText(/0\.0/)).toBeNull();
     expect(screen.getByText("Oldest open: 45 days")).toBeInTheDocument();
@@ -188,7 +188,7 @@ describe("<ReportsDetail />", () => {
     wrap(<ReportsDetail schoolId="s" data={reporting} />);
     fireEvent.click(screen.getByRole("tab", { name: /Reports/ }));
     const group = screen.getByRole("group", { name: "Filter by status" });
-    expect(within(group).getByRole("button", { name: /Pending\s*3/ })).toHaveAttribute("aria-pressed", "false");
+    expect(within(group).getByRole("button", { name: /Waiting\s*3/ })).toHaveAttribute("aria-pressed", "false");
     expect(await screen.findByText("No Issue Reports for this school yet")).toBeInTheDocument();
   });
 });
@@ -204,7 +204,7 @@ describe("<BuildingsDetail />", () => {
     const onClick = vi.fn();
     wrap(<BuildingsDetail buildings={buildings} onBuildingClick={onClick} />);
     const names = screen.getAllByRole("button", { name: /show on map/ }).map((b) => b.getAttribute("aria-label"));
-    expect(names).toEqual(["Bravo, Critical: show on map", "Alpha, Good: show on map", "Charlie, Not assessed: show on map"]);
+    expect(names).toEqual(["Bravo, Critical: show on map", "Alpha, Good: show on map", "Charlie, Not checked: show on map"]);
     fireEvent.click(screen.getByRole("button", { name: /^Good/ }));
     expect(screen.getAllByRole("button", { name: /show on map/ })).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: /Alpha, Good/ }));

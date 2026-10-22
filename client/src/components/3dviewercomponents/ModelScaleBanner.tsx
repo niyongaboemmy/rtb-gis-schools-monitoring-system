@@ -8,7 +8,7 @@ export const ModelScaleBanner: React.FC<{ warning: string; factor: number | null
   return (
     <div
       role="status"
-      className="pointer-events-auto absolute bottom-16 left-1/2 z-30 flex w-[calc(100vw-16px)] max-w-xl -translate-x-1/2 items-start gap-2 rounded-xl border border-amber-400/40 bg-amber-50/95 px-3 py-2 text-xs text-amber-900 shadow-lg dark:bg-amber-950/90 dark:text-amber-100"
+      className="pointer-events-auto absolute bottom-16 left-1/2 z-30 flex w-[calc(100vw-16px)] max-w-xl -translate-x-1/2 items-start gap-2 rounded-xl border border-primary/25 bg-white/95 px-3 py-2 text-xs text-slate-900 shadow-lg dark:bg-[hsl(224_40%_8%)]/95 dark:text-white"
     >
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
       <p className="flex-1">
@@ -20,7 +20,7 @@ export const ModelScaleBanner: React.FC<{ warning: string; factor: number | null
         type="button"
         onClick={() => setOpen(false)}
         aria-label="Dismiss scale warning"
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 dark:hover:bg-amber-900"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:hover:bg-white/10"
       >
         <X className="h-4 w-4" />
       </button>

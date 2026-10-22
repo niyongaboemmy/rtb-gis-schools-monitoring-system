@@ -46,6 +46,7 @@ import {
   SiteFeaturesService,
   type ActingUser,
 } from '../site-features/site-features.service';
+import { SchoolLocationService } from '../schools/location/school-location.service';
 import type { LegacySiteAnnotationDto } from '../site-features/dto/site-feature.dto';
 import { Readable } from 'stream';
 import unzipper from 'unzipper';
@@ -100,6 +101,7 @@ export class KmzService implements OnModuleInit {
     @InjectQueue(KMZ_QUEUE) private readonly kmzQueue: Queue,
     @Optional() private readonly siteFeatures?: SiteFeaturesService,
     @Optional() private readonly eventEmitter?: EventEmitter2,
+    @Optional() private readonly schoolLocation?: SchoolLocationService,
   ) {
     // Warm the GLB optimizer (installs its deps once if the deploy didn't).
     void ensureGlbTools();
@@ -254,7 +256,11 @@ export class KmzService implements OnModuleInit {
               source: 'glb:reprojected',
             }
           : deriveCoordinateFromGlb(fileBuffer);
-      await this.syncSchoolCoordinate(schoolId, derivedCoord).catch(() => {});
+      await this.syncSchoolCoordinate(
+        schoolId,
+        derivedCoord,
+        isRestore ? 'restore' : 'glb',
+      ).catch(() => {});
 
       // 3b. Georeference origin + model scale check (WS5.3 / WS6.4).
       await this.writeModelGeoref(
@@ -495,37 +501,18 @@ export class KmzService implements OnModuleInit {
   }
 
   /**
-   * Overwrite a school's latitude/longitude with a coordinate derived from an
-   * uploaded KMZ/GLB. No-op when the coordinate is missing or implausible.
+   * Hand a coordinate read from an uploaded file to SchoolLocationService —
+   * the one place that decides whether it replaces the school's location
+   * (a KMZ upload always does; a 3D model only fills a missing or
+   * model-derived point; a restore / re-optimise never does).
    */
   private async syncSchoolCoordinate(
     schoolId: string,
     coord: DerivedCoordinate | null,
+    kind: 'kmz' | 'glb' | 'restore' = 'kmz',
   ): Promise<void> {
-    if (!coord || !isPlausibleLatLng(coord.lat, coord.lng)) return;
-    const lat = Number(coord.lat.toFixed(7));
-    const lng = Number(coord.lng.toFixed(7));
-
-    const school = await this.schoolRepository.findOne({
-      where: { id: schoolId },
-      select: ['id', 'latitude', 'longitude'],
-    });
-    if (
-      school &&
-      Number(school.latitude) === lat &&
-      Number(school.longitude) === lng
-    ) {
-      return;
-    }
-
-    await this.schoolRepository.update(schoolId, {
-      latitude: lat,
-      longitude: lng,
-    });
-    this.logger.log(
-      `School ${schoolId} coordinates set from upload (${coord.source}): ` +
-        `${school?.latitude ?? '?'},${school?.longitude ?? '?'} -> ${lat},${lng}`,
-    );
+    if (!this.schoolLocation) return;
+    await this.schoolLocation.setDerived(schoolId, coord, kind);
   }
 
   async processGeospatialBuffer(
@@ -2310,26 +2297,30 @@ export class KmzService implements OnModuleInit {
     };
   }
 
-  /** Pull representative [lng, lat] pairs out of parsed KML placemarks. */
+  /**
+   * Every [lng, lat] vertex drawn in the parsed KML placemarks (points,
+   * lines, polygon rings, multi-geometries), capped for very large files.
+   */
   private collectPlacemarkPoints(placemarks: any[]): Array<[number, number]> {
     const out: Array<[number, number]> = [];
-    for (const pm of placemarks || []) {
-      const geoms = [
-        pm?.Point?.coordinates,
-        pm?.Polygon?.outerBoundaryIs?.LinearRing?.coordinates,
-        pm?.LineString?.coordinates,
-        pm?.MultiGeometry?.Point?.coordinates,
-      ];
-      for (const raw of geoms) {
-        const coords = this.parseKmlCoordinates(raw);
-        if (coords && coords.length) {
-          const [lng, lat] = coords[0];
-          if (Number.isFinite(lng) && Number.isFinite(lat))
-            out.push([lng, lat]);
-          break;
-        }
+    const MAX = 20000;
+    const asArray = (v: unknown): any[] => (Array.isArray(v) ? v : v ? [v] : []);
+    const push = (raw: unknown) => {
+      const coords = this.parseKmlCoordinates(raw as any);
+      for (const c of coords || []) {
+        if (out.length >= MAX) return;
+        const [lng, lat] = c;
+        if (Number.isFinite(lng) && Number.isFinite(lat)) out.push([lng, lat]);
       }
-    }
+    };
+    const walk = (g: any) => {
+      if (!g || out.length >= MAX) return;
+      asArray(g.Point).forEach((p) => push(p?.coordinates));
+      asArray(g.LineString).forEach((l) => push(l?.coordinates));
+      asArray(g.Polygon).forEach((p) => push(p?.outerBoundaryIs?.LinearRing?.coordinates));
+      asArray(g.MultiGeometry).forEach(walk);
+    };
+    for (const pm of placemarks || []) walk(pm);
     return out;
   }
 

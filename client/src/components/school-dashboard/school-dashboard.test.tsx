@@ -40,11 +40,11 @@ const metrics = {
 describe("<ScoreBreakdown />", () => {
   it("shows score × weight = points, adding up to the score", () => {
     wrap(<ScoreBreakdown metrics={metrics} />);
-    const infra = screen.getByRole("rowheader", { name: /Infrastructure/ }).closest("tr")!;
+    const infra = screen.getByRole("rowheader", { name: /Building condition/ }).closest("tr")!;
     expect(within(infra).getByText("35")).toBeInTheDocument(); // 100 × 35 %
     expect(screen.getByText("Σ 70 → rounded")).toBeInTheDocument();
-    expect(screen.getAllByText("Estimated")).toHaveLength(3);
-    expect(screen.getAllByText("Measured")).toHaveLength(3);
+    expect(screen.getAllByText("No data")).toHaveLength(3);
+    expect(screen.getAllByText("Recorded")).toHaveLength(3);
   });
 });
 
@@ -92,7 +92,7 @@ describe("<RiskCard />", () => {
     const bars = screen.getByRole("list", { name: "Risk by factor" });
     expect(within(bars).getByText("Slow fixes")).toBeInTheDocument();
     expect(within(bars).queryByText(/Failed repairs/)).toBeNull(); // does not apply
-    expect(screen.getByText(/1 unknown/)).toBeInTheDocument();
+    expect(screen.getByText(/1 without data/)).toBeInTheDocument();
   });
 });
 
@@ -100,7 +100,7 @@ describe("<DataQualityCard />", () => {
   it("marks estimated components and says how to fix them", () => {
     wrap(<DataQualityCard metrics={metrics} />);
     const missing = screen.getByRole("list", { name: "Missing data to collect" });
-    expect(missing).toHaveTextContent(/Population.*Run a population sync/);
+    expect(missing).toHaveTextContent(/Population.*Load the population data/);
     expect(missing).not.toHaveTextContent("Building condition"); // measured → not listed
     expect(screen.getByText("80%")).toBeInTheDocument();
   });

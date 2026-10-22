@@ -398,8 +398,9 @@ export class SeedService implements OnModuleInit {
         province: 'Eastern Province',
         district: 'Kayonza',
         sector: 'Kabare',
-        latitude: -1.9441,
-        longitude: 30.0619,
+        // Kayonza (Eastern Province) — the old point was in Kigali.
+        latitude: -1.8957,
+        longitude: 30.6286,
         establishedYear: 1998,
         totalStudents: 450,
         totalTeachers: 28,
@@ -519,7 +520,10 @@ export class SeedService implements OnModuleInit {
     ];
 
     for (const s of schools) {
-      await this.schoolRepo.save(this.schoolRepo.create(s));
+      await this.schoolRepo.save(
+        // Sample points: a model may refine them, a person or a KMZ overrides.
+        this.schoolRepo.create({ ...s, locationSource: 'seed' as const }),
+      );
     }
     this.logger.log(`✅ Seeded ${schools.length} sample schools`);
   }

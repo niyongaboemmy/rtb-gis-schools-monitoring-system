@@ -1,3 +1,4 @@
+import { schoolPoint } from "../lib/school-location";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type L from "leaflet";
@@ -34,9 +35,10 @@ const num = (v: unknown) => {
 };
 
 function toPlotted(s: School): PlottedSchool | null {
-  const lat = parseFloat(String(s.latitude));
-  const lng = parseFloat(String(s.longitude));
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return null;
+  // Only real points in Rwanda are plotted (not 0,0, swapped or abroad).
+  const p = schoolPoint(s);
+  if (!p) return null;
+  const { lat, lng } = p;
   return {
     school: s,
     lat,

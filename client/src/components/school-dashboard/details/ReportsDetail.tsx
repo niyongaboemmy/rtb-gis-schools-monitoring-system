@@ -35,12 +35,12 @@ export function ReportsSummary({ data }: { data: ReportingData | null }) {
       <SummaryStat
         label="Open"
         value={formatNumber(s?.active ?? null)}
-        hint={urgent > 0 ? `${formatNumber(urgent)} need intervention` : "none urgent"}
+        hint={urgent > 0 ? `${formatNumber(urgent)} ${urgent === 1 ? "needs" : "need"} action` : "none urgent"}
         accent={urgent > 0 ? REPORT_STATUS[0].color : undefined}
         info={<MetricInfo id="reports.openIssues" size="xs" />}
       />
       <SummaryStat
-        label="Resolved"
+        label="Fixed"
         value={s?.resolutionRate == null ? "—" : formatPercent(s.resolutionRate)}
         hint={`${formatNumber(s?.resolved ?? null)} of ${formatNumber(s?.total ?? null)}`}
         accent={REPORT_STATUS[3].color}
@@ -48,7 +48,7 @@ export function ReportsSummary({ data }: { data: ReportingData | null }) {
         info={<MetricInfo id="reports.resolutionRate" size="xs" />}
       />
       <SummaryStat
-        label="Days to resolve"
+        label="Days to fix"
         value={s?.avgResolutionDays == null ? "—" : formatNumber(s.avgResolutionDays, 1)}
         hint={s?.oldestOpenDays != null ? `Oldest open: ${formatNumber(s.oldestOpenDays)} days` : "average"}
       />
@@ -201,8 +201,8 @@ export function ReportsDetail({ schoolId, data, loading = false, error = false, 
               <MonthBars
                 ariaLabel={`Reports filed and resolved per month: ${data.months.map((m) => `${m.label} ${m.created} filed, ${m.resolved} resolved`).join("; ")}`}
                 series={[
-                  { key: "created", label: "Filed", color: BRAND },
-                  { key: "resolved", label: "Resolved", color: REPORT_STATUS[3].color },
+                  { key: "created", label: "Reported", color: BRAND },
+                  { key: "resolved", label: "Fixed", color: REPORT_STATUS[3].color },
                 ]}
                 data={data.months.map((m) => ({ key: m.key, label: m.label, values: { created: m.created, resolved: m.resolved } }))}
               />

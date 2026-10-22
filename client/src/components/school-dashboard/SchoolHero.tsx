@@ -15,12 +15,12 @@ const BANDS = ["critical", "high", "medium", "low"] as const;
 
 /** Factor → its score field and chart colour (same slots as the Score factors card). */
 const FACTORS: Record<ComponentKey, { name: string; field: keyof SchoolMetrics; color: string }> = {
-  infrastructure: { name: "Infrastructure", field: "infrastructureScore", color: "var(--viz-1)" },
+  infrastructure: { name: "Buildings", field: "infrastructureScore", color: "var(--viz-1)" },
   buildingAge: { name: "Building age", field: "buildingAgeScore", color: "var(--viz-2)" },
-  facilityCompliance: { name: "Compliance", field: "facilityComplianceScore", color: "var(--viz-3)" },
-  accessibility: { name: "Access", field: "accessibilityScore", color: "var(--viz-4)" },
+  facilityCompliance: { name: "Facilities", field: "facilityComplianceScore", color: "var(--viz-3)" },
+  accessibility: { name: "Road access", field: "accessibilityScore", color: "var(--viz-4)" },
   population: { name: "Population", field: "populationPressureScore", color: "var(--viz-5)" },
-  resolution: { name: "Resolution", field: "resolutionRateScore", color: "var(--viz-6)" },
+  resolution: { name: "Problems fixed", field: "resolutionRateScore", color: "var(--viz-6)" },
 };
 
 interface SchoolHeroProps {
@@ -133,7 +133,7 @@ export function SchoolHero({ name, code, district, province, mapped, metrics, on
             >
               <span
                 aria-hidden
-                className="absolute inset-3 rounded-full bg-white/70 shadow-[0_20px_60px_-20px_rgba(15,23,42,0.35)] backdrop-blur-xl transition-transform duration-500 group-hover:scale-[1.04] dark:bg-white/[0.06] dark:shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)]"
+                className="absolute inset-3 rounded-full bg-white/80 shadow-sm ring-1 ring-slate-900/6 transition-transform duration-500 group-hover:scale-[1.04] dark:bg-white/[0.06] dark:ring-white/10"
               />
               <svg viewBox="0 0 128 128" className="absolute inset-0 h-full w-full -rotate-90 overflow-visible" aria-hidden>
                 <circle cx="64" cy="64" r={R} fill="none" strokeWidth="7" className="stroke-slate-900/6 dark:stroke-white/8" />
@@ -149,7 +149,6 @@ export function SchoolHero({ name, code, district, province, mapped, metrics, on
                   initial={{ strokeDashoffset: C }}
                   animate={{ strokeDashoffset: C * (1 - (hasScore ? score : 0) / 100) }}
                   transition={{ duration: reduce ? 0 : 1.6, ease: EASE, delay: 0.3 }}
-                  style={{ filter: `drop-shadow(0 0 12px ${color}88)` }}
                 />
               </svg>
               {/* orbiting factor dots (size = factor score) */}
@@ -168,7 +167,7 @@ export function SchoolHero({ name, code, district, province, mapped, metrics, on
                     <motion.span
                       key={k}
                       title={`${FACTORS[k].name}: ${formatScore(raw == null ? null : v)}`}
-                      className="pointer-events-auto absolute rounded-full shadow-[0_0_10px_currentColor] ring-[1.5px] ring-white/80 dark:ring-[#0a1122]/80"
+                      className="pointer-events-auto absolute rounded-full ring-[1.5px] ring-white/80 dark:ring-[#0a1122]/80"
                       style={{
                         width: size,
                         height: size,
@@ -223,7 +222,7 @@ export function SchoolHero({ name, code, district, province, mapped, metrics, on
                 </dd>
               </div>
               <div className="border-t border-slate-900/6 pt-3 dark:border-white/8">
-                <dt className="text-[10px] uppercase tracking-[0.14em] text-slate-500 dark:text-white/50">Measured</dt>
+                <dt className="text-[10px] uppercase tracking-[0.14em] text-slate-500 dark:text-white/50">Real data</dt>
                 <dd className="mt-1 flex items-center gap-2">
                   <span className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-900/8 dark:bg-white/10" aria-hidden>
                     <motion.span

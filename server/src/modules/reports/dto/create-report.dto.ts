@@ -7,6 +7,7 @@ import {
   IsUUID,
   IsEnum,
   Matches,
+  MaxLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { OmitType, PartialType } from '@nestjs/swagger';
@@ -78,4 +79,10 @@ export class UpdateReportStatusDto {
   @IsEnum(ReportStatus)
   @IsNotEmpty()
   status: ReportStatus;
+
+  /** Why the report was triaged this way (shown to the school). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  note?: string;
 }

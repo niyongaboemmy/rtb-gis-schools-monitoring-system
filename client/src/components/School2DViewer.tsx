@@ -3,6 +3,10 @@ import "ol/ol.css";
 import Overlay from "ol/Overlay";
 import VectorSource from "ol/source/Vector";
 import { fromLonLat } from "ol/proj";
+import { framePadding, pickFrame } from "./2dviewercomponents/frame";
+import { RWANDA_CENTER, schoolPoint } from "../lib/school-location";
+import { connectSocket } from "../lib/socket";
+import { useSchoolsStore } from "../store/schoolsStore";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
@@ -52,6 +56,11 @@ import { useMapInteractions } from "./2dviewercomponents/hooks/useMapInteraction
 import { useSpatialDataSync } from "./2dviewercomponents/hooks/useSpatialDataSync";
 import { useMapMethods } from "./2dviewercomponents/hooks/useMapMethods";
 import { useReportIndicators } from "./2dviewercomponents/hooks/useReportIndicators";
+import { useSchoolReports } from "./2dviewercomponents/hooks/useSchoolReports";
+import { MediaViewer } from "./2dviewercomponents/media/MediaViewer";
+import { MediaGallery } from "./2dviewercomponents/media/MediaGallery";
+import { collectMedia, collectReportMedia, type GalleryItem } from "./2dviewercomponents/media/media-utils";
+import { useBuildingPanelAccess } from "./2dviewercomponents/hooks/useBuildingPanelAccess";
 import { useSchoolLocationEditor } from "./2dviewercomponents/hooks/useSchoolLocationEditor";
 import { SchoolLocationEditorPanel } from "./2dviewercomponents/SchoolLocationEditorPanel";
 import { useToast } from "./ui/toast";
@@ -80,7 +89,7 @@ import {
   readViewerDeepLink,
   saveDisplayUnit,
   toolForKey,
-  viewerLink,
+  type BuildingPanelTab,
   type DisplayUnit,
   type ViewerToolId,
 } from "../lib/viewer-tools";
@@ -153,10 +162,9 @@ export default function School2DViewer({
         school.placesOverlayFilePath,
         "places-overlay",
       ),
-      fallbackLocation: {
-        lat: Number(school.latitude) || 0,
-        lng: Number(school.longitude) || 0,
-      },
+      // The school's point, or the middle of Rwanda when it has none —
+      // never 0,0 (see lib/school-location.ts).
+      fallbackLocation: schoolPoint(school) ?? RWANDA_CENTER,
       effectiveBuildings: buildings ?? school.buildings ?? [],
       effectivePlacesOverlay: placesOverlay ?? school.placesOverlayData,
       geojson: school.geojsonContent,
@@ -190,7 +198,6 @@ export default function School2DViewer({
   const loadingStartTimeRef = useRef<number>(Date.now());
   /** Shared drawing-state flag between useMapSetup click guard & useMapInteractions */
   const isDrawingRef = useRef<boolean>(false);
-  const mapTabAnimatedRef = useRef(false);
 
   // Deep link from the 3D viewer: ?view=map&building=<id>&lat=&lng= (WS5.6).
   const deepLink = useMemo(
@@ -263,16 +270,30 @@ export default function School2DViewer({
   const [pickerSelected, setPickerSelected] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<
     "dashboard" | "map" | "3d" | "details"
-  >(() => (deepLink.view === "map" || deepLink.buildingId ? "map" : "dashboard"));
+  >(() =>
+    deepLink.view === "3d"
+      ? "3d"
+      : deepLink.view === "map" || deepLink.buildingId || initialBuildingId
+        ? "map"
+        : "dashboard",
+  );
+  /** Building the 3D tab selects and highlights when it opens. */
+  const [focus3d, setFocus3d] = useState<string | null>(() =>
+    deepLink.view === "3d" ? deepLink.buildingId : null,
+  );
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSurveyModalOpen, setIsSurveyModalOpen] = useState(false);
   const [isMissingMapModalOpen, setIsMissingMapModalOpen] = useState(false);
   const [showReportIndicators, setShowReportIndicators] = useState(true);
-  const [reportRefreshKey, setReportRefreshKey] = useState(0);
-  const [blockInspectorInitialTab, setBlockInspectorInitialTab] = useState<
-    "details" | "media" | "reporting"
-  >("details");
+  // Which tab the building panel opens on; `n` re-keys it on every open.
+  const [panel, setPanel] = useState<{ tab: BuildingPanelTab; reportId: string | null; n: number }>(() => ({
+    tab: deepLink.tab ?? "media",
+    reportId: deepLink.reportId,
+    n: 0,
+  }));
+  const [gallery, setGallery] = useState<{ buildingId: string | null } | null>(null);
+  const [viewer, setViewer] = useState<{ items: GalleryItem[]; index: number } | null>(null);
   const [showBuildingAreas, setShowBuildingAreas] = useState(true);
   const [showSiteAnnotations, setShowSiteAnnotations] = useState(true);
   const [hiddenAnnotationGroups, setHiddenAnnotationGroups] = useState<
@@ -292,6 +313,32 @@ export default function School2DViewer({
   const canCreateBlock =
     hasPermission(Permission.EDIT_SCHOOL_BUILDINGS) ||
     hasPermission(Permission.MANAGE_SCHOOLS);
+  const {
+    canCreateReport,
+    canDecide: canDecideReport,
+    canOpenReview,
+  } = useBuildingPanelAccess();
+
+  // Every report of this school: map badges, building list and panel share it.
+  const schoolReports = useSchoolReports(school?.id);
+  const openReportsOf = useCallback(
+    (buildingId: string) => schoolReports.counts.get(String(buildingId))?.open ?? 0,
+    [schoolReports.counts],
+  );
+
+  /** Open the building panel on a tab (always a fresh panel). */
+  const showPanel = useCallback(
+    (tab: BuildingPanelTab = "media", reportId: string | null = null) => {
+      setIsBlockInspectorOpen(true);
+      setPanel((p) => ({ tab, reportId, n: p.n + 1 }));
+    },
+    [],
+  );
+  /** For code that only opens/closes the panel (map clicks): opens on Media. */
+  const openInspector = useCallback(
+    (open: boolean) => (open ? showPanel("media") : setIsBlockInspectorOpen(false)),
+    [showPanel],
+  );
   const [unit, setUnitState] = useState<DisplayUnit>(() =>
     loadDisplayUnit(user?.id),
   );
@@ -331,13 +378,44 @@ export default function School2DViewer({
     [canSaveFeatures, canEditAnyFeature, user?.id],
   );
   const locationEditActive = activeTool === "set_location";
-  const originalLonLat = useMemo<[number, number] | null>(
-    () =>
-      Number(school.latitude) && Number(school.longitude)
-        ? [Number(school.longitude), Number(school.latitude)]
-        : null,
-    [school.latitude, school.longitude],
-  );
+  // The location saved in this session wins over the (possibly stale) prop:
+  // not every host passes onUpdateSchool back down.
+  const [savedLonLat, setSavedLonLat] = useState<[number, number] | null>(null);
+  const originalLonLat = useMemo<[number, number] | null>(() => {
+    if (savedLonLat) return savedLonLat;
+    const p = schoolPoint(school);
+    return p ? [p.lng, p.lat] : null;
+  }, [savedLonLat, school]);
+
+  // The location can change elsewhere (a KMZ upload finishing, another
+  // user): follow it live, and refresh the cached school list.
+  useEffect(() => {
+    if (!school?.id) return;
+    let socket: ReturnType<typeof connectSocket> | null = null;
+    try {
+      socket = connectSocket();
+      const room = `school:${school.id}`;
+      socket.on("connect", () => socket?.emit("join", room));
+      socket.on("school:updated", (p: { schoolId?: string; latitude?: number; longitude?: number }) => {
+        if (p?.schoolId !== school.id) return;
+        const pt = schoolPoint(p);
+        if (pt) {
+          setSavedLonLat([pt.lng, pt.lat]);
+          useSchoolsStore.getState().invalidateAllSchools();
+        }
+      });
+    } catch {
+      /* sockets unavailable: the page still works */
+    }
+    return () => {
+      try {
+        socket?.emit("leave", `school:${school.id}`);
+        socket?.disconnect();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [school?.id]);
   const [locationDraft, setLocationDraft] = useState<[number, number] | null>(
     null,
   );
@@ -424,7 +502,7 @@ export default function School2DViewer({
     setCurrentLat,
     setCurrentLng,
     setActiveBlock,
-    setIsBlockInspectorOpen,
+    setIsBlockInspectorOpen: openInspector,
     setSelectedFeatureName,
     setInfoFeature,
     getBasemapUrl,
@@ -652,17 +730,15 @@ export default function School2DViewer({
   useReportIndicators({
     mapRef,
     mapReady,
-    schoolId: school.id,
     schoolBuildings,
+    counts: schoolReports.counts,
     showIndicators: showReportIndicators,
-    refreshKey: reportRefreshKey,
     onBuildingClick: useCallback(
       (buildingId: string) => {
-        const b = schoolBuildings.find((sb) => sb.id === buildingId);
+        const b = schoolBuildings.find((sb) => String(sb.id) === buildingId);
         if (!b) return;
         setActiveBlock(b);
-        setIsBlockInspectorOpen(true);
-        setBlockInspectorInitialTab("reporting");
+        showPanel("reporting");
         if (b.geolocation?.latitude && b.geolocation?.longitude) {
           const coord = fromLonLat([
             Number(b.geolocation.longitude),
@@ -674,9 +750,91 @@ export default function School2DViewer({
             .animate({ center: coord, zoom: 21, duration: 600 });
         }
       },
-      [schoolBuildings],
+      [schoolBuildings, showPanel],
     ),
   });
+
+  /**
+   * Frame the school compound (frame.ts): its boundary, site-map outline or
+   * buildings, else its own point — clear of the header, the tool rail and
+   * the bottom controls. Used on first load and by "Reset view".
+   */
+  const frameSchool = useCallback(
+    (animate = true) => {
+      const map = mapRef.current;
+      const view = map?.getView();
+      if (!map || !view) return;
+      map.updateSize();
+      const frame = pickFrame({
+        boundaries: school.boundaries,
+        kmlFeatures: kmlLayerRef.current?.getSource?.()?.getFeatures?.() ?? [],
+        buildings: schoolBuildings.map((b) => ({
+          lat: Number(b.geolocation?.latitude),
+          lng: Number(b.geolocation?.longitude),
+        })),
+        point: originalLonLat,
+        imagery: overlayExtentRef.current,
+      });
+      if (!frame) return;
+      const duration = animate ? 700 : 0;
+      const padding = framePadding(
+        window.innerWidth,
+        document.querySelector('nav[aria-label="Map tools"]')?.getBoundingClientRect(),
+      );
+      if ("extent" in frame) {
+        view.fit(frame.extent, { padding, duration, maxZoom: 20 });
+      } else {
+        // A point: centre it in the clear area, not under the rail.
+        const [top, right, bottom, left] = padding;
+        const res = view.getResolutionForZoom(frame.zoom);
+        const center = [
+          frame.center[0] + ((right - left) / 2) * res,
+          // Map y grows upwards: a clear area raised by the bottom bar moves the centre down.
+          frame.center[1] + ((top - bottom) / 2) * res,
+        ];
+        if (animate) view.animate({ center, zoom: frame.zoom, duration });
+        else {
+          view.setZoom(frame.zoom);
+          view.setCenter(center);
+        }
+      }
+    },
+    [mapRef, school.boundaries, schoolBuildings, originalLonLat],
+  );
+  const goHome = useCallback(() => frameSchool(true), [frameSchool]);
+
+  // ── Media across buildings (gallery + fullscreen viewer) ────────────────
+  // Building photos and photos attached to reports.
+  const allMedia = useMemo(
+    () => [...collectMedia(schoolBuildings), ...collectReportMedia(schoolReports.reports, schoolBuildings)],
+    [schoolBuildings, schoolReports.reports],
+  );
+
+  /** Fullscreen viewer over every building's media, starting at one file. */
+  const openMedia = useCallback(
+    (buildingId: string, index: number) => {
+      const start = allMedia.findIndex((m) => m.source === "building" && m.buildingId === buildingId && m.index === index);
+      if (start >= 0) setViewer({ items: allMedia, index: start });
+    },
+    [allMedia],
+  );
+
+  /** Select a building, open its panel on a tab and fly to it. */
+  const focusBuilding = useCallback(
+    (buildingId: string, tab: BuildingPanelTab, reportId: string | null = null) => {
+      const b = schoolBuildings.find((sb) => String(sb.id) === String(buildingId));
+      if (!b) return;
+      setActiveTab("map");
+      setActiveBlock(b);
+      showPanel(tab, reportId);
+      if (b.geolocation?.latitude && b.geolocation?.longitude) {
+        const coord = fromLonLat([Number(b.geolocation.longitude), Number(b.geolocation.latitude)]);
+        blockOverlayRef.current?.setPosition(coord);
+        mapRef.current?.getView().animate({ center: coord, zoom: 21, duration: 700 });
+      }
+    },
+    [schoolBuildings, showPanel, mapRef],
+  );
 
   useSchoolLocationEditor({
     mapRef,
@@ -714,6 +872,8 @@ export default function School2DViewer({
         longitude: round(lng),
       });
       onUpdateSchool?.({ latitude: round(lat), longitude: round(lng) });
+      setSavedLonLat([round(lng), round(lat)]);
+      useSchoolsStore.getState().invalidateAllSchools();
       notify.success("School location updated.");
       setActiveTool("none");
       mapRef.current?.getView().animate({
@@ -764,20 +924,13 @@ export default function School2DViewer({
     [getBasemapUrl, basemapLayerRef, ghostLayerRef, basemapLabelLayerRef],
   );
 
+  /** Open the 3D tab (same browser tab) with the selected building highlighted. */
   const handle3DView = useCallback(() => {
-    if (!school?.id) return;
-    const lat = Number(activeBlock?.geolocation?.latitude);
-    const lng = Number(activeBlock?.geolocation?.longitude);
-    window.open(
-      viewerLink("3d", school.id, {
-        schoolName: school?.name,
-        buildingId: activeBlock?.id ?? null,
-        lat: Number.isFinite(lat) && lat ? lat : null,
-        lng: Number.isFinite(lng) && lng ? lng : null,
-      }),
-      "_blank",
-    );
-  }, [school, activeBlock]);
+    setFocus3d(activeBlock?.id ? String(activeBlock.id) : null);
+    // The 3D view has its own building panel.
+    setIsBlockInspectorOpen(false);
+    setActiveTab("3d");
+  }, [activeBlock]);
 
   const handleSaveBuilding = async (data: BuildingData) => {
     try {
@@ -922,7 +1075,8 @@ export default function School2DViewer({
     if (b && b.geolocation?.latitude && b.geolocation?.longitude) {
       setTimeout(() => {
         setActiveBlock(b);
-        setIsBlockInspectorOpen(true);
+        // Deep links can name a tab and a report (e.g. "On the map" from a review).
+        showPanel(deepLink.tab ?? "media", deepLink.reportId);
         const coord = fromLonLat([
           Number(b.geolocation.longitude),
           Number(b.geolocation.latitude),
@@ -933,7 +1087,7 @@ export default function School2DViewer({
           .animate({ center: coord, zoom: 21, duration: 800 });
       }, 1000);
     }
-  }, [initialBuilding, schoolBuildings, mapReady]);
+  }, [initialBuilding, schoolBuildings, mapReady, deepLink, showPanel]);
 
   // Deep link with only a coordinate (e.g. the 3D camera target).
   useEffect(() => {
@@ -979,7 +1133,7 @@ export default function School2DViewer({
         if (!b && buildingId) return;
         remoteSelectionRef.current = true;
         setActiveBlock(b ?? null);
-        setIsBlockInspectorOpen(!!b);
+        openInspector(!!b);
         if (b?.geolocation?.latitude && b?.geolocation?.longitude) {
           const coord = fromLonLat([
             Number(b.geolocation.longitude),
@@ -991,7 +1145,7 @@ export default function School2DViewer({
             .animate({ center: coord, zoom: 21, duration: 600 });
         }
       }),
-    [school.id, mapRef],
+    [school.id, mapRef, openInspector],
   );
 
   // ── Measuring: shortcuts + list (WS4) ───────────────────────────────────
@@ -1161,41 +1315,23 @@ export default function School2DViewer({
     }
   }, [school.id, school.name, notify]);
 
-  // Animated fly-to on first reveal of the map tab: recenter on the school's
-  // current coordinate (falls back to the existing view centre when unset).
+  // First view: frame the school compound once the site map has loaded —
+  // one framing, no competing fly-ins. Deep links to a building or a
+  // coordinate frame themselves.
+  const framedRef = useRef(false);
   useEffect(() => {
-    if (activeTab !== "map" || !mapReady) return;
-    if (mapTabAnimatedRef.current) return;
-    mapTabAnimatedRef.current = true;
-
-    const view = mapRef.current?.getView();
-    if (!view) return;
-
-    // When a KMZ/GeoTIFF/KML overlay is present the loader has already fitted
-    // the view to where the map is actually drawn — re-fit to that same extent
-    // so the school stays centred regardless of any in-flight animation.
-    if (overlayExtentRef.current) {
-      view.fit(overlayExtentRef.current, {
-        padding: [80, 80, 120, 80],
-        duration: 800,
-        maxZoom: 20,
-      });
+    if (activeTab !== "map" || !mapReady || isLoading || framedRef.current) return;
+    if (initialBuilding || (deepLink.lat != null && deepLink.lng != null)) {
+      framedRef.current = true;
       return;
     }
-
-    // Otherwise recenter on the school's own coordinate.
-    const target = originalLonLat ? fromLonLat(originalLonLat) : view.getCenter();
-
-    view.setZoom(15);
-    setTimeout(() => {
-      view.animate({
-        ...(target ? { center: target } : {}),
-        zoom: 19,
-        duration: 1000,
-        easing: (t: number) => 1 - Math.pow(1 - t, 3),
-      });
-    }, 80);
-  }, [activeTab, mapReady, originalLonLat]);
+    // A moment for the buildings request to land, so they can shape the frame.
+    const t = setTimeout(() => {
+      framedRef.current = true;
+      frameSchool(false);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [activeTab, mapReady, isLoading, initialBuilding, deepLink, frameSchool]);
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-slate-50 dark:bg-[#0f1117] w-full h-full">
@@ -1215,12 +1351,12 @@ export default function School2DViewer({
           <button
             onClick={handleClose}
             aria-label="Back to school"
-            className="flex items-center justify-center w-10 h-10 rounded-full bg-white dark:bg-card/10 dark:hover:bg-blue-600 border border-slate-200 dark:border-white/6 text-slate-900 dark:text-white hover:bg-slate-50 transition-all group active:scale-95 shadow-none"
+            className="flex items-center justify-center w-10 h-10 rounded-full bg-white/60 dark:bg-[hsl(224_40%_7%)]/60 backdrop-blur-2xl backdrop-saturate-150 ring-1 ring-white/40 dark:ring-white/10 text-slate-900 dark:text-white hover:bg-white/80 dark:hover:bg-white/10 transition-colors group active:scale-95"
           >
             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" aria-hidden />
           </button>
-          <div className="hidden lg:flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/40 dark:bg-card/20 backdrop-blur-2xl border border-slate-200 dark:border-white/6 max-w-45">
-            <span className="text-[13px] font-bold text-slate-600 dark:text-white/60 truncate">
+          <div className="hidden lg:flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/60 dark:bg-[hsl(224_40%_7%)]/60 backdrop-blur-2xl backdrop-saturate-150 ring-1 ring-white/40 dark:ring-white/10 max-w-45">
+            <span className="text-[13px] font-medium text-slate-800 dark:text-white/80 truncate">
               {school.name}
             </span>
             {school.code && (
@@ -1235,7 +1371,7 @@ export default function School2DViewer({
       {/* ── Floating pill tabs (top-center, hidden in picker mode) ────────── */}
       {!pickerMode && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
-          <div className="flex items-center gap-0.5 bg-white/60 dark:bg-card/50 backdrop-blur-2xl border border-slate-200 dark:border-white/4 rounded-full px-1 py-1">
+          <div className="flex items-center gap-0.5 bg-white/60 dark:bg-[hsl(224_40%_7%)]/60 backdrop-blur-2xl backdrop-saturate-150 ring-1 ring-white/40 dark:ring-white/10 rounded-full px-1 py-1">
             {(
               [
                 { id: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -1246,10 +1382,11 @@ export default function School2DViewer({
             ).map(({ id, icon: Icon, label }) => (
               <button
                 key={id}
-                onClick={() => setActiveTab(id)}
+                onClick={() => (id === "3d" ? handle3DView() : setActiveTab(id))}
                 aria-label={label}
+                aria-current={activeTab === id ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 sm:px-3.5 h-7 rounded-full text-[10px] font-bold tracking-wide transition-all",
+                  "flex items-center gap-1.5 px-3 sm:px-3.5 h-7 rounded-full text-[11px] font-medium transition-colors",
                   activeTab === id
                     ? "bg-primary text-white"
                     : "text-slate-600 dark:text-white/80 hover:text-primary dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5",
@@ -1275,8 +1412,7 @@ export default function School2DViewer({
               if (!b) return;
               setActiveTab("map");
               setActiveBlock(b);
-              setIsBlockInspectorOpen(true);
-              setBlockInspectorInitialTab("reporting");
+              showPanel("reporting");
               if (b.geolocation?.latitude && b.geolocation?.longitude) {
                 setTimeout(() => {
                   const coord = fromLonLat([
@@ -1298,9 +1434,14 @@ export default function School2DViewer({
       {activeTab === "3d" && (
         <div className="absolute inset-0 z-40 bg-slate-50/95 dark:bg-gray-950/90 backdrop-blur-sm pointer-events-auto overflow-hidden">
           <School3DView
+            key={focus3d ?? "school"}
             schoolId={school.id}
             schoolName={school.name}
+            focusBuildingId={focus3d}
             onClose={() => setActiveTab("map")}
+            on2DView={(buildingId) =>
+              buildingId ? focusBuilding(buildingId, "media") : setActiveTab("map")
+            }
           />
         </div>
       )}
@@ -1460,6 +1601,9 @@ export default function School2DViewer({
       {showBuildingsList && (
         <BuildingsListPanel
           buildings={schoolBuildings}
+          counts={schoolReports.counts}
+          canEdit={canCreateBlock}
+          onGallery={() => setGallery({ buildingId: null })}
           onClose={() => setShowBuildingsList(false)}
           onDelete={async (id) => await handleDeleteBuilding(id)}
           selectedId={activeBlock?.id}
@@ -1470,7 +1614,7 @@ export default function School2DViewer({
           }}
           onSelect={(b) => {
             setActiveBlock(b);
-            setIsBlockInspectorOpen(true);
+            showPanel("media");
             // On mobile, close the list to show the inspector cleanly
             if (window.innerWidth < 768) setShowBuildingsList(false);
 
@@ -1497,56 +1641,55 @@ export default function School2DViewer({
             (showBuildingsList || showNavigator) && "hidden md:block",
           )}
         >
-          <div className="flex items-center gap-1 px-1.5 py-1.5 rounded-full bg-white/80 dark:bg-[#0f1117]/80 backdrop-blur-xl border border-slate-200 dark:border-white/6 shadow-lg">
+          <div role="group" aria-label="Show on the map" className="flex items-center gap-0.5 rounded-full bg-white/60 p-1 ring-1 ring-white/40 backdrop-blur-xl backdrop-saturate-150 dark:bg-[hsl(224_40%_7%)]/60 dark:ring-white/10">
             {(
               [
                 {
                   key: "reports",
-                  label: "Report Alerts",
+                  label: "Reports",
                   icon: AlertTriangle,
                   active: showReportIndicators,
                   onToggle: () => setShowReportIndicators((v) => !v),
-                  activeClass:
-                    "bg-rose-500/15 border-rose-500/30 text-rose-500",
+                  count: schoolReports.counts.size,
                 },
                 {
                   key: "buildings",
-                  label: "Building Areas",
+                  label: "Buildings",
                   icon: MapPin,
                   active: showBuildingAreas,
                   onToggle: () => setShowBuildingAreas((v) => !v),
-                  activeClass:
-                    "bg-blue-500/15 border-blue-500/20 text-blue-500",
+                  count: 0,
                 },
                 {
                   key: "annotations",
-                  label: "Annotations",
+                  label: "Notes",
                   icon: MapIcon,
                   active: showSiteAnnotations,
                   onToggle: () => setShowSiteAnnotations((v) => !v),
-                  activeClass:
-                    "bg-emerald-500/15 border-emerald-500/30 text-emerald-500",
+                  count: 0,
                 },
               ] as const
-            ).map(
-              ({ key, label, icon: Icon, active, onToggle, activeClass }) => (
-                <button
-                  key={key}
-                  onClick={onToggle}
-                  aria-label={active ? `Hide ${label}` : `Show ${label}`}
-                  aria-pressed={active}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-medium transition-all active:scale-95",
-                    active
-                      ? activeClass
-                      : "border-transparent text-slate-400 dark:text-white/30 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-600 dark:hover:text-white/50",
-                  )}
-                >
-                  <Icon className="w-3 h-3 shrink-0" aria-hidden />
-                  <span className="hidden sm:inline">{label}</span>
-                </button>
-              ),
-            )}
+            ).map(({ key, label, icon: Icon, active, onToggle, count }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={onToggle}
+                aria-label={active ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+                aria-pressed={active}
+                className={cn(
+                  "relative flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition-colors active:scale-95",
+                  active
+                    ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-blue-200"
+                    : "text-slate-400 hover:bg-slate-900/5 hover:text-slate-700 dark:text-white/35 dark:hover:bg-white/8 dark:hover:text-white/70",
+                )}
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span className="hidden sm:inline">{label}</span>
+                {count > 0 && active && (
+                  <span className="min-w-4 rounded-full bg-primary px-1 text-center text-[10px] leading-4 tabular-nums text-white">{count}</span>
+                )}
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -1557,6 +1700,8 @@ export default function School2DViewer({
         setShowNavigator={setShowNavigator}
         showBuildingsList={showBuildingsList}
         setShowBuildingsList={setShowBuildingsList}
+        openReports={schoolReports.counts.size}
+        onGallery={() => setGallery({ buildingId: null })}
         showOpacitySlider={showOpacitySlider}
         setShowOpacitySlider={setShowOpacitySlider}
         basemapStyle={basemapStyle}
@@ -1584,18 +1729,7 @@ export default function School2DViewer({
             ?.getView()
             .animate({ zoom: (mapRef.current.getView().getZoom() ?? 19) - 1 })
         }
-        onHome={() =>
-          mapRef.current?.getView().animate({
-            center: fromLonLat([fallbackLocation.lng, fallbackLocation.lat]),
-            zoom: 19,
-          })
-        }
-        onFitExtent={() =>
-          overlayExtentRef.current &&
-          mapRef.current
-            ?.getView()
-            .fit(overlayExtentRef.current, { padding: [60, 60, 60, 60] })
-        }
+        onHome={goHome}
         onExportPng={exportPng}
         on3DView={handle3DView}
         showBasicInfo={showBasicInfo}
@@ -1629,6 +1763,7 @@ export default function School2DViewer({
         infoFeature={infoFeature}
         onCloseInfo={() => setInfoFeature(null)}
         selectedBuilding={activeBlock}
+        onOpen3D={handle3DView}
       />
 
       {activeTab === "map" && measurementMode !== "none" && (
@@ -1669,7 +1804,7 @@ export default function School2DViewer({
           onDeleteAnnotation={handleDeleteAnnotation}
           onSelectBuilding={(b) => {
             setActiveBlock(b);
-            setIsBlockInspectorOpen(true);
+            showPanel("media");
             // On mobile, close the GIS panel to show the block inspector
             if (window.innerWidth < 768) setShowNavigator(false);
 
@@ -1719,34 +1854,51 @@ export default function School2DViewer({
         />
       )}
 
-      {/* Block Inspector Overlay — Responsive Bottom Sheet on Mobile / Sidebar on Desktop */}
-      {!pickerMode && (
+      {/* Building panel — bottom sheet on phones, a card on the left on desktop */}
+      {!pickerMode && activeTab === "map" && (
         <div
           className={cn(
-            "fixed inset-x-0 bottom-0 z-70 transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)] pointer-events-none", // Mobile bottom sheet
-            "md:absolute md:inset-y-0 md:right-0 md:bottom-auto md:w-125 md:z-70", // Desktop sidebar (Right side)
+            "fixed inset-x-0 bottom-0 z-70 transition-[transform,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] pointer-events-none",
+            // Desktop: a card on the left, below the back button / school name.
+            "md:absolute md:inset-y-0 md:left-0 md:right-auto md:bottom-auto md:w-[25rem] md:p-3 md:pt-[4.75rem]",
             isBlockInspectorOpen
               ? "translate-y-0 md:translate-x-0 opacity-100"
-              : "translate-y-full md:translate-x-full opacity-0",
+              : "translate-y-full md:translate-y-0 md:-translate-x-full opacity-0",
           )}
         >
           {activeBlock && (
-            <div className="pointer-events-auto">
+            <div className="pointer-events-auto h-full">
               <BlockInspector
+                key={`${activeBlock.id}:${panel.n}`}
                 building={activeBlock}
                 schoolId={school?.id || ""}
-                initialTab={blockInspectorInitialTab}
+                initialTab={panel.tab}
+                initialReportId={panel.reportId}
+                reports={schoolReports.reports.filter((r) => String(r.buildingId) === String(activeBlock.id))}
+                reportsLoaded={schoolReports.loaded}
+                canEditMedia={canCreateBlock}
+                canCreateReport={canCreateReport}
+                canOpenReview={canOpenReview}
+                canDecide={canDecideReport}
+                onReportPatched={schoolReports.patch}
+                onReportSubmitted={() => void schoolReports.reload()}
+                onOpenMedia={(index) => openMedia(String(activeBlock.id), index)}
+                onOpenGallery={() => setGallery({ buildingId: String(activeBlock.id) })}
                 onClose={() => {
                   setIsBlockInspectorOpen(false);
-                  setBlockInspectorInitialTab("details");
                   setTimeout(() => setActiveBlock(null), 300);
                 }}
-                onEdit={() => {
-                  setDrawerBuilding(activeBlock);
-                  setDrawerOpen(true);
-                  setIsBlockInspectorOpen(false);
-                }}
+                onEdit={
+                  canCreateBlock
+                    ? () => {
+                        setDrawerBuilding(activeBlock);
+                        setDrawerOpen(true);
+                        setIsBlockInspectorOpen(false);
+                      }
+                    : undefined
+                }
                 onUpdateBuilding={async (b) => {
+                  const before = schoolBuildings.find((old) => old.id === b.id) ?? activeBlock;
                   try {
                     const building = b as any;
                     // Update local state first for instant feedback
@@ -1755,59 +1907,64 @@ export default function School2DViewer({
                       prev.map((old) => (old.id === b.id ? b : old)),
                     );
 
-                    // Map frontend BuildingData -> backend BuildingDto
-                    // Note: Use keys from BuildingDto.ts
-                    const dto = {
-                      name: building.buildingName || building.name,
-                      code: building.buildingCode || building.code,
-                      function: building.buildingFunction || building.function,
-                      floors:
-                        Number(building.buildingFloors || building.floors) || 0,
-                      area:
-                        Number(
-                          building.buildingArea ||
-                            building.area ||
-                            building.areaSquareMeters,
-                        ) || 0,
-                      yearBuilt:
-                        Number(
-                          building.buildingYearBuilt || building.yearBuilt,
-                        ) || 0,
-                      condition:
-                        building.buildingCondition || building.condition,
-                      roofCondition:
-                        building.buildingRoofCondition ||
-                        building.roofCondition,
-                      structuralScore:
-                        Number(
-                          building.buildingStructuralScore ||
-                            building.structuralScore,
-                        ) || 0,
-                      notes: building.buildingNotes || building.notes,
-                      latitude:
-                        building.geolocation?.latitude ?? building.centroidLat,
-                      longitude:
-                        building.geolocation?.longitude ?? building.centroidLng,
-                      annotations: building.annotations || [],
+                    // The panel only edits media. Send just that: a full DTO
+                    // would turn unknown floors / year built into 0.
+                    await api.patch(`/schools/buildings/${b.id}`, {
                       media: building.media || [],
-                    };
-
-                    // Persist to backend with mapped DTO
-                    await api.patch(`/schools/buildings/${b.id}`, dto);
+                    });
                   } catch (error) {
                     console.error("Failed to persist building update:", error);
-                    // Let the caller (media tab) report the failure.
+                    // Undo the optimistic change; the caller (media tab) shows the error.
+                    if (before) {
+                      setActiveBlock(before);
+                      setSchoolBuildings((prev) => prev.map((old) => (old.id === b.id ? before : old)));
+                    }
                     throw error;
                   }
                 }}
-                onReportStatusChange={() => setReportRefreshKey((k) => k + 1)}
-                onAddAnnotation={() => setActiveTool("annotate_point")}
-                onUploadMedia={() => {}}
                 on3DView={handle3DView}
               />
             </div>
           )}
         </div>
+      )}
+
+      {gallery && (
+        <MediaGallery
+          items={allMedia}
+          initialBuildingId={gallery.buildingId}
+          openReports={openReportsOf}
+          onOpen={(items, index) => setViewer({ items, index })}
+          onClose={() => setGallery(null)}
+          onOpenBuilding={(buildingId) => {
+            setGallery(null);
+            focusBuilding(buildingId, "media");
+          }}
+        />
+      )}
+      {viewer && (
+        <MediaViewer
+          items={viewer.items}
+          index={viewer.index}
+          onIndexChange={(index) => setViewer((v) => (v ? { ...v, index } : v))}
+          onClose={() => setViewer(null)}
+          openReports={openReportsOf}
+          onBuildings={(buildingId) => {
+            setViewer(null);
+            setGallery(null);
+            focusBuilding(buildingId, "media");
+            setShowBuildingsList(true);
+          }}
+          onGallery={(buildingId) => {
+            setViewer(null);
+            setGallery({ buildingId });
+          }}
+          onReports={(buildingId, reportId) => {
+            setViewer(null);
+            setGallery(null);
+            focusBuilding(buildingId, "reporting", reportId ?? null);
+          }}
+        />
       )}
 
       {!pickerMode && (
@@ -1834,7 +1991,14 @@ export default function School2DViewer({
         onClose={() => setIsEditModalOpen(false)}
         onSuccess={() => {
           setIsEditModalOpen(false);
-          if (onUpdateSchool) onUpdateSchool(school);
+          // Reload the saved school: passing the old object back kept the
+          // previous location (and other fields) on screen.
+          void api.get(`/schools/${school.id}`).then(({ data }) => {
+            const pt = schoolPoint(data);
+            if (pt) setSavedLonLat([pt.lng, pt.lat]);
+            onUpdateSchool?.(data);
+            useSchoolsStore.getState().invalidateAllSchools();
+          });
         }}
         mode="edit"
         schoolId={school.id}
@@ -1856,48 +2020,28 @@ export default function School2DViewer({
         onClose={() => setIsMissingMapModalOpen(false)}
         title={
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500">
-              <AlertCircle className="w-5 h-5" />
+            <div className="p-2 rounded-xl bg-primary/10 text-primary">
+              <AlertCircle className="w-5 h-5" aria-hidden />
             </div>
             <div>
-              <h3 className="text-lg font-black italic">
-                Spatial Intelligence Missing
-              </h3>
-              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
-                Digital Twin Synchronisation Required
-              </p>
+              <h3 className="text-lg font-medium">No site map yet</h3>
+              <p className="text-xs text-muted-foreground">Upload a KMZ to see the school in detail.</p>
             </div>
           </div>
         }
         maxWidth="max-w-md"
       >
-        <div className="space-y-6 py-4">
-          <div className="p-6 rounded-4xl bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/4 space-y-4 text-center">
-            <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center mx-auto mb-2 border border-slate-200 dark:border-white/6">
-              <MapIcon className="w-8 h-8 text-amber-500/40" />
-            </div>
-            <p className="text-xs font-bold text-slate-600 dark:text-white/60 leading-relaxed italic">
-              This institution does not yet have high-resolution drone imagery
-              or spatial boundary data synchronized.
-            </p>
-            <div className="flex flex-col gap-2 pt-2">
-              <Button
-                asChild
-                className="rounded-full bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-widest text-[10px] h-11"
-              >
-                <Link to={`/schools/${school.id}/kmz`}>
-                  Upload KMZ Spatial Data
-                </Link>
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => setIsMissingMapModalOpen(false)}
-                className="rounded-full font-black uppercase tracking-widest text-[10px] h-11 text-slate-400 dark:text-white opacity-60 hover:opacity-100"
-              >
-                Continue with Base Imagery
-              </Button>
-            </div>
-          </div>
+        <div className="flex flex-col gap-2 py-4">
+          <Button asChild className="rounded-full h-11 text-sm font-medium">
+            <Link to={`/schools/${school.id}/kmz`}>Upload a KMZ</Link>
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => setIsMissingMapModalOpen(false)}
+            className="rounded-full h-11 text-sm text-muted-foreground hover:text-foreground"
+          >
+            Continue with the satellite map
+          </Button>
         </div>
       </Modal>
     </div>

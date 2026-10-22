@@ -3,9 +3,13 @@ import { AnalyticsService } from '../analytics/analytics.service';
 import {
   buildingsNeedingAttention,
   issueReportsOnly,
+  reportingOverview,
+  ReportingOverview,
+  ReportingPeriod,
   reportTrends,
   summariseIssueReports,
 } from '../analytics/report-stats';
+import type { AccessScope } from '../../common/scope/access-scope';
 import { ReportingDashboardDto } from './dto/reporting-dashboard.dto';
 
 /**
@@ -50,6 +54,23 @@ export class DashboardService {
           ),
         },
       },
+    };
+  }
+
+  /**
+   * Reporting overview — Issue Reports across every active school in the
+   * caller's scope for one period. Same rules as the school view.
+   */
+  async reportingOverview(
+    period: ReportingPeriod,
+    scope?: AccessScope,
+  ): Promise<{ timestamp: string; data: ReportingOverview }> {
+    const { schools, rows } =
+      await this.analyticsService.getScopedReportingInputs(scope);
+    const now = new Date();
+    return {
+      timestamp: now.toISOString(),
+      data: reportingOverview(rows, schools, period, now),
     };
   }
 }

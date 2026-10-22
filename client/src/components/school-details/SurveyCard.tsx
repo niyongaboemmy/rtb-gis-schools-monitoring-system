@@ -61,7 +61,7 @@ export function SurveyCard({ facilities, survey, complianceScore, onUpdateSurvey
 
   return (
     <GlassCard
-      title="Facility survey"
+      title="Facilities checklist"
       icon={ClipboardCheck}
       index={index}
       info={<MetricInfo id="component.facilityCompliance" size="xs" />}
@@ -76,19 +76,19 @@ export function SurveyCard({ facilities, survey, complianceScore, onUpdateSurvey
         <>
           <div className="grid gap-4 md:grid-cols-[12rem_minmax(0,1fr)] md:items-center">
             <div>
-              <p className="text-[11px] font-medium text-slate-500 dark:text-white/45">Compliance score</p>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-white/45">Checklist score</p>
               <p className="mt-0.5 text-3xl font-semibold tabular-nums tracking-tight text-slate-900 dark:text-white">
                 {complianceScore == null ? "—" : formatPercent(complianceScore)}
               </p>
               <p className="text-[11px] text-slate-500 dark:text-white/45">
-                {formatNumber(items - totals.none)} of {formatNumber(items)} items surveyed
+                {formatNumber(items - totals.none)} of {formatNumber(items)} items checked
               </p>
             </div>
             <div>
               <StackBar
                 max={Math.max(1, items)}
                 height={12}
-                ariaLabel="Survey items by compliance"
+                ariaLabel="Checklist items by result"
                 segments={COMPLIANCE.map((c) => ({
                   key: c.key,
                   value: totals[c.key],
@@ -138,7 +138,7 @@ export function SurveyCard({ facilities, survey, complianceScore, onUpdateSurvey
                       </div>
                     </div>
                     <span className="shrink-0 text-[11px] tabular-nums text-slate-500 dark:text-white/50">
-                      <b className="font-semibold text-slate-800 dark:text-white/85">{ok}</b>/{rows.length} compliant
+                      <b className="font-semibold text-slate-800 dark:text-white/85">{ok}</b>/{rows.length} meet the standard
                     </span>
                     <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open/fac:rotate-180" aria-hidden />
                   </summary>

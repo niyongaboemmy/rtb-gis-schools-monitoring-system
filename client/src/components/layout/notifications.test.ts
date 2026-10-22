@@ -16,7 +16,7 @@ describe("notifications", () => {
       { reportId: "r1", schoolId: "s1", newStatus: "SOLVED" },
       "/reporting",
     );
-    expect(n.title).toBe("Report resolved");
+    expect(n.title).toBe("Report fixed");
     expect(n.body).toMatch(/resolved/);
     expect(n.href).toBe("/reporting?report=r1");
     expect(n.body).not.toMatch(/SOLVED|NEED_INTERVENTION/);

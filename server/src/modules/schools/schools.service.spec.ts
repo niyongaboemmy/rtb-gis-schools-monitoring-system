@@ -1,3 +1,4 @@
+import { plainToInstance } from 'class-transformer';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConflictException, NotFoundException } from '@nestjs/common';
@@ -191,6 +192,8 @@ describe('SchoolsService.create – unique code', () => {
     code: 'KGL-001',
     province: 'Kigali',
     district: 'Gasabo',
+    latitude: -1.9441,
+    longitude: 30.0619,
     buildings: [
       {
         name: 'Main Block',
@@ -274,14 +277,14 @@ describe('SchoolsService.create – unique code', () => {
   });
 
   it('skips building creation when buildings is undefined', async () => {
-    const { name, code, province, district } = createDto;
+    const { name, code, province, district, latitude, longitude } = createDto;
     const fullSchool = buildSchool();
     const { service, schoolRepo, buildingRepo } = await makeService();
 
     schoolRepo.findOne.mockResolvedValueOnce(null);
     schoolRepo.findOne.mockResolvedValueOnce(fullSchool);
 
-    await service.create({ name, code, province, district } as any);
+    await service.create({ name, code, province, district, latitude, longitude } as any);
 
     expect(buildingRepo.create).not.toHaveBeenCalled();
   });
@@ -826,5 +829,35 @@ describe('SchoolsService.findAll – access scope', () => {
       'school.province = :scopeProvince',
       { scopeProvince: 'Northern Province' },
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateBuilding — edits the row in place, never inserts a copy
+// ---------------------------------------------------------------------------
+
+describe('SchoolsService.updateBuilding – keeps the building id', () => {
+  it('ignores the DTO`s undefined id and fields that were not sent', async () => {
+    const existing = {
+      id: 'building-1',
+      schoolId: 'school-1',
+      name: 'Old name',
+      floors: 2,
+      media: [{ path: 'a.jpg' }],
+    };
+    const { service, buildingRepo } = await makeService({
+      buildingRepo: { findOne: jest.fn().mockResolvedValue({ ...existing }) },
+    });
+    // What the ValidationPipe produces: declared optional fields exist as undefined.
+    const dto = plainToInstance(BuildingDto, { name: 'New name' });
+    expect(Object.prototype.hasOwnProperty.call(dto, 'id')).toBe(true);
+
+    await service.updateBuilding('building-1', dto);
+
+    const saved = buildingRepo.save.mock.calls[0][0];
+    expect(saved.id).toBe('building-1');
+    expect(saved.name).toBe('New name');
+    expect(saved.floors).toBe(2);
+    expect(saved.media).toEqual([{ path: 'a.jpg' }]);
   });
 });

@@ -9,7 +9,7 @@ import {
 import { OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { MoreThanOrEqual, QueryFailedError, Repository } from 'typeorm';
+import { In, MoreThanOrEqual, QueryFailedError, Repository } from 'typeorm';
 import {
   DecisionAssessment,
   PriorityLevel,
@@ -58,7 +58,12 @@ import {
   assessmentChanged,
   computeAssessment,
 } from './scoring-engine';
-import { ReportRow, summariseIssueReports } from './report-stats';
+import {
+  OverviewReportRow,
+  OverviewSchool,
+  ReportRow,
+  summariseIssueReports,
+} from './report-stats';
 import { EventsGateway } from '../events/events.gateway';
 
 const DAY_MS = 86_400_000;
@@ -1184,6 +1189,48 @@ export class AnalyticsService implements OnApplicationBootstrap {
    * Inputs of the Issue Reports tab: every report row (uncapped, minimal
    * columns, reporter name) and the school's buildings; 404 when unknown.
    */
+  /**
+   * Reporting overview inputs: active schools in the caller's scope and their
+   * Issue Report rows (no row cap — the figures must match the school view).
+   */
+  async getScopedReportingInputs(scope?: AccessScope): Promise<{
+    schools: OverviewSchool[];
+    rows: OverviewReportRow[];
+  }> {
+    let qb = whereActiveSchool(
+      this.schoolRepository
+        .createQueryBuilder('s')
+        .select(['s.id', 's.name', 's.code', 's.district', 's.province']),
+      's',
+    );
+    if (scope) qb = applySchoolScope(qb, scope, 's');
+    const schools = await qb.getMany();
+    if (schools.length === 0) return { schools: [], rows: [] };
+    const rows = await this.issueReportRepository.find({
+      where: { schoolId: In(schools.map((s) => s.id)) },
+      select: {
+        id: true,
+        schoolId: true,
+        status: true,
+        type: true,
+        createdAt: true,
+        resolvedAt: true,
+        facilityId: true,
+        description: true,
+      },
+    });
+    return {
+      schools: schools.map((s) => ({
+        id: s.id,
+        name: s.name,
+        code: s.code,
+        district: s.district,
+        province: s.province,
+      })),
+      rows: rows as unknown as OverviewReportRow[],
+    };
+  }
+
   async getSchoolReportingInputs(schoolId: string): Promise<{
     rows: ReportRow[];
     buildings: SchoolBuilding[];

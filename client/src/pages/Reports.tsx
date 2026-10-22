@@ -1,175 +1,43 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useMemo, useState } from "react";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { motion, useReducedMotion } from "framer-motion";
 import {
-  FileText,
-  Download,
-  Search,
-  FileSpreadsheet,
-  FileBarChart2,
-  ClipboardList,
-  RotateCcw,
-  MapPin,
+  ArrowRight,
   CheckCircle2,
-  Clock,
-  TriangleAlert,
-  XCircle,
-  ChevronLeft,
-  ChevronRight,
-  ChevronUp,
-  ChevronDown,
-  Loader2,
-  ArrowUpRight,
+  ClipboardCheck,
+  Download,
+  FileBarChart2,
+  FileSearch,
+  FileSpreadsheet,
+  GitPullRequestArrow,
+  History,
+  Hourglass,
+  Inbox,
+  ListChecks,
+  RefreshCw,
+  Siren,
+  Workflow,
 } from "lucide-react";
-import {
-  format,
-  formatDistanceToNowStrict,
-  eachWeekOfInterval,
-  isSameWeek,
-} from "date-fns";
-import { motion, AnimatePresence } from "framer-motion";
-import { PageHeader } from "../components/ui/page-header";
-import { Button } from "../components/ui/button";
-import { Card, CardContent } from "../components/ui/card";
-import { Input } from "../components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../components/ui/table";
-import { RichDropdown } from "../components/ui/rich-dropdown";
-import { ImigongoPattern } from "../components/ui/ImigongoPattern";
-import { MetricCard } from "../components/ui/metric-card";
-import { ReportDetailsModal } from "../components/reports/ReportDetailsModal";
-import { useSchoolsStore } from "../store/schoolsStore";
 import { api, apiErrorMessage } from "../lib/api";
-import { useToast } from "../components/ui/toast";
 import { cn } from "../lib/utils";
+import { formatNumber, formatPercent } from "../lib/format";
 import { label } from "../lib/labels";
-import { useSearchParams } from "react-router-dom";
+import { useToast } from "../components/ui/toast";
 import { useAuthorization } from "../hooks/useAuthorization";
 import { Permission } from "../lib/permissions";
-import { EmptyState } from "../components/ui/empty-state";
-import { ErrorState } from "../components/ui/error-state";
-import { errorMessage } from "../components/ui/error-message";
-import { SkeletonTable } from "../components/ui/skeleton";
-
-/* ───────────────────────────── model ───────────────────────────── */
-
-type Status = "PENDING" | "SOLVED" | "NEED_INTERVENTION" | "FAILED";
-
-interface Report {
-  id: string;
-  schoolId: string;
-  facilityId?: string;
-  issueCategory?: string | string[];
-  description?: string;
-  status: Status;
-  reportedBy?: string;
-  createdAt: string;
-  updatedAt?: string;
-  resolvedAt?: string | null;
-  school?: { name?: string; district?: string; province?: string };
-  /** "issue" (default) or "data_change_request" (WS7.7). */
-  type?: "issue" | "data_change_request";
-  changeRequest?: {
-    fields: { field: string; currentValue: unknown; proposedValue: unknown }[];
-    reason: string;
-  } | null;
-}
-
-type TypeFilter = "ALL" | "issue" | "data_change_request";
-
-/** Human name for a school field in a change request. */
-function fieldLabel(field: string): string {
-  return field
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/^./, (c) => c.toUpperCase());
-}
-
-const STATUS_META: Record<
-  Status,
-  { label: string; short: string; color: string; chip: string; dot: string; icon: typeof Clock }
-> = {
-  PENDING: {
-    label: label("reportStatus", "PENDING"),
-    short: "Pending",
-    color: "#f59e0b",
-    chip: "bg-amber-500/12 text-amber-600 dark:text-amber-400 border-amber-500/25",
-    dot: "bg-amber-500",
-    icon: Clock,
-  },
-  NEED_INTERVENTION: {
-    label: label("reportStatus", "NEED_INTERVENTION"),
-    short: "Intervention",
-    color: "#f43f5e",
-    chip: "bg-rose-500/12 text-rose-600 dark:text-rose-400 border-rose-500/25",
-    dot: "bg-rose-500",
-    icon: TriangleAlert,
-  },
-  SOLVED: {
-    label: label("reportStatus", "SOLVED"),
-    short: label("reportStatus", "SOLVED"),
-    color: "#10b981",
-    chip: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400 border-emerald-500/25",
-    dot: "bg-emerald-500",
-    icon: CheckCircle2,
-  },
-  FAILED: {
-    label: `${label("reportStatus", "FAILED")} / Invalid`,
-    short: label("reportStatus", "FAILED"),
-    color: "#94a3b8",
-    chip: "bg-slate-500/12 text-slate-500 dark:text-slate-400 border-slate-500/20",
-    dot: "bg-slate-500",
-    icon: XCircle,
-  },
-};
-
-const PAGE_SIZE = 20;
-type SortKey = "school" | "status" | "createdAt";
-
-/* ─────────────────────────── helpers ──────────────────────────── */
-
-const catLabel = (c: Report["issueCategory"]): string =>
-  Array.isArray(c) ? c.filter(Boolean).join(", ") : (c ?? "—");
-
-/** Category column text: change requests list the requested fields. */
-const reportCategory = (r: Report): string =>
-  r.type === "data_change_request"
-    ? `Change request: ${(r.changeRequest?.fields ?? []).map((f) => fieldLabel(f.field)).join(", ") || "—"}`
-    : catLabel(r.issueCategory);
-
-function downloadReportsCsv(rows: Report[]) {
-  const head = ["School", "Province", "District", "Type", "Category", "Status", "Description", "Reported", "Resolved"];
-  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const body = rows.map((r) =>
-    [
-      r.school?.name ?? "",
-      r.school?.province ?? "",
-      r.school?.district ?? "",
-      label("reportType", r.type ?? "issue"),
-      reportCategory(r),
-      STATUS_META[r.status]?.label ?? r.status,
-      r.description ?? "",
-      r.createdAt ? new Date(r.createdAt).toISOString() : "",
-      r.resolvedAt ? new Date(r.resolvedAt).toISOString() : "",
-    ].map(esc).join(","),
-  );
-  const csv = [head.join(","), ...body].join("\n");
-  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `issue-reports-${new Date().toISOString().split("T")[0]}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-const EXPORT_NAMES: Record<string, string> = {
-  schools: "Schools master dataset",
-  assessments: "Decision assessments",
-  issues: "Issue reports log",
-};
+import { DashboardError } from "../components/dashboard/DashboardStates";
+import { FloatingStat } from "../components/dashboard/FloatingStat";
+import { MetricInfo } from "../components/metric-help/MetricInfo";
+import { BRAND, EASE } from "../components/school-dashboard/tokens";
+import { GlassCard } from "../components/school-dashboard/GlassCard";
+import { DetailModal } from "../components/school-dashboard/DetailModal";
+import { StackBar } from "../components/school-dashboard/charts/StackBar";
+import { EmptyNote } from "../components/school-dashboard/details/primitives";
+import { ValidationList } from "../components/report-review/ValidationList";
+import { ReportsDashboardSkeleton } from "../components/report-review/ReviewSkeleton";
+import { ExportList, type ExportItem } from "../components/report-review/ExportList";
+import { useReviewData } from "../components/report-review/useReviewData";
+import { ageDays, categories, fullName, STATUS, type ReviewReport, type Status } from "../components/report-review/review-utils";
 
 async function downloadBlob(path: string, filename: string) {
   const res = await api.get(path, { responseType: "blob" });
@@ -181,722 +49,338 @@ async function downloadBlob(path: string, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-/* ─────────────────────────── export card ──────────────────────────── */
-
-function ExportCard({
-  icon: Icon,
-  title,
-  sub,
-  cta,
-  onClick,
-  busy,
-  done,
-  tone,
-  delay = 0,
-}: {
-  icon: typeof FileText;
-  title: string;
-  sub: string;
-  cta: string;
-  onClick: () => void;
-  busy?: boolean;
-  done?: boolean;
-  tone: string;
-  delay?: number;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, duration: 0.35 }}
-    >
-      <Card className="group relative border border-border/30 bg-card/60 backdrop-blur-xl rounded-3xl shadow-none overflow-hidden hover:border-primary/40 transition-colors h-full">
-        <div className="pointer-events-none absolute -right-8 -top-8 w-28 h-28 rounded-full bg-primary/10 blur-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
-        <CardContent className="p-5 flex flex-col gap-4 h-full relative">
-          <div className="flex items-start justify-between">
-            <div className={cn("w-11 h-11 rounded-2xl flex items-center justify-center", tone)}>
-              <Icon className="w-5 h-5" />
-            </div>
-            <ArrowUpRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
-          </div>
-          <div className="flex-1 space-y-1">
-            <h3 className="text-sm font-black uppercase tracking-tight">{title}</h3>
-            <p className="text-xs text-muted-foreground leading-relaxed">{sub}</p>
-          </div>
-          <Button
-            variant="outline"
-            onClick={onClick}
-            disabled={busy}
-            className={cn(
-              "w-full rounded-xl h-9 text-[10px] font-black uppercase tracking-wider border-border/25 gap-2 transition-colors",
-              done ? "border-emerald-500/40 text-emerald-500 bg-emerald-500/5" : "hover:bg-primary/5",
-            )}
-          >
-            {busy ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : done ? (
-              <CheckCircle2 className="w-3.5 h-3.5" />
-            ) : (
-              <Download className="w-3.5 h-3.5" />
-            )}
-            {busy ? "Preparing…" : done ? "Downloaded" : cta}
-          </Button>
-        </CardContent>
-      </Card>
-    </motion.div>
+function downloadReportsCsv(rows: ReviewReport[]) {
+  const head = ["Report number", "School", "Province", "District", "Type", "Category", "Status", "Description", "Reported by", "Reported", "Resolved", "Reviewed by", "Reviewed", "Review note"];
+  const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const iso = (v?: string | null) => (v ? new Date(v).toISOString() : "");
+  const body = rows.map((r) =>
+    [
+      r.id,
+      r.school?.name,
+      r.school?.province,
+      r.school?.district,
+      label("reportType", r.type ?? "issue"),
+      categories(r.issueCategory).join(", "),
+      STATUS[r.status]?.label ?? r.status,
+      r.description,
+      fullName(r.reporter),
+      iso(r.createdAt),
+      iso(r.resolvedAt),
+      fullName(r.reviewer),
+      iso(r.reviewedAt),
+      r.reviewNote,
+    ]
+      .map(esc)
+      .join(","),
   );
+  const url = URL.createObjectURL(new Blob([[head.join(","), ...body].join("\n")], { type: "text/csv" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `reports-${new Date().toISOString().split("T")[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
-/* ─────────────────────────────── page ─────────────────────────────── */
+const STAGES: { status: Status; label: string; hint: string }[] = [
+  { status: "PENDING", label: "Waiting", hint: "not reviewed yet" },
+  { status: "NEED_INTERVENTION", label: "Needs action", hint: "RTB or the district must act" },
+  { status: "SOLVED", label: "Fixed", hint: "fixed and checked" },
+  { status: "FAILED", label: "Not valid", hint: "not a real problem" },
+];
 
+/**
+ * Reports dashboard — how validation is going: what waits, what was decided,
+ * and the exports. The work itself happens on the Validation page.
+ */
 export default function Reports() {
-  const { allSchools, fetchAllSchools } = useSchoolsStore();
   const { isAuthorized } = useAuthorization();
   const toast = useToast();
+  const reduce = useReducedMotion();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { rows, loaded, loading, error, load, stats, facilityTitle } = useReviewData();
   const canExport = isAuthorized(Permission.EXPORT_REPORTS);
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const canManageReports = isAuthorized(Permission.MANAGE_REPORTS);
-  // GIS analysts (no org-wide reporting oversight) come here for change requests.
-  const changeRequestDesk =
-    !isAuthorized(Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD) &&
-    isAuthorized(Permission.EDIT_SCHOOL_LOCATION);
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>(
-    searchParams.get("type") === "data_change_request" || changeRequestDesk
-      ? "data_change_request"
-      : "ALL",
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportBusy, setExportBusy] = useState<string | null>(null);
+  const [exportDone, setExportDone] = useState<string | null>(null);
+
+  const issues = useMemo(() => rows.filter((r) => (r.type ?? "issue") === "issue"), [rows]);
+  const waiting = useMemo(
+    () => rows.filter((r) => r.status === "PENDING").sort((a, b) => (ageDays(b.createdAt) ?? 0) - (ageDays(a.createdAt) ?? 0)),
+    [rows],
   );
-
-  const [reports, setReports] = useState<Report[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Report | null>(null);
-  const [updating, setUpdating] = useState(false);
-
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | Status>("ALL");
-  const [province, setProvince] = useState("");
-  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({
-    key: "createdAt",
-    dir: "desc",
-  });
-  const [page, setPage] = useState(1);
-  const abortRef = useRef<AbortController | null>(null);
-  const doneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    fetchAllSchools();
-  }, [fetchAllSchools]);
-
-  const load = useCallback(async () => {
-    abortRef.current?.abort();
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const first = await api.get("/reports", {
-        params: { page: 1, limit: 1000 },
-        signal: ctrl.signal,
-      });
-      const batch1: Report[] = first.data?.data ?? first.data ?? [];
-      const total: number = first.data?.total ?? batch1.length;
-      const pages = Math.min(10, Math.ceil(total / 1000));
-      let rows = batch1;
-      if (pages > 1) {
-        const rest = await Promise.all(
-          Array.from({ length: pages - 1 }, (_, i) =>
-            api
-              .get("/reports", { params: { page: i + 2, limit: 1000 } })
-              .then((r) => (r.data?.data ?? r.data ?? []) as Report[]),
-          ),
-        );
-        rows = [...batch1, ...rest.flat()];
-      }
-      setReports(Array.isArray(rows) ? rows : []);
-    } catch (err) {
-      const name = (err as { name?: string })?.name;
-      if (name !== "CanceledError" && name !== "AbortError") {
-        console.error("Failed to load reports", err);
-        setReports([]);
-        setLoadError(errorMessage(err, "The reports could not be loaded."));
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-    return () => abortRef.current?.abort();
-  }, [load]);
-
-  useEffect(() => () => { if (doneTimer.current) clearTimeout(doneTimer.current); }, []);
-
-  // Deep link from notifications: /reports?report=<id> opens that report.
-  const deepLinkId = searchParams.get("report");
-  useEffect(() => {
-    if (!deepLinkId) return;
-    let cancelled = false;
-    api
-      .get(`/reports/${deepLinkId}`)
-      .then((res) => !cancelled && setSelected(res.data as Report))
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [deepLinkId]);
-
-  const closeSelected = () => {
-    setSelected(null);
-    if (searchParams.get("report")) {
-      const next = new URLSearchParams(searchParams);
-      next.delete("report");
-      setSearchParams(next, { replace: true });
-    }
-  };
-
-  const schoolMap = useMemo(
-    () => new Map(allSchools.map((s) => [s.id, s])),
-    [allSchools],
-  );
-
-  const withSchool = useMemo(
+  const recent = useMemo(
     () =>
-      reports.map((r) => ({
-        ...r,
-        school: {
-          name: r.school?.name ?? schoolMap.get(r.schoolId)?.name ?? "Unknown school",
-          district: r.school?.district ?? schoolMap.get(r.schoolId)?.district ?? "—",
-          province: r.school?.province ?? schoolMap.get(r.schoolId)?.province ?? "—",
-        },
-      })),
-    [reports, schoolMap],
+      rows
+        .filter((r) => r.reviewedAt && r.status !== "PENDING")
+        .sort((a, b) => new Date(b.reviewedAt!).getTime() - new Date(a.reviewedAt!).getTime()),
+    [rows],
   );
 
-  const stats = useMemo(() => {
-    const total = withSchool.length;
-    const by = (s: Status) => withSchool.filter((r) => r.status === s).length;
-    const solved = by("SOLVED");
-    const failed = by("FAILED");
-    // Resolution rate = solved ÷ genuine issues (FAILED reports are invalid, excluded).
-    const genuine = total - failed;
-    return {
-      total,
-      pending: by("PENDING"),
-      intervention: by("NEED_INTERVENTION"),
-      solved,
-      failed,
-      resolutionRate: genuine > 0 ? Math.round((solved / genuine) * 100) : 0,
-    };
-  }, [withSchool]);
+  // Notification links (/reports?report=<id>) open the report on the review page.
+  const linked = searchParams.get("report");
+  if (linked) return <Navigate to={`/reports/validate?report=${encodeURIComponent(linked)}`} replace />;
+  if (!loaded) return <ReportsDashboardSkeleton />;
 
-  // Weekly submission sparklines (last 12 weeks) for the KPI band
-  const sparks = useMemo(() => {
-    if (withSchool.length === 0)
-      return { total: [] as number[], pending: [] as number[], intervention: [] as number[], solved: [] as number[] };
-    const times = withSchool
-      .map((r) => new Date(r.createdAt).getTime())
-      .filter((t) => !Number.isNaN(t));
-    if (times.length === 0)
-      return { total: [], pending: [], intervention: [], solved: [] };
-    const start = new Date(Math.min(...times));
-    const weeks = eachWeekOfInterval({ start, end: new Date() }, { weekStartsOn: 1 }).slice(-12);
-    const bucket = (pred: (r: (typeof withSchool)[number]) => boolean) =>
-      weeks.map(
-        (w) =>
-          withSchool.filter(
-            (r) => pred(r) && isSameWeek(new Date(r.createdAt), w, { weekStartsOn: 1 }),
-          ).length,
-      );
-    return {
-      total: bucket(() => true),
-      pending: bucket((r) => r.status === "PENDING"),
-      intervention: bucket((r) => r.status === "NEED_INTERVENTION"),
-      solved: bucket((r) => r.status === "SOLVED"),
-    };
-  }, [withSchool]);
+  const openValidation = (params: Record<string, string> = {}) =>
+    navigate(`/reports/validate${Object.keys(params).length ? `?${new URLSearchParams(params)}` : ""}`);
+  const count = (s: Status) => issues.filter((r) => r.status === s).length;
 
-  const provinceOptions = useMemo(() => {
-    const set = new Set<string>();
-    withSchool.forEach(
-      (r) => r.school?.province && r.school.province !== "—" && set.add(r.school.province),
-    );
-    return [
-      { label: "All provinces", value: "" },
-      ...Array.from(set).sort().map((p) => ({ label: p, value: p })),
-    ];
-  }, [withSchool]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const rows = withSchool.filter((r) => {
-      if (typeFilter !== "ALL" && (r.type ?? "issue") !== typeFilter) return false;
-      if (statusFilter !== "ALL" && r.status !== statusFilter) return false;
-      if (province && r.school?.province !== province) return false;
-      if (!q) return true;
-      return (
-        r.school?.name?.toLowerCase().includes(q) ||
-        r.school?.district?.toLowerCase().includes(q) ||
-        reportCategory(r).toLowerCase().includes(q) ||
-        r.description?.toLowerCase().includes(q)
-      );
-    });
-    const dir = sort.dir === "asc" ? 1 : -1;
-    return [...rows].sort((a, b) => {
-      if (sort.key === "school")
-        return (a.school?.name ?? "").localeCompare(b.school?.name ?? "") * dir;
-      if (sort.key === "status")
-        return a.status.localeCompare(b.status) * dir;
-      return (
-        (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) * dir
-      );
-    });
-  }, [withSchool, search, statusFilter, province, sort, typeFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageClamped = Math.min(page, totalPages);
-  const pageRows = filtered.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE);
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, statusFilter, province, sort, typeFilter]);
-
-  const changeRequestCount = useMemo(
-    () => withSchool.filter((r) => r.type === "data_change_request").length,
-    [withSchool],
-  );
-
-  const runExport = async (key: string, fn: () => Promise<void>) => {
-    const what = EXPORT_NAMES[key] ?? "Export";
-    setBusy(key);
+  const exports: ExportItem[] = [
+    {
+      key: "reports",
+      icon: ListChecks,
+      title: "All reports",
+      description: `${formatNumber(rows.length)} reports with status, reviewer, decision date and note — CSV.`,
+      format: ".csv",
+      run: async () => downloadReportsCsv(rows),
+    },
+    {
+      key: "schools",
+      icon: FileSpreadsheet,
+      title: "Schools master dataset",
+      description: "Every school with location, classification, facilities, staffing and GIS status — Excel.",
+      format: ".xlsx",
+      run: () => downloadBlob("/schools/export", "schools-export.xlsx"),
+    },
+    {
+      key: "assessments",
+      icon: FileBarChart2,
+      title: "Decision assessments",
+      description: "Scores, priority bands, urgency and estimated budget per school — CSV.",
+      format: ".csv",
+      run: () => downloadBlob("/analytics/export", `rtb-assessments-${new Date().toISOString().split("T")[0]}.csv`),
+    },
+  ];
+  const runExport = async (it: ExportItem) => {
+    setExportBusy(it.key);
     try {
-      await fn();
-      toast.success(`${what} exported`);
-      setDone(key);
-      if (doneTimer.current) clearTimeout(doneTimer.current);
-      doneTimer.current = setTimeout(() => setDone(null), 2500);
+      await it.run();
+      setExportDone(it.key);
+      toast.success(`${it.title} exported`);
     } catch (err) {
-      console.error("Export failed", err);
-      toast.error(apiErrorMessage(err, `Could not export ${what.toLowerCase()}. Please try again.`));
+      toast.error(apiErrorMessage(err, `Could not export ${it.title.toLowerCase()}.`));
     } finally {
-      setBusy(null);
+      setExportBusy(null);
     }
   };
 
-  const handleUpdateStatus = async (id: string, status: string) => {
-    setUpdating(true);
-    try {
-      await api.patch(`/reports/${id}/status`, { status });
-      const patch = (r: Report): Report =>
-        r.id === id
-          ? {
-              ...r,
-              status: status as Status,
-              resolvedAt:
-                status === "SOLVED" ? r.resolvedAt ?? new Date().toISOString() : r.resolvedAt,
-            }
-          : r;
-      setReports((prev) => prev.map(patch));
-      setSelected((prev) => (prev ? patch(prev) : prev));
-      const school = reports.find((r) => r.id === id)?.school?.name;
-      const statusText = STATUS_META[status as Status]?.label ?? label("reportStatus", status);
-      toast.success(
-        school ? `Report for "${school}" marked ${statusText}` : `Report marked ${statusText}`,
-      );
-    } catch (err) {
-      toast.error(apiErrorMessage(err, "Could not update the report status. Please try again."));
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const toggleSort = (key: SortKey) =>
-    setSort((s) =>
-      s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "desc" },
-    );
-
-  const resetFilters = () => {
-    setSearch("");
-    setStatusFilter("ALL");
-    setProvince("");
-    setTypeFilter("ALL");
-  };
-  const filtersActive =
-    search !== "" || statusFilter !== "ALL" || province !== "" || typeFilter !== "ALL";
-
-  const SortTh = ({ label, k, className }: { label: string; k: SortKey; className?: string }) => (
-    <TableHead
-      aria-sort={sort.key === k ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
-      className={cn(
-        "text-[10px] font-black uppercase tracking-wider select-none hover:text-foreground transition-colors",
-        className,
-      )}
-    >
-      <button
-        type="button"
-        onClick={() => toggleSort(k)}
-        className={cn(
-          "inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring uppercase",
-          className?.includes("text-right") && "flex-row-reverse",
-        )}
-      >
-        {label}
-        {sort.key === k ? (
-          sort.dir === "asc" ? <ChevronUp className="w-3 h-3 text-primary" /> : <ChevronDown className="w-3 h-3 text-primary" />
-        ) : (
-          <ChevronDown className="w-3 h-3 opacity-20" />
-        )}
-      </button>
-    </TableHead>
-  );
+  const btn =
+    "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:opacity-60";
+  const tiles = [
+    {
+      label: "Waiting for review",
+      value: stats.pending,
+      caption: stats.oldest == null ? "nothing waiting" : `oldest waiting ${formatNumber(stats.oldest)} days`,
+      icon: Inbox,
+      go: { tab: "new", type: "issue" },
+    },
+    {
+      label: "Needs action",
+      value: stats.escalated,
+      caption: "RTB or the district must act",
+      icon: Siren,
+      go: { tab: "escalated", type: "issue" },
+      info: <MetricInfo id="reports.needsIntervention" size="xs" />,
+    },
+    {
+      label: "Fixed",
+      value: stats.rate,
+      caption: `${formatNumber(stats.solved)} of ${formatNumber(stats.issues)} issues`,
+      icon: CheckCircle2,
+      pct: stats.rate,
+      format: (n: number | null) => formatPercent(n),
+      go: { tab: "history", type: "issue" },
+      info: <MetricInfo id="reports.resolutionRate" size="xs" />,
+    },
+    {
+      label: "Change requests",
+      value: stats.requestsOpen,
+      caption: `open · ${formatNumber(stats.requests)} in total`,
+      icon: GitPullRequestArrow,
+      go: { tab: "new", type: "data_change_request" },
+    },
+  ];
 
   return (
-    <div className="relative space-y-6 pb-12">
-      <ImigongoPattern
-        className="fixed inset-0 text-primary pointer-events-none mask-[linear-gradient(to_bottom_right,black_0%,transparent_45%,transparent_55%,black_100%)]"
-        opacity={0.025}
-      />
-
-      <div className="relative z-10 space-y-6">
-        <PageHeader
-          title="Reports & Exports"
-          description="Download institutional datasets and browse every infrastructure issue report."
-          icon={FileText}
-          actions={
-            <Button
-              variant="outline"
-              onClick={load}
-              disabled={loading}
-              className="rounded-xl h-10 px-5 font-black uppercase tracking-wider text-[10px] border-border/25 shadow-none hover:bg-primary/5 gap-2"
-            >
-              <RotateCcw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
-              Refresh
-            </Button>
-          }
-        />
-
-        {/* KPI band */}
-        <div className="grid gap-4 grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
-          <MetricCard
-            icon={ClipboardList}
-            label="Total Reports"
-            value={loading ? "—" : stats.total}
-            spark={sparks.total}
-            sparkColor="#3b82f6"
-            tone="text-primary"
-            toneBg="bg-primary/10"
-            delay={0}
-          />
-          <MetricCard
-            icon={Clock}
-            label="Pending"
-            value={loading ? "—" : stats.pending}
-            hint={stats.total ? `${Math.round((stats.pending / stats.total) * 100)}% of reports` : undefined}
-            spark={sparks.pending}
-            sparkColor={STATUS_META.PENDING.color}
-            tone="text-amber-500"
-            toneBg="bg-amber-500/12"
-            active={statusFilter === "PENDING"}
-            onClick={() => setStatusFilter((s) => (s === "PENDING" ? "ALL" : "PENDING"))}
-            delay={0.04}
-          />
-          <MetricCard
-            icon={TriangleAlert}
-            label="Needs Intervention"
-            value={loading ? "—" : stats.intervention}
-            hint={stats.intervention > 0 ? "Immediate action" : "None critical"}
-            spark={sparks.intervention}
-            sparkColor={STATUS_META.NEED_INTERVENTION.color}
-            tone="text-rose-500"
-            toneBg="bg-rose-500/12"
-            active={statusFilter === "NEED_INTERVENTION"}
-            onClick={() => setStatusFilter((s) => (s === "NEED_INTERVENTION" ? "ALL" : "NEED_INTERVENTION"))}
-            delay={0.08}
-          />
-          <MetricCard
-            icon={CheckCircle2}
-            label="Resolved"
-            value={loading ? "—" : stats.solved}
-            spark={sparks.solved}
-            sparkColor={STATUS_META.SOLVED.color}
-            tone="text-emerald-500"
-            toneBg="bg-emerald-500/12"
-            active={statusFilter === "SOLVED"}
-            onClick={() => setStatusFilter((s) => (s === "SOLVED" ? "ALL" : "SOLVED"))}
-            delay={0.12}
-          />
-          <MetricCard
-            icon={FileBarChart2}
-            label="Resolution Rate"
-            value={loading ? "—" : stats.resolutionRate}
-            suffix={loading ? "" : "%"}
-            hint={stats.failed > 0 ? `${stats.solved} solved · ${stats.failed} invalid excl.` : `${stats.solved} of ${stats.total} resolved`}
-            tone="text-violet-500"
-            toneBg="bg-violet-500/12"
-            delay={0.16}
-          />
-        </div>
-
-        {/* Export hub — needs EXPORT_REPORTS (server enforces it too) */}
-        {canExport && (
-        <div>
-          <h2 className="text-[11px] font-black uppercase tracking-widest text-muted-foreground mb-3">
-            Bulk Exports
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <ExportCard
-              icon={FileSpreadsheet}
-              title="Schools Master Dataset"
-              sub="Every school with location, classification, facilities, staffing and GIS status — Excel workbook."
-              cta="Download .xlsx"
-              tone="bg-emerald-500/10 text-emerald-500"
-              busy={busy === "schools"}
-              done={done === "schools"}
-              delay={0}
-              onClick={() => runExport("schools", () => downloadBlob("/schools/export", "schools-export.xlsx"))}
-            />
-            <ExportCard
-              icon={FileBarChart2}
-              title="Decision Assessments"
-              sub="Latest computed scores, priority bands, urgency and estimated rehab budget per school — CSV."
-              cta="Download .csv"
-              tone="bg-violet-500/10 text-violet-500"
-              busy={busy === "assessments"}
-              done={done === "assessments"}
-              delay={0.05}
-              onClick={() =>
-                runExport("assessments", () =>
-                  downloadBlob("/analytics/export", `rtb-assessments-${new Date().toISOString().split("T")[0]}.csv`),
-                )
-              }
-            />
-            <ExportCard
-              icon={ClipboardList}
-              title="Issue Reports Log"
-              sub={`${filtersActive ? `${filtered.length} filtered` : `All ${stats.total}`} infrastructure issue reports with status, category and resolution timestamps — CSV.`}
-              cta="Download .csv"
-              tone="bg-primary/10 text-primary"
-              busy={busy === "issues"}
-              done={done === "issues"}
-              delay={0.1}
-              onClick={() => runExport("issues", async () => downloadReportsCsv(filtered))}
-            />
+    <div className="relative space-y-5 pb-10">
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <motion.header
+        initial={reduce ? false : { opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: EASE }}
+        className="flex flex-wrap items-center justify-between gap-4"
+      >
+        <div className="flex min-w-0 items-center gap-3.5">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-white shadow-[0_10px_24px_-10px_rgb(37_99_235/0.8)]">
+            <FileSearch className="h-5 w-5" aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Reports</h1>
+            <p className="text-[13px] text-slate-500 dark:text-white/55">Reports from your schools: what is waiting, and what was decided.</p>
           </div>
         </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            aria-label="Refresh"
+            className={cn(btn, "px-2.5 text-slate-600 ring-1 ring-slate-900/10 hover:bg-white dark:text-white/70 dark:ring-white/12 dark:hover:bg-white/8")}
+          >
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin motion-reduce:animate-none")} aria-hidden />
+          </button>
+          {canExport && (
+            <button
+              type="button"
+              onClick={() => setExportOpen(true)}
+              className={cn(btn, "text-slate-700 ring-1 ring-slate-900/10 hover:bg-white dark:text-white/80 dark:ring-white/12 dark:hover:bg-white/8")}
+            >
+              <Download className="h-4 w-4" aria-hidden />
+              Export
+            </button>
+          )}
+          <Link to="/reports/validate" className={cn(btn, "bg-primary text-white hover:bg-primary/90")}>
+            <ClipboardCheck className="h-4 w-4" aria-hidden />
+            Review reports
+            {stats.pending + stats.requestsOpen > 0 && (
+              <span className="rounded-full bg-white/20 px-1.5 text-xs tabular-nums">{formatNumber(stats.pending + stats.requestsOpen)}</span>
+            )}
+          </Link>
+        </div>
+      </motion.header>
+
+      {error && <DashboardError title="We couldn't load the reports" message={error} onRetry={() => void load()} retrying={loading} />}
+
+      {/* ── Key figures (open the matching list on Validation) ──── */}
+      <dl className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        {tiles.map((k, i) => (
+          // A div, not a <button>: the tile holds its own ⓘ button.
+          <div
+            key={k.label}
+            role="button"
+            tabIndex={0}
+            onClick={() => openValidation(k.go)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                openValidation(k.go);
+              }
+            }}
+            aria-label={`${k.label}: open the list`}
+            className="cursor-pointer rounded-[1.4rem] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          >
+            <FloatingStat
+              index={i}
+              compact
+              label={k.label}
+              value={k.value}
+              format={k.format ?? ((n) => formatNumber(n))}
+              caption={k.caption}
+              percent={k.pct ?? null}
+              icon={k.icon}
+              tone="text-primary"
+              color={BRAND}
+              info={k.info}
+            />
+          </div>
+        ))}
+      </dl>
+
+      {/* ── Validation pipeline ─────────────────────────────────── */}
+      <GlassCard title="Where reports stand" icon={Workflow} index={0} info={<MetricInfo id="reports.openIssues" size="xs" />}>
+        {issues.length === 0 ? (
+          <EmptyNote title="No problem reports yet">Reports appear here as soon as schools file them.</EmptyNote>
+        ) : (
+          <>
+            <StackBar
+              max={issues.length}
+              height={12}
+              ariaLabel="Problem reports by stage"
+              segments={STAGES.map((s) => ({
+                key: s.status,
+                value: count(s.status),
+                color: STATUS[s.status].color,
+                tip: (
+                  <span>
+                    {s.label}: <b>{formatNumber(count(s.status))}</b>
+                  </span>
+                ),
+              }))}
+            />
+            <ul className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              {STAGES.map((s) => (
+                <li key={s.status} className="rounded-2xl px-3.5 py-3 ring-1 ring-slate-900/6 dark:ring-white/8">
+                  <p className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-white/50">
+                    <span className="h-1.5 w-1.5 rounded-full" style={{ background: STATUS[s.status].color }} aria-hidden />
+                    {s.label}
+                  </p>
+                  <p className="mt-1 flex items-baseline gap-1.5">
+                    <span className="text-xl font-semibold tabular-nums text-slate-900 dark:text-white">{formatNumber(count(s.status))}</span>
+                    <span className="text-[11px] tabular-nums text-slate-400 dark:text-white/40">{formatPercent((count(s.status) / issues.length) * 100)}</span>
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-white/45">{s.hint}</p>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-white/50">
+              <Hourglass className="h-3.5 w-3.5" aria-hidden />
+              {stats.medianDaysToDecision == null
+                ? "No decisions recorded yet."
+                : `Half of all reports get a decision within ${formatNumber(stats.medianDaysToDecision, 1)} days.`}
+            </p>
+          </>
         )}
+      </GlassCard>
 
-        {/* Report browser */}
-        <Card className="border border-border/30 bg-card/60 backdrop-blur-xl rounded-3xl shadow-none overflow-hidden">
-          <CardContent className="p-0">
-            <div className="p-4 border-b border-border/25 space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative flex-1 min-w-50">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                  <Input
-                    aria-label="Search reports"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search school, district, category, description…"
-                    className="h-9 pl-9 rounded-xl border-border/25 bg-background/50 text-xs shadow-none"
-                  />
-                </div>
-                <div className="w-full sm:w-44">
-                  <RichDropdown
-                    options={provinceOptions}
-                    value={province}
-                    onChange={setProvince}
-                    placeholder="All provinces"
-                  />
-                </div>
-                {filtersActive && (
-                  <Button
-                    variant="ghost"
-                    onClick={resetFilters}
-                    className="h-9 rounded-xl text-[10px] font-black uppercase tracking-wider text-muted-foreground gap-1.5"
-                  >
-                    <RotateCcw className="w-3 h-3" /> Reset
-                  </Button>
-                )}
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Report type">
-                {(
-                  [
-                    { key: "ALL", label: "All types" },
-                    { key: "issue", label: "Issues" },
-                    { key: "data_change_request", label: `Change requests (${changeRequestCount})` },
-                  ] as const
-                ).map((c) => (
-                  <button
-                    key={c.key}
-                    type="button"
-                    aria-pressed={typeFilter === c.key}
-                    onClick={() => setTypeFilter(c.key)}
-                    className={cn(
-                      "rounded-full px-3 py-1 text-[11px] font-semibold border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      typeFilter === c.key
-                        ? "bg-foreground text-background border-foreground"
-                        : "bg-background/50 text-muted-foreground border-border/40 hover:bg-primary/5",
-                    )}
-                  >
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Report status">
-                {(
-                  [
-                    { key: "ALL", label: "All", count: stats.total },
-                    { key: "PENDING", label: "Pending", count: stats.pending },
-                    { key: "NEED_INTERVENTION", label: "Intervention", count: stats.intervention },
-                    { key: "SOLVED", label: label("reportStatus", "SOLVED"), count: stats.solved },
-                    { key: "FAILED", label: label("reportStatus", "FAILED"), count: stats.failed },
-                  ] as const
-                ).map((c) => (
-                  <button
-                    key={c.key}
-                    type="button"
-                    aria-pressed={statusFilter === c.key}
-                    onClick={() => setStatusFilter(c.key as "ALL" | Status)}
-                    className={cn(
-                      "flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider border transition-colors",
-                      statusFilter === c.key
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-background/50 text-muted-foreground border-border/25 hover:bg-primary/5",
-                    )}
-                  >
-                    {c.label}
-                    <span className="tabular-nums opacity-70">{c.count}</span>
-                  </button>
-                ))}
-                <span className="ml-auto text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 tabular-nums">
-                  {filtered.length} result{filtered.length === 1 ? "" : "s"}
-                </span>
-              </div>
-            </div>
-
-            {loading ? (
-              <SkeletonTable rows={8} columns={4} className="m-4 border-0 p-0" />
-            ) : loadError ? (
-              <ErrorState className="m-4" message={loadError} onRetry={load} />
-            ) : pageRows.length === 0 ? (
-              <EmptyState
-                className="m-4"
-                icon={ClipboardList}
-                title={reports.length === 0 ? "No reports yet" : "No reports match these filters"}
-                description={
-                  reports.length === 0
-                    ? "Issue reports and change requests filed from schools will appear here. Schools file them from School Reporting."
-                    : "Try a different search, status or type."
-                }
-                secondaryAction={filtersActive && reports.length > 0 ? { label: "Clear filters", onClick: resetFilters } : undefined}
-              />
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-border/25 hover:bg-transparent">
-                      <SortTh label="School" k="school" className="pl-5" />
-                      <TableHead className="hidden md:table-cell text-[10px] font-black uppercase tracking-wider">Location</TableHead>
-                      <TableHead className="hidden lg:table-cell text-[10px] font-black uppercase tracking-wider">Category</TableHead>
-                      <SortTh label="Status" k="status" />
-                      <SortTh label="Reported" k="createdAt" className="text-right pr-5" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pageRows.map((r, i) => {
-                      const meta = STATUS_META[r.status] ?? STATUS_META.PENDING;
-                      return (
-                        <motion.tr
-                          key={r.id}
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          transition={{ delay: Math.min(i * 0.015, 0.2) }}
-                          onClick={() => setSelected(r)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              setSelected(r);
-                            }
-                          }}
-                          tabIndex={0}
-                          aria-label={`Open report for ${r.school?.name ?? "school"}, ${meta.label}`}
-                          className="border-border/20 cursor-pointer hover:bg-primary/5 transition-colors focus-visible:outline-none focus-visible:bg-primary/10"
-                        >
-                          <TableCell className="pl-5 py-3">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", meta.dot)} />
-                              <span className="text-xs font-bold truncate max-w-55">{r.school?.name}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="hidden md:table-cell">
-                            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-                              <MapPin className="w-3 h-3 shrink-0" />
-                              {[r.school?.district, r.school?.province].filter((x) => x && x !== "—").join(", ") || "—"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="hidden lg:table-cell">
-                            <span className="text-[11px] text-muted-foreground truncate block max-w-45 capitalize">
-                              {reportCategory(r)}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <span className={cn("inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider", meta.chip)}>
-                              <meta.icon className="w-2.5 h-2.5" />
-                              <span className="hidden sm:inline">{meta.label}</span>
-                              <span className="sm:hidden">{meta.short}</span>
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right pr-5">
-                            <span className="text-[11px] text-muted-foreground tabular-nums" title={r.createdAt ? format(new Date(r.createdAt), "PPpp") : ""}>
-                              {r.createdAt ? formatDistanceToNowStrict(new Date(r.createdAt), { addSuffix: true }) : "—"}
-                            </span>
-                          </TableCell>
-                        </motion.tr>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-
-            {!loading && filtered.length > PAGE_SIZE && (
-              <div className="flex flex-wrap items-center justify-between gap-2 p-4 border-t border-border/25">
-                <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground tabular-nums">
-                  {(pageClamped - 1) * PAGE_SIZE + 1}–{Math.min(pageClamped * PAGE_SIZE, filtered.length)} of {filtered.length}
-                </span>
-                <div className="flex items-center gap-1">
-                  <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg border-border/25" aria-label="Previous page" disabled={pageClamped <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-                    <ChevronLeft className="w-4 h-4" aria-hidden />
-                  </Button>
-                  <span className="text-[11px] font-black tabular-nums px-2">{pageClamped} / {totalPages}</span>
-                  <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg border-border/25" aria-label="Next page" disabled={pageClamped >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
-                    <ChevronRight className="w-4 h-4" aria-hidden />
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {/* ── Waiting + recent decisions ──────────────────────────── */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <GlassCard
+          title="Waiting the longest"
+          icon={Inbox}
+          index={1}
+          actionLabel={waiting.length ? `All ${formatNumber(waiting.length)}` : undefined}
+          onAction={waiting.length ? () => openValidation({ tab: "new" }) : undefined}
+        >
+          {waiting.length === 0 ? (
+            <EmptyNote title="Nothing waiting for review" />
+          ) : (
+            <ValidationList rows={waiting.slice(0, 5)} selectedId={null} onSelect={(r) => openValidation({ report: r.id })} facilityTitle={facilityTitle} />
+          )}
+        </GlassCard>
+        <GlassCard
+          title="Recent decisions"
+          icon={History}
+          index={2}
+          actionLabel={recent.length ? "History" : undefined}
+          onAction={recent.length ? () => openValidation({ tab: "history" }) : undefined}
+        >
+          {recent.length === 0 ? (
+            <EmptyNote title="No decisions yet">Reviewed reports and their notes appear here.</EmptyNote>
+          ) : (
+            <ValidationList rows={recent.slice(0, 5)} selectedId={null} onSelect={(r) => openValidation({ report: r.id })} facilityTitle={facilityTitle} history />
+          )}
+        </GlassCard>
       </div>
 
-      <AnimatePresence>
-        {selected && (
-          <ReportDetailsModal
-            report={selected}
-            onClose={closeSelected}
-            onUpdateStatus={
-              canManageReports ||
-              (selected.type === "data_change_request" &&
-                isAuthorized(Permission.EDIT_SCHOOL_LOCATION))
-                ? handleUpdateStatus
-                : undefined
-            }
-            isUpdating={updating}
-          />
-        )}
-      </AnimatePresence>
+      {waiting.length > 0 && (
+        <Link
+          to="/reports/validate"
+          className="group flex items-center justify-between gap-3 rounded-[1.75rem] bg-primary px-5 py-4 text-white transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2"
+        >
+          <span>
+            <span className="block text-sm font-semibold">Start reviewing</span>
+            <span className="block text-xs text-white/75">
+              {formatNumber(waiting.length)} report{waiting.length === 1 ? "" : "s"} waiting, oldest first
+            </span>
+          </span>
+          <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" aria-hidden />
+        </Link>
+      )}
+
+      <DetailModal isOpen={exportOpen} onClose={() => setExportOpen(false)} icon={Download} title="Export data" description="Downloads respect your access area." maxWidth="max-w-xl">
+        <ExportList items={exports} busy={exportBusy} done={exportDone} onRun={(it) => void runExport(it)} />
+      </DetailModal>
     </div>
   );
 }

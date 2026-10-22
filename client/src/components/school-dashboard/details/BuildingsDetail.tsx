@@ -35,9 +35,9 @@ export function BuildingsSummary({ buildings, metrics }: { buildings: FacilityBu
     <SummaryStats>
       <SummaryStat label="Buildings" value={formatNumber(total)} hint="on record" info={<MetricInfo id="school.buildingCount" size="xs" />} />
       <SummaryStat
-        label="Assessed"
+        label="Condition recorded"
         value={`${formatNumber(assessed)} of ${formatNumber(total)}`}
-        hint="feed the infrastructure score"
+        hint="count toward the score"
         meter={total ? (assessed / total) * 100 : null}
       />
       <SummaryStat label="Need work" value={formatNumber(needWork)} hint="poor or critical" accent={needWork ? META.critical.color : META.good.color} />

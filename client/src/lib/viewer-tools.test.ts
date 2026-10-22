@@ -70,8 +70,16 @@ describe("deep links (WS5.6)", () => {
     const url = viewerLink("2d", "s1", { buildingId: "b1", lat: -1.9, lng: 30.1 });
     expect(url.startsWith("/schools/s1/3dview?")).toBe(true);
     const d = readViewerDeepLink(url.split("?")[1]);
-    expect(d).toEqual({ buildingId: "b1", lat: -1.9, lng: 30.1, view: "map" });
+    expect(d).toEqual({ buildingId: "b1", lat: -1.9, lng: 30.1, view: "map", tab: null, reportId: null });
     expect(readViewerDeepLink("buildingId=x").buildingId).toBe("x");
-    expect(viewerLink("3d", "s1", { buildingId: "b1" })).toBe("/schools/s1/3d-explorer?building=b1");
+    expect(viewerLink("3d", "s1", { buildingId: "b1" })).toBe("/schools/s1/3dview?building=b1&view=3d");
+  });
+
+  it("opens a building's report on the map", () => {
+    const url = viewerLink("2d", "s1", { buildingId: "b1", reportId: "r1" });
+    const d = readViewerDeepLink(url.split("?")[1]);
+    expect(d).toMatchObject({ buildingId: "b1", reportId: "r1", tab: "reporting" });
+    expect(readViewerDeepLink("building=b1&tab=media").tab).toBe("media");
+    expect(readViewerDeepLink("building=b1&tab=nope").tab).toBeNull();
   });
 });

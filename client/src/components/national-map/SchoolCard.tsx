@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowUpRight, Box, ChevronDown, Copy, Crosshair, Navigation, Share2, X } from "lucide-react";
+import { viewerLink } from "../../lib/viewer-tools";
 import { cn } from "../../lib/utils";
 import { formatLength, formatNumber } from "../../lib/format";
 import { label } from "../../lib/labels";
@@ -180,15 +181,11 @@ export function SchoolCardBody({
           )}
           <div className={cn("flex items-center gap-0.5 rounded-full bg-slate-900/[0.04] p-0.5 dark:bg-white/[0.06]", !canDecision && "mx-auto")}>
             {can3d && (
-              // The explorer is a stand-alone full-screen viewer (its close
-              // button calls window.close()), so it opens in a new tab like
-              // everywhere else in the app — and the map stays where it was.
+              // The school viewer, opened on its 3D tab.
               <Link
-                to={`/schools/${s.id}/3d-explorer`}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="3D explorer (opens in a new tab)"
-                title="3D explorer · new tab"
+                to={viewerLink("3d", s.id)}
+                aria-label="3D view"
+                title="3D view"
                 className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-700 transition-colors hover:bg-slate-900/5 hover:text-slate-900 dark:text-white/75 dark:hover:bg-white/10 dark:hover:text-white"
               >
                 <Box className="h-4 w-4" aria-hidden />

@@ -319,6 +319,7 @@ export default function Dashboard() {
                   ).map((stat, i) => (
                     <FloatingStat
                       key={stat.label}
+                      depth
                       index={i}
                       compact
                       label={stat.label}
@@ -353,6 +354,7 @@ export default function Dashboard() {
               ).map((stat, i) => (
                 <FloatingStat
                   key={stat.label}
+                  depth
                   index={i}
                   compact
                   label={stat.label}
@@ -379,7 +381,7 @@ export default function Dashboard() {
           coverage={coverage}
           metrics={[
             {
-              label: "Infrastructure",
+              label: "Building condition",
               weight: weightOf("infrastructure", model),
               score: avg(stats.nationalAvgInfraScore),
               icon: Building2,
@@ -395,7 +397,7 @@ export default function Dashboard() {
               estimatedNote: gapNote(gaps?.buildingAge),
             },
             {
-              label: "Compliance",
+              label: "Facilities checklist",
               weight: weightOf("facilityCompliance", model),
               score: avg(stats.nationalAvgComplianceScore),
               icon: ClipboardCheck,
@@ -403,7 +405,7 @@ export default function Dashboard() {
               estimatedNote: gapNote(gaps?.facilityCompliance),
             },
             {
-              label: "Accessibility",
+              label: "Road access",
               weight: weightOf("accessibility", model),
               score: avg(stats.nationalAvgAccessScore),
               icon: MapPin,
@@ -411,7 +413,7 @@ export default function Dashboard() {
               estimatedNote: gapNote(gaps?.accessibility),
             },
             {
-              label: "Population pressure",
+              label: "Nearby population",
               weight: weightOf("population", model),
               score: avg(stats.nationalAvgPopScore),
               icon: Users,
@@ -419,7 +421,7 @@ export default function Dashboard() {
               estimatedNote: gapNote(gaps?.population),
             },
             {
-              label: "Issue resolution",
+              label: "Problems fixed",
               weight: weightOf("resolution", model),
               score: avg(stats.nationalAvgResolutionScore),
               icon: ClipboardCheck,

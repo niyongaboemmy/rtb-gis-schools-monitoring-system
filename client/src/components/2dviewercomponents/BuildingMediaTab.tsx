@@ -1,401 +1,298 @@
-import { useState } from "react";
-import {
-  Plus,
-  Trash2,
-  Globe,
-  Image as ImageIcon,
-  Video,
-  ExternalLink,
-  X,
-  Upload,
-  Shield,
-} from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Images, Link2, Loader2, Play, Trash2, Upload } from "lucide-react";
 import { fileApi, apiErrorMessage } from "../../lib/api";
 import { useToast } from "../ui/toast";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Badge } from "../ui/badge";
 import { cn } from "../../lib/utils";
+import { EASE } from "../school-dashboard/tokens";
 import type { BuildingData } from "../school-form-steps/BuildingsStep";
+import { isVideoMedia, mediaTypeOf, titleFromFile, type MediaEntry } from "./media/media-utils";
 
 interface BuildingMediaTabProps {
   building: BuildingData;
   schoolId: string;
+  /** Add and remove files (EDIT_SCHOOL_BUILDINGS / MANAGE_SCHOOLS). */
+  canEdit: boolean;
   onUpdateBuilding: (update: BuildingData) => Promise<void>;
+  /** Open a file of this building in the fullscreen viewer. */
+  onOpen: (index: number) => void;
+  /** Open the school-wide gallery. */
+  onGallery?: () => void;
 }
 
-export function BuildingMediaTab({
-  building,
-  schoolId,
-  onUpdateBuilding,
-}: BuildingMediaTabProps) {
+/** What the file server accepts in `buildings` (file-server/file-types.js). */
+const ACCEPT = "image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif,video/mp4,video/webm";
+const ALLOWED = /^(image\/(jpeg|png|webp|gif|heic|heif)|video\/(mp4|webm))$/;
+const ALLOWED_EXT = /\.(jpe?g|png|webp|gif|heic|heif|mp4|webm)$/i;
+const MAX_MB = 10;
+const MAX_FILES = 10;
+
+/**
+ * A building's photos and videos: drop or pick files to upload (several at
+ * once), tap one to view it fullscreen, remove with a second tap to confirm.
+ */
+export function BuildingMediaTab({ building, schoolId, canEdit, onUpdateBuilding, onOpen, onGallery }: BuildingMediaTabProps) {
   const toast = useToast();
-  const [newTitle, setNewTitle] = useState("");
-  const [newPath, setNewPath] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isAdding, setIsAdding] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [uploadMode, setUploadMode] = useState<"local" | "remote">("local");
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const reduce = useReducedMotion();
+  const inputId = useId();
+  const media = ((building.media ?? []) as MediaEntry[]).filter((m) => m?.path);
+  const [dragging, setDragging] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
+  const [confirm, setConfirm] = useState<number | null>(null);
+  const [removing, setRemoving] = useState<number | null>(null);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [link, setLink] = useState("");
+  const confirmTimer = useRef<number | undefined>(undefined);
 
-  const onFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] || null;
-    setSelectedFile(file);
-    if (file) {
-      if (file.type.startsWith("image/")) {
-        const url = URL.createObjectURL(file);
-        setPreviewUrl(url);
-      } else {
-        setPreviewUrl(null);
-      }
-      if (!newTitle) setNewTitle(file.name.split(".")[0]);
-    }
-  };
+  useEffect(() => () => window.clearTimeout(confirmTimer.current), []);
 
-  const handleAddMedia = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (uploadMode === "remote" && !newPath) return;
-    if (uploadMode === "local" && !selectedFile) return;
+  const save = (next: MediaEntry[]) => onUpdateBuilding({ ...building, media: next } as BuildingData);
 
-    setIsSaving(true);
-    let finalPath = newPath;
-
+  const upload = async (list: FileList | File[]) => {
+    const all = Array.from(list);
+    const wrongType = all.filter((f) => !(ALLOWED.test(f.type) || ALLOWED_EXT.test(f.name)));
+    const tooBig = all.filter((f) => !wrongType.includes(f) && f.size > MAX_MB * 1024 * 1024);
+    const files = all.filter((f) => !wrongType.includes(f) && !tooBig.includes(f)).slice(0, MAX_FILES);
+    if (wrongType.length) toast.error(`${wrongType.map((f) => f.name).join(", ")}: use JPG, PNG, WebP, HEIC, MP4 or WebM.`);
+    if (tooBig.length) toast.error(`${tooBig.map((f) => f.name).join(", ")}: larger than ${MAX_MB} MB.`);
+    if (all.length - wrongType.length - tooBig.length > MAX_FILES) toast.error(`Up to ${MAX_FILES} files at a time; the first ${MAX_FILES} were added.`);
+    if (files.length === 0) return;
+    setProgress(0);
     try {
-      if (uploadMode === "local" && selectedFile) {
-        const formData = new FormData();
-        formData.append("files", selectedFile);
-
-        const { data } = await fileApi.post(
-          `/upload?folder=buildings&schoolId=${schoolId}`,
-          formData,
-        );
-
-        if (data.success && data.urls && data.urls.length > 0) {
-          finalPath = data.urls[0];
-        } else {
-          throw new Error("Upload failed");
-        }
-      }
-
-      const newMediaItem = {
-        title:
-          newTitle ||
-          (uploadMode === "local" ? selectedFile?.name : "Remote Asset") ||
-          "Untitled",
-        path: finalPath,
-        type: (finalPath.match(/\.(mp4|webm|ogg|mov)$/i)
-          ? "video"
-          : "image") as "image" | "video",
-        createdAt: new Date().toISOString(),
-      };
-
-      const updatedMedia = [...(building.media || []), newMediaItem];
-      await onUpdateBuilding({ ...building, media: updatedMedia });
-      toast.success(`Media "${newMediaItem.title}" added`);
-
-      setNewTitle("");
-      setNewPath("");
-      setSelectedFile(null);
-      setPreviewUrl(null);
-      setIsAdding(false);
+      const form = new FormData();
+      files.forEach((f) => form.append("files", f));
+      const { data } = await fileApi.post(`/upload?folder=buildings&schoolId=${schoolId}`, form, {
+        onUploadProgress: (e) => setProgress(e.total ? Math.round((e.loaded / e.total) * 100) : null),
+      });
+      const urls: string[] = data?.urls ?? [];
+      if (!data?.success || urls.length === 0) throw new Error("Upload failed");
+      const now = new Date().toISOString();
+      const added: MediaEntry[] = urls.map((path, i) => ({
+        path,
+        title: titleFromFile(files[i]?.name ?? "Photo"),
+        type: files[i]?.type.startsWith("video/") ? "video" : mediaTypeOf(path),
+        createdAt: now,
+      }));
+      await save([...media, ...added]);
+      toast.success(added.length === 1 ? "Photo added" : `${added.length} files added`);
     } catch (err) {
-      console.error("Failed to add media:", err);
-      toast.error(apiErrorMessage(err, "Could not add the media file. Please retry."));
+      toast.error(apiErrorMessage(err, "Could not upload. Please try again."));
     } finally {
-      setIsSaving(false);
+      setProgress(null);
     }
   };
 
-  const handleRemoveMedia = async (index: number) => {
-    const removed = building.media?.[index];
-    const updatedMedia = building.media?.filter((_, i) => i !== index);
+  const addLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const url = link.trim();
+    if (!/^https?:\/\//i.test(url)) {
+      toast.error("Enter a link that starts with https://");
+      return;
+    }
     try {
-      await onUpdateBuilding({ ...building, media: updatedMedia });
-      toast.success(`Media "${removed?.title || "Untitled"}" removed`);
+      await save([...media, { path: url, title: titleFromFile(url.split("/").pop() || "Link"), type: mediaTypeOf(url), createdAt: new Date().toISOString() }]);
+      setLink("");
+      setLinkOpen(false);
+      toast.success("Link added");
     } catch (err) {
-      console.error("Failed to remove media:", err);
-      toast.error(apiErrorMessage(err, "Could not remove the media file."));
+      toast.error(apiErrorMessage(err, "Could not add the link."));
     }
   };
+
+  const remove = async (i: number) => {
+    if (confirm !== i) {
+      setConfirm(i);
+      window.clearTimeout(confirmTimer.current);
+      confirmTimer.current = window.setTimeout(() => setConfirm(null), 3000);
+      return;
+    }
+    setConfirm(null);
+    setRemoving(i);
+    try {
+      await save(media.filter((_, x) => x !== i));
+      toast.success("Removed");
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not remove it."));
+    } finally {
+      setRemoving(null);
+    }
+  };
+
+  const busy = progress !== null;
 
   return (
-    <div className="flex-1 overflow-y-auto px-0 py-2 custom-scrollbar space-y-6">
-      <div className="flex items-center justify-between px-0.5">
-        <div className="space-y-0.5">
-          <p className="text-[10px] text-white/40 uppercase font-black tracking-[0.2em] font-mono">
-            Digital Assets
-          </p>
-          <p className="text-[11px] text-white/60 font-medium">
-            Building registry & media
-          </p>
-        </div>
-        <Button
-          size="sm"
-          onClick={() => {
-            setIsAdding(!isAdding);
-            setPreviewUrl(null);
-          }}
-          className={cn(
-            "h-8 px-4 rounded-xl transition-all font-black text-[10px] uppercase tracking-widest border-none",
-            isAdding
-              ? "bg-red-500/10 text-red-400 hover:bg-red-500/20"
-              : "bg-primary/20 text-primary hover:bg-primary/30",
-          )}
-          variant="ghost"
-        >
-          {isAdding ? (
-            <X className="w-3.5 h-3.5 mr-1.5" />
-          ) : (
-            <Plus className="w-3.5 h-3.5 mr-1.5" />
-          )}
-          {isAdding ? "Close" : "Capture"}
-        </Button>
-      </div>
-
-      {isAdding && (
-        <form
-          onSubmit={handleAddMedia}
-          className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-500 group relative"
-        >
-          {/* Mode Switcher */}
-          <div className="flex p-1 rounded-xl bg-white/5 border border-white/4">
-            {[
-              { id: "local", label: "Local Upload", icon: Upload },
-              { id: "remote", label: "Remote URL", icon: Globe },
-            ].map((mode) => (
-              <button
-                key={mode.id}
-                type="button"
-                onClick={() => setUploadMode(mode.id as any)}
-                className={cn(
-                  "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
-                  uploadMode === mode.id
-                    ? "bg-white/10 text-white"
-                    : "text-white/40 hover:text-white/40",
-                )}
-              >
-                <mode.icon className="w-3 h-3" />
-                {mode.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-[9px] uppercase font-black text-white/60 tracking-widest ml-1">
-                Asset Identity
-              </label>
-              <Input
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="Name this asset..."
-                className="bg-white/3 border-white/4 h-11 text-xs rounded-xl focus:ring-primary/20 placeholder:text-white/10"
-              />
-            </div>
-
-            {uploadMode === "local" ? (
-              <div className="space-y-2">
-                <label className="text-[9px] uppercase font-black text-white/60 tracking-widest ml-1">
-                  File Source
-                </label>
-                <div className="relative group/upload">
-                  <input
-                    type="file"
-                    id="media-upload"
-                    className="hidden"
-                    onChange={onFileSelect}
-                    accept="image/*,video/*"
-                  />
-                  <label
-                    htmlFor="media-upload"
-                    className={cn(
-                      "flex flex-col items-center justify-center min-h-[140px] border-2 border-dashed rounded-2xl transition-all cursor-pointer overflow-hidden",
-                      selectedFile
-                        ? "border-primary/50 bg-primary/5"
-                        : "border-white/4 hover:border-white/6 bg-white/2",
-                    )}
-                  >
-                    {previewUrl ? (
-                      <div className="w-full h-full relative group/preview">
-                        <img
-                          src={previewUrl}
-                          className="w-full h-[140px] object-cover opacity-80 group-hover:opacity-100 transition-opacity"
-                          alt="Preview"
-                        />
-                        <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Plus className="w-6 h-6 text-white mb-1" />
-                          <p className="text-[8px] font-black text-white uppercase">
-                            Change Image
-                          </p>
-                        </div>
-                      </div>
-                    ) : selectedFile ? (
-                      <div className="flex flex-col items-center p-4">
-                        <Video className="w-8 h-8 text-primary/60 mb-2" />
-                        <p className="text-xs font-bold text-white/90 truncate max-w-full">
-                          {selectedFile.name}
-                        </p>
-                        <p className="text-[9px] text-white/40 uppercase mt-1">
-                          {(selectedFile.size / 1024 / 1024).toFixed(2)} MB •
-                          READY
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center text-white/40 group-hover:text-white/40 transition-all">
-                        <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-2 border border-white/4 group-hover:scale-110 transition-transform">
-                          <Upload className="w-5 h-5" />
-                        </div>
-                        <p className="text-[9px] uppercase font-black tracking-widest">
-                          Drop files here
-                        </p>
-                      </div>
-                    )}
-                  </label>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <label className="text-[9px] uppercase font-black text-white/60 tracking-widest ml-1">
-                  Remote Endpoint
-                </label>
-                <div className="relative">
-                  <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/40" />
-                  <Input
-                    value={newPath}
-                    onChange={(e) => setNewPath(e.target.value)}
-                    placeholder="https://..."
-                    className="bg-white/3 border-white/4 h-11 pl-10 text-xs rounded-xl focus:ring-primary/20 placeholder:text-white/10"
-                  />
-                </div>
-              </div>
+    <div className="space-y-4">
+      {canEdit && (
+        <div className="space-y-2">
+          <label
+            htmlFor={inputId}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (!dragging) setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              if (!busy && e.dataTransfer.files.length) void upload(e.dataTransfer.files);
+            }}
+            className={cn(
+              "relative flex cursor-pointer items-center gap-3 overflow-hidden rounded-2xl border border-dashed px-4 py-3.5 transition-colors",
+              dragging
+                ? "border-primary bg-primary/[0.06]"
+                : "border-slate-300 hover:border-primary/60 hover:bg-primary/[0.03] dark:border-white/15 dark:hover:border-primary/60",
+              busy && "pointer-events-none",
             )}
-          </div>
-
-          <Button
-            type="submit"
-            disabled={
-              isSaving || (uploadMode === "local" ? !selectedFile : !newPath)
-            }
-            className="w-full py-6 rounded-full font-black text-[10px] uppercase tracking-[0.2em] mt-2 border-none"
           >
-            {isSaving ? (
-              <div className="flex items-center gap-3">
-                <div className="w-4 h-4 border-2 border-white/12 border-t-white rounded-full animate-spin" />
-                Processing Asset...
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Shield className="w-3.5 h-3.5" />
-                Commit to Registry
-              </div>
+            <input
+              id={inputId}
+              type="file"
+              accept={ACCEPT}
+              multiple
+              className="sr-only"
+              disabled={busy}
+              onChange={(e) => {
+                if (e.target.files?.length) void upload(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <motion.span
+              animate={dragging && !reduce ? { y: -2, scale: 1.08 } : { y: 0, scale: 1 }}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
+              aria-hidden
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            </motion.span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13px] text-slate-800 dark:text-white/85">
+                {busy ? `Uploading${progress ? ` · ${progress}%` : "…"}` : dragging ? "Drop to upload" : "Add photos or videos"}
+              </span>
+              <span className="block text-[11px] text-slate-500 dark:text-white/45">Drop here or tap · up to {MAX_MB} MB each</span>
+            </span>
+            {busy && (
+              <motion.span
+                className="absolute inset-x-0 bottom-0 h-0.5 origin-left bg-primary"
+                initial={{ scaleX: 0 }}
+                animate={{ scaleX: (progress ?? 10) / 100 }}
+                transition={{ ease: "easeOut" }}
+                aria-hidden
+              />
             )}
-          </Button>
-        </form>
+          </label>
+
+          <AnimatePresence initial={false}>
+            {linkOpen ? (
+              <motion.form
+                key="link"
+                onSubmit={addLink}
+                initial={reduce ? false : { opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={reduce ? undefined : { opacity: 0, height: 0 }}
+                transition={{ duration: 0.25, ease: EASE }}
+                className="flex gap-2 overflow-hidden"
+              >
+                <input
+                  autoFocus
+                  value={link}
+                  onChange={(e) => setLink(e.target.value)}
+                  placeholder="https://…"
+                  aria-label="Link to a photo or video"
+                  className="h-9 min-w-0 flex-1 rounded-xl bg-white px-3 text-[13px] text-slate-900 ring-1 ring-slate-900/10 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary dark:bg-white/[0.06] dark:text-white dark:ring-white/15"
+                />
+                <button type="submit" className="h-9 rounded-xl bg-primary px-3.5 text-[13px] text-white transition-colors hover:bg-primary/90">
+                  Add
+                </button>
+                <button type="button" onClick={() => setLinkOpen(false)} className="h-9 rounded-xl px-2.5 text-[13px] text-slate-500 hover:bg-slate-900/5 dark:text-white/55 dark:hover:bg-white/8">
+                  Cancel
+                </button>
+              </motion.form>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setLinkOpen(true)}
+                className="inline-flex items-center gap-1.5 px-1 text-xs text-slate-500 transition-colors hover:text-primary dark:text-white/50"
+              >
+                <Link2 className="h-3.5 w-3.5" aria-hidden /> Add a link instead
+              </button>
+            )}
+          </AnimatePresence>
+        </div>
       )}
 
-      {/* Media Grid */}
-      <div className="grid grid-cols-1 gap-3 pb-8">
-        {!building.media || building.media.length === 0 ? (
-          <div className="h-40 rounded-3xl border border-dashed border-white/6 flex flex-col items-center justify-center p-8 bg-black/10">
-            <Globe className="w-8 h-8 text-white/5 mb-3" />
-            <p className="text-[10px] text-white/40 font-normal text-center leading-relaxed">
-              {" "}
-              No digital assets found.
-              <br />
-              Attach external media to this block.{" "}
-            </p>
-          </div>
-        ) : (
-          building.media.map((m, idx) => {
-            const isVideo =
-              m.type === "video" || m.path.match(/\.(mp4|webm|ogg|mov)$/i);
-            const isExternal = m.path.startsWith("http");
-
-            return (
-              <div
-                key={idx}
-                className="group relative flex items-center gap-4 p-3 rounded-2xl bg-white/3 border border-white/4 hover:bg-white/6 hover:border-white/6 transition-all overflow-hidden"
-              >
-                {/* Preview / Icon - High Fidelity Preview */}
-                <div className="w-16 h-16 rounded-xl bg-black/40 border border-white/4 flex items-center justify-center shrink-0 overflow-hidden relative group-hover:border-primary/30 transition-colors">
-                  {isVideo ? (
-                    <div className="flex flex-col items-center">
-                      <Video className="w-6 h-6 text-primary/40 group-hover:text-primary transition-colors" />
-                      <span className="text-[7px] text-primary/30 uppercase font-black mt-1">
-                        Video
-                      </span>
-                    </div>
-                  ) : (
-                    <div
-                      className="w-full h-full relative cursor-pointer"
-                      role="button"
-                      aria-label={`Open ${m.title || "image"} in a new tab`}
-                      onClick={() => window.open(m.path, "_blank")}
-                    >
-                      <img
-                        src={m.path}
-                        alt={m.title}
-                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = "none";
-                          const fallback =
-                            target.nextElementSibling as HTMLElement;
-                          if (fallback) fallback.style.display = "flex";
-                        }}
-                      />
-                      <div
-                        className="hidden absolute inset-0 flex-col items-center justify-center bg-black/40"
-                        style={{ display: "none" }}
-                      >
-                        <ImageIcon className="w-6 h-6 text-blue-400/40" />
-                      </div>
-                    </div>
-                  )}
-                  {isExternal && (
-                    <Badge className="absolute top-1 left-1 bg-primary/20 text-[6px] h-3 px-1 border-none text-primary uppercase backdrop-blur-md">
-                      Web
-                    </Badge>
-                  )}
-                </div>
-
-                {/* Content */}
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-white/90 truncate pr-8 group-hover:text-white transition-colors uppercase tracking-tight antialiased">
-                    {m.title || "Untitled Asset"}
-                  </p>
-                  <p className="text-[10px] text-white/40 truncate font-mono mt-0.5 group-hover:text-white/40 transition-colors">
-                    {m.path}
-                  </p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <button
-                      onClick={() => window.open(m.path, "_blank")}
-                      className="text-[9px] font-black text-primary/60 hover:text-primary uppercase tracking-widest transition-colors flex items-center gap-1"
-                    >
-                      View Source
-                      <ExternalLink className="w-2.5 h-2.5" aria-hidden />
-                    </button>
-                    <div className="w-1 h-1 rounded-full bg-white/5" />
-                    <span className="text-[9px] text-white/10 font-bold uppercase tracking-widest">
-                      {m.type || "Asset"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <button
-                  type="button"
-                  onClick={() => handleRemoveMedia(idx)}
-                  aria-label={`Remove media "${m.title || "Untitled"}"`}
-                  className="absolute top-3 right-3 p-1.5 rounded-lg text-white/10 hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all scale-75 group-hover:scale-100"
-                >
-                  <Trash2 className="w-3.5 h-3.5" aria-hidden />
-                </button>
-              </div>
-            );
-          })
+      <div className="flex items-center justify-between px-0.5">
+        <p className="text-xs text-slate-500 dark:text-white/50">
+          {media.length === 0 ? "No files yet" : `${media.length} file${media.length === 1 ? "" : "s"}`}
+        </p>
+        {onGallery && (
+          <button type="button" onClick={onGallery} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+            <Images className="h-3.5 w-3.5" aria-hidden /> All buildings
+          </button>
         )}
       </div>
+
+      {media.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-2xl bg-slate-900/[0.03] px-4 py-8 text-center dark:bg-white/[0.03]">
+          <Images className="h-6 w-6 text-slate-300 dark:text-white/25" aria-hidden />
+          <p className="text-xs text-slate-500 dark:text-white/50">{canEdit ? "Photos help others see the building." : "No photos for this building yet."}</p>
+        </div>
+      ) : (
+        <ul className="grid grid-cols-3 gap-1.5">
+          <AnimatePresence initial={false}>
+            {media.map((m, i) => {
+              const video = isVideoMedia(m);
+              const asking = confirm === i;
+              return (
+                <motion.li
+                  key={`${m.path}:${i}`}
+                  layout={!reduce}
+                  initial={reduce ? false : { opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: removing === i ? 0.4 : 1, scale: 1 }}
+                  exit={reduce ? undefined : { opacity: 0, scale: 0.9 }}
+                  transition={{ duration: 0.25, ease: EASE }}
+                  className="group relative"
+                >
+                  <button
+                    type="button"
+                    onClick={() => onOpen(i)}
+                    aria-label={`Open ${m.title || (video ? "video" : "photo")}`}
+                    className="relative block aspect-square w-full overflow-hidden rounded-xl bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 dark:bg-white/5"
+                  >
+                    {video ? (
+                      <span className="flex h-full w-full items-center justify-center">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900/60 text-white">
+                          <Play className="h-3.5 w-3.5" aria-hidden />
+                        </span>
+                      </span>
+                    ) : (
+                      <img src={m.path} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    )}
+                    {m.title && (
+                      <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/65 to-transparent px-2 pb-1.5 pt-4 text-left text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100">
+                        {m.title}
+                      </span>
+                    )}
+                  </button>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => void remove(i)}
+                      disabled={removing !== null}
+                      aria-label={asking ? `Confirm removing ${m.title || "this file"}` : `Remove ${m.title || "this file"}`}
+                      className={cn(
+                        "absolute right-1 top-1 flex h-7 items-center justify-center gap-1 rounded-full text-white backdrop-blur transition-all focus-visible:opacity-100",
+                        asking ? "bg-destructive px-2.5 text-[11px] opacity-100" : "w-7 bg-slate-900/55 opacity-0 hover:bg-destructive group-hover:opacity-100 [@media(hover:none)]:opacity-100",
+                      )}
+                    >
+                      {removing === i ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Trash2 className="h-3.5 w-3.5" aria-hidden />}
+                      {asking && "Remove?"}
+                    </button>
+                  )}
+                </motion.li>
+              );
+            })}
+          </AnimatePresence>
+        </ul>
+      )}
     </div>
   );
 }

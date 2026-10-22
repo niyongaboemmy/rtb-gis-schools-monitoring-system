@@ -336,30 +336,47 @@ export function onSelection(
   return () => ch.close();
 }
 
-/** Deep links between the viewers, carrying the selected building. */
+/** Deep links into the school viewer (2D map or 3D tab), carrying the selected building. */
 export function viewerLink(
   target: ViewerKind,
   schoolId: string,
-  opts: { buildingId?: string | null; lat?: number | null; lng?: number | null; schoolName?: string } = {},
+  opts: {
+    buildingId?: string | null;
+    lat?: number | null;
+    lng?: number | null;
+    schoolName?: string;
+    /** 2D map only: open the building panel on this tab. */
+    tab?: BuildingPanelTab;
+    /** 2D map only: open this report in the building panel. */
+    reportId?: string | null;
+  } = {},
 ): string {
   const p = new URLSearchParams();
   if (opts.buildingId) p.set("building", opts.buildingId);
   if (opts.lat != null && Number.isFinite(opts.lat)) p.set("lat", String(opts.lat));
   if (opts.lng != null && Number.isFinite(opts.lng)) p.set("lng", String(opts.lng));
+  // 3D opens the school viewer on its 3D tab (same browser tab), with the
+  // building selected there.
   if (target === "3d") {
-    if (opts.schoolName) p.set("schoolName", opts.schoolName);
-    const qs = p.toString();
-    return `/schools/${schoolId}/3d-explorer${qs ? `?${qs}` : ""}`;
+    p.set("view", "3d");
+    return `/schools/${schoolId}/3dview?${p.toString()}`;
   }
   p.set("view", "map");
+  if (opts.tab) p.set("tab", opts.tab);
+  if (opts.reportId) p.set("report", opts.reportId);
   return `/schools/${schoolId}/3dview?${p.toString()}`;
 }
+
+/** Tabs of the building panel on the 2D map. */
+export type BuildingPanelTab = "details" | "media" | "reporting";
 
 export interface ViewerDeepLink {
   buildingId: string | null;
   lat: number | null;
   lng: number | null;
   view: string | null;
+  tab: BuildingPanelTab | null;
+  reportId: string | null;
 }
 
 export function readViewerDeepLink(search: string): ViewerDeepLink {
@@ -376,5 +393,7 @@ export function readViewerDeepLink(search: string): ViewerDeepLink {
     lat: num("lat"),
     lng: num("lng"),
     view: p.get("view"),
+    tab: (["details", "media", "reporting"] as const).find((t) => t === p.get("tab")) ?? (p.get("report") ? "reporting" : null),
+    reportId: p.get("report"),
   };
 }

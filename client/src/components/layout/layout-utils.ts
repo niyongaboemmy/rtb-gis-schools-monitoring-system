@@ -11,6 +11,7 @@ const ROUTE_LABELS: Record<string, string> = {
   "analytics/population": "Population",
   reporting: "School reporting",
   reports: "Reports",
+  "reports/validate": "Review reports",
   settings: "Settings",
   profile: "My profile",
 };

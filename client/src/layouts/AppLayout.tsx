@@ -16,6 +16,7 @@ import {
   Settings,
   LogOut,
   FileSearch,
+  ClipboardCheck,
   User,
   PanelLeftClose,
   PanelLeftOpen,
@@ -56,6 +57,7 @@ import { useToast } from "../components/ui/toast";
 import { titleCase } from "../lib/labels";
 import { IdleTimeoutGuard } from "../components/auth/IdleTimeoutGuard";
 import { motion, AnimatePresence } from "framer-motion";
+import { usePendingReviewCount } from "../hooks/usePendingReviewCount";
 import {
   Tooltip,
   TooltipContent,
@@ -63,6 +65,8 @@ import {
 } from "../components/ui/tooltip";
 
 /* ─── helpers ─────────────────────────────────────────────────── */
+/** The nav item that shows the waiting-for-review badge. */
+const REVIEW_PATH = "/reports/validate";
 const SIDEBAR_EXPANDED = 256;
 const SIDEBAR_COLLAPSED = 68;
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -269,6 +273,15 @@ export function AppLayout() {
       ] as PermissionType[],
     },
     {
+      name: "Review reports",
+      path: "/reports/validate",
+      icon: ClipboardCheck,
+      requiredAnyPermission: [
+        Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD,
+        Permission.EDIT_SCHOOL_LOCATION,
+      ] as PermissionType[],
+    },
+    {
       name: "Settings",
       path: "/settings",
       icon: Settings,
@@ -299,6 +312,8 @@ export function AppLayout() {
       return false;
     return true;
   });
+  // Reports waiting for review — shown as a badge on "Review reports".
+  const reviewCount = usePendingReviewCount(navItems.some((i) => i.path === REVIEW_PATH));
   const initials = `${user?.firstName?.charAt(0) ?? ""}${user?.lastName?.charAt(0) ?? ""}`;
   const roleName = titleCase(
     typeof user?.role === "object" ? user.role.name || "" : user?.role || "",
@@ -461,17 +476,19 @@ export function AppLayout() {
           )}
         >
           {navItems.map((item) => {
+            // Longest match wins, so /reports/validate is not also "Reports".
+            const matches = (p: string) => location.pathname === p || (p !== "/" && location.pathname.startsWith(`${p}/`));
             const isActive =
-              location.pathname === item.path ||
-              (item.path !== "/" && location.pathname.startsWith(item.path));
+              matches(item.path) && !navItems.some((o) => o.path.length > item.path.length && o.path.startsWith(item.path) && matches(o.path));
 
+            const badge = item.path === REVIEW_PATH && reviewCount ? (reviewCount > 99 ? "99+" : String(reviewCount)) : null;
             const linkNode = (
               <Link
                 key={item.path}
                 to={item.path}
                 onClick={() => setIsMobileMenuOpen(false)}
                 aria-current={isActive ? "page" : undefined}
-                aria-label={isSidebarCollapsed ? item.name : undefined}
+                aria-label={isSidebarCollapsed ? (badge ? `${item.name}, ${badge} waiting` : item.name) : undefined}
                 data-tour={`nav-${item.path.replace(/^\//, "") || "dashboard"}`}
                 className={cn(
                   "relative flex items-center gap-3 rounded-xl transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -514,6 +531,29 @@ export function AppLayout() {
                       className="relative z-10 text-[13px] font-medium whitespace-nowrap"
                     >
                       {item.name}
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+
+                {/* Waiting-for-review count: a pill when expanded, a corner badge when collapsed */}
+                <AnimatePresence initial={false}>
+                  {badge && (
+                    <motion.span
+                      key={badge}
+                      initial={{ scale: 0.4, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.4, opacity: 0 }}
+                      transition={{ type: "spring", stiffness: 520, damping: 26 }}
+                      className={cn(
+                        "z-10 rounded-full bg-red-500 text-center font-semibold tabular-nums text-white",
+                        isSidebarCollapsed
+                          ? "absolute -right-1 -top-1 min-w-4 px-1 text-[9px] leading-4 ring-2 ring-background"
+                          : "relative ml-auto min-w-5 px-1.5 text-[11px] leading-5",
+                      )}
+                      title={`${badge} report${badge === "1" ? "" : "s"} waiting for review`}
+                    >
+                      {badge}
+                      {!isSidebarCollapsed && <span className="sr-only"> waiting for review</span>}
                     </motion.span>
                   )}
                 </AnimatePresence>

@@ -289,10 +289,9 @@ function ActionsTab({ id, user }: { id: string; user: any }) {
       label: "3D Explorer",
       description: "Interactive 3D campus model: walk around, measure and inspect buildings",
       icon: Box,
-      href: `/schools/${id}/3d-explorer`,
+      href: `/schools/${id}/3dview?view=3d`,
       allowed: can2D3D,
       permission: Permission.SCHOOL_VIEW_2D3D_MAP,
-      newTab: true,
     },
     {
       label: "Facility Survey",
@@ -324,8 +323,6 @@ function ActionsTab({ id, user }: { id: string; user: any }) {
           {action.allowed ? (
             <Link
               to={action.href}
-              target={action.newTab ? "_blank" : undefined}
-              rel={action.newTab ? "noopener noreferrer" : undefined}
               className="group flex items-center gap-4 p-5 rounded-2xl bg-white dark:bg-white/2 border border-slate-200 dark:border-white/4 hover:border-primary/30 dark:hover:border-primary/30 hover:bg-slate-50 dark:hover:bg-white/4 transition-all"
             >
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/6 group-hover:bg-primary/5 group-hover:border-primary/20 transition-colors shrink-0">

@@ -49,7 +49,7 @@ export const ViewerMovementControls: React.FC<ViewerMovementControlsProps> = ({
                 className={cn(
                   "w-10 h-10 rounded-xl transition-all duration-300 shadow-xl border border-white/6",
                   isSprinting 
-                    ? "bg-amber-500 hover:bg-amber-600 text-white scale-110 shadow-amber-500/20" 
+                    ? "bg-primary hover:bg-primary/90 text-white scale-110" 
                     : "bg-background/80 backdrop-blur-2xl hover:bg-white/10"
                 )}
                 onClick={() => setIsSprinting(!isSprinting)}
@@ -114,7 +114,7 @@ export const ViewerMovementControls: React.FC<ViewerMovementControlsProps> = ({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 hover:bg-white/10 text-amber-400/80"
+                    className="h-9 w-9 hover:bg-white/10 text-primary/80"
                     aria-label="Rotate left"
                     onPointerDown={() => handleStart("rotateLeft")}
                     onPointerUp={() => handleEnd("rotateLeft")}
@@ -130,7 +130,7 @@ export const ViewerMovementControls: React.FC<ViewerMovementControlsProps> = ({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 hover:bg-white/10 text-amber-400/80"
+                    className="h-9 w-9 hover:bg-white/10 text-primary/80"
                     aria-label="Rotate right"
                     onPointerDown={() => handleStart("rotateRight")}
                     onPointerUp={() => handleEnd("rotateRight")}
