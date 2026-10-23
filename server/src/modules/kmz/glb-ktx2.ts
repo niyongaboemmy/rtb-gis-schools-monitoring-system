@@ -65,7 +65,7 @@ export function shouldBuildKtx2(
   return mode === 'always' || webpGpuBytes(textures) > KTX2_WEBP_GPU_LIMIT;
 }
 
-function runTool<T>(
+export function runTool<T>(
   script: string,
   args: string[],
   timeoutMs: number,

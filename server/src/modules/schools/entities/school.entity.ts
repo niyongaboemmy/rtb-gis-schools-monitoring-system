@@ -65,6 +65,19 @@ export interface ModelQuality {
     height?: number;
   }>;
   measuredAt?: string;
+  /** Roofs and ground textured from the site map's photos (glb-drape.ts). */
+  drape?: {
+    draped?: number;
+    pages?: number;
+    cm?: number;
+    skipped?: string;
+    alignment?: {
+      shiftEastCm: number;
+      shiftSouthCm: number;
+      ncc: number;
+      median: number | null;
+    };
+  } | null;
 }
 
 export interface ModelQualityMeasure {

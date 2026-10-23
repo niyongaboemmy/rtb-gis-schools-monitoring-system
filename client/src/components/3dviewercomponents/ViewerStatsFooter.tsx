@@ -1,5 +1,5 @@
 import React from 'react';
-import { detailCm, detailExplanation, DETAIL_LABEL, type ModelQuality } from '../../lib/viewer3d/model-quality';
+import { detailCm, detailExplanation, drapedCm, DETAIL_LABEL, type ModelQuality } from '../../lib/viewer3d/model-quality';
 
 interface ViewerStatsFooterProps {
   stats: any;
@@ -31,9 +31,11 @@ export const ViewerStatsFooter: React.FC<ViewerStatsFooterProps> = ({
         { val: stats.triangles.toLocaleString(), lbl: "Triangles" },
         { val: stats.meshes.toString(), lbl: "Meshes" },
         { val: stats.textures.toString(), lbl: textureMode?.ktx2 ? "Textures (compressed)" : "Textures" },
-        ...(detailCm(quality) != null
-          ? [{ val: `${detailCm(quality)!.toFixed(1)} cm/px`, lbl: DETAIL_LABEL[quality?.served?.score ?? 'unknown'] ?? 'Detail', title: detailExplanation(quality) }]
-          : []),
+        ...(drapedCm(quality) != null
+          ? [{ val: `${drapedCm(quality)} cm/px`, lbl: 'Roofs (photos)', title: detailExplanation(quality) }]
+          : detailCm(quality) != null
+            ? [{ val: `${detailCm(quality)!.toFixed(1)} cm/px`, lbl: DETAIL_LABEL[quality?.served?.score ?? 'unknown'] ?? 'Detail', title: detailExplanation(quality) }]
+            : []),
         ...(textureMode?.reduced
           ? [{ val: "Reduced", lbl: "On this device", title: "Textures were scaled down to fit this device's graphics memory." }]
           : []),

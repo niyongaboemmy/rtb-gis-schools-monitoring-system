@@ -171,6 +171,53 @@ Walls are unchanged (still about 8.7 cm and soft).
 
 **Effort:** ≈ 4 days.
 
+## Built: ortho draping in the pipeline (23 Oct 2026)
+
+**Pipeline**
+
+- `glb-tools/drape.mjs`, wrapped by `server/src/modules/kmz/glb-drape.ts`.
+- It runs in every 3D processing job after optimizing, as the
+  "Apply drone photos to roofs and ground" step in the Reprocess panel.
+- The result is stored as `modelQuality.drape`.
+- The 3D info bar shows **"2 cm/px · Roofs (photos)"**.
+- When a school's 2D tiles finish building, its 3D model is re-processed
+  automatically. Exception: files on the low-memory path (Nyanza-sized) are
+  skipped, because they would lose triangles.
+
+**End to end on dev, with real data**
+
+- Inputs: Nyamirama's 977 MB original uploaded through the 3D upload page,
+  plus 2D tiles built from production's yard photos.
+
+| Step | Result |
+|---|---|
+| Optimize (with the staircase repair) | 932 MB → 42 MB, 39 M → 5 M triangles, 122 s |
+| Drape | 145,670 faces on 2 pages at 2 cm/px, alignment 0 / 0 cm (match 0.68 vs typical 0.23), 17 s |
+| KTX2 copy for phones | GPU 64 MB instead of 256 MB |
+
+- Viewed in the real 3D viewer, the yard shows the basins, pots, roof sheets
+  and paving at photo detail.
+
+**Found and fixed on the way**
+
+- **Atomic storage writes.** A full disk during the test left the archived
+  original truncated (190 MB of 977 MB). Local writes now go to a temporary
+  file and are renamed into place; a test simulates a disk filling
+  half-way.
+
+**Still open**
+
+1. **Patchy ground in places.** Some ground faces fail the visibility test
+   and keep the soft texture between draped ones. Tune the tolerance, or
+   smooth the result.
+2. **False "model scale check" warning.** It compares the 3D model's extent
+   with the 2D map's, and 2D drone maps usually cover more ground.
+3. **Upload file names.** Uploading a 3D file with a different name leaves
+   the old model in the folder, and the file server may keep serving it.
+4. **Page size.** A whole site at 2 cm is about 7–10 pages (40–60 MB extra
+   download). `GLB_DRAPE_CM` can trade detail for size; streaming (option B)
+   would remove the trade-off.
+
 ## Recommended order
 
 1. **Now:** Reprocess Nyamirama and Fr Ramon (gap 1). Rating 3 → 5.

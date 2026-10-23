@@ -45,6 +45,22 @@ Output uses `EXT_meshopt_compression`, `KHR_mesh_quantization`,
 `EXT_texture_webp` — the viewer decodes these via `GLTFLoader` +
 `MeshoptDecoder` (see `client/src/components/School3DView.tsx`).
 
+**Ortho draping (`drape.mjs`).** After optimizing, the server textures the
+model's roofs and ground from the site map's full-detail photo tiles (≈ 1 cm
+per pixel) instead of the model's own texture (≈ 8 cm).
+
+- **Conditions:** it runs only for geo-referenced models (exported in
+  degrees, reprojected by `optimize.mjs`, which reports `origin`) and only
+  when the school has 2D tiles.
+- **Alignment check first:** in the busiest 60 m window, the model's
+  upward faces (own texture) must line up with the tiles within 8 cm with a
+  clear match peak; otherwise nothing is draped and the reason is reported.
+- **Which faces:** those facing up (≤ 45°), topmost from above (not under an
+  overhang), inside their 4096 px page and on photo pixels.
+- **Settings:** `GLB_DRAPE=0` turns it off; `GLB_DRAPE_CM` sets the detail
+  (default 2).
+- **Measured on Nyamirama:** 17 s and 1.5 GB for 145 k faces on 2 pages.
+
 ## Install (part of deploy)
 
 ```bash

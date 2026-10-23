@@ -10,6 +10,7 @@ export type ModelJobStage =
   | "textures"
   | "compressing"
   | "writing"
+  | "draping"
   | "saving"
   | "gpu-copy"
   | "done";
@@ -23,6 +24,8 @@ export interface ModelJobResult {
   trisIn: number | null;
   trisOut: number | null;
   detailCm: number | null;
+  /** Roofs and ground textured from the 2D drone photos: their detail. */
+  drapeCm?: number | null;
   ktx2: boolean;
   error: string | null;
 }
@@ -52,6 +55,7 @@ export const MODEL_JOB_STEPS: Array<{ stage: ModelJobStage; label: string }> = [
   { stage: "textures", label: "Prepare textures" },
   { stage: "compressing", label: "Compress" },
   { stage: "writing", label: "Write the web model" },
+  { stage: "draping", label: "Apply drone photos to roofs and ground" },
   { stage: "saving", label: "Save and update the school" },
   { stage: "gpu-copy", label: "Build the phone copy" },
 ];
@@ -77,8 +81,12 @@ export function stepStatus(job: ModelJob, stage: ModelJobStage): "done" | "curre
   return i < cur ? "done" : i === cur ? (job.state === "failed" ? "todo" : "current") : "todo";
 }
 
-/** Steps worth listing: the phone copy only when it is (or was) part of this run. */
+/** Steps worth listing: the phone copy and the photo draping only when part of this run. */
 export function visibleSteps(job: ModelJob) {
   const withCopy = job.stage === "gpu-copy" || !!job.result?.ktx2;
-  return MODEL_JOB_STEPS.filter((s) => s.stage !== "gpu-copy" || withCopy);
+  const withDrape =
+    job.stage === "draping" || job.stage === "saving" || job.stage === "gpu-copy" || !!job.result?.drapeCm;
+  return MODEL_JOB_STEPS.filter(
+    (s) => (s.stage !== "gpu-copy" || withCopy) && (s.stage !== "draping" || withDrape),
+  );
 }
