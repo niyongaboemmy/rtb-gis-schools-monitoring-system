@@ -71,10 +71,15 @@ describe('site tiles (overlay-tiles.ts)', () => {
 
   it('picks the deepest zoom from the finest photo', () => {
     // 0.74 cm photos (Nyamirama) → z24 (0.93 cm); 1.9 cm → z23 (1.87 cm).
-    expect(deepestZoom(0.0074)).toBe(24);
+    // Nyamirama 0.74 cm photos → zoom 25 (0.47 cm), keeping all their detail.
+    expect(deepestZoom(0.0074)).toBe(25);
+    // Nyanza 1.9 cm, Fr Ramon 2.2 cm → zoom 23 (1.87 cm), as before.
     expect(deepestZoom(0.019)).toBe(23);
-    expect(deepestZoom(0.5)).toBe(18);
-    expect(deepestZoom(0.0001, 1.3, 24)).toBe(24);
+    expect(deepestZoom(0.022)).toBe(23);
+    // Photos only a sliver finer than a level (0.92 vs 0.93 cm) don't get 4× the tiles.
+    expect(deepestZoom(0.0092)).toBe(24);
+    expect(deepestZoom(0.5)).toBe(19); // 0.5 m holds ~19% more than zoom 18 (0.6 m)
+    expect(deepestZoom(0.0001)).toBe(25); // the map's own limit
   });
 
   it('places photos where they belong, with no gap where two meet', async () => {
@@ -132,9 +137,9 @@ describe('site tiles (overlay-tiles.ts)', () => {
       await photo(0, 0, 4, 4, 512, [220, 30, 30]),
     ];
     const t = Date.now();
-    const r = (await buildSiteTiles(overlays, { outDir: dir, minZoom: 23 }))!;
-    expect(r.maxZoom).toBe(24);
-    expect(await pixelAt(dir, 24, LAT + dLat(2), LNG + dLng(2))).toEqual(
+    const r = (await buildSiteTiles(overlays, { outDir: dir, minZoom: 24 }))!;
+    expect(r.maxZoom).toBe(25); // 0.78 cm photo
+    expect(await pixelAt(dir, 25, LAT + dLat(2), LNG + dLng(2))).toEqual(
       expect.arrayContaining([255]),
     );
     expect(Date.now() - t).toBeLessThan(120_000);

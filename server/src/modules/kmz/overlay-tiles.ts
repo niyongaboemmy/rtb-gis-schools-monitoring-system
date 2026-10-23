@@ -12,7 +12,9 @@ import type { PyramidOverlay } from './overlay-pyramid';
  * (Nyamirama: photos 0.74 cm/px, map 5.9 cm/px).
  *
  * - The deepest zoom is the first whose pixel is no coarser than the finest
- *   photo (× 1.3, so we don't quadruple the tiles for a sliver of detail).
+ *   photo (× 1.1): a level is added when the photos hold at least ~10% more
+ *   detail than the level above (Nyamirama 0.74 cm → zoom 25, 0.47 cm), not
+ *   for a sliver (4× the tiles each level).
  * - Each deepest-level tile is drawn straight from the photos that touch it:
  *   coarse photos first as fill, finer on top, a photo skipped when finer
  *   ones cover the tile. Photos are placed by their GLOBAL pixel edges at
@@ -48,9 +50,9 @@ export interface SiteTilesOptions {
   outDir: string;
   /** WebP quality (default 90). */
   quality?: number;
-  /** Accept a deepest pixel up to this × the finest photo (default 1.3). */
+  /** Accept a deepest pixel up to this × the finest photo (default 1.1). */
   slack?: number;
-  /** Hard ceiling on the deepest zoom (default 24 ≈ 0.9 cm/px). */
+  /** Hard ceiling on the deepest zoom (default 25 ≈ 0.47 cm/px, the map's own limit). */
   zoomCap?: number;
   /** Zoom levels below maxZoom to generate (default down to whole-site ≈ 1 tile). */
   minZoom?: number;
@@ -70,7 +72,7 @@ const mercY = (lat: number) =>
 export const zoomResolution = (z: number) => WORLD / (TILE * 2 ** z);
 
 /** Deepest zoom: first whose pixel is ≤ finest photo pixel × slack (EPSG:3857 metres). */
-export function deepestZoom(finestMercRes: number, slack = 1.3, cap = 24) {
+export function deepestZoom(finestMercRes: number, slack = 1.1, cap = 25) {
   for (let z = 0; z <= cap; z++)
     if (zoomResolution(z) <= finestMercRes * slack) return z;
   return cap;
@@ -201,7 +203,7 @@ export async function buildSiteTiles(
   if (!photos.length) return null;
 
   const finest = Math.min(...photos.map((p) => p.res));
-  const maxZoom = deepestZoom(finest, opts.slack ?? 1.3, opts.zoomCap ?? 24);
+  const maxZoom = deepestZoom(finest, opts.slack ?? 1.1, opts.zoomCap ?? 25);
   const extent: [number, number, number, number] = [
     Math.min(...photos.map((p) => p.x0)),
     Math.min(...photos.map((p) => p.y0)),
