@@ -16,6 +16,8 @@ export interface MapHudState {
   mapLoading: boolean;
   /** Images being downloaded/decoded right now. */
   decoding: number;
+  /** Zoomed in past the drone photos' own detail: further zoom only enlarges pixels. */
+  pastFullDetail: boolean;
 }
 
 export interface MapHudStore {
@@ -25,13 +27,14 @@ export interface MapHudStore {
   setTilesLoading: (v: boolean) => void;
   setMapLoading: (v: boolean) => void;
   setDecoding: (n: number) => void;
+  setPastFullDetail: (v: boolean) => void;
 }
 
 const raf: (cb: () => void) => unknown =
   typeof requestAnimationFrame === "function" ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
 
 export function createMapHudStore(initial: Pick<MapHudState, "lat" | "lng">): MapHudStore {
-  let state: MapHudState = { ...initial, tilesLoading: false, mapLoading: false, decoding: 0 };
+  let state: MapHudState = { ...initial, tilesLoading: false, mapLoading: false, decoding: 0, pastFullDetail: false };
   const listeners = new Set<() => void>();
   let scheduled = false;
 
@@ -66,6 +69,7 @@ export function createMapHudStore(initial: Pick<MapHudState, "lat" | "lng">): Ma
     setTilesLoading: (v) => patch({ tilesLoading: v }),
     setMapLoading: (v) => patch({ mapLoading: v }),
     setDecoding: (n) => patch({ decoding: Math.max(0, n) }),
+    setPastFullDetail: (v) => patch({ pastFullDetail: v }),
   };
 }
 

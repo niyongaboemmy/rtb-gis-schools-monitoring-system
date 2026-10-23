@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Info, Map as MapIcon, X, Box } from "lucide-react";
+import { Info, Map as MapIcon, X, Box, ScanSearch } from "lucide-react";
 import DOMPurify from "dompurify";
 import { useMapHud, type MapHudStore } from "./map-hud-store";
 import { formatNumber } from "../../lib/format";
@@ -139,12 +139,16 @@ function LoadingPill({ hud }: { hud: MapHudStore }) {
   const reduce = useReducedMotion();
   const busy = useMapHud(hud, (s) => s.mapLoading || s.tilesLoading || s.decoding > 0);
   const decoding = useMapHud(hud, (s) => s.decoding > 0);
+  const pastDetail = useMapHud(hud, (s) => s.pastFullDetail);
   const visible = useDelayedFlag(busy, 250);
+  // Same spot as the loading pill; loading wins while imagery arrives.
+  const hint = !visible && pastDetail;
   return (
     <div className="pointer-events-none absolute bottom-[11.25rem] left-1/2 z-40 -translate-x-1/2 md:bottom-[4.5rem]">
       <AnimatePresence>
         {visible && (
           <motion.div
+            key="loading"
             role="status"
             aria-live="polite"
             initial={reduce ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.96 }}
@@ -160,6 +164,22 @@ function LoadingPill({ hud }: { hud: MapHudStore }) {
             <span className="whitespace-nowrap text-[11px] text-slate-600 dark:text-white/70">
               {decoding ? "Preparing imagery" : "Loading imagery"}
             </span>
+          </motion.div>
+        )}
+        {hint && (
+          <motion.div
+            key="full-detail"
+            role="status"
+            aria-live="polite"
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 4, scale: 0.98 }}
+            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            title="The drone photos have no finer detail. Zooming further only enlarges their pixels."
+            className="flex items-center gap-2 rounded-full bg-white/70 px-3 py-1.5 ring-1 ring-white/40 backdrop-blur-xl backdrop-saturate-150 dark:bg-[hsl(224_40%_7%)]/70 dark:ring-white/10"
+          >
+            <ScanSearch className="h-3.5 w-3.5 text-primary" aria-hidden />
+            <span className="whitespace-nowrap text-[11px] text-slate-600 dark:text-white/70">Full detail · zooming further only enlarges</span>
           </motion.div>
         )}
       </AnimatePresence>
