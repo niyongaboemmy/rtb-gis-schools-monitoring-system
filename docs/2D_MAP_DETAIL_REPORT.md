@@ -210,6 +210,23 @@ are sharpness, then download:
 - The progress bar ran from 0 to 100%, and the panel then showed the
   result.
 
+## 4c. Image quality beyond zoom depth (checked 23 Oct 2026)
+
+Measured on Nyamirama's real yard tiles. PSNR is against a clean reference
+(the deepest tiles shrunk once, uncompressed); higher is closer.
+
+| Check | Result | Verdict |
+|---|---|---|
+| **Deepest level** | Photos 0.74 cm, tiles stopped at zoom 24 (0.93 cm). With zoom 25: sharpness at the deepest zooms +20–29 %, same per-screen download, ≈ 2× storage for that school | **Done** (PR #36, Nyamirama only) |
+| **Compression** (WebP q90) | Overall 42.3 dB, colour 48.9 dB: visually lossless. WebP q95 +3.4 dB for +38 % size; AVIF (full colour, fast) same quality, −21 % size | No visible gain. AVIF only as a size saving (needs a fallback for iOS < 16) |
+| **Generation loss** (each level made from the compressed level below) | −0.7 to −0.9 dB at mid zooms against one clean pass | Not visible side by side; not worth the rebuild |
+| **Shrinking between whole zooms** | Canvas "high" smoothing changes nothing in OpenLayers' path (identical scores); removed | Display is fine as is |
+| **Enlarging past the deepest level** | The viewer's own enlargement + light sharpening: 6.0 → 7.6 | Done (PR #34); cosmetic |
+
+**Conclusion.** With zoom 25 for Nyamirama, the 2D map shows everything the
+drone photos hold, at no extra cost per screen. Sharper still needs a lower
+drone flight; no setting adds real detail.
+
 ## 5. Plan
 
 | Step | What | Effort |

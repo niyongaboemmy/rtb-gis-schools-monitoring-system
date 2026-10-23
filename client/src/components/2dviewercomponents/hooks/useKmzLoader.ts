@@ -315,9 +315,6 @@ export function useKmzLoader({
         const lyr = new TileLayer({ source, opacity: kmzOpacity, preload: 1, ...opts });
         lyr.on("prerender", (e) => {
           const ctx = e.context as CanvasRenderingContext2D | undefined;
-          // Past the deepest tiles OpenLayers enlarges them: use the
-          // browser's best resampling rather than plain bilinear.
-          if (ctx) ctx.imageSmoothingQuality = "high";
           const v = visualsRef.current;
           if (ctx && (v.brightness !== 1 || v.contrast !== 1 || v.saturation !== 1)) {
             ctx.filter = `brightness(${v.brightness}) contrast(${v.contrast}) saturate(${v.saturation})`;
