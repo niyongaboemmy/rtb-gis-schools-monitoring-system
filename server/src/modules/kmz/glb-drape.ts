@@ -36,6 +36,16 @@ export const drapeCm = (env: NodeJS.ProcessEnv = process.env): number => {
   return Number.isFinite(v) && v >= 0.5 && v <= 20 ? v : 2;
 };
 
+/**
+ * At most this many 4096 px pages per model (download size: one page is
+ * ≈ 4–10 MB as WebP). A large campus then gets a little less than 2 cm/px
+ * (Nyamirama: 11 pages at 2 cm → ≈ 3.4 cm in 4), still ~2.5× its model texture.
+ */
+export const drapeMaxPages = (env: NodeJS.ProcessEnv = process.env): number => {
+  const v = Number(env.GLB_DRAPE_MAX_PAGES);
+  return Number.isInteger(v) && v >= 1 && v <= 32 ? v : 4;
+};
+
 /** Local folder of a tiles URL template (`…/_tiles/<build>/{z}/{x}/{y}.webp`). */
 export function tilesDirFromUrl(
   url: string,
@@ -55,6 +65,8 @@ export function buildDrape(
     tilesDir: string;
     tilesMaxZoom: number;
     cm?: number;
+    /** The model's own texture detail (cm/px): no draping when it would not beat it. */
+    modelCm?: number | null;
   },
 ): Promise<DrapeResult> {
   if (!fs.existsSync(DRAPE_SCRIPT))
@@ -77,6 +89,9 @@ export function buildDrape(
       String(o.cm ?? drapeCm()),
       '--page',
       String(DRAPE_PAGE),
+      '--max-pages',
+      String(drapeMaxPages()),
+      ...(o.modelCm ? ['--model-cm', String(o.modelCm)] : []),
     ],
     Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : 40 * 60_000,
   );

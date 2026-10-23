@@ -16,9 +16,14 @@ export interface Ktx2Variant {
 
 type Device = ReturnType<typeof deviceClass>;
 
+/** Largest KTX2 copy a phone downloads; above it the WebP build loads and its textures are scaled to fit. */
+export const PHONE_MAX_KTX2_BYTES = 80 * 1024 * 1024;
+
 /**
- * KTX2 when the device has GPU texture compression and the WebP build would
- * crowd its budget (always on phones, above half the budget on desktops).
+ * KTX2 when the device has GPU texture compression and needs it:
+ * - phones, as long as the copy is a reasonable download (≤ 80 MB);
+ * - desktops, only when the WebP build would not fit ~90% of their budget
+ *   (KTX2 is ≈ 2.8× the download, so it must buy something).
  * Without compression support KTX2 would be unpacked to plain pixels: no gain.
  */
 export function pickModelVariant(o: {
@@ -27,8 +32,8 @@ export function pickModelVariant(o: {
   compressed: boolean;
 }): "ktx2" | "webp" {
   if (!o.ktx2 || !o.compressed) return "webp";
-  if (o.device === "phone") return "ktx2";
-  return o.ktx2.webpGpuBytes > GPU_BUDGET.desktop / 2 ? "ktx2" : "webp";
+  if (o.device === "phone") return o.ktx2.bytes <= PHONE_MAX_KTX2_BYTES ? "ktx2" : "webp";
+  return o.ktx2.webpGpuBytes > GPU_BUDGET.desktop * 0.9 ? "ktx2" : "webp";
 }
 
 /** `…/3d/site.glb?v=1` → `…/3d/site.ktx2.glb?v=1` */

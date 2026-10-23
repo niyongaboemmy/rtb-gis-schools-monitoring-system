@@ -13,7 +13,10 @@
  *    model's upward faces drawn top-down with their own texture are matched
  *    against the tiles (normalized cross-correlation of edge images, ± 1 m).
  *    Draping only when the best shift is ≤ 8 cm with a clear peak.
- * 2. Pages: 4096 px texture pages at `cm` per pixel cut from the tiles.
+ * 2. Pages: 4096 px texture pages cut from the tiles, at `cm` per pixel —
+ *    stepped down until the roofs and ground fit in `max-pages` pages (a
+ *    whole campus at 2 cm needed 11 pages, a 107 MB model). Skipped when that
+ *    detail would be no sharper than the model's own (`model-cm`).
  * 3. A face is draped when it faces up (≤ 45° from horizontal), is the
  *    topmost surface there (orthophotos only see that), fits inside its
  *    page and lies on photo pixels (not a gap).
@@ -21,7 +24,7 @@
  *    Meshopt-compressed like optimize.mjs.
  *
  *   node drape.mjs <in.glb> <out.glb> --lat <lat0> --lng <lng0> --tiles <dir>
- *        --tiles-max-zoom <z> [--cm 2] [--page 4096]
+ *        --tiles-max-zoom <z> [--cm 2] [--page 4096] [--max-pages 4] [--model-cm <cm>]
  *
  * Exit: 0 done or skipped · 2 bad args · 3 read · 4 build · 5 write.
  * Prints one JSON line: {draped, kept, occluded, pages, cm, zoom, alignment, ms}
@@ -128,10 +131,15 @@ async function main() {
   const origin = { lat: Number(args.lat), lng: Number(args.lng) };
   const tilesDir = args.tiles;
   const tilesMaxZoom = Number(args['tiles-max-zoom']);
-  const cm = Number(args.cm || 2);
+  const cmWanted = Number(args.cm || 2);
   const PAGE = Number(args.page || 4096);
+  // At most this many texture pages (download size); the detail steps down
+  // until the roofs and ground fit.
+  const MAX_PAGES = Math.max(1, Number(args['max-pages'] || 4));
+  // The model's own detail (cm/px): draping coarser than ~80% of it is pointless.
+  const modelCm = Number(args['model-cm']);
   if (!inputPath || !outputPath || !Number.isFinite(origin.lat) || !Number.isFinite(origin.lng) || !tilesDir || !Number.isFinite(tilesMaxZoom)) {
-    console.error('usage: drape.mjs <in.glb> <out.glb> --lat <lat0> --lng <lng0> --tiles <dir> --tiles-max-zoom <z> [--cm 2] [--page 4096]');
+    console.error('usage: drape.mjs <in.glb> <out.glb> --lat <lat0> --lng <lng0> --tiles <dir> --tiles-max-zoom <z> [--cm 2] [--page 4096] [--max-pages 4] [--model-cm <cm>]');
     process.exit(2);
   }
   const t0 = Date.now();
@@ -171,11 +179,6 @@ async function main() {
 
     const toMerc = localToMerc(origin);
     const cos = Math.cos((origin.lat * Math.PI) / 180);
-    const pageRes = cm / 100 / cos; // EPSG:3857 metres per page pixel
-    // Tile level to read: the shallowest at least as detailed as the pages.
-    let zoom = tilesMaxZoom;
-    for (let z = 0; z <= tilesMaxZoom; z++) if (zoomRes(z) <= pageRes) { zoom = z; break; }
-    const tileRes = zoomRes(zoom);
 
     // Faces of every textured triangle primitive, in map coordinates.
     const prims = [];
@@ -215,6 +218,28 @@ async function main() {
       }
     });
     if (!up.length) return say({ skipped: 'no upward faces' });
+
+    // Page detail: the wanted cm/px, stepped down until the upward faces fit
+    // in MAX_PAGES pages (a whole campus at 2 cm needed 11 pages, 107 MB).
+    const MARGIN = 128; // px each side
+    const pagesAt = (c) => {
+      const core = (PAGE - 2 * MARGIN) * (c / 100 / cos);
+      const cells = new Set();
+      for (let i = 0; i < up.length; i += 2) {
+        const pr = prims[up[i]], a = pr.I[up[i + 1]];
+        cells.add(`${Math.floor((pr.MX[a] - minX) / core)}/${Math.floor((maxY - pr.MY[a]) / core)}`);
+      }
+      return cells.size;
+    };
+    let cm = cmWanted;
+    while (pagesAt(cm) > MAX_PAGES && cm < 50) cm = +(cm * 1.1).toFixed(2);
+    if (Number.isFinite(modelCm) && modelCm > 0 && cm > modelCm * 0.8)
+      return say({ skipped: `photos would not be sharper than the model (${cm} vs ${modelCm} cm/px)`, cm });
+    const pageRes = cm / 100 / cos; // EPSG:3857 metres per page pixel
+    // Tile level to read: the shallowest at least as detailed as the pages.
+    let zoom = tilesMaxZoom;
+    for (let z = 0; z <= tilesMaxZoom; z++) if (zoomRes(z) <= pageRes) { zoom = z; break; }
+    const tileRes = zoomRes(zoom);
 
     // Tile reader with a small cache of decoded tiles.
     const tileCache = new Map();
@@ -334,7 +359,6 @@ async function main() {
     if (!aligned) return say({ skipped: 'photos and model do not line up', alignment });
 
     // ── 2–3. Pages and the faces they take ───────────────────────────────
-    const MARGIN = 128; // px each side
     const core = (PAGE - 2 * MARGIN) * pageRes; // EPSG:3857 metres
     const pagesX = Math.max(1, Math.ceil((maxX - minX) / core));
     const pageOf = (mx, my) => [Math.floor((mx - minX) / core), Math.floor((maxY - my) / core)];
@@ -459,6 +483,7 @@ async function main() {
       occluded,
       pages: pageOut.map((p) => ({ faces: p.faces.length / 2, bytes: p.webp.length })),
       cm,
+      cmWanted,
       zoom,
       alignment,
       bytesOut: fs.statSync(outputPath).size,
