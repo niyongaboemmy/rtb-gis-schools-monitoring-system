@@ -881,6 +881,9 @@ export class KmzService implements OnModuleInit {
         lng: r.origin.lng,
         tilesDir: dir,
         tilesMaxZoom: Number(tiles.maxZoom),
+        modelCm:
+          (r.quality as ModelQualityMeasure | null | undefined)?.cmPerPixel
+            ?.horizontal?.median ?? null,
       });
       if (!d.skipped && fs.existsSync(out)) {
         fs.renameSync(out, modelPath);

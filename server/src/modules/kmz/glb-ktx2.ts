@@ -55,14 +55,39 @@ export function ktx2Mode(env: NodeJS.ProcessEnv = process.env): Ktx2Mode {
   return v === 'always' || v === 'off' ? v : 'auto';
 }
 
-/** Build a KTX2 variant for these served textures? (GLB_KTX2 = auto | always | off) */
+/** Estimated KTX2 (UASTC + zstd) file bytes: ≈ 1.15 bytes per texture pixel (Nyamirama 4096²: 19.3 MB). */
+export function ktx2EstimatedBytes(
+  textures: Array<{ width?: number; height?: number }>,
+): number {
+  return Math.round(
+    textures.reduce((s, t) => s + (t.width ?? 0) * (t.height ?? 0), 0) * 1.15,
+  );
+}
+
+/** Largest KTX2 copy worth building: a phone should not download more (GLB_KTX2_MAX_MB, default 80). */
+export const ktx2MaxBytes = (env: NodeJS.ProcessEnv = process.env): number => {
+  const v = Number(env.GLB_KTX2_MAX_MB);
+  return (Number.isFinite(v) && v > 0 ? v : 80) * 1024 * 1024;
+};
+
+/**
+ * Build a KTX2 variant for these served textures? (GLB_KTX2 = auto | always | off)
+ * In auto: only when the textures crowd GPU memory as WebP AND the copy stays
+ * a reasonable download (it is ≈ 2.8× the WebP size; a 12-page model would be
+ * ≈ 230 MB — no phone should load that).
+ */
 export function shouldBuildKtx2(
   textures: Array<{ width?: number; height?: number; mime?: string }>,
   mode: Ktx2Mode = ktx2Mode(),
+  maxBytes: number = ktx2MaxBytes(),
 ): boolean {
   if (mode === 'off' || !textures.length) return false;
   if (textures.every((t) => t.mime === 'image/ktx2')) return false;
-  return mode === 'always' || webpGpuBytes(textures) > KTX2_WEBP_GPU_LIMIT;
+  if (mode === 'always') return true;
+  return (
+    webpGpuBytes(textures) > KTX2_WEBP_GPU_LIMIT &&
+    ktx2EstimatedBytes(textures) <= maxBytes
+  );
 }
 
 export function runTool<T>(

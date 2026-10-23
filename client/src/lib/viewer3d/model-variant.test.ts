@@ -12,10 +12,12 @@ describe("pickModelVariant", () => {
     expect(pickModelVariant({ ktx2: variant(400), device: "phone", compressed: false })).toBe("webp");
   });
 
-  it("uses KTX2 on phones, and on desktops once WebP would take over half the budget", () => {
+  it("uses KTX2 on phones (when a reasonable download), and on desktops only when WebP would not fit", () => {
     expect(pickModelVariant({ ktx2: variant(120), device: "phone", compressed: true })).toBe("ktx2");
-    expect(pickModelVariant({ ktx2: variant(120), device: "desktop", compressed: true })).toBe("webp");
-    expect(pickModelVariant({ ktx2: variant(340), device: "desktop", compressed: true })).toBe("ktx2");
+    // A 230 MB copy (12 pages): phones load the WebP build and scale its textures instead.
+    expect(pickModelVariant({ ktx2: { ...variant(1020), bytes: 230 * MB }, device: "phone", compressed: true })).toBe("webp");
+    expect(pickModelVariant({ ktx2: variant(340), device: "desktop", compressed: true })).toBe("webp");
+    expect(pickModelVariant({ ktx2: variant(480), device: "desktop", compressed: true })).toBe("ktx2");
   });
 });
 

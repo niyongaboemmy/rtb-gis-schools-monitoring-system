@@ -103,9 +103,9 @@ async function makeModel(file) {
   await io.write(file, doc);
 }
 
-const drape = (input, output, tiles) =>
+const drape = (input, output, tiles, extra = []) =>
   JSON.parse(
-    execFileSync(process.execPath, [path.join(HERE, 'drape.mjs'), input, output, '--lat', String(ORIGIN.lat), '--lng', String(ORIGIN.lng), '--tiles', tiles, '--tiles-max-zoom', '22', '--cm', '4', '--page', '1024'], { encoding: 'utf8' })
+    execFileSync(process.execPath, [path.join(HERE, 'drape.mjs'), input, output, '--lat', String(ORIGIN.lat), '--lng', String(ORIGIN.lng), '--tiles', tiles, '--tiles-max-zoom', '22', '--cm', '4', '--page', '1024', '--max-pages', '9', ...extra], { encoding: 'utf8' })
       .trim().split('\n').pop(),
   );
 
@@ -182,4 +182,21 @@ test('photos that do not line up are refused (1 m shift)', async () => {
   const r = drape(model, out, tiles);
   assert.equal(r.skipped, 'photos and model do not line up', JSON.stringify(r));
   assert.ok(!fs.existsSync(out));
+});
+
+test('a page budget steps the detail down until the site fits; no draping when no sharper than the model', async () => {
+  const model = path.join(TMP, 'site.glb');
+  const tiles = path.join(TMP, 'tiles');
+  if (!fs.existsSync(model)) await makeModel(model);
+  if (!fs.existsSync(tiles)) await makeTiles(tiles, 22);
+  // 40 m site, 1024 px pages at 4 cm (≈ 31 m each): 4 pages; budget 1.
+  const one = drape(model, path.join(TMP, 'one-page.glb'), tiles, ['--max-pages', '1']);
+  assert.ok(!one.skipped, JSON.stringify(one));
+  assert.equal(one.pages.length, 1);
+  assert.equal(one.cmWanted, 4);
+  assert.ok(one.cm > 4 && one.cm < 7, `cm ${one.cm}`);
+  // The model texture is ~8 cm/px here; at 4 cm draping is worth it, but a
+  // model already at 4 cm/px gains nothing.
+  const same = drape(model, path.join(TMP, 'same.glb'), tiles, ['--model-cm', '4']);
+  assert.match(same.skipped, /not be sharper/);
 });

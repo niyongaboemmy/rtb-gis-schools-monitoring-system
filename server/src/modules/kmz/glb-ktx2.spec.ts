@@ -1,5 +1,6 @@
 import {
   KTX2_WEBP_GPU_LIMIT,
+  ktx2EstimatedBytes,
   isKtx2Variant,
   ktx2Mode,
   ktx2ObjectName,
@@ -19,9 +20,17 @@ describe('KTX2 variant policy', () => {
     expect(shouldBuildKtx2([page(4096)])).toBe(false);
   });
 
-  it('builds KTX2 for an 8K page or several 4K pages', () => {
-    expect(shouldBuildKtx2([page(8192)])).toBe(true);
-    expect(shouldBuildKtx2([page(4096), page(4096)])).toBe(true);
+  it('builds KTX2 for an 8K page or several 4K pages, while the copy stays a reasonable download', () => {
+    expect(shouldBuildKtx2([page(8192)])).toBe(true); // ≈ 77 MB
+    expect(shouldBuildKtx2([page(4096), page(4096)])).toBe(true); // ≈ 39 MB
+    expect(ktx2EstimatedBytes([page(4096)])).toBeCloseTo(19.3e6, -6);
+  });
+
+  it('skips a copy too big to download (Nyamirama: 1 texture + 11 drape pages ≈ 230 MB)', () => {
+    const twelve = Array.from({ length: 12 }, () => page(4096));
+    expect(shouldBuildKtx2(twelve)).toBe(false);
+    expect(shouldBuildKtx2(twelve, 'auto', 300 * 1024 * 1024)).toBe(true);
+    expect(shouldBuildKtx2(twelve, 'always')).toBe(true);
   });
 
   it('honours GLB_KTX2 and skips files that are already KTX2', () => {
