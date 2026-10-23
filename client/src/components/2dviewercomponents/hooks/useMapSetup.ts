@@ -337,7 +337,18 @@ export function useMapSetup({
 
     mapRef.current = map;
     setMapReady(true);
+    // Test hook (dev builds, or localStorage rtb-viewer-debug = 1), like the
+    // 3D viewer's: lets scripts set an exact zoom/centre.
+    const debug = (() => {
+      try {
+        return import.meta.env.DEV || localStorage.getItem("rtb-viewer-debug") === "1";
+      } catch {
+        return import.meta.env.DEV;
+      }
+    })();
+    if (debug) (window as unknown as { __rtbMap?: OLMap }).__rtbMap = map;
     return () => {
+      if (debug) delete (window as unknown as { __rtbMap?: OLMap }).__rtbMap;
       map.setTarget(undefined);
       mapRef.current = null;
       setMapReady(false);

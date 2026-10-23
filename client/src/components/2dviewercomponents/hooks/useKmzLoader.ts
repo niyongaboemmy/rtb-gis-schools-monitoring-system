@@ -289,14 +289,19 @@ export function useKmzLoader({
       // The detail layer starts hidden (zoomed out); the pyramid reports loading.
       if (!pyramid) setIsTileLoading(true);
 
+      // Draw tiles at the screen's real pixel density (OpenLayers picks the
+      // level from CSS pixels, so 256 px tiles were stretched 2x on retina
+      // screens), and always take the finer level between two zooms.
+      const TILE_PX = (typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1) > 1 ? 512 : 256;
       const source = new DataTile({
         tileGrid,
-        tileSize: 256,
+        tileSize: TILE_PX,
+        zDirection: -1,
         interpolate: true,
         loader: async (z, x, y) => {
-          if (!tileGrid) return new OffscreenCanvas(256, 256).transferToImageBitmap();
+          if (!tileGrid) return new OffscreenCanvas(TILE_PX, TILE_PX).transferToImageBitmap();
           const te = (tileGrid as any).getTileCoordExtent([z, x, y]);
-          if (!te) return new OffscreenCanvas(256, 256).transferToImageBitmap();
+          if (!te) return new OffscreenCanvas(TILE_PX, TILE_PX).transferToImageBitmap();
           
           const resolution = te[2] - te[0];
           
@@ -316,15 +321,15 @@ export function useKmzLoader({
 
           const visibleBounds = intersectingBounds.filter(({ ext }) => {
             const extWd = ext[2] - ext[0];
-            const pixW = (extWd / resolution) * 256;
+            const pixW = (extWd / resolution) * TILE_PX;
             return pixW >= minPixW;
           });
 
           if (visibleBounds.length === 0) {
-            return new OffscreenCanvas(256, 256).transferToImageBitmap();
+            return new OffscreenCanvas(TILE_PX, TILE_PX).transferToImageBitmap();
           }
 
-          const canv = new OffscreenCanvas(256, 256);
+          const canv = new OffscreenCanvas(TILE_PX, TILE_PX);
           const ctx = canv.getContext("2d")!;
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = "high";
@@ -388,10 +393,10 @@ export function useKmzLoader({
             const tileWd = tE - tW;
             const tileHt = tN - tS;
             
-            const dstX = ((ixW - tW) / tileWd) * 256;
-            const dstY = ((tN - ixN) / tileHt) * 256;
-            const dstW = ((ixE - ixW) / tileWd) * 256;
-            const dstH = ((ixN - ixS) / tileHt) * 256;
+            const dstX = ((ixW - tW) / tileWd) * TILE_PX;
+            const dstY = ((tN - ixN) / tileHt) * TILE_PX;
+            const dstW = ((ixE - ixW) / tileWd) * TILE_PX;
+            const dstH = ((ixN - ixS) / tileHt) * TILE_PX;
             
             const fullSrcW = ((ixE - ixW) / extWd) * existing.width;
             const chosenBm = (thumb && fullSrcW > dstW * 4) ? thumb : existing;
@@ -410,11 +415,13 @@ export function useKmzLoader({
 
       const mainLayer = new TileLayer({
         source,
-        // Over the pyramid, and only once zoomed in past its detail.
+        // Over the pyramid, and only once zoomed in past its detail — in
+        // screen pixels (on a 2x screen the pyramid is stretched one level
+        // earlier, so the photos take over one level earlier).
         zIndex: pyramid ? 6 : 5,
         opacity: kmzOpacity,
         extent: globalExtent,
-        ...(pyramid ? { maxResolution: pyramid.resolution } : {}),
+        ...(pyramid ? { maxResolution: pyramid.resolution * (TILE_PX / 256) } : {}),
       });
       
       if (pyramid) {
