@@ -1,3 +1,4 @@
+import { DRAPE_MAX_PAGES_DEFAULT, drapeMaxPages } from './glb-drape';
 import {
   KTX2_WEBP_GPU_LIMIT,
   ktx2EstimatedBytes,
@@ -48,5 +49,14 @@ describe('KTX2 variant policy', () => {
     );
     expect(isKtx2Variant('site.ktx2.glb')).toBe(true);
     expect(isKtx2Variant('site.glb')).toBe(false);
+  });
+});
+
+describe('drape page budget (quality first)', () => {
+  it('keeps a whole campus at 2 cm by default; lower only when asked', () => {
+    expect(DRAPE_MAX_PAGES_DEFAULT).toBe(16);
+    expect(drapeMaxPages({})).toBe(16); // Nyamirama needs 11 at 2 cm
+    expect(drapeMaxPages({ GLB_DRAPE_MAX_PAGES: '4' })).toBe(4);
+    expect(drapeMaxPages({ GLB_DRAPE_MAX_PAGES: 'lots' })).toBe(16);
   });
 });

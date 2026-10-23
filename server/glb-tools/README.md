@@ -58,7 +58,10 @@ per pixel) instead of the model's own texture (≈ 8 cm).
 - **Which faces:** those facing up (≤ 45°), topmost from above (not under an
   overhang), inside their 4096 px page and on photo pixels.
 - **Settings:** `GLB_DRAPE=0` turns it off; `GLB_DRAPE_CM` sets the detail
-  (default 2).
+  (default 2); `GLB_DRAPE_MAX_PAGES` caps the 4096 px pages (default 16,
+  quality first: Nyamirama keeps 2 cm on 11 pages, ≈ 108 MB; 4 gives
+  3.9 cm and ≈ 60 MB). The KTX2 phone copy is only built up to
+  `GLB_KTX2_MAX_MB` (80).
 - **Measured on Nyamirama:** 17 s and 1.5 GB for 145 k faces on 2 pages.
 
 ## Install (part of deploy)
