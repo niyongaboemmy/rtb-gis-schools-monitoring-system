@@ -2074,7 +2074,9 @@ export class KmzService implements OnModuleInit {
     const manifest = school?.kmz2dManifest as Kmz2dManifestWithPyramid | null;
     if (!manifest || !pyramidPhotos(manifest).length) return { queued: false };
     // A queued build that never ran (queue restarted) is retried after 30 min.
-    const queuedAt = Date.parse(String(manifest.pyramid?.queuedAt ?? ''));
+    const rawQueuedAt: unknown = manifest.pyramid?.queuedAt;
+    const queuedAt =
+      typeof rawQueuedAt === 'string' ? Date.parse(rawQueuedAt) : NaN;
     const stale =
       !Number.isFinite(queuedAt) || Date.now() - queuedAt > 30 * 60_000;
     const pending =
