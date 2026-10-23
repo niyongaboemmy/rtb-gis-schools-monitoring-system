@@ -62,6 +62,16 @@ async function fetchManifestBundle(schoolId: string, signal?: AbortSignal): Prom
   return { kmlText, overlays, pyramid };
 }
 
+/**
+ * Photos worth loading over the pyramid when zoomed in: only those that can
+ * be finer than it (a photo up to 1024 px across `pyramidRes`-sized pixels),
+ * coarse first so the sharpest are drawn on top.
+ */
+export function detailPhotos<T extends { ext: number[] }>(photos: T[], pyramidRes: number, maxPhotoPx = 1024): T[] {
+  const area = (e: number[]) => (e[2] - e[0]) * (e[3] - e[1]);
+  return photos.filter(({ ext }) => ext[2] - ext[0] <= pyramidRes * maxPhotoPx).sort((a, b) => area(b.ext) - area(a.ext));
+}
+
 /** Tile grid matching libvips' "google" layout: image pinned top-left of a 256·2^maxZoom square. */
 export function pyramidTileGrid(p: Pick<SiteMapPyramid, "maxZoom" | "resolution" | "origin">): TileGrid {
   const resolutions = Array.from({ length: p.maxZoom + 1 }, (_, z) => p.resolution * 2 ** (p.maxZoom - z));
@@ -215,10 +225,11 @@ export function useKmzLoader({
       }
 
       type BoundTuple = { ov: GroundOverlayData; ext: [number, number, number, number] };
-      // Photos already in the pyramid are not composited again here.
-      const standardBounds: BoundTuple[] = pyramid
-        ? []
-        : overlayBounds.filter(({ ov }) => !ov.isTiled && !ov.imageUrl.toLowerCase().match(/\.tiff?$/i));
+      const photoBounds = overlayBounds.filter(({ ov }) => !ov.isTiled && !ov.imageUrl.toLowerCase().match(/\.tiff?$/i));
+      // With a pyramid, the original photos come back only as a DETAIL layer
+      // for zooms past the pyramid's resolution (its 8192 px canvas holds
+      // 4–8× less detail than the drone photos).
+      const standardBounds: BoundTuple[] = pyramid ? detailPhotos(photoBounds, pyramid.resolution) : photoBounds;
       const tiledBounds: BoundTuple[] = overlayBounds.filter(({ ov }) => ov.isTiled);
       const tifBounds: BoundTuple[] = overlayBounds.filter(({ ov }) => !ov.isTiled && ov.imageUrl.toLowerCase().match(/\.tiff?$/i));
 
@@ -275,7 +286,8 @@ export function useKmzLoader({
       let activeDecodes = 0;
       const decodeQueue: (() => void)[] = [];
 
-      setIsTileLoading(true);
+      // The detail layer starts hidden (zoomed out); the pyramid reports loading.
+      if (!pyramid) setIsTileLoading(true);
 
       const source = new DataTile({
         tileGrid,
@@ -360,7 +372,9 @@ export function useKmzLoader({
           for (const { ov, ext } of visibleBounds) {
             const existing = bitmaps.get(ov.imageUrl);
             if (!existing) continue;
-            
+            // Detail layer: a photo no sharper than the pyramid adds nothing.
+            if (pyramid && (ext[2] - ext[0]) / existing.width >= pyramid.resolution * 0.95) continue;
+
             const thumb = thumbs.get(ov.imageUrl);
             const ix = getIntersection(te, ext);
             if (!ix || isExtentEmpty(ix)) continue;
@@ -394,13 +408,26 @@ export function useKmzLoader({
         },
       });
 
-      const mainLayer = new TileLayer({ 
-        source, 
-        zIndex: 5, 
-        opacity: kmzOpacity, 
-        extent: globalExtent 
+      const mainLayer = new TileLayer({
+        source,
+        // Over the pyramid, and only once zoomed in past its detail.
+        zIndex: pyramid ? 6 : 5,
+        opacity: kmzOpacity,
+        extent: globalExtent,
+        ...(pyramid ? { maxResolution: pyramid.resolution } : {}),
       });
       
+      if (pyramid) {
+        // Sharp photos load as you zoom in: show it in the loading indicator.
+        let pending = 0;
+        const track = (d: number) => {
+          pending = Math.max(0, pending + d);
+          setIsTileLoading(pending > 0);
+        };
+        source.on("tileloadstart", () => track(1));
+        source.on("tileloadend", () => track(-1));
+        source.on("tileloaderror", () => track(-1));
+      }
       map.addLayer(mainLayer);
       groundOverlayLayersRef.current.push(mainLayer);
 

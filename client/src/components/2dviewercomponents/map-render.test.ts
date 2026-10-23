@@ -49,3 +49,13 @@ describe("site-map pyramid tile grid", () => {
     expect(ext[3]).toBeCloseTo(-216814 - 512 * 0.15, 6);
   });
 });
+
+describe("detailPhotos", () => {
+  it("keeps only photos that can beat the pyramid, coarse first", async () => {
+    const { detailPhotos } = await import("./hooks/useKmzLoader");
+    const sq = (side: number, name: string) => ({ name, ext: [0, 0, side, side] });
+    // Pyramid pixel 0.05 m: a 512 px photo is finer when it spans < 25.6 m; keep ≤ 1024 px worth (51.2 m).
+    const out = detailPhotos([sq(12.5, "fine"), sq(200, "coarse"), sq(50, "mid"), sq(25, "finer-mid")], 0.05);
+    expect(out.map((p) => p.name)).toEqual(["mid", "finer-mid", "fine"]);
+  });
+});
