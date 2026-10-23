@@ -14,9 +14,10 @@
  *    against the tiles (normalized cross-correlation of edge images, ± 1 m).
  *    Draping only when the best shift is ≤ 8 cm with a clear peak.
  * 2. Pages: 4096 px texture pages cut from the tiles, at `cm` per pixel —
- *    stepped down until the roofs and ground fit in `max-pages` pages (a
- *    whole campus at 2 cm needed 11 pages, a 107 MB model). Skipped when that
- *    detail would be no sharper than the model's own (`model-cm`).
+ *    stepped down only if the roofs and ground need more than `max-pages`
+ *    pages (default 16: quality first; a whole campus at 2 cm took 11 pages,
+ *    a ≈ 108 MB model). Skipped when that detail would be no sharper than the
+ *    model's own (`model-cm`).
  * 3. A face is draped when it faces up (≤ 45° from horizontal), is the
  *    topmost surface there (orthophotos only see that), fits inside its
  *    page and lies on photo pixels (not a gap).
@@ -24,7 +25,7 @@
  *    Meshopt-compressed like optimize.mjs.
  *
  *   node drape.mjs <in.glb> <out.glb> --lat <lat0> --lng <lng0> --tiles <dir>
- *        --tiles-max-zoom <z> [--cm 2] [--page 4096] [--max-pages 4] [--model-cm <cm>]
+ *        --tiles-max-zoom <z> [--cm 2] [--page 4096] [--max-pages 16] [--model-cm <cm>]
  *
  * Exit: 0 done or skipped · 2 bad args · 3 read · 4 build · 5 write.
  * Prints one JSON line: {draped, kept, occluded, pages, cm, zoom, alignment, ms}
@@ -135,7 +136,7 @@ async function main() {
   const PAGE = Number(args.page || 4096);
   // At most this many texture pages (download size); the detail steps down
   // until the roofs and ground fit.
-  const MAX_PAGES = Math.max(1, Number(args['max-pages'] || 4));
+  const MAX_PAGES = Math.max(1, Number(args['max-pages'] || 16));
   // The model's own detail (cm/px): draping coarser than ~80% of it is pointless.
   const modelCm = Number(args['model-cm']);
   if (!inputPath || !outputPath || !Number.isFinite(origin.lat) || !Number.isFinite(origin.lng) || !tilesDir || !Number.isFinite(tilesMaxZoom)) {

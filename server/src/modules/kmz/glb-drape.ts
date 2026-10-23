@@ -37,13 +37,15 @@ export const drapeCm = (env: NodeJS.ProcessEnv = process.env): number => {
 };
 
 /**
- * At most this many 4096 px pages per model (download size: one page is
- * ≈ 4–10 MB as WebP). A large campus then gets a little less than 2 cm/px
- * (Nyamirama: 11 pages at 2 cm → ≈ 3.4 cm in 4), still ~2.5× its model texture.
+ * At most this many 4096 px pages per model. Quality first: 16 keeps a whole
+ * campus at 2 cm/px (Nyamirama: 11 pages, ≈ 108 MB model); only a larger site
+ * steps the detail down a little. Lower it (e.g. 4 → Nyamirama 3.9 cm,
+ * ≈ 60 MB) when download size matters more.
  */
+export const DRAPE_MAX_PAGES_DEFAULT = 16;
 export const drapeMaxPages = (env: NodeJS.ProcessEnv = process.env): number => {
   const v = Number(env.GLB_DRAPE_MAX_PAGES);
-  return Number.isInteger(v) && v >= 1 && v <= 32 ? v : 4;
+  return Number.isInteger(v) && v >= 1 && v <= 64 ? v : DRAPE_MAX_PAGES_DEFAULT;
 };
 
 /** Local folder of a tiles URL template (`…/_tiles/<build>/{z}/{x}/{y}.webp`). */
