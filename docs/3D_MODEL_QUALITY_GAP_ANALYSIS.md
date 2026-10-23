@@ -38,10 +38,22 @@ browser streams only the detail for what is on screen, as Google Earth does.
 | Ground detail per texture pixel | **≈ 8 cm** (flat ground; worse on walls) | similar class |
 | File as uploaded | already web-compressed (Meshopt + WebP) | — |
 
-Nyamirama's kept "original" (`3d/_source/`) is itself already compressed
-(Meshopt geometry, WebP texture, quantised positions). The file was reduced
-**before** it reached us, by the export tool or a converter, so the detail
-cannot be recovered on our side.
+**Correction (23 Oct 2026, checked on production):** the true originals are
+raw, uncompressed exports:
+
+| School | Original | Served |
+|---|---|---|
+| Nyamirama | 932 MB, 39.0 M triangles, one 4096² JPEG | 5.0 M triangles |
+| Nyanza | 1.9 GB, 79.8 M triangles, one 4096² JPEG | 3.4 M triangles (low-memory path) |
+| Fr Ramon | 487 MB, 19.5 M triangles, one 4096² JPEG | 5.0 M triangles |
+
+The "already compressed" copy measured above was a dev copy of the
+*processed* model.
+
+- **Texture:** the single 4K texture is in the export itself, so G1 stands.
+- **Geometry:** our pipeline removes 4–24× of the triangles. That adds to
+  the jagged edges. Phase 4 (3D Tiles built from these originals) can
+  restore it.
 
 ## Where quality is lost: the full chain
 
