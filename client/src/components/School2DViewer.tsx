@@ -4,6 +4,7 @@ import Overlay from "ol/Overlay";
 import VectorSource from "ol/source/Vector";
 import { fromLonLat } from "ol/proj";
 import { framePadding, pickFrame } from "./2dviewercomponents/frame";
+import { createMapHudStore } from "./2dviewercomponents/map-hud-store";
 import { RWANDA_CENTER, schoolPoint } from "../lib/school-location";
 import { connectSocket } from "../lib/socket";
 import { useSchoolsStore } from "../store/schoolsStore";
@@ -209,8 +210,6 @@ export default function School2DViewer({
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("Initialising map…");
   const [loadingProgress, setLoadingProgress] = useState(0);
-  const [isTileLoading, setIsTileLoading] = useState(false);
-  const [decodingCount, setDecodingCount] = useState(0);
   const [measurementMode, setMeasurementMode] = useState<
     "none" | "distance" | "area" | "perimeter"
   >("none");
@@ -233,8 +232,9 @@ export default function School2DViewer({
     saturation: 1,
   });
   const [activeTool, setActiveTool] = useState<any>("none");
-  const [currentLat, setCurrentLat] = useState(fallbackLocation.lat);
-  const [currentLng, setCurrentLng] = useState(fallbackLocation.lng);
+  // Cursor position + imagery loading: an external store, so mouse moves and
+  // image decodes don't re-render this whole viewer (map-hud-store.ts).
+  const [hud] = useState(() => createMapHudStore(fallbackLocation));
   const [features, setFeatures] = useState<any[]>([]);
   const [selectedFeatureName, setSelectedFeatureName] = useState<string | null>(
     null,
@@ -499,8 +499,7 @@ export default function School2DViewer({
     fallbackLocation,
     onSelectBuilding,
     effectiveBuildings,
-    setCurrentLat,
-    setCurrentLng,
+    onPointer: hud.setPointer,
     setActiveBlock,
     setIsBlockInspectorOpen: openInspector,
     setSelectedFeatureName,
@@ -532,8 +531,8 @@ export default function School2DViewer({
     setIsLoading,
     setLoadingMessage,
     setLoadingProgress,
-    setIsTileLoading,
-    setDecodingCount,
+    setIsTileLoading: hud.setTilesLoading,
+    setDecodingCount: hud.setDecoding,
     setFeatures,
     kmlLayerRef,
     groundOverlayLayersRef,
@@ -1755,11 +1754,8 @@ export default function School2DViewer({
       <MapHud
         school={school}
         setShowBasicInfo={setShowBasicInfo}
-        isTileLoading={isTileLoading}
-        decodingCount={decodingCount}
+        hud={hud}
         isLoading={isLoading}
-        currentLat={currentLat}
-        currentLng={currentLng}
         infoFeature={infoFeature}
         onCloseInfo={() => setInfoFeature(null)}
         selectedBuilding={activeBlock}

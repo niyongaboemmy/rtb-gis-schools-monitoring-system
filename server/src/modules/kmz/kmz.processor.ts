@@ -46,6 +46,9 @@ export class KmzProcessor extends WorkerHost {
       case 'process-kmz2d':
         return this.kmzService.processKmz2dJob(job.data as Kmz2dJobData);
 
+      case 'build-pyramid':
+        return this.kmzService.buildKmz2dPyramid(job.data.schoolId);
+
       default:
         this.logger.warn(`Unknown job name: ${job.name}`);
         return null;

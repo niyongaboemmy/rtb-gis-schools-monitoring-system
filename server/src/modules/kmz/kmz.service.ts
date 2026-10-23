@@ -47,6 +47,23 @@ import {
   type ActingUser,
 } from '../site-features/site-features.service';
 import { SchoolLocationService } from '../schools/location/school-location.service';
+import { buildOverlayPyramid } from './overlay-pyramid';
+
+/** A 2D manifest with the optional tile pyramid (overlay-pyramid.ts). */
+type Kmz2dManifestWithPyramid = {
+  groundOverlays?: Array<Record<string, unknown>>;
+  pyramid?: { status?: string } & Record<string, unknown>;
+} & Record<string, unknown>;
+
+/** Photo overlays that go into the pyramid (tiled giants and GeoTIFFs stay separate). */
+const pyramidPhotos = (m: Kmz2dManifestWithPyramid) =>
+  (m.groundOverlays ?? []).filter(
+    (o) =>
+      o &&
+      !o.isTiled &&
+      typeof o.imageUrl === 'string' &&
+      !/\.tiff?(\?|$)/i.test(o.imageUrl),
+  );
 import type { LegacySiteAnnotationDto } from '../site-features/dto/site-feature.dto';
 import { Readable } from 'stream';
 import unzipper from 'unzipper';
@@ -1953,12 +1970,41 @@ export class KmzService implements OnModuleInit {
         );
       }
 
+      // The previous upload's pyramid is removed once the new one is saved.
+      const previousPyramid = (
+        (
+          await this.schoolRepository.findOne({
+            where: { id: schoolId },
+            select: ['id', 'kmz2dManifest'],
+          })
+        )?.kmz2dManifest as Kmz2dManifestWithPyramid | null
+      )?.pyramid?.buildId;
       await this.schoolRepository.update(schoolId, {
         kmzStatus: KmzProcessingStatus.COMPLETED,
         kmz2dFilePath: publicPath,
-        kmz2dManifest: manifest,
+        // "building": the pyramid is made right below, in this job — the
+        // viewer's one-time trigger must not queue a second build meanwhile.
+        kmz2dManifest: manifest
+          ? {
+              ...manifest,
+              pyramid: {
+                status: 'building',
+                queuedAt: new Date().toISOString(),
+                ...(previousPyramid ? { buildId: previousPyramid } : {}),
+              },
+            }
+          : manifest,
         kmzProcessedAt: new Date(),
       });
+
+      // One tile pyramid for all the drone photos, so the map loads only the
+      // tiles on screen (overlay-pyramid.ts). Best effort: without it the
+      // viewer falls back to compositing the photos itself.
+      await this.buildKmz2dPyramid(schoolId).catch((e) =>
+        this.logger.warn(
+          `[2D] Pyramid build failed for ${schoolId}: ${e?.message ?? e}`,
+        ),
+      );
 
       // Sync the school's coordinates to whatever the KMZ says (authored view,
       // ground-overlay bounds, or placemark centroid).
@@ -1995,11 +2041,217 @@ export class KmzService implements OnModuleInit {
     });
     if (!school) throw new NotFoundException(`School ${schoolId} not found`);
 
+    // Site maps uploaded before tile pyramids existed get one built once,
+    // in the background (from the photos already stored; the school's
+    // location is not touched).
+    const manifest = school.kmz2dManifest as Kmz2dManifestWithPyramid | null;
+    if (
+      manifest &&
+      (!manifest.pyramid ||
+        manifest.pyramid.status === 'queued' ||
+        manifest.pyramid.status === 'building') &&
+      pyramidPhotos(manifest).length
+    ) {
+      await this.queuePyramidBuild(schoolId).catch(() => null);
+    }
+
     return {
       schoolId,
       manifest: school.kmz2dManifest ?? null,
       kmz2dFilePath: school.kmz2dFilePath ?? null,
     };
+  }
+
+  /** Queue a pyramid build for a school (deduplicated per school). */
+  async queuePyramidBuild(
+    schoolId: string,
+    force = false,
+  ): Promise<{ queued: boolean }> {
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+      select: ['id', 'kmz2dManifest'],
+    });
+    const manifest = school?.kmz2dManifest as Kmz2dManifestWithPyramid | null;
+    if (!manifest || !pyramidPhotos(manifest).length) return { queued: false };
+    // A queued build that never ran (queue restarted) is retried after 30 min.
+    const rawQueuedAt: unknown = manifest.pyramid?.queuedAt;
+    const queuedAt =
+      typeof rawQueuedAt === 'string' ? Date.parse(rawQueuedAt) : NaN;
+    const stale =
+      !Number.isFinite(queuedAt) || Date.now() - queuedAt > 30 * 60_000;
+    const pending =
+      manifest.pyramid?.status === 'queued' ||
+      manifest.pyramid?.status === 'building';
+    if (pending && !stale && !force) return { queued: false };
+    await this.schoolRepository.update(schoolId, {
+      kmz2dManifest: {
+        ...manifest,
+        pyramid: { status: 'queued', queuedAt: new Date().toISOString() },
+      } as any,
+    });
+    await this.kmzQueue.add(
+      'build-pyramid',
+      { schoolId },
+      {
+        jobId: `pyramid-${schoolId}-${Date.now()}`,
+        attempts: 2,
+        backoff: { type: 'exponential' as const, delay: 30_000 },
+        removeOnComplete: 50,
+        removeOnFail: 100,
+      },
+    );
+    return { queued: true };
+  }
+
+  /**
+   * Build the site map's tile pyramid from its stored photos and record it in
+   * the manifest (`manifest.pyramid`). Each build gets its own folder, so the
+   * file server can cache tiles for a year; older builds are removed.
+   */
+  async buildKmz2dPyramid(schoolId: string): Promise<boolean> {
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+      select: ['id', 'kmz2dManifest'],
+    });
+    const manifest = school?.kmz2dManifest as Kmz2dManifestWithPyramid | null;
+    const photos = manifest ? pyramidPhotos(manifest) : [];
+    if (!manifest) return false;
+    if (!photos.length) {
+      // Nothing to combine (e.g. one large image, already tiled on upload).
+      if (manifest.pyramid?.status !== 'none') {
+        await this.schoolRepository.update(schoolId, {
+          kmz2dManifest: { ...manifest, pyramid: { status: 'none' } } as any,
+        });
+      }
+      return false;
+    }
+
+    const started = Date.now();
+    const buildId = started.toString(36);
+    const outDir = path.join(KMZ_TMP_DIR, `pyramid_${schoolId}_${buildId}`);
+    /** Save the result; returns the build it replaced (to clean up). */
+    const save = async (
+      pyramid: Record<string, unknown>,
+    ): Promise<string | null> => {
+      // Re-read: the manifest may have changed while we were building.
+      const fresh = await this.schoolRepository.findOne({
+        where: { id: schoolId },
+        select: ['id', 'kmz2dManifest'],
+      });
+      if (!fresh?.kmz2dManifest) return null;
+      const previous = (fresh.kmz2dManifest as Kmz2dManifestWithPyramid).pyramid
+        ?.buildId;
+      await this.schoolRepository.update(schoolId, {
+        kmz2dManifest: { ...fresh.kmz2dManifest, pyramid } as any,
+      });
+      return typeof previous === 'string' ? previous : null;
+    };
+
+    try {
+      const built = await buildOverlayPyramid(
+        photos.map((o) => ({
+          north: Number(o.north),
+          south: Number(o.south),
+          east: Number(o.east),
+          west: Number(o.west),
+          drawOrder: Number(o.drawOrder) || 0,
+          load: () => this.storageService.readFile(String(o.imageUrl)),
+        })),
+        {
+          outDir,
+          maxPx: Number(process.env.KMZ_PYRAMID_MAX_PX) || 8192,
+        },
+      );
+      if (!built) {
+        await save({ status: 'failed', reason: 'no usable photos' });
+        return false;
+      }
+
+      const root = `schools/${schoolId}/kmz_2d_content/_pyramid`;
+      const prefix = `${root}/${buildId}`;
+      await this.uploadDirectory(outDir, prefix);
+      const sample = await this.storageService.getFileUrl(
+        `${prefix}/0/0/0.webp`,
+      );
+      const base = (sample ?? `/files/${prefix}/0/0/0.webp`).replace(
+        /\/0\/0\/0\.webp(\?.*)?$/,
+        '',
+      );
+
+      const replaced = await save({
+        status: 'ready',
+        buildId,
+        url: `${base}/{z}/{y}/{x}.webp`,
+        maxZoom: built.maxZoom,
+        resolution: built.resolution,
+        origin: built.origin,
+        extent: built.extent,
+        width: built.width,
+        height: built.height,
+        photos: built.used,
+        tiles: built.tiles,
+        builtAt: new Date().toISOString(),
+      });
+      // Only now, with the new tiles in place, drop the build they replace.
+      if (replaced && replaced !== buildId) {
+        await this.storageService
+          .deleteDirectory(`${root}/${replaced}`)
+          .catch(() => null);
+      }
+      this.logger.log(
+        `[2D] Pyramid for ${schoolId}: ${built.used}/${built.total} photos -> ${built.width}x${built.height}px, ` +
+          `${built.tiles} tiles, z0-${built.maxZoom}, ${Date.now() - started} ms`,
+      );
+      return true;
+    } catch (err) {
+      await save({
+        status: 'failed',
+        reason: (err as Error).message?.slice(0, 200),
+      }).catch(() => null);
+      throw err;
+    } finally {
+      await fs.promises
+        .rm(outDir, { recursive: true, force: true })
+        .catch(() => null);
+    }
+  }
+
+  /** Upload a local folder tree to storage under a prefix. */
+  private async uploadDirectory(
+    localDir: string,
+    prefix: string,
+  ): Promise<void> {
+    const entries = await fs.promises.readdir(localDir, {
+      withFileTypes: true,
+    });
+    const files = entries.filter((e) => !e.isDirectory());
+    // Small batches: a pyramid can hold thousands of tiles.
+    for (let i = 0; i < files.length; i += 32) {
+      await Promise.all(
+        files.slice(i, i + 32).map(async (e) => {
+          const ext = path.extname(e.name).toLowerCase();
+          const mime =
+            ext === '.webp'
+              ? 'image/webp'
+              : ext === '.png'
+                ? 'image/png'
+                : ext === '.jpg' || ext === '.jpeg'
+                  ? 'image/jpeg'
+                  : 'application/octet-stream';
+          await this.storageService.uploadFile(
+            `${prefix}/${e.name}`,
+            await fs.promises.readFile(path.join(localDir, e.name)),
+            mime,
+          );
+        }),
+      );
+    }
+    for (const d of entries.filter((e) => e.isDirectory())) {
+      await this.uploadDirectory(
+        path.join(localDir, d.name),
+        `${prefix}/${d.name}`,
+      );
+    }
   }
 
   /**
@@ -2074,7 +2326,13 @@ export class KmzService implements OnModuleInit {
     // Map of in-zip path → { url, isTiled, maxZoom }
     const assetUrlMap: Record<
       string,
-      { url: string; isTiled?: boolean; maxZoom?: number }
+      {
+        url: string;
+        isTiled?: boolean;
+        maxZoom?: number;
+        width?: number;
+        height?: number;
+      }
     > = {};
     const allKmlPaths: string[] = [];
     const files = Object.keys(jszipInstance.files).filter(
@@ -2121,6 +2379,7 @@ export class KmzService implements OnModuleInit {
           let isTiled = false;
           let tileUrlTemplate = '';
           let maxZoom = 0;
+          let tiledSize: { width: number; height: number } | undefined;
 
           const isOptimizeable =
             (contentType === 'image/jpeg' || contentType === 'image/png') &&
@@ -2147,23 +2406,35 @@ export class KmzService implements OnModuleInit {
                   .toFile(tmpDir);
 
                 const storagePrefix = `schools/${schoolId}/kmz_2d_content/${zipPath}_tiled`;
+                // Read what libvips wrote BEFORE removing the folder (this
+                // used to look after deleting it, so it always guessed jpg).
+                const levels = (
+                  await fs.promises.readdir(tmpDir).catch(() => [])
+                )
+                  .map(Number)
+                  .filter(Number.isInteger);
+                const files00 = await fs.promises
+                  .readdir(path.join(tmpDir, '0', '0'))
+                  .catch(() => []);
+                const tileExt =
+                  files00
+                    .find((f) => !f.startsWith('blank'))
+                    ?.split('.')
+                    .pop() || 'jpg';
                 await uploadDirectoryToStorage(tmpDir, storagePrefix);
                 await fs.promises
                   .rm(tmpDir, { recursive: true, force: true })
                   .catch(() => null);
 
-                let tileExt = 'jpg';
-                const files00 = await fs.promises
-                  .readdir(path.join(tmpDir, '0', '0'))
-                  .catch(() => []);
-                if (files00.length > 0)
-                  tileExt = files00[0].split('.').pop() || 'jpg';
-
-                tileUrlTemplate = `/files/${storagePrefix}/{z}/{x}/{y}.${tileExt}`;
+                // libvips' google layout is {z}/{y}/{x}, image pinned top-left.
+                tileUrlTemplate = `/files/${storagePrefix}/{z}/{y}/{x}.${tileExt}`;
+                tiledSize = { width: meta.width, height: meta.height };
+                maxZoom = levels.length
+                  ? Math.max(...levels)
+                  : Math.ceil(
+                      Math.log2(Math.max(meta.width, meta.height) / 256),
+                    );
                 isTiled = true;
-                maxZoom = Math.ceil(
-                  Math.log2(Math.max(meta.width, meta.height) / 256),
-                );
               }
             } catch (e) {
               this.logger.warn(`Sharp failed to tile ${zipPath}: ` + e);
@@ -2187,6 +2458,7 @@ export class KmzService implements OnModuleInit {
               url: tileUrlTemplate,
               isTiled: true,
               maxZoom,
+              ...tiledSize,
             };
             const baseName = zipPath.split('/').pop()!;
             if (!assetUrlMap[baseName])
@@ -2194,6 +2466,7 @@ export class KmzService implements OnModuleInit {
                 url: tileUrlTemplate,
                 isTiled: true,
                 maxZoom,
+                ...tiledSize,
               };
           }
 
@@ -2250,6 +2523,9 @@ export class KmzService implements OnModuleInit {
         const imageUrl = mapEntry ? mapEntry.url : `${assetBaseUrl}/${href}`;
         const isTiled = mapEntry ? mapEntry.isTiled || false : false;
         const maxZoom = mapEntry ? mapEntry.maxZoom : undefined;
+        // Pixel size of a server-tiled image: lets the viewer build an exact grid.
+        const tiledWidth = mapEntry?.width;
+        const tiledHeight = mapEntry?.height;
 
         const box = ov.LatLonBox || {};
         const drawOrder = parseInt(this.getKmlValue(ov.drawOrder) || '0', 10);
@@ -2258,6 +2534,9 @@ export class KmzService implements OnModuleInit {
           imageUrl,
           isTiled,
           maxZoom,
+          ...(tiledWidth && tiledHeight
+            ? { width: tiledWidth, height: tiledHeight }
+            : {}),
           north: parseFloat(this.getKmlValue(box.north) || '0'),
           south: parseFloat(this.getKmlValue(box.south) || '0'),
           east: parseFloat(this.getKmlValue(box.east) || '0'),
@@ -2304,7 +2583,8 @@ export class KmzService implements OnModuleInit {
   private collectPlacemarkPoints(placemarks: any[]): Array<[number, number]> {
     const out: Array<[number, number]> = [];
     const MAX = 20000;
-    const asArray = (v: unknown): any[] => (Array.isArray(v) ? v : v ? [v] : []);
+    const asArray = (v: unknown): any[] =>
+      Array.isArray(v) ? v : v ? [v] : [];
     const push = (raw: unknown) => {
       const coords = this.parseKmlCoordinates(raw as any);
       for (const c of coords || []) {
@@ -2317,7 +2597,9 @@ export class KmzService implements OnModuleInit {
       if (!g || out.length >= MAX) return;
       asArray(g.Point).forEach((p) => push(p?.coordinates));
       asArray(g.LineString).forEach((l) => push(l?.coordinates));
-      asArray(g.Polygon).forEach((p) => push(p?.outerBoundaryIs?.LinearRing?.coordinates));
+      asArray(g.Polygon).forEach((p) =>
+        push(p?.outerBoundaryIs?.LinearRing?.coordinates),
+      );
       asArray(g.MultiGeometry).forEach(walk);
     };
     for (const pm of placemarks || []) walk(pm);

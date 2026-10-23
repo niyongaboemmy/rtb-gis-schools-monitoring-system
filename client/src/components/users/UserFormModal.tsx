@@ -1,30 +1,36 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, type ReactNode } from "react";
 import { Modal } from "../ui/modal";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { PasswordInput } from "../ui/password-input";
 import { RichDropdown } from "../ui/rich-dropdown";
+import { StatusPill } from "../ui/status-pill";
+import { INSET, PILL_BUTTON } from "../ui/surfaces";
 import {
   AlertCircle,
   User as UserIcon,
+  UserPlus,
   MapPin,
   Mail,
   Lock,
   Flag,
-  Loader2,
   KeyRound,
   ShieldOff,
   Send,
   History,
+  Globe2,
+  type LucideIcon,
 } from "lucide-react";
 import { api, apiErrorMessage } from "../../lib/api";
+import { cn } from "../../lib/utils";
 import { useToast } from "../ui/toast";
-import { Badge } from "../ui/badge";
 import { PasswordStrengthMeter } from "../auth/PasswordStrengthMeter";
 import { isPasswordAcceptable } from "../auth/password-policy";
 import { ActivityFeed } from "../audit/ActivityFeed";
 import { useAuthorization } from "../../hooks/useAuthorization";
 import { Permission } from "../../lib/permissions";
 import { titleCase } from "../../lib/labels";
+import { Eyebrow, FieldLabel, IconTile } from "../settings/settings-ui";
 import {
   getProvinces,
   getDistricts,
@@ -33,13 +39,86 @@ import {
   resolveDistrictName,
 } from "../../lib/rwanda-locations";
 
+/** Small section heading inside the form. */
+function FormSection({ icon: Icon, title, children, className }: { icon: LucideIcon; title: string; children: ReactNode; className?: string }) {
+  return (
+    <section aria-label={title} className={cn("min-w-0 space-y-4", className)}>
+      <div className="flex items-center gap-2">
+        <Icon className="h-3.5 w-3.5 text-primary" aria-hidden />
+        <Eyebrow>{title}</Eyebrow>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/** Radio option as a selectable row: flat primary tint when chosen. */
+function RadioOption({ checked, onChange, children }: { checked: boolean; onChange: () => void; children: ReactNode }) {
+  return (
+    <label
+      className={cn(
+        "flex cursor-pointer items-start gap-3 rounded-2xl px-3.5 py-3 text-sm transition-colors",
+        checked ? "bg-primary/[0.07] ring-1 ring-inset ring-primary/20" : cn(INSET, "hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.04]"),
+      )}
+    >
+      <input type="radio" name="password-mode" checked={checked} onChange={onChange} className="mt-0.5 h-4 w-4 shrink-0 accent-primary" />
+      <span className="min-w-0 text-foreground">{children}</span>
+    </label>
+  );
+}
+
+export interface UserLocation {
+  province?: string;
+  district?: string;
+  sector?: string;
+  schoolId?: string;
+  schoolName?: string;
+}
+
+export interface ManagedRole {
+  id: string;
+  name: string;
+  accessLevel?: { name?: string } | null;
+}
+
+/** A user row as returned by `GET /users`. */
+export interface ManagedUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  isActive: boolean;
+  totpEnabled?: boolean;
+  mustChangePassword?: boolean;
+  createdAt: string;
+  lastLoginAt?: string | null;
+  role?: ManagedRole | null;
+  location?: UserLocation | null;
+}
+
+interface SchoolOption {
+  id: string;
+  name: string;
+  province?: string;
+  district?: string;
+}
+
+interface UserFormState {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  roleId: string;
+  location: UserLocation;
+}
+
 interface UserFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  editingUser: any | null;
-  roles: any[];
-  schools: any[];
+  editingUser: ManagedUser | null;
+  roles: ManagedRole[];
+  schools: SchoolOption[];
 }
 
 export function UserFormModal({
@@ -60,7 +139,7 @@ export function UserFormModal({
   const toast = useToast();
   const { isAuthorized } = useAuthorization();
   const canViewAudit = isAuthorized(Permission.VIEW_AUDIT_LOGS);
-  const [formData, setFormData] = useState<any>({
+  const [formData, setFormData] = useState<UserFormState>({
     firstName: "",
     lastName: "",
     email: "",
@@ -132,14 +211,14 @@ export function UserFormModal({
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const setLocation = (patch: Record<string, string>) =>
-    setFormData((prev: any) => ({
+  const setLocation = (patch: Partial<UserLocation>) =>
+    setFormData((prev) => ({
       ...prev,
       location: { ...prev.location, ...patch },
     }));
 
   const resetLocationFields = (level: "province" | "district" | "sector") => {
-    setFormData((prev: any) => {
+    setFormData((prev) => {
       const newLoc = { ...prev.location };
       if (level === "province") {
         delete newLoc.province;
@@ -164,7 +243,7 @@ export function UserFormModal({
   };
 
   const getSelectedRoleAccessLevel = (roleId: string): string => {
-    const role = roles.find((r: any) => r.id === roleId);
+    const role = roles.find((r) => r.id === roleId);
     return role?.accessLevel?.name?.toLowerCase() || "national";
   };
 
@@ -178,7 +257,7 @@ export function UserFormModal({
     formData.location?.province && formData.location?.district
       ? getSectors(formData.location.province, formData.location.district)
       : [];
-  const schoolOptions = schools.filter((s: any) => {
+  const schoolOptions = schools.filter((s) => {
     if (!formData.location?.province) return false;
     if (resolveProvinceName(s.province) !== formData.location.province) return false;
     if (
@@ -197,7 +276,7 @@ export function UserFormModal({
     // Only the fields the API accepts (it rejects unknown ones).
     const loc = formData.location ?? {};
     const location = Object.fromEntries(
-      ["province", "district", "sector", "schoolId", "schoolName"]
+      (["province", "district", "sector", "schoolId", "schoolName"] as const)
         .filter((k) => loc[k])
         .map((k) => [k, loc[k]]),
     );
@@ -234,7 +313,7 @@ export function UserFormModal({
       onSuccess();
       onClose();
     } catch (err) {
-      setError(apiErrorMessage(err, `Failed to ${editingUser ? "update" : "create"} identity`));
+      setError(apiErrorMessage(err, `Could not ${editingUser ? "update" : "create"} the user.`));
     } finally {
       setLoading(false);
     }
@@ -244,265 +323,202 @@ export function UserFormModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      maxWidth="max-w-5xl"
+      maxWidth="sm:max-w-4xl"
       title={
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
-            <UserIcon className="w-6 h-6 text-primary" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-xl md:text-2xl font-black uppercase tracking-tight text-foreground">
-              {editingUser ? "Edit Identity" : "New Identity Registration"}
+        <span className="flex items-center gap-3">
+          <IconTile icon={editingUser ? UserIcon : UserPlus} />
+          <span className="flex min-w-0 flex-col gap-1">
+            <span className="text-lg font-semibold tracking-tight text-foreground">
+              {editingUser ? "Edit user" : "Add user"}
             </span>
-            <span className="text-xs md:text-sm font-medium tracking-normal normal-case text-muted-foreground">
-              {editingUser
-                ? "Modify credentials and access scope"
-                : "Provision a new authorized personnel record"}
+            <span className="text-xs font-normal text-muted-foreground/70">
+              {editingUser ? "Details, role and scope" : "Details, sign-in, role and scope"}
             </span>
-          </div>
-        </div>
+          </span>
+        </span>
       }
       footer={
-        <div className="flex flex-col-reverse sm:flex-row w-full sm:w-auto sm:justify-end gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full sm:w-auto h-11 px-8 rounded-full dark:bg-gray-900 shadow-none font-bold"
-            onClick={onClose}
-            disabled={loading}
-          >
+        <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:justify-end">
+          <Button type="button" variant="ghost" className={cn(PILL_BUTTON.secondary, "w-full sm:w-auto")} onClick={onClose} disabled={loading}>
             Cancel
           </Button>
           <Button
             type="submit"
             form="user-form"
-            className="w-full sm:w-auto h-11 px-8 rounded-full shadow-none font-bold bg-primary hover:bg-primary/90 text-primary-foreground"
+            className={cn(PILL_BUTTON.primary, "w-full sm:w-auto")}
             disabled={loading}
+            isLoading={loading}
           >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-                Processing...
-              </>
-            ) : editingUser ? (
-              "Update Identity"
-            ) : (
-              "Confirm Record"
-            )}
+            {loading ? "Saving…" : editingUser ? "Save changes" : "Add user"}
           </Button>
         </div>
       }
     >
-      <form
-        id="user-form"
-        onSubmit={handleSubmit}
-        className="space-y-6 pt-2 mb-12"
-      >
+      <form id="user-form" onSubmit={handleSubmit} className="@container space-y-6 py-2">
         {error && (
-          <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm font-semibold flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            {error}
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-2xl bg-destructive/10 px-3.5 py-3 text-sm font-normal text-destructive ring-1 ring-inset ring-destructive/20"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <span className="min-w-0">{error}</span>
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-10 pb-12 mb-12">
-          {/* COLUMN 1: Identity & Credentials */}
-          <div className="space-y-5">
-            <h4 className="text-[14px] font-black text-foreground uppercase tracking-widest flex items-center gap-2 border-b border-border/40 pb-3">
-              <UserIcon className="w-4 h-4 text-primary" /> Core Profile
-            </h4>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-x-8 gap-y-7 @3xl:grid-cols-2">
+          <div className="min-w-0 space-y-7">
+            <FormSection icon={UserIcon} title="Details">
+              <div className="grid grid-cols-1 gap-4 @md:grid-cols-2">
+                <div className="space-y-1.5">
+                  <FieldLabel htmlFor="user-first-name">First name</FieldLabel>
+                  <Input
+                    id="user-first-name"
+                    name="firstName"
+                    required
+                    autoComplete="off"
+                    placeholder="e.g. Jean"
+                    value={formData.firstName}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel htmlFor="user-last-name">Last name</FieldLabel>
+                  <Input
+                    id="user-last-name"
+                    name="lastName"
+                    required
+                    autoComplete="off"
+                    placeholder="e.g. Claude"
+                    value={formData.lastName}
+                    onChange={handleInputChange}
+                  />
+                </div>
+              </div>
               <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest pl-1">
-                  First Name
-                </label>
+                <FieldLabel htmlFor="user-email" icon={Mail}>
+                  Email
+                </FieldLabel>
                 <Input
-                  name="firstName"
+                  id="user-email"
+                  name="email"
+                  type="email"
                   required
-                  className="h-11 rounded-xl bg-muted/40 border-border"
-                  placeholder="e.g. Jean"
-                  value={formData.firstName}
+                  autoComplete="off"
+                  placeholder="name@rtb.gov.rw"
+                  value={formData.email}
                   onChange={handleInputChange}
                 />
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest pl-1">
-                  Last Name
-                </label>
-                <Input
-                  name="lastName"
-                  required
-                  className="h-11 rounded-xl bg-muted/40 border-border"
-                  placeholder="e.g. Claude"
-                  value={formData.lastName}
-                  onChange={handleInputChange}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest pl-1 flex items-center gap-1.5">
-                <Mail className="w-3 h-3" /> Email Address
-              </label>
-              <Input
-                name="email"
-                type="email"
-                required
-                className="h-11 rounded-xl bg-muted/40 border-border"
-                placeholder="official@rtb.gov.rw"
-                value={formData.email}
-                onChange={handleInputChange}
-              />
-            </div>
+            </FormSection>
 
             {editingUser ? (
-              <div className="space-y-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
-                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
-                  <Lock className="w-3 h-3" aria-hidden /> Sign-in & security
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {editingUser.totpEnabled ? (
-                    <Badge variant="success">2FA on</Badge>
-                  ) : (
-                    <Badge variant="outline">2FA off</Badge>
-                  )}
-                  {editingUser.mustChangePassword && (
-                    <Badge variant="warning">Must change password</Badge>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void sendReset()}
-                    isLoading={actionBusy === "reset"}
-                  >
-                    <Send className="w-3.5 h-3.5 mr-1.5" aria-hidden /> Send reset code
-                  </Button>
-                  {editingUser.totpEnabled && (
+              <FormSection icon={Lock} title="Sign-in and security">
+                <div className={cn("space-y-3 rounded-2xl p-4", INSET)}>
+                  <div className="flex flex-wrap gap-1.5">
+                    {editingUser.totpEnabled ? (
+                      <StatusPill tone="good">2FA on</StatusPill>
+                    ) : (
+                      <StatusPill tone="neutral">2FA off</StatusPill>
+                    )}
+                    {editingUser.mustChangePassword && <StatusPill tone="warn">Must change password</StatusPill>}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
                       variant="outline"
-                      size="sm"
-                      onClick={() => setConfirmMfaReset(true)}
-                      isLoading={actionBusy === "mfa"}
+                      className={PILL_BUTTON.small}
+                      onClick={() => void sendReset()}
+                      isLoading={actionBusy === "reset"}
                     >
-                      <ShieldOff className="w-3.5 h-3.5 mr-1.5" aria-hidden /> Reset 2FA
+                      <Send className="h-3.5 w-3.5" aria-hidden /> Send reset code
                     </Button>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Administrators never set passwords for existing users: the user
-                  receives a one-time code by email and chooses their own.
-                </p>
-              </div>
-            ) : (
-              <fieldset className="space-y-3">
-                <legend className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest pl-1 flex items-center gap-1.5 mb-1.5">
-                  <KeyRound className="w-3 h-3" aria-hidden /> Initial password
-                </legend>
-                <label className="flex items-start gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="password-mode"
-                    checked={sendInvite}
-                    onChange={() => setSendInvite(true)}
-                    className="mt-1 accent-primary"
-                  />
-                  <span>
-                    Email the user a code to set their own password{" "}
-                    <span className="text-muted-foreground">(recommended)</span>
-                  </span>
-                </label>
-                <label className="flex items-start gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="password-mode"
-                    checked={!sendInvite}
-                    onChange={() => setSendInvite(false)}
-                    className="mt-1 accent-primary"
-                  />
-                  <span>Set a temporary password (changed at first sign-in)</span>
-                </label>
-                {!sendInvite && (
-                  <div className="space-y-2">
-                    <Input
-                      name="password"
-                      type="password"
-                      aria-label="Temporary password"
-                      aria-describedby="new-user-password-rules"
-                      autoComplete="new-password"
-                      required
-                      className="h-11 rounded-xl bg-muted/40 border-border"
-                      placeholder="••••••••••"
-                      value={formData.password}
-                      onChange={handleInputChange}
-                    />
-                    <PasswordStrengthMeter
-                      id="new-user-password-rules"
-                      password={formData.password}
-                      email={formData.email}
-                    />
+                    {editingUser.totpEnabled && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={PILL_BUTTON.small}
+                        onClick={() => setConfirmMfaReset(true)}
+                        isLoading={actionBusy === "mfa"}
+                      >
+                        <ShieldOff className="h-3.5 w-3.5" aria-hidden /> Reset 2FA
+                      </Button>
+                    )}
                   </div>
-                )}
-              </fieldset>
+                  <p className="text-xs text-muted-foreground">
+                    Administrators never set passwords for existing users: the user receives a one-time code by email and
+                    chooses their own.
+                  </p>
+                </div>
+              </FormSection>
+            ) : (
+              <FormSection icon={KeyRound} title="First sign-in">
+                <fieldset className="space-y-2">
+                  <legend className="sr-only">Initial password</legend>
+                  <RadioOption checked={sendInvite} onChange={() => setSendInvite(true)}>
+                    Email a code to set their own password{" "}
+                    <span className="text-muted-foreground">(recommended)</span>
+                  </RadioOption>
+                  <RadioOption checked={!sendInvite} onChange={() => setSendInvite(false)}>
+                    Set a temporary password{" "}
+                    <span className="text-muted-foreground">(changed at first sign-in)</span>
+                  </RadioOption>
+                  {!sendInvite && (
+                    <div className="space-y-2 pt-2">
+                      <FieldLabel htmlFor="user-temp-password">Temporary password</FieldLabel>
+                      <PasswordInput
+                        appearance="app"
+                        id="user-temp-password"
+                        name="password"
+                        aria-label="Temporary password"
+                        aria-describedby="new-user-password-rules"
+                        autoComplete="new-password"
+                        required
+                        placeholder="••••••••••"
+                        value={formData.password}
+                        onChange={handleInputChange}
+                      />
+                      <PasswordStrengthMeter id="new-user-password-rules" password={formData.password} email={formData.email} />
+                    </div>
+                  )}
+                </fieldset>
+              </FormSection>
             )}
+          </div>
 
+          <FormSection icon={MapPin} title="Role and scope">
             <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest pl-1 flex items-center gap-1.5">
-                <Flag className="w-3 h-3" /> Assigned Clearance Role
-              </label>
+              <FieldLabel icon={Flag}>Role</FieldLabel>
               <RichDropdown
                 value={formData.roleId}
                 onChange={(val) => {
-                  setFormData((prev: any) => ({
+                  setFormData((prev) => ({
                     ...prev,
                     roleId: val,
                     location: {},
                   }));
                 }}
-                options={roles.map((r: any) => ({
+                options={roles.map((r) => ({
                   value: r.id,
-                  label: `${titleCase(r.name)} (${r.accessLevel?.name || "National"})`,
+                  label: `${titleCase(r.name)} (${titleCase(r.accessLevel?.name || "National")})`,
                 }))}
-                placeholder="Select authorization level..."
-                className="h-11"
+                placeholder="Choose a role"
+                searchPlaceholder="Find a role"
               />
-              <input
-                type="hidden"
-                name="roleId"
-                value={formData.roleId}
-                required
-              />
+              <input type="hidden" name="roleId" value={formData.roleId} required />
             </div>
-          </div>
-
-          {/* COLUMN 2: Location Scope */}
-          <div className="space-y-5">
-            <h4 className="text-[14px] font-black text-foreground uppercase tracking-widest flex items-center gap-2 border-b border-border/40 pb-3">
-              <MapPin className="w-4 h-4 text-primary" /> Scope Constraints
-            </h4>
 
             {accessLevelName === "national" ? (
-              <div className="h-[200px] md:h-[280px] rounded-2xl border-2 border-dashed border-border/40 bg-muted/20 flex flex-col items-center justify-center p-8 text-center space-y-4">
-                <div className="w-12 h-12 md:w-16 md:h-16 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Flag className="w-6 h-6 md:w-8 md:h-8 text-primary" />
-                </div>
-                <div className="font-bold text-base md:text-lg tracking-tight text-foreground">
-                  National Jurisdiction
-                </div>
-                <div className="text-xs md:text-sm text-muted-foreground font-medium uppercase tracking-widest max-w-[80%]">
-                  Agent has unrestricted geographic footprint.
+              <div className={cn("flex items-start gap-3 rounded-2xl p-4", INSET)}>
+                <IconTile icon={Globe2} size="sm" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">National scope</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">This role sees every school in the country.</p>
                 </div>
               </div>
             ) : (
-              <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 space-y-4 h-full">
+              <div className={cn("grid grid-cols-1 gap-4 rounded-2xl p-4 @md:grid-cols-2 @3xl:grid-cols-1", INSET)}>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">
-                    Province Constraint
-                  </label>
+                  <FieldLabel>Province</FieldLabel>
                   <RichDropdown
                     value={formData.location?.province || ""}
                     onChange={(val) => {
@@ -513,18 +529,13 @@ export function UserFormModal({
                       label: p,
                       value: p,
                     }))}
-                    placeholder="Lock to a province..."
-                    className="h-11"
+                    placeholder="Choose a province"
                   />
                 </div>
 
-                {(accessLevelName === "district" ||
-                  accessLevelName === "sector" ||
-                  accessLevelName === "school") && (
+                {(accessLevelName === "district" || accessLevelName === "sector" || accessLevelName === "school") && (
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">
-                      District Constraint
-                    </label>
+                    <FieldLabel>District</FieldLabel>
                     <RichDropdown
                       value={formData.location?.district || ""}
                       onChange={(val) => {
@@ -536,18 +547,14 @@ export function UserFormModal({
                         value: d,
                       }))}
                       disabled={!formData.location?.province}
-                      placeholder="Lock to a district..."
-                      className="h-11 disabled:opacity-50"
+                      placeholder={formData.location?.province ? "Choose a district" : "Choose a province first"}
                     />
                   </div>
                 )}
 
-                {(accessLevelName === "sector" ||
-                  accessLevelName === "school") && (
+                {(accessLevelName === "sector" || accessLevelName === "school") && (
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">
-                      Sector Constraint
-                    </label>
+                    <FieldLabel>Sector</FieldLabel>
                     <RichDropdown
                       value={formData.location?.sector || ""}
                       onChange={(val) => {
@@ -559,71 +566,64 @@ export function UserFormModal({
                         value: s,
                       }))}
                       disabled={!formData.location?.district}
-                      placeholder="Lock to a sector..."
-                      className="h-11 disabled:opacity-50"
+                      placeholder={formData.location?.district ? "Choose a sector" : "Choose a district first"}
                     />
                   </div>
                 )}
 
                 {accessLevelName === "school" && (
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest pl-1">
-                      Target Facility
-                    </label>
+                    <FieldLabel>School</FieldLabel>
                     <RichDropdown
                       value={formData.location?.schoolId || ""}
                       onChange={(val) => {
                         const id = val as string;
-                        const school = schools.find((sc: any) => sc.id === id);
+                        const school = schools.find((sc) => sc.id === id);
                         setLocation({
                           schoolId: id,
                           schoolName: school?.name || "",
                         });
                       }}
-                      options={schoolOptions.map((s: any) => ({
+                      options={schoolOptions.map((s) => ({
                         label: s.name,
                         value: s.id,
                       }))}
                       disabled={!formData.location?.district}
-                      placeholder="Enforce facility perimeter..."
-                      className="h-11 disabled:opacity-50"
+                      placeholder={formData.location?.district ? "Choose a school" : "Choose a district first"}
+                      searchPlaceholder="Find a school"
                     />
                   </div>
                 )}
               </div>
             )}
-          </div>
+          </FormSection>
         </div>
 
         {editingUser && canViewAudit && (
-          <section aria-label="Activity" className="space-y-3 border-t border-border/40 pt-6">
-            <h4 className="text-[14px] font-black text-foreground uppercase tracking-widest flex items-center gap-2">
-              <History className="w-4 h-4 text-primary" aria-hidden /> Activity
-            </h4>
+          <FormSection icon={History} title="Activity" className="border-t border-border/30 pt-6">
             <ActivityFeed filters={{ subjectUserId: editingUser.id }} pageSize={10} />
-          </section>
+          </FormSection>
         )}
       </form>
       <Modal
         isOpen={confirmMfaReset}
         onClose={() => setConfirmMfaReset(false)}
         title="Reset two-factor authentication?"
-        maxWidth="max-w-md"
+        maxWidth="sm:max-w-md"
         footer={
-          <>
-            <Button variant="ghost" onClick={() => setConfirmMfaReset(false)}>
+          <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:justify-end">
+            <Button variant="ghost" className={cn(PILL_BUTTON.secondary, "w-full sm:w-auto")} onClick={() => setConfirmMfaReset(false)}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={() => void resetMfa()}>
+            <Button variant="destructive" className={cn(PILL_BUTTON.primary, "w-full sm:w-auto")} onClick={() => void resetMfa()}>
               Reset 2FA
             </Button>
-          </>
+          </div>
         }
       >
         <p className="text-sm text-muted-foreground">
-          {editingUser?.email} will be signed out of every device and must set up
-          two-factor again at their next sign-in (if their role requires it).
-          Only do this after verifying their identity.
+          {editingUser?.email} will be signed out of every device and must set up two-factor again at their next sign-in
+          (if their role requires it). Only do this after verifying their identity.
         </p>
       </Modal>
     </Modal>

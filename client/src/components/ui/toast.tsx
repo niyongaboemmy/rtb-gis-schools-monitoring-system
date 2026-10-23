@@ -62,31 +62,31 @@ const VARIANTS: Record<
 > = {
   success: {
     Icon: CheckCircle2,
-    tile: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400",
-    bar: "bg-emerald-500",
+    tile: "bg-success/12 text-success ring-1 ring-inset ring-success/20",
+    bar: "bg-success",
     title: "Done",
   },
   error: {
     Icon: XCircle,
-    tile: "bg-red-500/12 text-red-600 dark:text-red-400",
-    bar: "bg-red-500",
+    tile: "bg-destructive/12 text-destructive ring-1 ring-inset ring-destructive/20",
+    bar: "bg-destructive",
     title: "Something went wrong",
   },
   warning: {
     Icon: AlertTriangle,
-    tile: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-    bar: "bg-amber-500",
+    tile: "bg-warning/12 text-warning ring-1 ring-inset ring-warning/25",
+    bar: "bg-warning",
     title: "Heads up",
   },
   info: {
     Icon: Info,
-    tile: "bg-primary/12 text-primary",
+    tile: "bg-primary/12 text-primary ring-1 ring-inset ring-primary/20",
     bar: "bg-primary",
     title: "",
   },
   loading: {
     Icon: Loader2,
-    tile: "bg-primary/12 text-primary",
+    tile: "bg-primary/12 text-primary ring-1 ring-inset ring-primary/20",
     bar: "bg-primary",
     title: "",
   },
@@ -277,8 +277,8 @@ function ToastCard({ toast: t, onDismiss }: { toast: ToastItem; onDismiss: () =>
       aria-atomic="true"
       className={cn(
         "pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden rounded-2xl border p-3.5 pr-3",
-        "border-black/5 bg-white/95 text-slate-900 shadow-[0_10px_40px_-12px_rgba(15,23,42,0.35)] backdrop-blur-xl",
-        "dark:border-white/10 dark:bg-slate-900/90 dark:text-white dark:shadow-[0_10px_40px_-12px_rgba(0,0,0,0.8)]",
+        // Theme surface (popover tokens), same glass + shadow as the app's cards
+        "border-border/60 bg-popover/90 text-popover-foreground shadow-float backdrop-blur-2xl backdrop-saturate-150",
         "cursor-grab active:cursor-grabbing touch-pan-y",
       )}
     >
@@ -299,7 +299,7 @@ function ToastCard({ toast: t, onDismiss }: { toast: ToastItem; onDismiss: () =>
         <p
           className={cn(
             "whitespace-pre-line wrap-break-word text-sm leading-5",
-            title ? "mt-0.5 text-slate-600 dark:text-white/70" : "font-medium",
+            title ? "mt-0.5 text-muted-foreground" : "font-medium",
           )}
         >
           {t.message}
@@ -321,7 +321,7 @@ function ToastCard({ toast: t, onDismiss }: { toast: ToastItem; onDismiss: () =>
       <button
         type="button"
         onClick={onDismiss}
-        className="-mt-0.5 shrink-0 rounded-full p-1.5 text-slate-400 transition hover:bg-black/5 hover:text-slate-700 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="-mt-0.5 shrink-0 rounded-full p-1.5 text-muted-foreground transition hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="Dismiss notification"
       >
         <X className="h-4 w-4" aria-hidden />

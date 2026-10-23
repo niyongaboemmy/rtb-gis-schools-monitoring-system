@@ -54,7 +54,9 @@ interface Props {
   floating?: boolean;
   /** Tighter layout for grids (smaller icon and number). */
   compact?: boolean;
-  /** Lifted, glowing icon (3D depth + ring glow). Off = flat and sharp. */
+  /** No drop shadow: for cards sitting on another surface (e.g. the Settings hero). */
+  flat?: boolean;
+  /** @deprecated No effect: icons are always flat and sharp (the old glow / 3D lift rendered blurry). */
   depth?: boolean;
   className?: string;
 }
@@ -77,7 +79,7 @@ export function FloatingStat({
   index = 0,
   floating = false,
   compact = false,
-  depth = false,
+  flat = false,
   className,
 }: Props) {
   const reduce = useReducedMotion();
@@ -116,11 +118,12 @@ export function FloatingStat({
           }}
           whileHover={reduce ? undefined : { scale: 1.035, y: -2 }}
           transition={{ type: "spring", stiffness: 300, damping: 22 }}
-          style={reduce ? undefined : { rotateX: rotX, rotateY: rotY, ...(depth && { transformStyle: "preserve-3d" as const }) }}
+          style={reduce ? undefined : { rotateX: rotX, rotateY: rotY }}
           className={cn(
             cn("group relative min-w-0 overflow-hidden rounded-[1.4rem]", compact ? "p-3.5" : "p-4"),
             // Readable glass: mostly opaque, still frosted over the map
-            "bg-linear-to-br from-white/60 via-white/35 to-white/20 shadow-float backdrop-blur-2xl backdrop-saturate-[1.8]",
+            "bg-linear-to-br from-white/60 via-white/35 to-white/20 backdrop-blur-2xl backdrop-saturate-[1.8]",
+            !flat && "shadow-float",
             "dark:from-blue-400/[0.07] dark:via-blue-500/[0.03] dark:to-transparent",
             "transition-shadow duration-300",
           )}
@@ -139,11 +142,11 @@ export function FloatingStat({
             />
           )}
 
-          {/* Only the icon may be lifted (depth): a translateZ layer over the text
-              column breaks hit-testing for its info button. */}
+          {/* Icons stay flat and crisp: no translateZ layer (rasterised soft)
+              and no glow filter (clipped into a blurry square by the SVG box). */}
           <div className={cn("relative flex items-center", compact ? "gap-2.5" : "gap-3.5")}>
             {/* Icon tile, ringed with progress when there's a percentage */}
-            <span className={cn("relative flex shrink-0 items-center justify-center", compact ? "h-11 w-11" : "h-[52px] w-[52px]", tone)} style={depth ? { transform: "translateZ(24px)" } : undefined} aria-hidden>
+            <span className={cn("relative flex shrink-0 items-center justify-center", compact ? "h-11 w-11" : "h-[52px] w-[52px]", tone)} aria-hidden>
               <svg viewBox="0 0 48 48" className="absolute inset-0 h-full w-full -rotate-90">
                 <circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" strokeOpacity="0.14" strokeWidth="3" />
                 {ring !== null && (
@@ -159,13 +162,12 @@ export function FloatingStat({
                     initial={{ strokeDashoffset: C }}
                     animate={{ strokeDashoffset: C * (1 - ring / 100) }}
                     transition={{ duration: reduce ? 0 : 1.4, delay: reduce ? 0 : 0.6 + index * 0.12, ease: [0.22, 1, 0.36, 1] }}
-                    style={depth ? { filter: `drop-shadow(0 0 4px ${color})` } : undefined}
                   />
                 )}
               </svg>
               <span
                 className="absolute inset-[7px] rounded-full transition-transform duration-300 group-hover:scale-110"
-                style={{ background: depth ? `radial-gradient(circle at 30% 30%, ${color}40, ${color}14)` : `${color}1f` }}
+                style={{ background: `${color}1f` }}
               />
               <Icon className="relative h-[18px] w-[18px] transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110" />
             </span>

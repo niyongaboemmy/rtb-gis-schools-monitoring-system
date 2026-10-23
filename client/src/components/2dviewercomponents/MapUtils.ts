@@ -14,6 +14,9 @@ export interface GroundOverlayData {
   imageUrl: string;
   isTiled?: boolean;
   maxZoom?: number;
+  /** Pixel size of a server-tiled image (newer uploads). */
+  width?: number;
+  height?: number;
   drawOrder: number;
 }
 
@@ -45,28 +48,46 @@ export interface School2DViewerProps {
 // Styles
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const kmlStyle = (feature: any) => {
-  const name = getFeatureName(feature);
-  const type = feature.getGeometry()?.getType();
+// Site-map styles are cached: OpenLayers calls the style function for every
+// feature on every frame, and building a Style (with its circle canvas and
+// text) each time made panning and zooming stutter on large site maps.
+const KML_BASE = {
+  fill: new Fill({ color: "rgba(0, 0, 0, 0)" }),
+  stroke: new Stroke({ color: "rgba(0, 0, 0, 0)", width: 0 }),
+  image: new CircleStyle({
+    radius: 6,
+    fill: new Fill({ color: "rgba(251, 191, 36, 0.95)" }),
+    stroke: new Stroke({ color: "white", width: 1.5 }),
+  }),
+};
+const KML_LABEL_FILL = new Fill({ color: "#fff" });
+const KML_LABEL_STROKE = new Stroke({ color: "rgba(15, 23, 42, 0.95)", width: 4 });
+const kmlStyleCache = new Map<string, Style>();
+const KML_CACHE_MAX = 5000;
 
-  return new Style({
-    fill: new Fill({ color: "rgba(0, 0, 0, 0)" }),
-    stroke: new Stroke({ color: "rgba(0, 0, 0, 0)", width: 0 }),
-    image: new CircleStyle({
-      radius: 6,
-      fill: new Fill({ color: "rgba(251, 191, 36, 0.95)" }),
-      stroke: new Stroke({ color: "white", width: 1.5 }),
-    }),
-    text: name ? new Text({
-      text: name,
-      font: "bold 11px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif",
-      fill: new Fill({ color: "#fff" }),
-      stroke: new Stroke({ color: "rgba(15, 23, 42, 0.95)", width: 4 }),
-      offsetY: type === "Point" ? 18 : 0,
-      overflow: true,
-      placement: type === "LineString" ? "line" : "point",
-    }) : undefined,
+export const kmlStyle = (feature: any): Style => {
+  const name = getFeatureName(feature) ?? "";
+  const type = feature.getGeometry()?.getType() ?? "";
+  const key = `${type}\u0000${name}`;
+  let style = kmlStyleCache.get(key);
+  if (style) return style;
+  style = new Style({
+    ...KML_BASE,
+    text: name
+      ? new Text({
+          text: name,
+          font: "bold 11px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif",
+          fill: KML_LABEL_FILL,
+          stroke: KML_LABEL_STROKE,
+          offsetY: type === "Point" ? 18 : 0,
+          overflow: true,
+          placement: type === "LineString" ? "line" : "point",
+        })
+      : undefined,
   });
+  if (kmlStyleCache.size >= KML_CACHE_MAX) kmlStyleCache.clear();
+  kmlStyleCache.set(key, style);
+  return style;
 };
 
 export const kmlSelectedStyle = new Style({

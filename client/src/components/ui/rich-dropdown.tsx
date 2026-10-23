@@ -3,6 +3,7 @@ import { Check, ChevronDown, Search, X } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "./input";
+import { fieldShell, menuSurface } from "./field-styles";
 
 export interface DropdownOption {
   label: string;
@@ -18,6 +19,14 @@ interface RichDropdownProps {
   searchPlaceholder?: string;
   className?: string;
   disabled?: boolean;
+  /** Id for the trigger, so a `<label htmlFor>` can name it. */
+  id?: string;
+  "aria-label"?: string;
+  /**
+   * `field` (default): a form field. `ghost`: inline text + chevron with a soft
+   * hover tint, for pickers that sit inside a summary row or toolbar.
+   */
+  variant?: "field" | "ghost";
 }
 
 export const RichDropdown = ({
@@ -28,7 +37,11 @@ export const RichDropdown = ({
   searchPlaceholder = "Filter results...",
   className,
   disabled,
+  id,
+  "aria-label": ariaLabel,
+  variant = "field",
 }: RichDropdownProps) => {
+  const ghost = variant === "ghost";
   const [isOpen, setIsOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -53,24 +66,31 @@ export const RichDropdown = ({
   }, []);
 
   return (
-    <div className={cn("relative w-full", className)} ref={containerRef}>
+    <div className={cn("relative", ghost ? "w-max min-w-28 shrink-0" : "w-full", className)} ref={containerRef}>
       <button
         type="button"
         disabled={disabled}
         onClick={() => !disabled && setIsOpen(!isOpen)}
+        id={id}
+        aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
+        data-open={isOpen}
         className={cn(
-          "flex h-11 w-full items-center justify-between border border-border/50 bg-background/40 backdrop-blur-md px-4 py-2 text-sm transition-all duration-300",
-          "hover:border-primary/20 hover:bg-background/50 outline-none focus:ring-4 focus:ring-primary/5 focus:border-primary/40",
-          isOpen && "border-primary/40 ring-4 ring-primary/5 bg-background/60",
+          ghost
+            ? "-ml-2 flex h-8 w-max min-w-28 shrink-0 items-center justify-between gap-2 rounded-lg px-2.5 text-left text-[13px] text-foreground outline-none transition-colors hover:bg-slate-900/[0.04] focus-visible:ring-2 focus-visible:ring-ring data-[open=true]:bg-slate-900/[0.05] dark:hover:bg-white/[0.05] dark:data-[open=true]:bg-white/[0.07]"
+            : cn(
+                "flex h-11 w-full items-center justify-between gap-2 px-4 py-2 text-left text-base outline-none sm:text-sm",
+                fieldShell,
+                className ? "rounded-full" : "rounded-xl",
+              ),
           disabled && "opacity-50 cursor-not-allowed",
-          className ? "rounded-full" : "rounded-xl",
         )}
       >
         <span
           className={cn(
-            "truncate",
+            // Ghost pickers hug their label: short values (level names) show in full.
+            ghost ? "whitespace-nowrap" : "truncate",
             !selectedOption && "text-muted-foreground/50",
           )}
         >
@@ -78,7 +98,8 @@ export const RichDropdown = ({
         </span>
         <ChevronDown
           className={cn(
-            "h-4 w-4 text-muted-foreground transition-transform duration-300",
+            "shrink-0 text-muted-foreground transition-transform duration-300",
+            ghost ? "h-3.5 w-3.5" : "h-4 w-4",
             isOpen && "rotate-180",
           )}
         />
@@ -91,7 +112,7 @@ export const RichDropdown = ({
             animate={{ opacity: 1, y: 5, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.95 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="absolute z-50 w-full rounded-2xl border border-border/10 bg-background/80 backdrop-blur-xl shadow-2xl p-2 overflow-hidden"
+            className={cn("absolute z-50 overflow-hidden p-2", ghost ? "left-0 w-56" : "w-full min-w-48", menuSurface)}
           >
             <div className="relative mb-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 opacity-100" />
@@ -100,7 +121,7 @@ export const RichDropdown = ({
                 type="text"
                 placeholder={searchPlaceholder}
                 aria-label={searchPlaceholder}
-                className="w-full bg-muted/30 border-none h-9 pl-9 pr-4 rounded-xl text-xs focus:ring-0 outline-none placeholder:text-muted-foreground/40"
+                className="h-9 w-full rounded-xl border-none bg-muted/50 pl-9 pr-4 text-base shadow-none outline-none placeholder:text-muted-foreground/50 hover:bg-muted/50 focus-visible:bg-muted/60 focus-visible:ring-0 sm:text-xs dark:bg-white/[0.04] dark:hover:bg-white/[0.04] dark:focus-visible:bg-white/[0.06]"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />

@@ -3,6 +3,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const { cacheControlFor } = require('./cache-control');
 const multer = require('multer');
 const { v4: uuid } = require('uuid');
 const fs = require('fs');
@@ -214,14 +215,7 @@ app.use(
     dotfiles: 'ignore',
     setHeaders(res, filePath) {
       res.setHeader('Access-Control-Allow-Origin', '*');
-      if (filePath.endsWith('.glb')) {
-        res.setHeader(
-          'Cache-Control',
-          'public, max-age=604800, stale-while-revalidate=86400',
-        );
-      } else {
-        res.setHeader('Cache-Control', 'public, max-age=3600');
-      }
+      res.setHeader('Cache-Control', cacheControlFor(filePath));
     },
   }),
 );

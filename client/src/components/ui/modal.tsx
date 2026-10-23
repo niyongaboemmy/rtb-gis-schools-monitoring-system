@@ -1,4 +1,5 @@
 import React, { useEffect, useId, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useFocusTrap } from "../layout/useFocusTrap";
 import { X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -70,14 +71,17 @@ export function Modal({
     };
   }, [isOpen]);
 
-  return (
+  // Rendered on <body>: an ancestor with backdrop-filter / filter / transform
+  // would otherwise become the containing block of this `fixed` overlay and
+  // clip the dialog inside a card.
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.15, delay: 0.1 } }}
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4"
         >
           {/* Backdrop */}
           <motion.div
@@ -152,6 +156,7 @@ export function Modal({
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

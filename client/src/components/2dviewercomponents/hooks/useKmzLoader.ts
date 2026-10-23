@@ -29,6 +29,59 @@ const resolveFileUrl = (url: string): string => {
   return `${FILE_SERVER_URL}/${clean}`;
 };
 
+/** The site map's tile pyramid built by the server (overlay-pyramid.ts). */
+export interface SiteMapPyramid {
+  status: "ready";
+  url: string;
+  maxZoom: number;
+  /** Metres per pixel at maxZoom (EPSG:3857). */
+  resolution: number;
+  /** Top-left of the tile grid, EPSG:3857. */
+  origin: [number, number];
+  extent: [number, number, number, number];
+}
+
+interface ManifestBundle {
+  kmlText: string;
+  overlays: GroundOverlayData[];
+  pyramid: SiteMapPyramid | null;
+}
+
+/** Manifest + site-map KML, fetched together (in parallel with map setup). */
+async function fetchManifestBundle(schoolId: string, signal?: AbortSignal): Promise<ManifestBundle | null> {
+  const res = await api.get(`/schools/${schoolId}/kmz/2d/manifest`, { signal });
+  const m = res.data?.manifest;
+  if (!m?.kmlUrls?.length) return null;
+  const kmlText = await (await fetch(resolveFileUrl(m.kmlUrls[0]), { signal })).text();
+  const overlays = (m.groundOverlays || []).map((ov: GroundOverlayData) => ({ ...ov, imageUrl: resolveFileUrl(ov.imageUrl) }));
+  const p = m.pyramid;
+  const pyramid: SiteMapPyramid | null =
+    p?.status === "ready" && p.url && Number.isFinite(p.resolution) && Array.isArray(p.origin)
+      ? { ...p, url: resolveFileUrl(p.url) }
+      : null;
+  return { kmlText, overlays, pyramid };
+}
+
+/** Tile grid matching libvips' "google" layout: image pinned top-left of a 256·2^maxZoom square. */
+export function pyramidTileGrid(p: Pick<SiteMapPyramid, "maxZoom" | "resolution" | "origin">): TileGrid {
+  const resolutions = Array.from({ length: p.maxZoom + 1 }, (_, z) => p.resolution * 2 ** (p.maxZoom - z));
+  const side = 256 * resolutions[0];
+  const [ox, oy] = p.origin;
+  return new TileGrid({ origin: [ox, oy], resolutions, tileSize: 256, extent: [ox, oy - side, ox + side, oy] });
+}
+
+/**
+ * WebGL tile style with the "image look" sliders. The values must be declared
+ * under `variables` (passing them as layer properties threw "Missing variables
+ * in style" and the layer never drew). 1 = unchanged on the sliders, 0 here.
+ */
+const imageStyle = (v: { brightness: number; contrast: number; saturation: number }) => ({
+  variables: { brightness: v.brightness - 1, contrast: v.contrast - 1, saturation: v.saturation - 1 },
+  brightness: ["var", "brightness"],
+  contrast: ["var", "contrast"],
+  saturation: ["var", "saturation"],
+});
+
 interface UseKmzLoaderProps {
   mapRef: React.MutableRefObject<OLMap | null>;
   mapReady: boolean;
@@ -74,6 +127,19 @@ export function useKmzLoader({
   const loadedKmzRef = useRef<string | null>(null);
   const lastSchoolIdRef = useRef<string | null>(null);
   const cleanupKmzRef = useRef<(() => void) | null>(null);
+  const pyramidRef = useRef<SiteMapPyramid | null>(null);
+  const visualsRef = useRef(visuals);
+  const prefetchRef = useRef<{ key: string; promise: Promise<ManifestBundle | null> } | null>(null);
+
+  // Start the manifest + KML download as soon as the viewer mounts, not
+  // after the map is ready (they used to load one after the other, last).
+  useEffect(() => {
+    if (!kmzUrl || !schoolId) return;
+    const key = `${schoolId}|${kmzUrl}`;
+    if (prefetchRef.current?.key === key) return;
+    const promise = fetchManifestBundle(schoolId).catch(() => null);
+    prefetchRef.current = { key, promise };
+  }, [kmzUrl, schoolId]);
 
   useEffect(() => {
     // Wait until the map has been initialized
@@ -86,7 +152,8 @@ export function useKmzLoader({
     const loadGroundOverlays = async (overlays: GroundOverlayData[], assetBlobs?: Map<string, Blob>) => {
       groundOverlayLayersRef.current.forEach((l) => map.removeLayer(l));
       groundOverlayLayersRef.current = [];
-      if (overlays.length === 0) return null;
+      const pyramid = pyramidRef.current;
+      if (overlays.length === 0 && !pyramid) return null;
 
       const sorted = [...overlays].sort((a, b) => a.drawOrder - b.drawOrder);
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -100,10 +167,58 @@ export function useKmzLoader({
         return { ov, ext };
       });
 
+      if (pyramid && minX === Infinity) [minX, minY, maxX, maxY] = pyramid.extent;
       const globalExtent: [number, number, number, number] = [minX, minY, maxX, maxY];
 
+      // 0. The server-built pyramid of all drone photos: only on-screen tiles
+      //    are fetched, already sized for the zoom. Replaces the in-browser
+      //    compositor below for those photos.
+      if (pyramid) {
+        const source = new XYZ({
+          url: pyramid.url,
+          tileGrid: pyramidTileGrid(pyramid),
+          projection: "EPSG:3857",
+          crossOrigin: "anonymous",
+          interpolate: true,
+          transition: 200,
+        });
+        let pending = 0;
+        const track = (d: number) => {
+          pending = Math.max(0, pending + d);
+          setIsTileLoading(pending > 0);
+        };
+        source.on("tileloadstart", () => track(1));
+        source.on("tileloadend", () => track(-1));
+        source.on("tileloaderror", () => track(-1));
+        // A plain canvas tile layer: lighter than WebGL for photo tiles (no
+        // extra GL context). The "image look" sliders become a canvas filter.
+        const lyr = new TileLayer({
+          source,
+          extent: pyramid.extent,
+          zIndex: 5,
+          opacity: kmzOpacity,
+          preload: 1,
+        });
+        lyr.on("prerender", (e) => {
+          const ctx = e.context as CanvasRenderingContext2D | undefined;
+          const v = visualsRef.current;
+          if (ctx && (v.brightness !== 1 || v.contrast !== 1 || v.saturation !== 1)) {
+            ctx.filter = `brightness(${v.brightness}) contrast(${v.contrast}) saturate(${v.saturation})`;
+          }
+        });
+        lyr.on("postrender", (e) => {
+          const ctx = e.context as CanvasRenderingContext2D | undefined;
+          if (ctx) ctx.filter = "none";
+        });
+        map.addLayer(lyr);
+        groundOverlayLayersRef.current.push(lyr);
+      }
+
       type BoundTuple = { ov: GroundOverlayData; ext: [number, number, number, number] };
-      const standardBounds: BoundTuple[] = overlayBounds.filter(({ ov }) => !ov.isTiled && !ov.imageUrl.toLowerCase().match(/\.tiff?$/i));
+      // Photos already in the pyramid are not composited again here.
+      const standardBounds: BoundTuple[] = pyramid
+        ? []
+        : overlayBounds.filter(({ ov }) => !ov.isTiled && !ov.imageUrl.toLowerCase().match(/\.tiff?$/i));
       const tiledBounds: BoundTuple[] = overlayBounds.filter(({ ov }) => ov.isTiled);
       const tifBounds: BoundTuple[] = overlayBounds.filter(({ ov }) => !ov.isTiled && ov.imageUrl.toLowerCase().match(/\.tiff?$/i));
 
@@ -121,21 +236,19 @@ export function useKmzLoader({
 
       // 2. Pre-processed WebGL XYZ Tile Hierarchies (WebGL)
       for (const { ov, ext } of tiledBounds) {
-        const extWd = ext[2] - ext[0];
-        const maxRes = extWd / 256;
+        // Large single images tiled by the server (libvips "google" layout:
+        // {z}/{y}/{x}, image pinned top-left of a 256·2^maxZoom square).
+        // Newer uploads carry the pixel size, giving an exact grid; older
+        // ones asked for {z}/{x}/{y} (transposed) and are corrected here.
         const maxZ = ov.maxZoom || 6;
-        const resolutions = new Array(maxZ + 1);
-        for (let z = 0; z <= maxZ; ++z) resolutions[z] = maxRes / Math.pow(2, z);
-
-        const tg = new TileGrid({
-          extent: ext,
-          resolutions,
-          tileSize: [256, 256]
-        });
+        const tg = ov.width
+          ? pyramidTileGrid({ maxZoom: maxZ, resolution: (ext[2] - ext[0]) / ov.width, origin: [ext[0], ext[3]] })
+          : pyramidTileGrid({ maxZoom: maxZ, resolution: (ext[2] - ext[0]) / (256 * 2 ** maxZ), origin: [ext[0], ext[3]] });
+        const tiledUrl = ov.imageUrl.replace("{x}/{y}", "{y}/{x}");
 
         const lyr = new WebGLTileLayer({
           source: new XYZ({
-            url: ov.imageUrl,
+            url: tiledUrl,
             tileGrid: tg,
             projection: "EPSG:3857",
             crossOrigin: "anonymous",
@@ -144,21 +257,15 @@ export function useKmzLoader({
           extent: ext,
           zIndex: 6,
           opacity: kmzOpacity,
-          preload: Infinity,
-          style: {
-            brightness: ["var", "brightness"],
-            contrast: ["var", "contrast"],
-            saturation: ["var", "saturation"]
-          },
-          properties: {
-            brightness: visuals.brightness,
-            contrast: visuals.contrast,
-            saturation: visuals.saturation
-          }
+          // One lower level under the sharp tiles is enough for a smooth zoom.
+          preload: 1,
+          style: imageStyle(visuals),
         });
         map.addLayer(lyr);
         groundOverlayLayersRef.current.push(lyr);
       }
+
+      if (standardBounds.length === 0) return globalExtent;
 
       const bitmaps = bitmapsRef.current;
       const thumbs = thumbsRef.current;
@@ -351,49 +458,24 @@ export function useKmzLoader({
 
           setLoadingProgress(5);
           
-          // PHASE 1: Try to fetch the pre-computed manifest from the backend
-          setLoadingMessage("Fetching spatial manifest…");
-          let manifestOverlays: GroundOverlayData[] = [];
-          let manifestKmlText = "";
-          let useManifest = false;
-          
-          try {
-            const manifestRes = await api.get(`/schools/${schoolId}/kmz/2d/manifest`, {
-              signal: abortController.signal
-            });
-            const manifestData = manifestRes.data?.manifest;
-            
-            if (manifestData && manifestData.kmlUrls && manifestData.kmlUrls.length > 0) {
-              setLoadingMessage("Loading server-processed map data…");
-              const kmlRes = await fetch(resolveFileUrl(manifestData.kmlUrls[0]), { signal: abortController.signal });
-              manifestKmlText = await kmlRes.text();
-              manifestOverlays = (manifestData.groundOverlays || []).map((ov: GroundOverlayData) => ({
-                ...ov,
-                imageUrl: resolveFileUrl(ov.imageUrl),
-              }));
-              useManifest = true;
-            }
-          } catch (mErr) {
-            console.warn("Failed to load map manifest, falling back to client-side extraction", mErr);
-          }
-
+          // The manifest + KML were requested when the viewer mounted.
+          setLoadingMessage("Loading the site map…");
+          const key = `${schoolId}|${kmzUrl}`;
+          const bundle = await (prefetchRef.current?.key === key
+            ? prefetchRef.current.promise
+            : fetchManifestBundle(schoolId, abortController.signal).catch(() => null));
           if (ignore) return;
-
-          // PHASE 2: Apply the manifest map data
-          let overlays: GroundOverlayData[];
-          let kmlText: string;
-
-          if (useManifest) {
-            overlays = manifestOverlays;
-            kmlText = manifestKmlText;
-            setLoadingProgress(50);
-            cleanupKmzRef.current = null;
-          } else {
+          if (!bundle) {
             console.error("No manifest found! The backend must process the KMZ first. Please re-upload.");
             setLoadingMessage("Cannot load map. Please re-upload the map asset.");
             setIsLoading(false);
             return;
           }
+          const overlays = bundle.overlays;
+          const kmlText = bundle.kmlText;
+          pyramidRef.current = bundle.pyramid;
+          setLoadingProgress(50);
+          cleanupKmzRef.current = null;
 
           kmlTextRef.current = kmlText;
           finalOverlaysRef.current = overlays;
@@ -420,8 +502,10 @@ export function useKmzLoader({
   }, [mapReady, kmzUrl, tifUrl, schoolId]);
 
   useEffect(() => {
+    visualsRef.current = visuals;
     groundOverlayLayersRef.current.forEach(layer => {
       layer.setOpacity(kmzOpacity);
+      if (!(layer instanceof WebGLTileLayer)) layer.changed(); // canvas filter
       if (layer instanceof WebGLTileLayer) {
         (layer as any).updateStyleVariables({
           brightness: visuals.brightness - 1,

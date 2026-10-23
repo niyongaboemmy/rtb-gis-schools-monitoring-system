@@ -94,6 +94,10 @@ export const AUDIT_ACTION_REGISTRY: Record<string, AuditSpec> = {
     action: 'kmz.reoptimize',
     ...SCHOOL_BY_SCHOOL_ID,
   },
+  'KmzController.rebuildKmz2dPyramid': {
+    action: 'kmz.rebuild_pyramid',
+    ...SCHOOL_BY_SCHOOL_ID,
+  },
   'KmzController.uploadKmz2d': {
     action: 'kmz.upload_2d',
     ...SCHOOL_BY_SCHOOL_ID,

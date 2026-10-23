@@ -2,7 +2,7 @@ import * as React from "react";
 import { Search, X, Loader2 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
-import { Input } from "./input";
+import { fieldShell } from "./field-styles";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface SearchInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -26,7 +26,6 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
     },
     ref,
   ) => {
-    const [isFocused, setIsFocused] = React.useState(false);
     const hasValue = value && value.toString().length > 0;
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -38,46 +37,27 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
 
     return (
       <div className={cn("relative group w-full", containerClassName)}>
-        <div
-          className={cn(
-            "relative flex items-center w-full transition-all duration-300 rounded-full border border-gray-300/45 dark:border-border bg-background/40 backdrop-blur-md overflow-hidden",
-            isFocused
-              ? "border-primary/40 ring-4 ring-primary/5 bg-background/60"
-              : "hover:border-border/20",
-          )}
-        >
+        {/* The pill carries the field surface; the input inside is bare. */}
+        <div className={cn("relative flex h-11 w-full items-center overflow-hidden rounded-full", fieldShell)}>
           <div className="pl-4 flex items-center justify-center pointer-events-none">
             {isLoading ? (
               <Loader2 className="w-4 h-4 text-primary animate-spin" />
             ) : (
-              <Search
-                className={cn(
-                  "w-4 h-4 transition-colors duration-300",
-                  isFocused ? "text-primary" : "text-muted-foreground",
-                )}
-              />
+              <Search className="w-4 h-4 text-muted-foreground transition-colors duration-200 group-focus-within:text-primary" />
             )}
           </div>
 
-          <Input
+          <input
             ref={ref}
             type="text"
+            {...props}
             className={cn(
-              "flex-1 bg-transparent border-none focus-visible:ring-0 focus-visible:ring-offset-0 h-11 text-sm placeholder:text-muted-foreground/50",
+              "h-full min-w-0 flex-1 bg-transparent px-3 text-base outline-none placeholder:text-slate-400 sm:text-sm dark:placeholder:text-white/25",
               className,
             )}
             value={value}
             onChange={onChange}
-            onFocus={(e) => {
-              setIsFocused(true);
-              if (props.onFocus) props.onFocus(e);
-            }}
-            onBlur={(e) => {
-              setIsFocused(false);
-              if (props.onBlur) props.onBlur(e);
-            }}
             onKeyDown={handleKeyDown}
-            {...props}
           />
 
           <AnimatePresence>

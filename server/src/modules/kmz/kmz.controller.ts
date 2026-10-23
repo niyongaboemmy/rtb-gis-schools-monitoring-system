@@ -231,6 +231,16 @@ export class KmzController {
     return this.kmzService.uploadPlacesOverlay(schoolId, file);
   }
 
+  @Post('2d/pyramid')
+  @RequirePermissions(Permission.UPLOAD_KMZ)
+  @HttpCode(202)
+  @ApiOperation({
+    summary: 'Rebuild the site map tile pyramid from the stored photos',
+  })
+  rebuildKmz2dPyramid(@Param('schoolId', ParseUUIDPipe) schoolId: string) {
+    return this.kmzService.queuePyramidBuild(schoolId, true);
+  }
+
   @Get('2d/manifest')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

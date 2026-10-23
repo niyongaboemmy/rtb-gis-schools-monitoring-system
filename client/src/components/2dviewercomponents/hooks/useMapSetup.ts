@@ -28,8 +28,8 @@ interface UseMapSetupProps {
   fallbackLocation: { lat: number; lng: number };
   onSelectBuilding?: (building: any) => void;
   effectiveBuildings: any[];
-  setCurrentLat: (lat: number) => void;
-  setCurrentLng: (lng: number) => void;
+  /** Cursor position for the HUD (an external store, not React state). */
+  onPointer: (lat: number, lng: number) => void;
   setActiveBlock: (block: any) => void;
   setIsBlockInspectorOpen: (open: boolean) => void;
   setSelectedFeatureName: (name: string | null) => void;
@@ -51,8 +51,7 @@ export function useMapSetup({
   fallbackLocation,
   onSelectBuilding,
   effectiveBuildings,
-  setCurrentLat,
-  setCurrentLng,
+  onPointer,
   setActiveBlock,
   setIsBlockInspectorOpen,
   setSelectedFeatureName,
@@ -223,46 +222,52 @@ export function useMapSetup({
     );
 
     // Interaction handlers
-    map.on("pointermove", (evt: any) => {
-      if (evt.dragging) return;
-      const [lng, lat] = toLonLat(evt.coordinate);
-      setCurrentLat(lat);
-      setCurrentLng(lng);
-
-      const pixel = map.getEventPixel(evt.originalEvent);
-      hoverSource.clear();
-
-      const feature = map.forEachFeatureAtPixel(pixel, (f) => f, {
+    // Hover: at most one hit-test per animation frame (the latest position),
+    // and the hover outline is rebuilt only when the feature changes.
+    let hoverFrame = 0;
+    let lastPixel: number[] | null = null;
+    let hovered: any = null;
+    let tooltipAnn: unknown = null;
+    const runHover = () => {
+      hoverFrame = 0;
+      if (!lastPixel) return;
+      const feature = map.forEachFeatureAtPixel(lastPixel, (f) => f, {
         layerFilter: (l) =>
           l === kmlLayerRef.current ||
           l === geojsonLayerRef.current ||
           l === placesLayerRef.current ||
           l === blocksLayerRef.current ||
           l === annotationLayerRef.current,
-        hitTolerance: 10,
+        hitTolerance: 6,
       });
 
-      if (feature) {
-        map.getTargetElement().style.cursor = "pointer";
-        const clone = (feature as any).clone();
-        clone.setStyle(null);
-        hoverSource.addFeature(clone);
-        // Show description tooltip for site annotations
-        if (feature.get("isSiteAnnotation") && onAnnotationHoverRef.current) {
-          const ann = feature.get("annotationData");
-          if (ann?.description) {
-            const pix = map.getEventPixel(evt.originalEvent);
-            onAnnotationHoverRef.current(ann, pix[0], pix[1]);
-          } else {
-            onAnnotationHoverRef.current(null, 0, 0);
-          }
-        } else if (onAnnotationHoverRef.current) {
-          onAnnotationHoverRef.current(null, 0, 0);
+      if (feature !== hovered) {
+        hovered = feature ?? null;
+        hoverSource.clear();
+        if (feature) {
+          const clone = (feature as any).clone();
+          clone.setStyle(null);
+          hoverSource.addFeature(clone);
         }
-      } else {
-        map.getTargetElement().style.cursor = "";
-        onAnnotationHoverRef.current?.(null, 0, 0);
+        map.getTargetElement().style.cursor = feature ? "pointer" : "";
       }
+
+      // Note tooltip: tell the viewer only when the hovered note changes
+      // (calling it every frame re-rendered the whole viewer).
+      const ann = feature?.get("isSiteAnnotation") ? feature.get("annotationData") : null;
+      const tip = ann?.description ? ann : null;
+      if (tip !== tooltipAnn) {
+        tooltipAnn = tip;
+        onAnnotationHoverRef.current?.(tip, tip ? lastPixel[0] : 0, tip ? lastPixel[1] : 0);
+      }
+    };
+
+    map.on("pointermove", (evt: any) => {
+      if (evt.dragging) return;
+      const [lng, lat] = toLonLat(evt.coordinate);
+      onPointer(lat, lng);
+      lastPixel = map.getEventPixel(evt.originalEvent);
+      if (!hoverFrame) hoverFrame = requestAnimationFrame(runHover);
     });
 
     map.on("singleclick", (evt: any) => {
@@ -340,8 +345,7 @@ export function useMapSetup({
   }, [
     // This effect should only run once on container mount.
     // We use refs for actual listeners to avoid re-triggering.
-    setCurrentLat,
-    setCurrentLng,
+    onPointer,
     setActiveBlock,
     setIsBlockInspectorOpen,
     setSelectedFeatureName,

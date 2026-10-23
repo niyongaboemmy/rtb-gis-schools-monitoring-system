@@ -1,13 +1,15 @@
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Check, X } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { evaluatePassword, passwordScore } from "./password-policy";
 
+/** Theme status tokens only (destructive / warning / success). */
 const LEVELS = [
-  { label: "Too weak", bar: "bg-red-500", text: "text-red-600 dark:text-red-400" },
-  { label: "Weak", bar: "bg-orange-500", text: "text-orange-600 dark:text-orange-400" },
-  { label: "Fair", bar: "bg-amber-500", text: "text-amber-600 dark:text-amber-400" },
-  { label: "Strong", bar: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400" },
-  { label: "Very strong", bar: "bg-emerald-600", text: "text-emerald-700 dark:text-emerald-300" },
+  { label: "Too weak", bar: "bg-destructive", text: "text-destructive" },
+  { label: "Weak", bar: "bg-destructive/70", text: "text-destructive" },
+  { label: "Fair", bar: "bg-warning", text: "text-warning" },
+  { label: "Strong", bar: "bg-success/80", text: "text-success" },
+  { label: "Very strong", bar: "bg-success", text: "text-success" },
 ];
 
 /**
@@ -26,12 +28,13 @@ export function PasswordStrengthMeter({
   /** Lets the input reference the checklist via aria-describedby. */
   id?: string;
 }) {
+  const reduce = useReducedMotion();
   const rules = evaluatePassword(password, email);
   const score = passwordScore(password, email);
   const level = LEVELS[score];
 
   return (
-    <div className={cn("space-y-2", className)} id={id}>
+    <div className={cn("space-y-2.5", className)} id={id}>
       <div className="flex items-center gap-3">
         <div
           className="flex flex-1 gap-1"
@@ -43,33 +46,49 @@ export function PasswordStrengthMeter({
           aria-valuetext={password ? level.label : "Empty"}
         >
           {[1, 2, 3, 4].map((i) => (
-            <div
-              key={i}
-              className={cn(
-                "h-1.5 flex-1 rounded-full transition-colors",
-                password && score >= i ? level.bar : "bg-muted",
-              )}
-            />
+            <div key={i} className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/70 dark:bg-white/[0.06]">
+              <motion.div
+                className={cn("h-full w-full origin-left rounded-full", level.bar)}
+                initial={false}
+                animate={{ scaleX: password && score >= i ? 1 : 0 }}
+                transition={{ duration: reduce ? 0 : 0.35, delay: reduce ? 0 : (i - 1) * 0.04, ease: [0.22, 1, 0.36, 1] }}
+              />
+            </div>
           ))}
         </div>
-        <span className={cn("text-xs font-semibold w-20 text-right", password ? level.text : "text-muted-foreground")}>
+        <span className={cn("w-20 text-right text-xs font-medium transition-colors", password ? level.text : "text-muted-foreground")}>
           {password ? level.label : ""}
         </span>
       </div>
-      <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+      <ul className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
         {rules.map((rule) => (
           <li
             key={rule.id}
             className={cn(
-              "flex items-center gap-1.5 text-xs",
-              rule.met ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground",
+              "flex items-center gap-2 text-xs transition-colors duration-200",
+              rule.met ? "text-success" : "text-muted-foreground",
             )}
           >
-            {rule.met ? (
-              <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            ) : (
-              <X className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            )}
+            <span
+              className={cn(
+                "flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition-colors duration-200",
+                rule.met ? "bg-success/15" : "bg-muted/70 dark:bg-white/[0.06]",
+              )}
+              aria-hidden
+            >
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.span
+                  key={rule.met ? "met" : "unmet"}
+                  initial={reduce ? false : { scale: 0.3, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.3, opacity: 0 }}
+                  transition={{ type: "spring", stiffness: 600, damping: 24 }}
+                  className="flex"
+                >
+                  {rule.met ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : <X className="h-2.5 w-2.5" />}
+                </motion.span>
+              </AnimatePresence>
+            </span>
             <span>
               {rule.label}
               <span className="sr-only">{rule.met ? " (met)" : " (not met)"}</span>
@@ -77,9 +96,7 @@ export function PasswordStrengthMeter({
           </li>
         ))}
       </ul>
-      <p className="text-[11px] text-muted-foreground">
-        Your last 5 passwords cannot be reused.
-      </p>
+      <p className="text-[11px] text-muted-foreground">Your last 5 passwords cannot be reused.</p>
     </div>
   );
 }
