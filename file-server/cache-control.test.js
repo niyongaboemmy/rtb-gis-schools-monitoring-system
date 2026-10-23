@@ -4,6 +4,7 @@ const { cacheControlFor } = require('./cache-control');
 
 test('pyramid tiles are immutable for a year', () => {
   assert.match(cacheControlFor('/srv/storage/schools/s1/kmz_2d_content/_pyramid/b1/3/1/2.webp'), /max-age=31536000, immutable/);
+  assert.match(cacheControlFor('/srv/storage/schools/s1/kmz_2d_content/_tiles/b1/24/9871/3301.webp'), /max-age=31536000, immutable/);
 });
 
 test('other site-map files revalidate, GLB keeps a week, the rest an hour', () => {

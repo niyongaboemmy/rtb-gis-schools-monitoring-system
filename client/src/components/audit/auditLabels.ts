@@ -30,6 +30,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "kmz.reoptimize": "Re-optimised 3D model",
   "kmz.rebuild_pyramid": "Rebuilt site map tiles",
   "kmz.reoptimize_all": "Re-optimised all 3D models",
+  "kmz.rebuild_tiles": "Rebuilt sharp 2D map tiles",
   "kmz.upload_2d": "Uploaded 2D map (KMZ)",
   "kmz.upload_2d_url": "Imported 2D map from link",
   "kmz.upload_places_overlay": "Uploaded places overlay",

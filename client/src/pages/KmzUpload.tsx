@@ -21,6 +21,7 @@ import { useToast } from "../components/ui/toast";
 import { useAuthStore } from "../store/authStore";
 import { inspectGlb, type GlbInfo } from "../lib/viewer3d/glb-inspect";
 import { ModelReprocessPanel } from "../components/model-job/ModelReprocessPanel";
+import { SiteTilesPanel } from "../components/model-job/SiteTilesPanel";
 
 const FILE_SERVER_BASE = (
   import.meta.env.VITE_FILE_SERVER_URL || "http://localhost:3002/files"
@@ -322,6 +323,9 @@ export default function KmzUpload() {
             {/* Rebuild the served model from its stored original, with live progress. */}
             {!loadingSchool && uploadMode === "3d" && existingFile3d && id && status !== "uploading" && (
               <ModelReprocessPanel schoolId={id} />
+            )}
+            {!loadingSchool && uploadMode === "2d" && existingFile2d && id && status !== "uploading" && (
+              <SiteTilesPanel schoolId={id} />
             )}
 
             <div

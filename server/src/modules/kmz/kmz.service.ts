@@ -68,11 +68,14 @@ import {
 } from '../site-features/site-features.service';
 import { SchoolLocationService } from '../schools/location/school-location.service';
 import { buildOverlayPyramid } from './overlay-pyramid';
+import { buildSiteTiles } from './overlay-tiles';
 
 /** A 2D manifest with the optional tile pyramid (overlay-pyramid.ts). */
 type Kmz2dManifestWithPyramid = {
   groundOverlays?: Array<Record<string, unknown>>;
   pyramid?: { status?: string } & Record<string, unknown>;
+  /** Full-detail map tiles (overlay-tiles.ts), built after the pyramid. */
+  tiles?: { status?: string } & Record<string, unknown>;
 } & Record<string, unknown>;
 
 /** Photo overlays that go into the pyramid (tiled giants and GeoTIFFs stay separate). */
@@ -2307,6 +2310,12 @@ export class KmzService implements OnModuleInit {
           `[2D] Pyramid build failed for ${schoolId}: ${e?.message ?? e}`,
         ),
       );
+      // Then the full-detail tiles, in their own (longer) background job.
+      await this.queueTilesBuild(schoolId, true).catch((e) =>
+        this.logger.warn(
+          `[2D] Tiles not queued for ${schoolId}: ${e?.message ?? e}`,
+        ),
+      );
 
       // Sync the school's coordinates to whatever the KMZ says (authored view,
       // ground-overlay bounds, or placemark centroid).
@@ -2355,6 +2364,13 @@ export class KmzService implements OnModuleInit {
       pyramidPhotos(manifest).length
     ) {
       await this.queuePyramidBuild(schoolId).catch(() => null);
+    } else if (
+      manifest?.pyramid?.status === 'ready' &&
+      !manifest.tiles &&
+      pyramidPhotos(manifest).length
+    ) {
+      // …and the full-detail tiles once, after the pyramid.
+      await this.queueTilesBuild(schoolId).catch(() => null);
     }
 
     return {
@@ -2510,6 +2526,247 @@ export class KmzService implements OnModuleInit {
         status: 'failed',
         reason: (err as Error).message?.slice(0, 200),
       }).catch(() => null);
+      throw err;
+    } finally {
+      await fs.promises
+        .rm(outDir, { recursive: true, force: true })
+        .catch(() => null);
+    }
+  }
+
+  /**
+   * Queue a full-detail tiles build (deduplicated per school; a build left
+   * queued for 30 min, e.g. after a queue restart, is queued again).
+   */
+  async queueTilesBuild(
+    schoolId: string,
+    force = false,
+  ): Promise<{ queued: boolean; reason?: string }> {
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+      select: ['id', 'kmz2dManifest'],
+    });
+    const manifest = school?.kmz2dManifest as Kmz2dManifestWithPyramid | null;
+    if (!manifest || !pyramidPhotos(manifest).length)
+      return { queued: false, reason: 'no-photos' };
+    if (await this.activeTilesJob(schoolId))
+      return { queued: false, reason: 'already-running' };
+    const rawQueuedAt: unknown = manifest.tiles?.queuedAt;
+    const queuedAt =
+      typeof rawQueuedAt === 'string' ? Date.parse(rawQueuedAt) : NaN;
+    const stale =
+      !Number.isFinite(queuedAt) || Date.now() - queuedAt > 30 * 60_000;
+    const pending =
+      manifest.tiles?.status === 'queued' ||
+      manifest.tiles?.status === 'building';
+    if (pending && !stale && !force)
+      return { queued: false, reason: 'already-running' };
+    const keep = manifest.tiles?.status === 'ready' ? manifest.tiles : null;
+    await this.schoolRepository.update(schoolId, {
+      kmz2dManifest: {
+        ...manifest,
+        // A ready build stays in use until the new one replaces it.
+        tiles: keep
+          ? { ...keep, rebuild: { queuedAt: new Date().toISOString() } }
+          : { status: 'queued', queuedAt: new Date().toISOString() },
+      } as any,
+    });
+    await this.kmzQueue.add(
+      'build-tiles',
+      { schoolId },
+      {
+        jobId: `tiles-${schoolId}-${Date.now()}`,
+        attempts: 2,
+        backoff: { type: 'exponential' as const, delay: 60_000 },
+        removeOnComplete: 50,
+        removeOnFail: 100,
+      },
+    );
+    return { queued: true };
+  }
+
+  /** The school's 'build-tiles' jobs, newest first. */
+  private async tilesJobs(schoolId: string) {
+    const jobs = await this.kmzQueue.getJobs(
+      ['active', 'waiting', 'delayed', 'prioritized', 'completed', 'failed'],
+      0,
+      500,
+    );
+    return jobs
+      .filter((j) => j?.name === 'build-tiles' && j.data?.schoolId === schoolId)
+      .sort((a, b) => b.timestamp - a.timestamp);
+  }
+
+  private async activeTilesJob(schoolId: string) {
+    for (const j of await this.tilesJobs(schoolId)) {
+      const st = await j.getState();
+      if (['active', 'waiting', 'delayed', 'prioritized'].includes(st))
+        return j;
+    }
+    return null;
+  }
+
+  /** What the site map's tiles are, and how far the latest build is. */
+  async getTilesStatus(schoolId: string) {
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+      select: ['id', 'kmz2dManifest'],
+    });
+    if (!school) throw new NotFoundException(`School ${schoolId} not found`);
+    const manifest = school.kmz2dManifest as Kmz2dManifestWithPyramid | null;
+    const latest = (await this.tilesJobs(schoolId))[0];
+    let job: Record<string, unknown> | null = null;
+    if (latest) {
+      const st = await latest.getState();
+      const p = latest.progress as { done?: number; total?: number } | number;
+      const state =
+        st === 'active'
+          ? 'running'
+          : st === 'completed'
+            ? 'done'
+            : st === 'failed'
+              ? 'failed'
+              : latest.attemptsMade > 0
+                ? 'retrying'
+                : 'queued';
+      job = {
+        jobId: String(latest.id),
+        state,
+        percent:
+          state === 'done'
+            ? 100
+            : typeof p === 'object' && p?.total
+              ? Math.round(((p.done ?? 0) / p.total) * 100)
+              : 0,
+        done: typeof p === 'object' ? (p?.done ?? null) : null,
+        total: typeof p === 'object' ? (p?.total ?? null) : null,
+        attempt: Math.max(1, latest.attemptsMade + (st === 'active' ? 1 : 0)),
+        maxAttempts: latest.opts.attempts ?? 1,
+        queuedAt: new Date(latest.timestamp).toISOString(),
+        startedAt: latest.processedOn
+          ? new Date(latest.processedOn).toISOString()
+          : null,
+        finishedAt:
+          latest.finishedOn && (state === 'done' || state === 'failed')
+            ? new Date(latest.finishedOn).toISOString()
+            : null,
+        error:
+          state === 'failed' || state === 'retrying'
+            ? latest.failedReason
+            : null,
+      };
+    }
+    return {
+      photos: manifest ? pyramidPhotos(manifest).length : 0,
+      tiles: manifest?.tiles ?? null,
+      job,
+    };
+  }
+
+  /**
+   * Build the site map's full-detail tiles from its stored photos
+   * (overlay-tiles.ts) and record them in `manifest.tiles`. Each build has its
+   * own folder (cached for a year); the build it replaces is then removed.
+   */
+  async buildKmz2dTiles(
+    schoolId: string,
+    onProgress: (done: number, total: number) => void = () => {},
+  ): Promise<Record<string, unknown> | null> {
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+      select: ['id', 'kmz2dManifest'],
+    });
+    const manifest = school?.kmz2dManifest as Kmz2dManifestWithPyramid | null;
+    const photos = manifest ? pyramidPhotos(manifest) : [];
+    if (!manifest || !photos.length) return null;
+
+    const started = Date.now();
+    const buildId = started.toString(36);
+    const outDir = path.join(KMZ_TMP_DIR, `tiles_${schoolId}_${buildId}`);
+    const root = `schools/${schoolId}/kmz_2d_content/_tiles`;
+    /** Save the tiles entry; returns the build it replaced. */
+    const save = async (tiles: Record<string, unknown> | null) => {
+      const fresh = await this.schoolRepository.findOne({
+        where: { id: schoolId },
+        select: ['id', 'kmz2dManifest'],
+      });
+      if (!fresh?.kmz2dManifest) return null;
+      const before = (fresh.kmz2dManifest as Kmz2dManifestWithPyramid).tiles;
+      await this.schoolRepository.update(schoolId, {
+        kmz2dManifest: { ...fresh.kmz2dManifest, tiles } as any,
+      });
+      return typeof before?.buildId === 'string' ? before.buildId : null;
+    };
+    const current = manifest.tiles?.status === 'ready' ? manifest.tiles : null;
+    if (!current)
+      await save({ status: 'building', queuedAt: new Date().toISOString() });
+
+    try {
+      const built = await buildSiteTiles(
+        photos.map((o) => ({
+          north: Number(o.north),
+          south: Number(o.south),
+          east: Number(o.east),
+          west: Number(o.west),
+          drawOrder: Number(o.drawOrder) || 0,
+          load: () => this.storageService.readFile(String(o.imageUrl)),
+        })),
+        {
+          outDir,
+          // Building is ~90% of the work; copying to storage the rest.
+          onProgress: (d, t) => onProgress(Math.round((d / t) * 90), 100),
+        },
+      );
+      if (!built) {
+        await save(current ?? { status: 'failed', reason: 'no usable photos' });
+        return null;
+      }
+      const prefix = `${root}/${buildId}`;
+      await this.uploadDirectory(outDir, prefix);
+      onProgress(98, 100);
+      const sampleName = `${prefix}/${built.maxZoom}`;
+      const sample = await this.storageService.getFileUrl(
+        `${sampleName}/0/0.webp`,
+      );
+      const base = (sample ?? `/files/${sampleName}/0/0.webp`).replace(
+        /\/\d+\/0\/0\.webp(\?.*)?$/,
+        '',
+      );
+      const entry = {
+        status: 'ready',
+        buildId,
+        url: `${base}/{z}/{x}/{y}.webp`,
+        minZoom: built.minZoom,
+        maxZoom: built.maxZoom,
+        extent: built.extent,
+        groundCmPerPx: built.groundCmPerPx,
+        sourceCmPerPx: built.sourceCmPerPx,
+        tiles: built.tiles,
+        bytes: built.bytes,
+        photos: built.photos,
+        ms: Date.now() - started,
+        builtAt: new Date().toISOString(),
+      };
+      const replaced = await save(entry);
+      if (replaced && replaced !== buildId) {
+        await this.storageService
+          .deleteDirectory(`${root}/${replaced}`)
+          .catch(() => null);
+      }
+      onProgress(100, 100);
+      this.logger.log(
+        `[2D] Tiles for ${schoolId}: ${built.tiles} tiles z${built.minZoom}-${built.maxZoom} ` +
+          `(${built.groundCmPerPx} cm/px), ${(built.bytes / 1048576).toFixed(0)} MB, ${Date.now() - started} ms`,
+      );
+      return entry;
+    } catch (err) {
+      // A failed rebuild keeps the tiles in use; a first build is marked failed.
+      await save(
+        current ?? {
+          status: 'failed',
+          reason: (err as Error).message?.slice(0, 200),
+        },
+      ).catch(() => null);
       throw err;
     } finally {
       await fs.promises

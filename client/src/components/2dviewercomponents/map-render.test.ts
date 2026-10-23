@@ -59,3 +59,19 @@ describe("detailPhotos", () => {
     expect(out.map((p) => p.name)).toEqual(["mid", "finer-mid", "fine"]);
   });
 });
+
+describe("full-detail site tiles grid", () => {
+  it("asks for one level deeper on 2x screens, drawing each file pixel on one screen pixel", async () => {
+    const { siteTilesGrid, siteTilesMinViewZoom } = await import("./hooks/useKmzLoader");
+    const world = 2 * Math.PI * 6378137;
+    const viewRes = world / (256 * 2 ** 22); // view at zoom 22 (CSS pixels)
+    expect(siteTilesGrid(24, 1).getZForResolution(viewRes)).toBe(22);
+    expect(siteTilesGrid(24, 2).getZForResolution(viewRes)).toBe(23);
+    // Same tile coordinates on both grids: z/x/y files are shared.
+    expect(siteTilesGrid(24, 2).getTileCoordExtent([23, 100, 200])).toEqual(siteTilesGrid(24, 1).getTileCoordExtent([23, 100, 200]));
+    // Beyond the deepest level the grid stops (OpenLayers enlarges it).
+    expect(siteTilesGrid(24, 2).getZForResolution(viewRes / 64)).toBe(24);
+    expect(siteTilesMinViewZoom(16, 1)).toBe(16);
+    expect(siteTilesMinViewZoom(16, 2)).toBe(15);
+  });
+});

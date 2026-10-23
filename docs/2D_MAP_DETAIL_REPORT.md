@@ -165,13 +165,58 @@ Estimates for production:
 All three finest levels hold real detail (section 2), so these are the sizes
 to plan for.
 
+## 4b. Implemented: server-built full-detail tiles
+
+How it works:
+
+- **When tiles are built**
+  - After every 2D upload, a background job `build-tiles` runs after the
+    quick pyramid.
+  - Existing schools get one build the first time their map is opened.
+  - Editors can rebuild from the 2D upload tab ("Sharp map tiles" panel),
+    with live progress.
+- **Where they are stored**
+  - `schools/<id>/kmz_2d_content/_tiles/<build>/{z}/{x}/{y}.webp`, cached
+    for a year.
+  - `manifest.tiles` records the levels, extent and detail.
+  - A rebuild keeps the current tiles in use until the new set is ready, then
+    deletes the old one.
+- **Which tiles are made**
+  - A tile exists only where a photo detailed enough for its level lies.
+  - A hole in the fine photos shows the coarser level above, so no deep tile
+    merely enlarges an overview photo.
+- **Viewer**
+  - One standard XYZ layer from the tiles' first level, with the pyramid only
+    below it.
+  - Nothing is stitched in the browser.
+  - On 2× screens a 128 px grid makes OpenLayers request one level deeper
+    and draw each file pixel on one screen pixel.
+- **API**
+  - `POST /schools/:id/kmz/2d/tiles` (rebuild; never a second build while
+    one runs).
+  - `GET /schools/:id/kmz/2d/tiles` (current tiles + latest job progress).
+  - Both need `UPLOAD_KMZ`. The rebuild is audited as `kmz.rebuild_tiles`.
+
+Measured on the dev test site (2× screen, same views as section 3). Values
+are sharpness, then download:
+
+| Zoom | Photos stitched in the browser | Server tiles |
+|---|---|---|
+| 21 | 82.9, 24.7 MB (102 photos) | **100.0, 0.95 MB** |
+| 22 (native) | 26.1, 11.3 MB | **37.9, 0.66 MB** |
+| 23 (past native) | 9.8, 3.7 MB | 9.3, 0.76 MB |
+
+- Started from the panel: 9,752 tiles, 61 MB, about 2.5 min.
+- The progress bar ran from 0 to 100%, and the panel then showed the
+  result.
+
 ## 5. Plan
 
 | Step | What | Effort |
 |---|---|---|
 | 1 | Ship the clarity fixes (section 3) | done, ready for PR |
 | 2 | Check the finest levels are real detail | done: all three are |
-| 3 | Wire the tile builder in:<br>• a background job with progress (same panel as 3D Reprocess)<br>• `schools/<id>/kmz_2d_content/_tiles/<build>/{z}/{x}/{y}.webp`<br>• manifest `tiles` {minZoom, maxZoom, extent}<br>• the viewer uses one XYZ layer when present (pyramid + browser stitching kept as fallback)<br>• tests: tile edges, levels, georeference, viewer switch | 2–3 days |
+| 3 | Wire the tile builder in (section 4b) | done |
 | 4 | Build tiles for the three schools; compare on screen and on a phone over 4G | ½ day |
 
 ## Caveats
