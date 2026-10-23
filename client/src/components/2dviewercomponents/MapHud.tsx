@@ -1,10 +1,12 @@
+import { useEffect, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Info, Map as MapIcon, X, Box } from "lucide-react";
 import DOMPurify from "dompurify";
 import { useMapHud, type MapHudStore } from "./map-hud-store";
 import { formatNumber } from "../../lib/format";
 
 interface MapHudProps {
-  school: any;
+  school: unknown;
   setShowBasicInfo: (v: boolean) => void;
   /** Cursor position and imagery loading state (subscribed here only). */
   hud: MapHudStore;
@@ -115,19 +117,52 @@ function PointerCoords({ hud }: { hud: MapHudStore }) {
   );
 }
 
-/** "Loading map" pill while imagery is still arriving. */
+/** Waits `ms` before turning on (so quick pans don't flash the pill), turns off at once. */
+function useDelayedFlag(on: boolean, ms: number) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!on) return;
+    const t = window.setTimeout(() => setShown(true), ms);
+    return () => {
+      window.clearTimeout(t);
+      setShown(false);
+    };
+  }, [on, ms]);
+  return on && shown;
+}
+
+/**
+ * Small "Loading imagery" pill at the bottom centre, just above the layer bar,
+ * while any map content is still arriving.
+ */
 function LoadingPill({ hud }: { hud: MapHudStore }) {
-  const tilesLoading = useMapHud(hud, (s) => s.tilesLoading);
+  const reduce = useReducedMotion();
+  const busy = useMapHud(hud, (s) => s.mapLoading || s.tilesLoading || s.decoding > 0);
   const decoding = useMapHud(hud, (s) => s.decoding > 0);
-  if (!tilesLoading && !decoding) return null;
+  const visible = useDelayedFlag(busy, 250);
   return (
-    <div role="status" className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-full bg-white/60 dark:bg-[hsl(224_40%_7%)]/60 backdrop-blur-2xl backdrop-saturate-150 px-3.5 py-1.5 ring-1 ring-white/40 dark:ring-white/10 pointer-events-none animate-in fade-in slide-in-from-top-2">
-      <div className="flex items-center gap-1">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse motion-reduce:animate-none" style={{ animationDelay: `${i * 0.2}s` }} />
-        ))}
-      </div>
-      <span className="text-xs text-slate-600 dark:text-white/65">{decoding ? "Preparing" : "Loading map"}</span>
+    <div className="pointer-events-none absolute bottom-[11.25rem] left-1/2 z-40 -translate-x-1/2 md:bottom-[4.5rem]">
+      <AnimatePresence>
+        {visible && (
+          <motion.div
+            role="status"
+            aria-live="polite"
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 6, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 4, scale: 0.98 }}
+            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+            className="flex items-center gap-2 rounded-full bg-white/70 px-3 py-1.5 ring-1 ring-white/40 backdrop-blur-xl backdrop-saturate-150 dark:bg-[hsl(224_40%_7%)]/70 dark:ring-white/10"
+          >
+            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 animate-spin text-primary motion-reduce:animate-none" aria-hidden>
+              <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeOpacity="0.2" strokeWidth="2" />
+              <path d="M14 8a6 6 0 0 0-6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            <span className="whitespace-nowrap text-[11px] text-slate-600 dark:text-white/70">
+              {decoding ? "Preparing imagery" : "Loading imagery"}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

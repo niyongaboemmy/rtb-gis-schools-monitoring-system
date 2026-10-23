@@ -12,6 +12,8 @@ export interface MapHudState {
   lng: number;
   /** Map tiles of the site map are still being fetched. */
   tilesLoading: boolean;
+  /** Any layer (basemap, labels, overlays, vectors) is still loading — from OpenLayers' map loadstart/loadend. */
+  mapLoading: boolean;
   /** Images being downloaded/decoded right now. */
   decoding: number;
 }
@@ -21,6 +23,7 @@ export interface MapHudStore {
   subscribe: (fn: () => void) => () => void;
   setPointer: (lat: number, lng: number) => void;
   setTilesLoading: (v: boolean) => void;
+  setMapLoading: (v: boolean) => void;
   setDecoding: (n: number) => void;
 }
 
@@ -28,7 +31,7 @@ const raf: (cb: () => void) => unknown =
   typeof requestAnimationFrame === "function" ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
 
 export function createMapHudStore(initial: Pick<MapHudState, "lat" | "lng">): MapHudStore {
-  let state: MapHudState = { ...initial, tilesLoading: false, decoding: 0 };
+  let state: MapHudState = { ...initial, tilesLoading: false, mapLoading: false, decoding: 0 };
   const listeners = new Set<() => void>();
   let scheduled = false;
 
@@ -61,6 +64,7 @@ export function createMapHudStore(initial: Pick<MapHudState, "lat" | "lng">): Ma
     },
     setPointer: (lat, lng) => patch({ lat, lng }),
     setTilesLoading: (v) => patch({ tilesLoading: v }),
+    setMapLoading: (v) => patch({ mapLoading: v }),
     setDecoding: (n) => patch({ decoding: Math.max(0, n) }),
   };
 }

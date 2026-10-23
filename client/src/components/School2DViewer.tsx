@@ -1318,6 +1318,22 @@ export default function School2DViewer({
   // one framing, no competing fly-ins. Deep links to a building or a
   // coordinate frame themselves.
   const framedRef = useRef(false);
+
+  // Whole-map loading (basemap, labels, overlays, vectors) for the HUD pill.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map) return;
+    const start = () => hud.setMapLoading(true);
+    const end = () => hud.setMapLoading(false);
+    map.on("loadstart", start);
+    map.on("loadend", end);
+    return () => {
+      map.un("loadstart", start);
+      map.un("loadend", end);
+      hud.setMapLoading(false);
+    };
+  }, [mapReady, mapRef, hud]);
+
   useEffect(() => {
     if (activeTab !== "map" || !mapReady || isLoading || framedRef.current) return;
     if (initialBuilding || (deepLink.lat != null && deepLink.lng != null)) {
