@@ -21,8 +21,8 @@ export function resolveHeapMb(): number {
 
 /**
  * Processing profile for one model. "Low-memory" (small heap, or an input
- * larger than 15% of RAM) limits GEOMETRY only — rough decimation and a
- * triangle cap. Textures are never shrunk for memory: web-ready atlases pass
+ * larger than 15% of RAM) limits GEOMETRY only — rough decimation, a
+ * triangle cap, and the degree-staircase repair only up to 25 M vertices. Textures are never shrunk for memory: web-ready atlases pass
  * through optimize.mjs untouched, and the max texture edge stays 8192.
  */
 export function optimizeProfile(o: {
@@ -48,6 +48,9 @@ export function optimizeProfile(o: {
       ? {
           GLB_FORCE_SLOPPY: env.GLB_FORCE_SLOPPY || '1',
           GLB_MAX_OUT_TRIS: env.GLB_MAX_OUT_TRIS || String(1_500_000),
+          // The degree-staircase repair (glb-tools/destep.mjs) needs ~2 GB on a
+          // 40 M-vertex file; on this profile only smaller files get it.
+          GLB_DESTEP_MAX_VERTS: env.GLB_DESTEP_MAX_VERTS || String(25_000_000),
         }
       : {},
   };

@@ -24,6 +24,8 @@
  * On success prints one JSON line to stdout:
  *   {bytesIn,bytesOut,trisIn,trisOut,ratio,ms,method,reprojected,lat,lng}
  * `method` is 'exact' | 'tiled' | 'sloppy' | 'none'.
+ * `destep` reports the repair of the 32-bit-degree staircase (destep.mjs) when
+ * the source was in degrees, else null.
  * `lat`/`lng` are the WGS84 centroid when the source carried geographic
  * vertex coordinates (so the caller can sync the school's location), else null.
  */
@@ -62,11 +64,12 @@ if (!fs.existsSync(inputPath)) {
 const t0 = Date.now();
 const progress = (stage) => process.stderr.write(`@@progress ${stage}\n`);
 
-let NodeIO, ALL_EXTENSIONS, EXTTextureWebP, fns, MeshoptSimplifier, MeshoptEncoder, MeshoptDecoder, sharp, measureQuality, imageSize;
+let NodeIO, ALL_EXTENSIONS, EXTTextureWebP, fns, MeshoptSimplifier, MeshoptEncoder, MeshoptDecoder, sharp, measureQuality, imageSize, destep;
 try {
   ({ NodeIO } = await import('@gltf-transform/core'));
   ({ ALL_EXTENSIONS, EXTTextureWebP } = await import('@gltf-transform/extensions'));
   ({ measureQuality, imageSize } = await import('./quality.mjs'));
+  ({ destep } = await import('./destep.mjs'));
   fns = await import('@gltf-transform/functions');
   ({ MeshoptSimplifier, MeshoptEncoder, MeshoptDecoder } = await import('meshoptimizer'));
   ({ default: sharp } = await import('sharp'));
@@ -287,6 +290,7 @@ process.stdout.write(
     reprojected: reprojection.reprojected,
     lat: reprojection.lat,
     lng: reprojection.lng,
+    destep: reprojection.destep ?? null,
     textures: textureReport,
     quality,
     qualityIn,
@@ -354,13 +358,35 @@ function reprojectIfGeographic(doc) {
   const mPerLat = 111132.92 - 559.82 * Math.cos(2 * la) + 1.175 * Math.cos(4 * la);
   const mPerLon = 111412.84 * Math.cos(la) - 93.5 * Math.cos(3 * la);
 
-  for (const { pos } of prims) {
+  // Degrees in 32-bit floats are terraced (≈ 21 cm east–west near 30° E):
+  // smooth the steps away within ± half a step before converting (destep.mjs).
+  const nVerts = prims.reduce((s, { pos }) => s + pos.getCount(), 0);
+  let smooth = null;
+  if (
+    process.env.GLB_DESTEP !== '0' &&
+    nVerts <= Number(process.env.GLB_DESTEP_MAX_VERTS || 60_000_000) &&
+    prims.every(({ pos }) => pos.getArray() instanceof Float32Array)
+  ) {
+    const t = Date.now();
+    smooth = destep(
+      prims.map(({ prim, pos }) => ({ positions: pos.getArray(), indices: prim.getIndices()?.getArray() ?? null })),
+      { lon0, lat0, iterations: Number(process.env.GLB_DESTEP_ITERATIONS || 30) },
+    );
+    smooth.stats.ms = Date.now() - t;
+    smooth.stats.stepEastCm = +(smooth.stats.stepLonDeg * mPerLon * 100).toFixed(2);
+    smooth.stats.stepNorthCm = +(smooth.stats.stepLatDeg * mPerLat * 100).toFixed(2);
+    console.error(`destep: ${smooth.stats.welded} vertices, steps ${smooth.stats.stepEastCm} cm E / ${smooth.stats.stepNorthCm} cm N, ${smooth.stats.ms} ms`);
+  }
+
+  for (const [k, { pos }] of prims.entries()) {
     const src = pos.getArray();
     const out = new Float32Array(src.length);
     for (let i = 0; i < src.length; i += 3) {
-      out[i] = (src[i] - lon0) * mPerLon;        // East  → +X
-      out[i + 1] = src[i + 2] - alt0;            // Up    → +Y
-      out[i + 2] = -(src[i + 1] - lat0) * mPerLat; // North → -Z
+      const lon = smooth ? smooth.lonAt(k, i / 3) : src[i];
+      const lat = smooth ? smooth.latAt(k, i / 3) : src[i + 1];
+      out[i] = (lon - lon0) * mPerLon;        // East  → +X
+      out[i + 1] = src[i + 2] - alt0;          // Up    → +Y
+      out[i + 2] = -(lat - lat0) * mPerLat;    // North → -Z
     }
     pos.setArray(out);
   }
@@ -369,7 +395,7 @@ function reprojectIfGeographic(doc) {
     `reprojected geographic GLB @ ${lat0.toFixed(6)},${lon0.toFixed(6)} ` +
       `(site ${(spanX * mPerLon).toFixed(0)}×${(spanY * mPerLat).toFixed(0)}×${(maxZ - minZ).toFixed(0)} m)`,
   );
-  return { reprojected: true, lat: +lat0.toFixed(7), lng: +lon0.toFixed(7) };
+  return { reprojected: true, lat: +lat0.toFixed(7), lng: +lon0.toFixed(7), destep: smooth?.stats ?? null };
 }
 
 /**

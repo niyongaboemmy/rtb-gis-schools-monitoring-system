@@ -115,6 +115,16 @@ simplify or re-tile it afterwards.
 **Coordinates.** State the coordinate system and its EPSG code (e.g. WGS 84
 / UTM zone 35S or 36S) and any local offset that was applied to the model.
 
+**Never export positions in degrees (longitude / latitude).** A GLB stores
+positions as 32-bit numbers. In degrees near 30° E, those only step every
+0.0000019°, about **21 cm east–west**, so every wall, kerb and roof edge comes
+out as a staircase. The current Nyamirama export has exactly this: 537
+distinct longitudes in 2 million vertices.
+
+Export instead in a **projected system in metres (UTM 35S/36S) with a local
+origin near the site** (Metashape: "Shift" / local offset), or in local
+coordinates plus the origin written in the README.
+
 ## 5. Handover
 
 One folder per school:
