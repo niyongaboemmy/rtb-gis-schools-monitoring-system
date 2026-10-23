@@ -245,6 +245,27 @@ export class KmzController {
     return this.kmzService.queuePyramidBuild(schoolId, true);
   }
 
+  @Post('2d/tiles')
+  @RequirePermissions(Permission.UPLOAD_KMZ)
+  @HttpCode(202)
+  @ApiOperation({
+    summary:
+      'Rebuild the site map full-detail tiles from the stored photos (background; never a second build while one runs)',
+  })
+  rebuildKmz2dTiles(@Param('schoolId', ParseUUIDPipe) schoolId: string) {
+    return this.kmzService.queueTilesBuild(schoolId, true);
+  }
+
+  @Get('2d/tiles')
+  @RequirePermissions(Permission.UPLOAD_KMZ)
+  @ApiOperation({
+    summary:
+      'Site map full-detail tiles: current build and the latest job progress',
+  })
+  kmz2dTilesStatus(@Param('schoolId', ParseUUIDPipe) schoolId: string) {
+    return this.kmzService.getTilesStatus(schoolId);
+  }
+
   @Get('2d/manifest')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

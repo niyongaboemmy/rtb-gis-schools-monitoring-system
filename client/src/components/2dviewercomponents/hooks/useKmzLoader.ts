@@ -41,10 +41,21 @@ export interface SiteMapPyramid {
   extent: [number, number, number, number];
 }
 
+/** The site map's full-detail tiles (server overlay-tiles.ts): standard XYZ grid. */
+export interface SiteMapTiles {
+  status: "ready";
+  url: string;
+  minZoom: number;
+  maxZoom: number;
+  /** EPSG:3857 */
+  extent: [number, number, number, number];
+}
+
 interface ManifestBundle {
   kmlText: string;
   overlays: GroundOverlayData[];
   pyramid: SiteMapPyramid | null;
+  tiles: SiteMapTiles | null;
 }
 
 /** Manifest + site-map KML, fetched together (in parallel with map setup). */
@@ -59,8 +70,26 @@ async function fetchManifestBundle(schoolId: string, signal?: AbortSignal): Prom
     p?.status === "ready" && p.url && Number.isFinite(p.resolution) && Array.isArray(p.origin)
       ? { ...p, url: resolveFileUrl(p.url) }
       : null;
-  return { kmlText, overlays, pyramid };
+  const t = m.tiles;
+  const tiles: SiteMapTiles | null =
+    t?.status === "ready" && t.url && Number.isFinite(t.maxZoom) && Number.isFinite(t.minZoom) && Array.isArray(t.extent)
+      ? { ...t, url: resolveFileUrl(t.url) }
+      : null;
+  return { kmlText, overlays, pyramid, tiles };
 }
+
+/**
+ * Grid for the full-detail tiles (standard XYZ, 256 px files). On a 2x screen
+ * it is declared with 128 px tiles: OpenLayers then asks for the next level
+ * down and draws each 256 px file into 128 CSS px — one file pixel per screen
+ * pixel, instead of stretching (it picks levels from CSS pixels).
+ */
+export function siteTilesGrid(maxZoom: number, pixelRatio: number) {
+  return createXYZ({ maxZoom, tileSize: pixelRatio > 1 ? 128 : 256 });
+}
+
+/** View zoom from which the full-detail tiles cover the site (one less on 2x screens). */
+export const siteTilesMinViewZoom = (minZoom: number, pixelRatio: number) => minZoom - (pixelRatio > 1 ? 1 : 0);
 
 /**
  * Photos worth loading over the pyramid when zoomed in: only those that can
@@ -138,6 +167,7 @@ export function useKmzLoader({
   const lastSchoolIdRef = useRef<string | null>(null);
   const cleanupKmzRef = useRef<(() => void) | null>(null);
   const pyramidRef = useRef<SiteMapPyramid | null>(null);
+  const tilesRef = useRef<SiteMapTiles | null>(null);
   const visualsRef = useRef(visuals);
   const prefetchRef = useRef<{ key: string; promise: Promise<ManifestBundle | null> } | null>(null);
 
@@ -163,7 +193,9 @@ export function useKmzLoader({
       groundOverlayLayersRef.current.forEach((l) => map.removeLayer(l));
       groundOverlayLayersRef.current = [];
       const pyramid = pyramidRef.current;
-      if (overlays.length === 0 && !pyramid) return null;
+      const tiles = tilesRef.current;
+      const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+      if (overlays.length === 0 && !pyramid && !tiles) return null;
 
       const sorted = [...overlays].sort((a, b) => a.drawOrder - b.drawOrder);
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -177,21 +209,13 @@ export function useKmzLoader({
         return { ov, ext };
       });
 
-      if (pyramid && minX === Infinity) [minX, minY, maxX, maxY] = pyramid.extent;
+      if (minX === Infinity && (tiles || pyramid)) [minX, minY, maxX, maxY] = (tiles ?? pyramid)!.extent;
       const globalExtent: [number, number, number, number] = [minX, minY, maxX, maxY];
 
-      // 0. The server-built pyramid of all drone photos: only on-screen tiles
-      //    are fetched, already sized for the zoom. Replaces the in-browser
-      //    compositor below for those photos.
-      if (pyramid) {
-        const source = new XYZ({
-          url: pyramid.url,
-          tileGrid: pyramidTileGrid(pyramid),
-          projection: "EPSG:3857",
-          crossOrigin: "anonymous",
-          interpolate: true,
-          transition: 200,
-        });
+      /** A plain canvas tile layer for server-built photo tiles: loading
+       *  indicator + the "image look" sliders as a canvas filter (lighter than
+       *  WebGL for photos: no extra GL context). */
+      const addPhotoTiles = (source: XYZ, opts: { extent: number[]; zIndex: number; minZoom?: number; maxZoom?: number }) => {
         let pending = 0;
         const track = (d: number) => {
           pending = Math.max(0, pending + d);
@@ -200,15 +224,7 @@ export function useKmzLoader({
         source.on("tileloadstart", () => track(1));
         source.on("tileloadend", () => track(-1));
         source.on("tileloaderror", () => track(-1));
-        // A plain canvas tile layer: lighter than WebGL for photo tiles (no
-        // extra GL context). The "image look" sliders become a canvas filter.
-        const lyr = new TileLayer({
-          source,
-          extent: pyramid.extent,
-          zIndex: 5,
-          opacity: kmzOpacity,
-          preload: 1,
-        });
+        const lyr = new TileLayer({ source, opacity: kmzOpacity, preload: 1, ...opts });
         lyr.on("prerender", (e) => {
           const ctx = e.context as CanvasRenderingContext2D | undefined;
           const v = visualsRef.current;
@@ -222,6 +238,42 @@ export function useKmzLoader({
         });
         map.addLayer(lyr);
         groundOverlayLayersRef.current.push(lyr);
+      };
+      const tilesFrom = tiles ? siteTilesMinViewZoom(tiles.minZoom, dpr) : null;
+
+      // 0a. Full-detail tiles at the drone photos' own resolution (server
+      //     overlay-tiles.ts): only the tiles on screen, any zoom. Missing
+      //     deep tiles fall back to the level above (OpenLayers interim tiles).
+      if (tiles) {
+        addPhotoTiles(
+          new XYZ({
+            url: tiles.url,
+            tileGrid: siteTilesGrid(tiles.maxZoom, dpr),
+            projection: "EPSG:3857",
+            crossOrigin: "anonymous",
+            interpolate: true,
+            transition: 200,
+            zDirection: -1,
+          }),
+          { extent: tiles.extent, zIndex: 6, minZoom: tilesFrom! - 0.001 },
+        );
+      }
+
+      // 0b. The overview pyramid of all drone photos (8192 px): only below the
+      //     full-detail tiles when those exist; otherwise everywhere, with the
+      //     original photos added as a detail layer when zoomed in (below).
+      if (pyramid) {
+        addPhotoTiles(
+          new XYZ({
+            url: pyramid.url,
+            tileGrid: pyramidTileGrid(pyramid),
+            projection: "EPSG:3857",
+            crossOrigin: "anonymous",
+            interpolate: true,
+            transition: 200,
+          }),
+          { extent: pyramid.extent, zIndex: 5, ...(tilesFrom != null ? { maxZoom: tilesFrom } : {}) },
+        );
       }
 
       type BoundTuple = { ov: GroundOverlayData; ext: [number, number, number, number] };
@@ -229,7 +281,12 @@ export function useKmzLoader({
       // With a pyramid, the original photos come back only as a DETAIL layer
       // for zooms past the pyramid's resolution (its 8192 px canvas holds
       // 4–8× less detail than the drone photos).
-      const standardBounds: BoundTuple[] = pyramid ? detailPhotos(photoBounds, pyramid.resolution) : photoBounds;
+      // With full-detail tiles, nothing is stitched in the browser.
+      const standardBounds: BoundTuple[] = tiles
+        ? []
+        : pyramid
+          ? detailPhotos(photoBounds, pyramid.resolution)
+          : photoBounds;
       const tiledBounds: BoundTuple[] = overlayBounds.filter(({ ov }) => ov.isTiled);
       const tifBounds: BoundTuple[] = overlayBounds.filter(({ ov }) => !ov.isTiled && ov.imageUrl.toLowerCase().match(/\.tiff?$/i));
 
@@ -289,14 +346,19 @@ export function useKmzLoader({
       // The detail layer starts hidden (zoomed out); the pyramid reports loading.
       if (!pyramid) setIsTileLoading(true);
 
+      // Draw tiles at the screen's real pixel density (OpenLayers picks the
+      // level from CSS pixels, so 256 px tiles were stretched 2x on retina
+      // screens), and always take the finer level between two zooms.
+      const TILE_PX = (typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1) > 1 ? 512 : 256;
       const source = new DataTile({
         tileGrid,
-        tileSize: 256,
+        tileSize: TILE_PX,
+        zDirection: -1,
         interpolate: true,
         loader: async (z, x, y) => {
-          if (!tileGrid) return new OffscreenCanvas(256, 256).transferToImageBitmap();
+          if (!tileGrid) return new OffscreenCanvas(TILE_PX, TILE_PX).transferToImageBitmap();
           const te = (tileGrid as any).getTileCoordExtent([z, x, y]);
-          if (!te) return new OffscreenCanvas(256, 256).transferToImageBitmap();
+          if (!te) return new OffscreenCanvas(TILE_PX, TILE_PX).transferToImageBitmap();
           
           const resolution = te[2] - te[0];
           
@@ -316,15 +378,15 @@ export function useKmzLoader({
 
           const visibleBounds = intersectingBounds.filter(({ ext }) => {
             const extWd = ext[2] - ext[0];
-            const pixW = (extWd / resolution) * 256;
+            const pixW = (extWd / resolution) * TILE_PX;
             return pixW >= minPixW;
           });
 
           if (visibleBounds.length === 0) {
-            return new OffscreenCanvas(256, 256).transferToImageBitmap();
+            return new OffscreenCanvas(TILE_PX, TILE_PX).transferToImageBitmap();
           }
 
-          const canv = new OffscreenCanvas(256, 256);
+          const canv = new OffscreenCanvas(TILE_PX, TILE_PX);
           const ctx = canv.getContext("2d")!;
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = "high";
@@ -388,10 +450,10 @@ export function useKmzLoader({
             const tileWd = tE - tW;
             const tileHt = tN - tS;
             
-            const dstX = ((ixW - tW) / tileWd) * 256;
-            const dstY = ((tN - ixN) / tileHt) * 256;
-            const dstW = ((ixE - ixW) / tileWd) * 256;
-            const dstH = ((ixN - ixS) / tileHt) * 256;
+            const dstX = ((ixW - tW) / tileWd) * TILE_PX;
+            const dstY = ((tN - ixN) / tileHt) * TILE_PX;
+            const dstW = ((ixE - ixW) / tileWd) * TILE_PX;
+            const dstH = ((ixN - ixS) / tileHt) * TILE_PX;
             
             const fullSrcW = ((ixE - ixW) / extWd) * existing.width;
             const chosenBm = (thumb && fullSrcW > dstW * 4) ? thumb : existing;
@@ -410,11 +472,13 @@ export function useKmzLoader({
 
       const mainLayer = new TileLayer({
         source,
-        // Over the pyramid, and only once zoomed in past its detail.
+        // Over the pyramid, and only once zoomed in past its detail — in
+        // screen pixels (on a 2x screen the pyramid is stretched one level
+        // earlier, so the photos take over one level earlier).
         zIndex: pyramid ? 6 : 5,
         opacity: kmzOpacity,
         extent: globalExtent,
-        ...(pyramid ? { maxResolution: pyramid.resolution } : {}),
+        ...(pyramid ? { maxResolution: pyramid.resolution * (TILE_PX / 256) } : {}),
       });
       
       if (pyramid) {
@@ -501,6 +565,7 @@ export function useKmzLoader({
           const overlays = bundle.overlays;
           const kmlText = bundle.kmlText;
           pyramidRef.current = bundle.pyramid;
+          tilesRef.current = bundle.tiles;
           setLoadingProgress(50);
           cleanupKmzRef.current = null;
 

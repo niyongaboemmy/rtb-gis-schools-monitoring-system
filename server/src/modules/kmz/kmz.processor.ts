@@ -57,6 +57,15 @@ export class KmzProcessor extends WorkerHost {
       case 'build-pyramid':
         return this.kmzService.buildKmz2dPyramid(job.data.schoolId);
 
+      case 'build-tiles':
+        // Progress (tiles done / total) for GET …/kmz/2d/tiles.
+        return this.kmzService.buildKmz2dTiles(
+          job.data.schoolId,
+          (done, total) => {
+            job.updateProgress({ done, total }).catch(() => {});
+          },
+        );
+
       default:
         this.logger.warn(`Unknown job name: ${job.name}`);
         return null;
