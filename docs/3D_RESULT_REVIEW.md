@@ -107,12 +107,76 @@ ground** (virtual texturing).
 earlier, about 1–1.5 GB), or run the prototype against the new production
 tiles.
 
+## Prototype result: ortho draping on the water-tank yard (23 Oct 2026)
+
+**Inputs**
+
+- The repaired model of a 40 × 40 m area (158 k triangles).
+- 223 of production's 2D drone photos for that area, fetched read-only over
+  HTTPS; 144 of them at 0.74 cm.
+- From these, a 4096² orthophoto mosaic at **0.98 cm per pixel**.
+
+**Alignment: no correction needed.** The model's upward faces, drawn
+top-down with their own texture, were matched against the mosaic over shifts
+of ± 1.2 m (normalized cross-correlation of edge images, 3.9 cm pixels).
+
+- The best match is at **zero shift**, so the alignment is within ± 2 cm.
+- Its score is 0.53, against a median of 0.16 for the other shifts: one
+  clear peak.
+- The orthophoto and the mesh come from the same processing and are already
+  registered.
+
+**What was drawn from the orthophoto**
+
+- Upward faces (within 45° of horizontal) that are the topmost surface seen
+  from above: 56 k triangles.
+- Faces under an overhang (14 k) keep the 3D texture. Without that test, the
+  roof colours landed on the ground under the eaves.
+- Walls keep the 3D texture.
+
+**Result** (`geo3d/drape-*.png`, scratchpad): roofs and ground go from ≈ 9 cm to
+**≈ 1 cm per pixel**. Now visible:
+
+- the blue roof's corrugations, rust spots and the cable across it;
+- the white basins;
+- the cooking pots along the wall top;
+- the cobbles and the paving-brick pattern.
+
+**Rating** for top-down and oblique views of this area: **3 → ≈ 7.5 / 10.**
+Walls are unchanged (still about 8.7 cm and soft).
+
+### Turning it into a feature
+
+1. **Server step after optimizing.** It runs only when the school has a
+   geo-referenced 3D model and full-detail 2D tiles.
+   - Re-run the alignment check automatically; drape only when the best
+     shift is ≈ 0 with a clear peak, otherwise skip and say why.
+   - Group the visible upward faces into 32 m cells and give them texture
+     pages cut from the 2D tiles.
+   - Draped faces get their own material; everything else is unchanged.
+2. **Sizes** (Nyamirama, ≈ 4.5 ha imaged):
+
+   | Texture detail | Pages (4096²) | Extra download (WebP) | Note |
+   |---|---|---|---|
+   | 2 cm | ≈ 7 | ≈ 40 MB | as KTX2 (Phase 3), fits desktop GPU memory |
+   | 4 cm | 2 | ≈ 10 MB | for phones (variant, picked per device like KTX2) |
+   | 1 cm | — | — | prototype quality; needs the viewer to stream tiles (option B) |
+3. **Viewer:** nothing changes for draped GLBs (two materials, both unlit).
+   The detail meter reports both textures.
+4. **Tests:**
+   - alignment check (shifted mosaic must be rejected);
+   - overhang visibility;
+   - UV mapping round-trip (pixel ↔ latitude/longitude);
+   - before/after renders on the three schools.
+
+**Effort:** ≈ 4 days.
+
 ## Recommended order
 
 1. **Now:** Reprocess Nyamirama and Fr Ramon (gap 1). Rating 3 → 5.
-2. **This week:** ortho-draping prototype on the water-tank yard. If the
-   alignment holds, build option A (gap 3). Rating → ≈ 7 for roofs and
-   ground.
+2. **This week:** build ortho draping into the pipeline (prototype done:
+   alignment holds, roofs and ground ≈ 1 cm). Rating → ≈ 7.5 for top-down
+   and oblique views.
 3. **Next survey:** oblique passes and metric coordinates (survey spec). Walls
    and small objects, rating → 8–9.
 4. **Nyanza:** process once on a 16 GB machine with the repair, then put the
