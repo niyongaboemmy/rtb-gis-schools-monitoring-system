@@ -78,7 +78,7 @@ export function PriorityDonut({ segments, unit = "schools", vertical = false, fo
               initial={reduce ? false : { strokeDashoffset: -a.offset + a.dash, opacity: 0 }}
               animate={{ strokeDashoffset: -a.offset, opacity: active && active !== a.key ? 0.3 : 1 }}
               transition={{ duration: reduce ? 0 : 1.1, delay: reduce ? 0 : 0.5 + i * 0.18, ease: [0.22, 1, 0.36, 1] }}
-              style={{ filter: `drop-shadow(0 0 4px ${a.color}66)`, transition: "stroke-width 200ms" }}
+              style={{ transition: "stroke-width 200ms" }}
               className="cursor-pointer"
               onPointerEnter={() => setActive(a.key)}
               onPointerLeave={() => setActive(null)}

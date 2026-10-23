@@ -17,6 +17,8 @@ export interface IStorageBackend {
   getUrl(objectName: string, expiry?: number): Promise<string | null>;
   delete(objectName: string): Promise<void>;
   deleteDirectory(dirPath: string): Promise<void>;
+  /** The object's bytes, or null when missing. */
+  read(objectName: string): Promise<Buffer | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,6 +64,14 @@ class LocalFsBackend implements IStorageBackend {
 
   async getUrl(objectName: string, _expiry?: number): Promise<string | null> {
     return `${this.urlPrefix}/${objectName}`;
+  }
+
+  async read(objectName: string): Promise<Buffer | null> {
+    try {
+      return await fs.readFile(join(this.uploadDir, objectName));
+    } catch {
+      return null;
+    }
   }
 
   async delete(objectName: string): Promise<void> {
@@ -147,6 +157,17 @@ class MinioBackend implements IStorageBackend {
       return `${this.baseUrl}/${objectName}`;
     } catch (err) {
       this.logger.error(`[minio] upload failed: ${objectName}`, err);
+      return null;
+    }
+  }
+
+  async read(objectName: string): Promise<Buffer | null> {
+    try {
+      const stream = await this.client.getObject(this.bucket, objectName);
+      const chunks: Buffer[] = [];
+      for await (const c of stream) chunks.push(Buffer.from(c as Buffer));
+      return Buffer.concat(chunks);
+    } catch {
       return null;
     }
   }
@@ -288,6 +309,14 @@ export class StorageService {
 
   async deleteDirectory(dirPath: string): Promise<void> {
     return this.backend.deleteDirectory(dirPath);
+  }
+
+  /** Read a stored object back, by object name or by its stored URL. */
+  async readFile(objectNameOrUrl: string): Promise<Buffer | null> {
+    const name = /^(https?:|\/files\/)/.test(objectNameOrUrl)
+      ? this.urlToObjectName(objectNameOrUrl)
+      : objectNameOrUrl;
+    return name ? this.backend.read(name) : null;
   }
 
   /**

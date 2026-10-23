@@ -314,7 +314,6 @@ export function IntelligenceScore({
                         whileInView={{ strokeDashoffset: ARC * (1 - pct) }}
                         viewport={{ once: true }}
                         transition={{ duration: reduce ? 0 : 1.1, delay: 0.3 + i * 0.07, ease: EASE }}
-                        style={{ filter: hovered === m.label ? `drop-shadow(0 0 5px ${c})` : 'none', transition: 'filter 250ms' }}
                       />
                     </svg>
                     <span className="absolute inset-x-0 bottom-0 text-center text-xl font-semibold leading-none tabular-nums text-slate-900 dark:text-white">

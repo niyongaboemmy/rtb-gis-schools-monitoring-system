@@ -1,30 +1,47 @@
 import React, { useState, useRef } from "react";
 import { Modal } from "../ui/modal";
 import { Button } from "../ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../ui/table";
 import { Input } from "../ui/input";
-import {
-  AlertCircle,
-  UploadCloud,
-  Download,
-  Loader2,
-  Save,
-} from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, UploadCloud, Download, FileSpreadsheet, Save } from "lucide-react";
 import * as XLSX from "xlsx";
 import { api, apiErrorMessage } from "../../lib/api";
+import { cn } from "../../lib/utils";
+import { formatNumber } from "../../lib/format";
 import { useToast } from "../ui/toast";
+import { INSET, PILL_BUTTON, TONE_TILE, type Tone } from "../ui/surfaces";
+import { Eyebrow, IconTile, Th, Td, Tr } from "../settings/settings-ui";
+import { Skeleton, SkeletonGroup } from "../ui/skeleton";
+
+/** One spreadsheet row, keyed by template column. */
+type SheetRow = Record<string, string | number>;
+
+interface ImportResult {
+  created?: number;
+  skipped?: number;
+  errors?: { row: number; email?: string; reason?: string }[];
+  error?: boolean;
+  message?: string;
+}
 
 interface BulkUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+}
+
+/** "firstName" → "First name". */
+function columnLabel(col: string): string {
+  const words = col.replace(/([A-Z])/g, " $1").trim().toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function ResultTile({ tone, value, label }: { tone: Tone; value: number; label: string }) {
+  return (
+    <div className={cn("flex flex-col items-center justify-center rounded-2xl p-4 ring-1 ring-inset", TONE_TILE[tone])}>
+      <span className="text-3xl font-semibold tabular-nums">{formatNumber(value)}</span>
+      <span className="mt-1 text-xs font-normal opacity-80">{label}</span>
+    </div>
+  );
 }
 
 export function BulkUploadModal({
@@ -33,9 +50,10 @@ export function BulkUploadModal({
   onSuccess,
 }: BulkUploadModalProps) {
   const [step, setStep] = useState<"upload" | "preview" | "result">("upload");
-  const [parsedData, setParsedData] = useState<any[]>([]);
+  const [parsedData, setParsedData] = useState<SheetRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [uploadResult, setUploadResult] = useState<any | null>(null);
+  const [uploadResult, setUploadResult] = useState<ImportResult | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
 
@@ -43,6 +61,7 @@ export function BulkUploadModal({
     setStep("upload");
     setParsedData([]);
     setUploadResult(null);
+    setDragOver(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -51,10 +70,7 @@ export function BulkUploadModal({
     onClose();
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const readFile = (file: File) => {
     setLoading(true);
     const reader = new FileReader();
     reader.onload = (evt) => {
@@ -63,7 +79,7 @@ export function BulkUploadModal({
         const wb = XLSX.read(bstr, { type: "binary" });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws, { defval: "" });
+        const data = XLSX.utils.sheet_to_json<SheetRow>(ws, { defval: "" });
         setParsedData(data);
         setStep("preview");
       } catch {
@@ -81,6 +97,24 @@ export function BulkUploadModal({
     reader.readAsBinaryString(file);
   };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    readFile(file);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    if (!/\.xlsx?$/i.test(file.name)) {
+      toast.error("Choose an Excel file (.xlsx or .xls).");
+      return;
+    }
+    readFile(file);
+  };
+
   const handleFieldChange = (
     rowIndex: number,
     field: string,
@@ -94,7 +128,7 @@ export function BulkUploadModal({
   const confirmUpload = async () => {
     setLoading(true);
     try {
-      const res = await api.post("/users/bulk-json", { rows: parsedData });
+      const res = await api.post<ImportResult>("/users/bulk-json", { rows: parsedData });
       setUploadResult(res.data);
       const created = Number(res.data?.created ?? 0);
       const problems =
@@ -105,10 +139,10 @@ export function BulkUploadModal({
       else toast.success(createdText);
       setStep("result");
       onSuccess();
-    } catch (err: any) {
+    } catch (err) {
       setUploadResult({
         error: true,
-        message: err.response?.data?.message || "Failed to bulk create records",
+        message: apiErrorMessage(err, "Failed to bulk create records"),
       });
       setStep("result");
     } finally {
@@ -149,83 +183,89 @@ export function BulkUploadModal({
     "schoolId",
   ];
 
+  const problemCount = uploadResult ? Number(uploadResult.skipped ?? 0) + (uploadResult.errors?.length || 0) : 0;
+  const headerTone: Tone =
+    step === "result" && uploadResult?.error
+      ? "danger"
+      : step === "result" && (uploadResult?.errors?.length ?? 0) > 0
+        ? "warn"
+        : step === "result"
+          ? "good"
+          : "primary";
+  const HeaderIcon =
+    step === "result" && uploadResult?.error
+      ? AlertCircle
+      : step === "result" && (uploadResult?.errors?.length ?? 0) > 0
+        ? AlertTriangle
+        : step === "result"
+          ? CheckCircle2
+          : step === "preview"
+            ? FileSpreadsheet
+            : UploadCloud;
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
-      maxWidth={step === "preview" ? "max-w-5xl" : "max-w-md"}
+      maxWidth={step === "preview" ? "sm:max-w-5xl" : "sm:max-w-md"}
       title={
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-            {loading ? (
-              <Loader2 className="w-5 h-5 text-primary animate-spin" />
-            ) : step === "result" && uploadResult?.error ? (
-              <AlertCircle className="w-5 h-5 text-destructive" />
-            ) : step === "result" && uploadResult?.errors?.length > 0 ? (
-              <AlertCircle className="w-5 h-5 text-amber-500" />
-            ) : (
-              <UploadCloud className="w-5 h-5 text-emerald-500" />
-            )}
-          </div>
-          <div className="flex flex-col">
-            <span className="text-lg font-bold uppercase tracking-tight text-foreground">
-              {step === "upload" && "Bulk Import"}
-              {step === "preview" && "Preview & Edit Data"}
-              {step === "result" && "Import Results"}
+        <span className="flex items-center gap-3">
+          <IconTile icon={HeaderIcon} tone={headerTone} />
+          <span className="flex min-w-0 flex-col gap-1">
+            <span className="text-lg font-semibold tracking-tight text-foreground">
+              {step === "upload" && "Import users"}
+              {step === "preview" && "Check the rows"}
+              {step === "result" && "Import results"}
             </span>
-            <span className="text-[10px] font-medium tracking-normal normal-case text-muted-foreground">
-              {loading && "Working..."}
-              {!loading && step === "upload" && "Select an Excel template"}
+            <span className="text-xs font-normal text-muted-foreground/70">
+              {loading && "Working…"}
+              {!loading && step === "upload" && "From the Excel template"}
               {!loading &&
                 step === "preview" &&
-                `${parsedData.length} records ready to push`}
-              {!loading && step === "result" && "Final processing summary"}
+                `${formatNumber(parsedData.length)} ${parsedData.length === 1 ? "row" : "rows"} ready to import`}
+              {!loading && step === "result" && "Summary"}
             </span>
-          </div>
-        </div>
+          </span>
+        </span>
       }
       footer={
-        <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+        <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
           {step !== "result" ? (
             <Button
-              variant="link"
-              className="text-primary p-0 h-auto text-xs font-semibold hover:no-underline"
+              variant="ghost"
+              className={cn(PILL_BUTTON.small, "text-primary hover:text-primary")}
               onClick={downloadTemplate}
             >
-              <Download className="w-3.5 h-3.5 mr-1" />
-              Download Template
+              <Download className="h-3.5 w-3.5" aria-hidden />
+              Download template
             </Button>
           ) : (
-            <div></div> // empty spacer if no download button in result tab
+            <span aria-hidden />
           )}
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={handleClose}
-              className="px-6 h-9 rounded-full font-bold text-xs"
-              disabled={loading}
-            >
-              Cancel
-            </Button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            {step !== "result" && (
+              <Button
+                variant="ghost"
+                onClick={handleClose}
+                className={cn(PILL_BUTTON.secondary, "w-full sm:w-auto")}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+            )}
             {step === "preview" && (
               <Button
                 onClick={confirmUpload}
                 disabled={loading || parsedData.length === 0}
-                className="px-6 h-9 rounded-full font-bold text-xs bg-emerald-500 hover:bg-emerald-600 text-white shadow-none"
+                isLoading={loading}
+                className={cn(PILL_BUTTON.primary, "w-full sm:w-auto")}
               >
-                {loading ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4 mr-2" />
-                )}
-                Confirm Upload
+                {!loading && <Save className="h-4 w-4" aria-hidden />}
+                Import {formatNumber(parsedData.length)} {parsedData.length === 1 ? "user" : "users"}
               </Button>
             )}
             {step === "result" && (
-              <Button
-                onClick={handleClose}
-                className="px-6 h-9 rounded-full font-bold text-xs"
-              >
+              <Button onClick={handleClose} className={cn(PILL_BUTTON.primary, "w-full sm:w-auto")}>
                 Done
               </Button>
             )}
@@ -235,173 +275,148 @@ export function BulkUploadModal({
     >
       <div className="py-2">
         {step === "upload" && (
-          <div
-            className="flex flex-col items-center justify-center p-6 sm:p-8 text-center border-2 border-dashed border-border/60 rounded-2xl bg-muted/10 cursor-pointer hover:bg-muted/30 hover:border-primary/40 transition-all duration-300"
-            role="button"
-            tabIndex={0}
-            onClick={() => fileInputRef.current?.click()}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
+          <>
+            <div
+              className={cn(
+                "flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-6 text-center outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring sm:p-8",
+                dragOver
+                  ? "border-primary/50 bg-primary/[0.07]"
+                  : "border-border/60 bg-slate-900/[0.02] hover:border-primary/35 hover:bg-primary/[0.04] dark:bg-white/[0.02]",
+                loading && "pointer-events-none opacity-60",
+              )}
+              role="button"
+              tabIndex={0}
+              aria-label="Choose an Excel file to import"
+              aria-busy={loading}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
+              onDragOver={(e) => {
                 e.preventDefault();
-                fileInputRef.current?.click();
-              }
-            }}
-          >
-            <UploadCloud className="w-12 h-12 text-muted-foreground/50 mb-4" aria-hidden />
-            <h4 className="text-sm font-bold text-foreground">
-              Click to browse your files
-            </h4>
-            <p className="text-xs text-muted-foreground mt-2">
-              Supports .xlsx and .xls formats
+                if (!dragOver) setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+            >
+              <IconTile icon={dragOver ? FileSpreadsheet : UploadCloud} />
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {loading ? "Reading the file…" : dragOver ? "Drop to read the file" : "Drop a file here or browse"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">Excel .xlsx or .xls</p>
+              </div>
+              <input
+                type="file"
+                accept=".xlsx, .xls"
+                className="hidden"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+              />
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Passwords must be at least 10 characters with upper- and lower-case
+              letters, a number and a symbol, and must not contain the email.
+              Imported users are asked to choose their own password at first
+              sign-in.
             </p>
-            <input
-              type="file"
-              accept=".xlsx, .xls"
-              className="hidden"
-              ref={fileInputRef}
-              onChange={handleFileUpload}
-            />
-          </div>
-        )}
-        {step === "upload" && (
-          <p className="mt-3 text-xs text-muted-foreground">
-            Passwords must be at least 10 characters with upper- and lower-case
-            letters, a number and a symbol, and must not contain the email.
-            Imported users are asked to choose their own password at first
-            sign-in.
-          </p>
+          </>
         )}
 
         {step === "preview" && (
-          <div className="border border-border/20 rounded-xl overflow-hidden mt-2">
-            <div className="max-h-[60vh] overflow-y-auto">
-              {parsedData.length === 0 ? (
-                <div className="p-8 text-center text-sm font-semibold text-muted-foreground">
-                  The uploaded file contains no data rows.
-                </div>
-              ) : (
-                <Table wrapperClassName="border-0 rounded-none bg-transparent">
-                  <TableHeader className="bg-muted/30 sticky top-0 z-10 backdrop-blur-md">
-                    <TableRow className="border-border/20">
-                      <TableHead className="w-12 text-center text-[10px] uppercase font-black tracking-widest">
-                        #
-                      </TableHead>
+          <div className={cn("mt-1 overflow-hidden rounded-2xl", INSET)}>
+            {parsedData.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 p-8 text-center">
+                <IconTile icon={FileSpreadsheet} tone="neutral" />
+                <p className="text-sm font-normal text-muted-foreground">The file has no data rows.</p>
+              </div>
+            ) : (
+              <div className="max-h-[60vh] overflow-auto overscroll-contain">
+                <table aria-label="Rows to import" className="w-full border-separate border-spacing-0 text-sm">
+                  <thead className="sticky top-0 z-10 bg-background/90 backdrop-blur-md">
+                    <tr>
+                      <Th className="w-12 text-center first:pl-3">#</Th>
                       {columns.map((col) => (
-                        <TableHead
-                          key={col}
-                          className="text-[10px] uppercase font-black tracking-widest whitespace-nowrap"
-                        >
-                          {col.replace(/([A-Z])/g, " $1").trim()}
-                        </TableHead>
+                        <Th key={col} className="whitespace-nowrap">
+                          {columnLabel(col)}
+                        </Th>
                       ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {parsedData.map((row, idx) => (
-                      <TableRow
-                        key={idx}
-                        className="border-border/10 hover:bg-muted/30"
-                      >
-                        <TableCell className="w-12 text-center text-xs font-mono text-muted-foreground font-bold">
+                      <Tr key={idx}>
+                        <Td align="center" className="w-12 py-1 text-xs tabular-nums text-muted-foreground first:pl-3">
                           {idx + 1}
-                        </TableCell>
+                        </Td>
                         {columns.map((col) => (
-                          <TableCell key={col} className="p-1 min-w-[120px]">
+                          <Td key={col} className="min-w-34 px-1 py-1 last:pr-3">
                             <Input
-                              value={row[col] || ""}
+                              value={row[col] ? String(row[col]) : ""}
                               onChange={(
                                 e: React.ChangeEvent<HTMLInputElement>,
                               ) => handleFieldChange(idx, col, e.target.value)}
                               aria-label={`Row ${idx + 1} ${col.replace(/([A-Z])/g, " $1").trim().toLowerCase()}`}
-                              className="h-8 text-xs font-medium bg-transparent border-transparent hover:border-border focus:bg-background shadow-none px-2 rounded-md"
+                              className="h-9 rounded-lg border-transparent bg-transparent px-2 text-xs shadow-none hover:border-border focus:bg-background"
                             />
-                          </TableCell>
+                          </Td>
                         ))}
-                      </TableRow>
+                      </Tr>
                     ))}
-                  </TableBody>
-                </Table>
-              )}
-            </div>
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
         {step === "result" && (
           <div>
             {loading ? (
-              <div className="flex flex-col items-center justify-center py-10 space-y-4">
-                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
-                <p className="text-sm font-semibold text-muted-foreground animate-pulse">
-                  Uploading identities...
-                </p>
-              </div>
+              <SkeletonGroup label="Importing users…" className="grid grid-cols-2 gap-3">
+                <Skeleton className="h-24 rounded-2xl" />
+                <Skeleton className="h-24 rounded-2xl" />
+              </SkeletonGroup>
             ) : uploadResult?.error ? (
-              <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-sm font-semibold text-destructive">
-                {uploadResult.message}
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-2xl bg-destructive/10 px-3.5 py-3 text-sm font-normal text-destructive ring-1 ring-inset ring-destructive/20"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <span className="min-w-0">{uploadResult.message}</span>
               </div>
             ) : uploadResult ? (
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 flex flex-col items-center justify-center">
-                    <span className="text-3xl font-black text-emerald-600 dark:text-emerald-400">
-                      {uploadResult.created}
-                    </span>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600/70 dark:text-emerald-400/70">
-                      Created
-                    </span>
-                  </div>
-                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex flex-col items-center justify-center">
-                    <span className="text-3xl font-black text-amber-600 dark:text-amber-400">
-                      {uploadResult.skipped +
-                        (uploadResult.errors?.length || 0)}
-                    </span>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-amber-600/70 dark:text-amber-400/70">
-                      Skipped/Failed
-                    </span>
-                  </div>
+                  <ResultTile tone="good" value={Number(uploadResult.created ?? 0)} label="Created" />
+                  <ResultTile tone={problemCount > 0 ? "warn" : "neutral"} value={problemCount} label="Skipped or failed" />
                 </div>
 
-                {uploadResult.errors?.length > 0 && (
-                  <div className="mt-6 border border-border/20 rounded-xl overflow-hidden shadow-xs">
-                    <div className="bg-muted px-4 py-2 border-b border-border/20 text-xs font-bold flex justify-between">
-                      <span>Error Log</span>
-                      <span className="text-destructive">
-                        {uploadResult.errors.length} issues
+                {uploadResult.errors && uploadResult.errors.length > 0 && (
+                  <section aria-label="Rows with problems" className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <Eyebrow>Rows with problems</Eyebrow>
+                      <span className="text-[11px] font-normal text-destructive">
+                        {formatNumber(uploadResult.errors.length)} {uploadResult.errors.length === 1 ? "issue" : "issues"}
                       </span>
                     </div>
-                    <div className="max-h-48 overflow-y-auto w-full overscroll-contain">
-                      <Table wrapperClassName="border-0 rounded-none bg-transparent h-full max-h-none">
-                        <TableHeader className="bg-muted/30 sticky top-0 z-10 hidden">
-                          <TableRow className="border-border/20">
-                            <TableHead className="py-2 h-auto text-[10px]">
-                              Row
-                            </TableHead>
-                            <TableHead className="py-2 h-auto text-[10px]">
-                              Email
-                            </TableHead>
-                            <TableHead className="py-2 h-auto text-[10px]">
-                              Reason
-                            </TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {uploadResult.errors.map((err: any, idx: number) => (
-                            <TableRow key={idx} className="border-border/10">
-                              <TableCell className="py-1.5 text-[10px] font-mono whitespace-nowrap align-top">
-                                #{err.row}
-                              </TableCell>
-                              <TableCell className="py-1.5 text-[10px] font-medium align-top truncate max-w-[120px]">
-                                {err.email}
-                              </TableCell>
-                              <TableCell className="py-1.5 text-[10px] text-destructive/80 font-medium whitespace-normal wrap-break-word leading-tight">
-                                {err.reason}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
+                    <ul className={cn("max-h-56 divide-y divide-border/30 overflow-y-auto overscroll-contain rounded-2xl", INSET)}>
+                      {uploadResult.errors.map((err, idx) => (
+                        <li key={idx} className="flex min-w-0 flex-col gap-0.5 px-3.5 py-2.5">
+                          <div className="flex min-w-0 items-center gap-2 text-xs">
+                            <span className="shrink-0 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[11px] font-normal tabular-nums text-destructive">
+                              Row {err.row}
+                            </span>
+                            <span className="truncate font-normal text-foreground">{err.email}</span>
+                          </div>
+                          <p className="wrap-break-word text-xs text-muted-foreground">{err.reason}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
                 )}
               </div>
             ) : null}

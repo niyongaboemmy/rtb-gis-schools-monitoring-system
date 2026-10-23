@@ -28,6 +28,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "kmz.upload_model": "Uploaded 3D model",
   "kmz.upload_model_url": "Imported 3D model from link",
   "kmz.reoptimize": "Re-optimised 3D model",
+  "kmz.rebuild_pyramid": "Rebuilt site map tiles",
   "kmz.reoptimize_all": "Re-optimised all 3D models",
   "kmz.upload_2d": "Uploaded 2D map (KMZ)",
   "kmz.upload_2d_url": "Imported 2D map from link",

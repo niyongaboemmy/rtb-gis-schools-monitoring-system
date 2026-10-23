@@ -21,13 +21,15 @@ interface Props {
   total: number;
   onChange: (page: number) => void;
   label?: string;
+  /** Singular / plural name of what is counted when it all fits on one page. */
+  noun?: [string, string];
 }
 
 /** "1–10 of 34" and page buttons. Hidden when everything fits on one page. */
-export function Pagination({ page, pageSize, total, onChange, label = "Pages" }: Props) {
+export function Pagination({ page, pageSize, total, onChange, label = "Pages", noun = ["report", "reports"] }: Props) {
   const count = Math.max(1, Math.ceil(total / pageSize));
   if (total <= pageSize) {
-    return total > 0 ? <p className="px-1 text-[11px] text-slate-500 dark:text-white/45">{formatNumber(total)} {total === 1 ? "report" : "reports"}</p> : null;
+    return total > 0 ? <p className="px-1 text-[11px] text-slate-500 dark:text-white/45">{formatNumber(total)} {total === 1 ? noun[0] : noun[1]}</p> : null;
   }
   const btn =
     "flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-xs font-medium tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:opacity-40";
@@ -40,9 +42,13 @@ export function Pagination({ page, pageSize, total, onChange, label = "Pages" }:
         <button type="button" className={cn(btn, "text-slate-600 hover:bg-slate-900/5 dark:text-white/65 dark:hover:bg-white/8")} disabled={page <= 1} onClick={() => onChange(page - 1)} aria-label="Previous page">
           <ChevronLeft className="h-4 w-4" aria-hidden />
         </button>
+        {/* Phones: "3 / 12" between the arrows; the number strip needs ~330px. */}
+        <span className="px-1.5 text-xs font-medium tabular-nums text-slate-600 sm:hidden dark:text-white/65" aria-hidden>
+          {formatNumber(page)} / {formatNumber(count)}
+        </span>
         {pages(page, count).map((p, i) =>
           p === "…" ? (
-            <span key={`gap-${i}`} className="px-1 text-xs text-slate-400" aria-hidden>
+            <span key={`gap-${i}`} className="hidden px-1 text-xs text-slate-400 sm:inline" aria-hidden>
               …
             </span>
           ) : (
@@ -52,7 +58,7 @@ export function Pagination({ page, pageSize, total, onChange, label = "Pages" }:
               aria-current={p === page ? "page" : undefined}
               aria-label={`Page ${p}`}
               onClick={() => onChange(p)}
-              className={cn(btn, p === page ? "bg-primary text-white" : "text-slate-600 hover:bg-slate-900/5 dark:text-white/65 dark:hover:bg-white/8")}
+              className={cn(btn, "hidden sm:flex", p === page ? "bg-primary text-white" : "text-slate-600 hover:bg-slate-900/5 dark:text-white/65 dark:hover:bg-white/8")}
             >
               {p}
             </button>

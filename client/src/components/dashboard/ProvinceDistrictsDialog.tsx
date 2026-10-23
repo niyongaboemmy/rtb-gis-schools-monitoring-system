@@ -42,7 +42,6 @@ function Ring({ score, size = 44, stroke = 4, delay = 0 }: { score: number | nul
           initial={{ strokeDashoffset: c }}
           animate={{ strokeDashoffset: c * (1 - pct) }}
           transition={{ duration: reduce ? 0 : 1.1, delay: reduce ? 0 : delay, ease: [0.22, 1, 0.36, 1] }}
-          style={{ filter: `drop-shadow(0 0 3px ${color}66)` }}
         />
       </svg>
       <span className="absolute text-[11px] font-semibold tabular-nums text-slate-900 dark:text-white" style={{ fontSize: size > 60 ? 18 : 11 }}>

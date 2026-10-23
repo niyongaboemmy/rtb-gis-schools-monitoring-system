@@ -1,33 +1,44 @@
-import { CheckCircle2, Ban, XCircle } from "lucide-react";
-import { Badge } from "../ui/badge";
-import { cn } from "../../lib/utils";
+import { StatusPill } from "../ui/status-pill";
+import type { Tone } from "../ui/surfaces";
+import { titleCase } from "../../lib/labels";
 import { outcomeLabel } from "./auditLabels";
 import type { AuditLogRow } from "./auditApi";
 
-/** Success / Failed / Denied pill. */
+const OUTCOME_TONE: Record<string, Tone> = {
+  success: "good",
+  failure: "danger",
+  // Amber, not red: a refused permission reads differently from a failed action.
+  denied: "warn",
+};
+
+/** Success / Failed / Denied status pill (theme status tokens only). */
 export function OutcomeBadge({ outcome, className }: { outcome: string | null | undefined; className?: string }) {
   const o = outcome ?? "success";
-  const Icon = o === "success" ? CheckCircle2 : o === "denied" ? Ban : XCircle;
   return (
-    <Badge
-      variant={o === "success" ? "success" : o === "denied" ? "warning" : "destructive"}
-      className={cn("gap-1 whitespace-nowrap text-[10px] px-2 py-0", className)}
-    >
-      <Icon className="w-3 h-3" aria-hidden="true" />
+    <StatusPill tone={OUTCOME_TONE[o] ?? "neutral"} className={className}>
       {outcomeLabel(o)}
-    </Badge>
+    </StatusPill>
   );
 }
 
-/** "jane@rtb.gov.rw · admin" with the IP in a native tooltip. */
+/** Display name for whoever performed the action. */
+function actorName(row: Pick<AuditLogRow, "actorEmail" | "actorId">): string {
+  return row.actorEmail ?? (row.actorId ? `User ${row.actorId.slice(0, 8)}` : "System / anonymous");
+}
+
+/** Human role name ("gis_analyst" → "GIS Analyst"). */
+function roleName(role: string | null | undefined): string {
+  return role ? titleCase(role) : "No role";
+}
+
+/** "jane@rtb.gov.rw" over "GIS Analyst · 41.186.1.2", with the IP in a native tooltip. */
 export function ActorSummary({ row }: { row: AuditLogRow }) {
-  const who = row.actorEmail ?? (row.actorId ? `User ${row.actorId.slice(0, 8)}` : "System / anonymous");
   return (
     <div className="min-w-0" title={row.ip ? `IP address: ${row.ip}` : undefined}>
-      <div className="text-sm font-medium truncate">{who}</div>
-      <div className="text-xs text-muted-foreground truncate">
-        {row.actorRole ? row.actorRole.replace(/_/g, " ") : "—"}
-        {row.ip ? <span className="ml-1 font-mono">· {row.ip}</span> : null}
+      <div className="truncate text-sm font-normal text-foreground">{actorName(row)}</div>
+      <div className="truncate text-xs text-muted-foreground">
+        {roleName(row.actorRole)}
+        {row.ip ? <span className="font-mono"> · {row.ip}</span> : null}
       </div>
     </div>
   );
