@@ -93,3 +93,104 @@ describe('GlbReoptimizeService.enqueueUnoptimized', () => {
     expect(queue.add).not.toHaveBeenCalled();
   });
 });
+
+describe('GlbReoptimizeService per-school jobs', () => {
+  const fakeJob = (
+    id: string,
+    schoolId: string,
+    state: string,
+    ts: number,
+  ) => ({
+    id,
+    name: 'process-glb',
+    data: { schoolId, originalName: 'site.glb', source: 'restore' },
+    progress: {
+      stage: 'simplifying',
+      percent: 18,
+      at: new Date(ts).toISOString(),
+    },
+    attemptsMade: 0,
+    opts: { attempts: 3 },
+    timestamp: ts,
+    processedOn: ts,
+    finishedOn: state === 'completed' ? ts + 1000 : null,
+    failedReason: null,
+    returnvalue: null,
+    getState: jest.fn().mockResolvedValue(state),
+  });
+
+  const make = (jobs: unknown[]) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'glb-jobs-'));
+    const dir = path.join(root, 'schools', 'school-a', '3d', '_source');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, '..', 'site.glb'), 'glb');
+    fs.writeFileSync(path.join(dir, 'site.glb'), 'glb');
+    const queue = {
+      getJobs: jest.fn().mockResolvedValue(jobs),
+      add: jest.fn().mockResolvedValue({ id: 'new' }),
+    };
+    const service = new GlbReoptimizeService(
+      queue as any,
+      { getLocalRoot: () => root } as any,
+      { find: jest.fn().mockResolvedValue([]) } as any,
+    );
+    return {
+      service,
+      queue,
+      cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+    };
+  };
+
+  it('reports the newest job of that school only', async () => {
+    const { service, cleanup } = make([
+      fakeJob('1', 'school-a', 'completed', 1000),
+      fakeJob('2', 'school-a', 'active', 2000),
+      fakeJob('3', 'school-b', 'active', 3000),
+    ]);
+    const job = await service.latestJob('school-a');
+    expect(job).toMatchObject({
+      jobId: '2',
+      state: 'running',
+      stage: 'simplifying',
+    });
+    expect(await service.latestJob('school-c')).toBeNull();
+    cleanup();
+  });
+
+  it('does not start a second job while one runs', async () => {
+    const { service, queue, cleanup } = make([
+      fakeJob('2', 'school-a', 'active', 2000),
+    ]);
+    const r = await service.startForSchool('school-a');
+    expect(r).toMatchObject({ started: false, reason: 'already-running' });
+    expect(queue.add).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it('starts from the stored original when idle', async () => {
+    const { service, queue, cleanup } = make([
+      fakeJob('1', 'school-a', 'completed', 1000),
+    ]);
+    const r = await service.startForSchool('school-a');
+    expect(r.started).toBe(true);
+    expect(queue.add).toHaveBeenCalledWith(
+      'process-glb',
+      expect.objectContaining({
+        schoolId: 'school-a',
+        source: 'restore',
+        tempFilePath: expect.stringContaining(path.join('_source', 'site.glb')),
+      }),
+      expect.any(Object),
+    );
+    cleanup();
+  });
+
+  it('says so when the school has no model', async () => {
+    const { service, cleanup } = make([]);
+    expect(await service.startForSchool('school-z')).toMatchObject({
+      started: false,
+      reason: 'no-model',
+    });
+    cleanup();
+  });
+});

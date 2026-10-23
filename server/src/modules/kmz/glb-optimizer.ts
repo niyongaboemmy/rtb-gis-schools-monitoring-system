@@ -117,6 +117,31 @@ export interface GlbOptimizeOptions {
   timeoutMs?: number;
   /** Child V8 old-space ceiling (MB). */
   heapMb?: number;
+  /** Called as each optimizer step starts (`@@progress <stage>` lines). */
+  onStage?: (stage: string) => void;
+}
+
+/**
+ * Splits the optimizer's stderr into progress markers (`@@progress <stage>`,
+ * passed to `onStage`) and everything else (returned, kept for error
+ * messages). Handles lines split across chunks.
+ */
+export function createStageParser(
+  onStage: (stage: string) => void,
+): (chunk: string) => string {
+  let pending = '';
+  return (chunk: string) => {
+    pending += chunk;
+    const lines = pending.split('\n');
+    pending = lines.pop() ?? '';
+    let rest = '';
+    for (const line of lines) {
+      const m = /^@@progress (\S+)\s*$/.exec(line);
+      if (m) onStage(m[1]);
+      else rest += `${line}\n`;
+    }
+    return rest;
+  };
 }
 
 export function isGlbOptimizerAvailable(): boolean {
@@ -247,8 +272,15 @@ export function optimizeGlbFile(
 
     let stdout = '';
     let stderr = '';
+    const parseStderr = createStageParser((stage) => {
+      try {
+        opts.onStage?.(stage);
+      } catch {
+        /* progress is best effort */
+      }
+    });
     child.stdout?.on('data', (d) => (stdout += d.toString()));
-    child.stderr?.on('data', (d) => (stderr += d.toString()));
+    child.stderr?.on('data', (d) => (stderr += parseStderr(d.toString())));
 
     const timer = setTimeout(() => {
       child.kill('SIGKILL');

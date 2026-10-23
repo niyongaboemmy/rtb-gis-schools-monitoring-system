@@ -84,16 +84,20 @@ export class KmzController {
   @ApiBearerAuth()
   @ApiOperation({
     summary:
-      "Re-run the server-side 3D optimizer for this school's GLB (background)",
+      "Reprocess this school's 3D model from its stored original (background); returns the job. Never starts a second one while one runs",
   })
-  reoptimizeGlb(
-    @Param('schoolId', ParseUUIDPipe) schoolId: string,
-    @Body() body: { force?: boolean } = {},
-  ) {
-    return this.glbReoptimize.enqueueUnoptimized({
-      onlySchoolId: schoolId,
-      force: body?.force === true,
-    });
+  reoptimizeGlb(@Param('schoolId', ParseUUIDPipe) schoolId: string) {
+    return this.glbReoptimize.startForSchool(schoolId);
+  }
+
+  @Get('reoptimize')
+  @RequirePermissions(Permission.UPLOAD_KMZ)
+  @ApiOperation({
+    summary:
+      'Latest 3D model processing job for this school: state, step, percent, result',
+  })
+  async reoptimizeStatus(@Param('schoolId', ParseUUIDPipe) schoolId: string) {
+    return { job: await this.glbReoptimize.latestJob(schoolId) };
   }
 
   @Post()

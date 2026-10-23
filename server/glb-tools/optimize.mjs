@@ -18,6 +18,9 @@
  *   node optimize.mjs <input.glb> <output.glb> [ratio=0.1] [textureSize=4096]
  *
  * Exit codes: 0 ok · 2 bad args · 3 read/parse · 4 transform · 5 write.
+ * Progress: one `@@progress <stage>` line on stderr as each step starts
+ * (reading, measuring, simplifying, textures, compressing, writing), read by
+ * the API to show how far a job is (server/src/modules/kmz/model-job.ts).
  * On success prints one JSON line to stdout:
  *   {bytesIn,bytesOut,trisIn,trisOut,ratio,ms,method,reprojected,lat,lng}
  * `method` is 'exact' | 'tiled' | 'sloppy' | 'none'.
@@ -57,6 +60,7 @@ if (!fs.existsSync(inputPath)) {
 }
 
 const t0 = Date.now();
+const progress = (stage) => process.stderr.write(`@@progress ${stage}\n`);
 
 let NodeIO, ALL_EXTENSIONS, EXTTextureWebP, fns, MeshoptSimplifier, MeshoptEncoder, MeshoptDecoder, sharp, measureQuality, imageSize;
 try {
@@ -96,6 +100,7 @@ const io = new NodeIO()
   });
 
 let document;
+progress('reading');
 try {
   document = await io.read(inputPath);
 } catch (err) {
@@ -120,6 +125,7 @@ try {
 }
 
 // Detail of what the surveyor delivered (cm of surface per texture pixel).
+progress('measuring');
 let qualityIn = null;
 try {
   qualityIn = measureQuality(document);
@@ -170,6 +176,7 @@ const exactSimplify = (ratio = effectiveRatio) =>
   );
 
 let method = 'exact';
+progress('simplifying');
 try {
   if (process.env.GLB_FORCE_TILED === '1') throw new Error('forced tiled');
   if (process.env.GLB_FORCE_SLOPPY === '1') throw new Error('forced sloppy');
@@ -204,6 +211,7 @@ try {
 // are re-encoded to WebP one at a time.
 const textureReport = [];
 let quality = null;
+progress('textures');
 try {
   await document.transform(weld(), prune());
   let webp = false;
@@ -242,6 +250,7 @@ try {
   } catch (err) {
     console.error(`quality (output) skipped: ${err?.message || err}`);
   }
+  progress('compressing');
   await document.transform(
     // 16-bit positions (~4 mm grid on a 280 m site; 14-bit ≈ 17 mm and visibly
     // stair-steps roofs) and 14-bit UVs (12-bit smears the 4096 atlas).
@@ -257,6 +266,7 @@ try {
   process.exit(4);
 }
 
+progress('writing');
 try {
   await io.write(outputPath, document);
 } catch (err) {

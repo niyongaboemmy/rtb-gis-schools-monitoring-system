@@ -129,3 +129,26 @@ export function formatRelative(value: Date | string | number | null | undefined,
   if (abs < 86400) return rtf.format(Math.round(diffSec / 3600), "hour");
   return rtf.format(Math.round(diffSec / 86400), "day");
 }
+
+/** File size → "18.9 MB", "1.82 GB", "640 KB". */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (!isNum(bytes)) return EMPTY;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let v = bytes;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${fixed(v, i === 0 ? 0 : v < 10 ? 2 : 1)} ${units[i]}`;
+}
+
+/** Elapsed time in ms → "45 s", "3 min 05 s", "1 h 02 min". */
+export function formatDuration(ms: number | null | undefined): string {
+  if (!isNum(ms) || ms < 0) return EMPTY;
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min ${String(s % 60).padStart(2, "0")} s`;
+  return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")} min`;
+}

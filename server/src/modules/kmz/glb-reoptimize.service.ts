@@ -11,6 +11,12 @@ import { School } from '../schools/entities/school.entity';
 import { StorageService } from '../storage/storage.service';
 import { KMZ_QUEUE, GLB_JOB_OPTIONS } from './kmz.constants';
 import type { GlbJobData } from './kmz.processor';
+import {
+  isModelJobActive,
+  toModelJob,
+  type ModelJob,
+  type QueueJobLike,
+} from './model-job';
 
 /**
  * Self-healing sweep for school 3D models.
@@ -153,5 +159,52 @@ export class GlbReoptimizeService implements OnModuleInit {
     }
 
     return { enqueued, skipped };
+  }
+
+  /**
+   * The school's most recent 3D model job (upload, sweep or manual), with its
+   * step and percent — what the "Reprocess" panel polls. Null when none is
+   * kept (finished jobs are kept for the last 50 / failed for 100).
+   */
+  async latestJob(schoolId: string): Promise<ModelJob | null> {
+    const jobs = await this.queue.getJobs(
+      ['active', 'waiting', 'delayed', 'prioritized', 'completed', 'failed'],
+      0,
+      500,
+    );
+    const mine = jobs
+      .filter(
+        (j) =>
+          j?.name === 'process-glb' &&
+          (j.data as GlbJobData | undefined)?.schoolId === schoolId,
+      )
+      .sort((a, b) => b.timestamp - a.timestamp)[0];
+    if (!mine) return null;
+    return toModelJob(mine as unknown as QueueJobLike, await mine.getState());
+  }
+
+  /**
+   * Manually re-process one school's model from its stored original, in the
+   * background. Never starts a second job while one is queued or running.
+   */
+  async startForSchool(schoolId: string): Promise<{
+    started: boolean;
+    reason: 'started' | 'already-running' | 'no-model';
+    job: ModelJob | null;
+  }> {
+    const current = await this.latestJob(schoolId);
+    if (isModelJobActive(current))
+      return { started: false, reason: 'already-running', job: current };
+    const { enqueued } = await this.enqueueUnoptimized({
+      force: true,
+      onlySchoolId: schoolId,
+    });
+    if (!enqueued.length)
+      return { started: false, reason: 'no-model', job: current };
+    return {
+      started: true,
+      reason: 'started',
+      job: await this.latestJob(schoolId),
+    };
   }
 }
