@@ -20,37 +20,18 @@ import { GLASS } from "../ui/surfaces";
 const EASE = [0.22, 1, 0.36, 1] as const;
 
 
-/** Name words rise in one by one; the last name carries the primary accent and underline. */
+/** The person's full name: plain, single colour, fades up once. */
 function HeroName({ first, last }: { first: string; last: string }) {
   const reduce = useReducedMotion();
-  const words = [
-    { text: first, accent: false },
-    { text: last, accent: true },
-  ].filter((w) => w.text);
   return (
-    <h1 className="break-words text-[1.4rem] font-semibold leading-tight tracking-[-0.02em] min-[400px]:text-2xl sm:text-3xl">
-      {words.map(({ text, accent }, i) => (
-        <motion.span
-          key={i}
-          initial={reduce ? false : { opacity: 0, y: "0.45em", filter: "blur(6px)" }}
-          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-          transition={{ duration: 0.7, delay: 0.1 + i * 0.12, ease: EASE }}
-          className={cn("relative inline-block", accent ? "text-primary" : "text-foreground dark:text-white")}
-        >
-          {text}
-          {accent && (
-            <motion.span
-              aria-hidden
-              initial={reduce ? false : { scaleX: 0 }}
-              animate={{ scaleX: 1 }}
-              transition={{ duration: 0.9, delay: 0.45, ease: EASE }}
-              className="absolute -bottom-0.5 left-0 h-[2px] w-full origin-left rounded-full bg-primary/80 shadow-[0_0_12px_hsl(var(--primary)/0.6)]"
-            />
-          )}
-          {i < words.length - 1 ? " " : ""}
-        </motion.span>
-      ))}
-    </h1>
+    <motion.h1
+      initial={reduce ? false : { opacity: 0, y: 6, filter: "blur(4px)" }}
+      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+      transition={{ duration: 0.6, delay: 0.1, ease: EASE }}
+      className="break-words text-[1.4rem] font-semibold leading-tight tracking-[-0.02em] text-foreground min-[400px]:text-2xl sm:text-3xl"
+    >
+      {[first, last].filter(Boolean).join(" ")}
+    </motion.h1>
   );
 }
 
