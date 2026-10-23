@@ -22,6 +22,7 @@ import { useAuthStore } from "../store/authStore";
 import { inspectGlb, type GlbInfo } from "../lib/viewer3d/glb-inspect";
 import { ModelReprocessPanel } from "../components/model-job/ModelReprocessPanel";
 import { SiteTilesPanel } from "../components/model-job/SiteTilesPanel";
+import { existing3dModel } from "../lib/school-model";
 
 const FILE_SERVER_BASE = (
   import.meta.env.VITE_FILE_SERVER_URL || "http://localhost:3002/files"
@@ -64,11 +65,7 @@ export default function KmzUpload() {
       .get(`/schools/${id}`)
       .then((res) => {
         const school = res.data;
-        // 3D: look for a .dlb file in the buildings modelPaths
-        const dlbBuilding = school.buildings?.find((b: any) =>
-          b.modelPath?.toLowerCase().endsWith(".glb"),
-        );
-        setExistingFile3d(dlbBuilding?.modelPath || null);
+        setExistingFile3d(existing3dModel(school));
         // 2D: kmz/kml file stored on the school
         setExistingFile2d(school.kmz2dFilePath || null);
       })
