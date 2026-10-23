@@ -58,10 +58,11 @@ if (!fs.existsSync(inputPath)) {
 
 const t0 = Date.now();
 
-let NodeIO, ALL_EXTENSIONS, fns, MeshoptSimplifier, MeshoptEncoder, MeshoptDecoder, sharp;
+let NodeIO, ALL_EXTENSIONS, EXTTextureWebP, fns, MeshoptSimplifier, MeshoptEncoder, MeshoptDecoder, sharp, measureQuality, imageSize;
 try {
   ({ NodeIO } = await import('@gltf-transform/core'));
-  ({ ALL_EXTENSIONS } = await import('@gltf-transform/extensions'));
+  ({ ALL_EXTENSIONS, EXTTextureWebP } = await import('@gltf-transform/extensions'));
+  ({ measureQuality, imageSize } = await import('./quality.mjs'));
   fns = await import('@gltf-transform/functions');
   ({ MeshoptSimplifier, MeshoptEncoder, MeshoptDecoder } = await import('meshoptimizer'));
   ({ default: sharp } = await import('sharp'));
@@ -70,7 +71,7 @@ try {
   process.exit(2);
 }
 
-const { dedup, prune, weld, simplify, textureCompress, meshopt } = fns;
+const { dedup, prune, weld, simplify, meshopt } = fns;
 
 const countTris = (doc) => {
   let t = 0;
@@ -116,6 +117,14 @@ try {
   reprojection = reprojectIfGeographic(document);
 } catch (err) {
   console.error(`reprojection skipped: ${err?.message || err}`);
+}
+
+// Detail of what the surveyor delivered (cm of surface per texture pixel).
+let qualityIn = null;
+try {
+  qualityIn = measureQuality(document);
+} catch (err) {
+  console.error(`quality (input) skipped: ${err?.message || err}`);
 }
 
 // ── Geometry decimation ───────────────────────────────────────────────────
@@ -189,20 +198,51 @@ try {
   }
 }
 
+// Textures: keep the surveyor's pixels. A JPEG/WebP atlas within the size
+// limit passes through byte for byte (re-encoding only loses quality and was
+// the step that ran out of memory on big inputs). PNG or oversize textures
+// are re-encoded to WebP one at a time.
+const textureReport = [];
+let quality = null;
 try {
+  await document.transform(weld(), prune());
+  let webp = false;
+  for (const tex of document.getRoot().listTextures()) {
+    const img = tex.getImage();
+    const size = img ? imageSize(img) : null;
+    const mime = tex.getMimeType();
+    const fits = size && Math.max(size.width, size.height) <= TEX;
+    if (img && fits && (mime === 'image/jpeg' || mime === 'image/webp')) {
+      textureReport.push({ action: 'kept', mime, ...size });
+      if (mime === 'image/webp') webp = true;
+      continue;
+    }
+    if (!img) continue;
+    const out = await sharp(Buffer.from(img), { limitInputPixels: false })
+      .resize(TEX, TEX, { fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: TEX_QUALITY, effort: 6 })
+      .toBuffer();
+    tex.setImage(new Uint8Array(out)).setMimeType('image/webp');
+    if (tex.getURI()) tex.setURI(tex.getURI().replace(/\.\w+$/, '.webp'));
+    textureReport.push({ action: 'reencoded', from: mime, ...(imageSize(out) ?? {}) });
+    webp = true;
+  }
+  if (webp) document.createExtension(EXTTextureWebP).setRequired(true);
+  // Mipmapped sampling. Exports often say LINEAR, which makes three.js skip
+  // mipmaps: distant roofs and grass then shimmer and alias.
+  for (const mat of document.getRoot().listMaterials()) {
+    for (const info of [mat.getBaseColorTextureInfo(), mat.getEmissiveTextureInfo(), mat.getNormalTextureInfo(), mat.getOcclusionTextureInfo(), mat.getMetallicRoughnessTextureInfo()]) {
+      if (!info) continue;
+      info.setMinFilter(9987); // LINEAR_MIPMAP_LINEAR
+      info.setMagFilter(9729); // LINEAR
+    }
+  }
+  try {
+    quality = measureQuality(document); // positions still in metres here
+  } catch (err) {
+    console.error(`quality (output) skipped: ${err?.message || err}`);
+  }
   await document.transform(
-    weld(), // exact weld — fuses the lattice-aligned tile seams
-    prune(),
-    // Convert the atlas to WebP at near-lossless quality. `resize` is only an
-    // upper bound (TEX = 8192), so a 4096 source passes through un-resampled —
-    // downscaling here was a big part of the "blurry" look.
-    textureCompress({
-      encoder: sharp,
-      targetFormat: 'webp',
-      resize: [TEX, TEX],
-      quality: TEX_QUALITY,
-      effort: 6,
-    }),
     // 16-bit positions (~4 mm grid on a 280 m site; 14-bit ≈ 17 mm and visibly
     // stair-steps roofs) and 14-bit UVs (12-bit smears the 4096 atlas).
     meshopt({
@@ -237,6 +277,9 @@ process.stdout.write(
     reprojected: reprojection.reprojected,
     lat: reprojection.lat,
     lng: reprojection.lng,
+    textures: textureReport,
+    quality,
+    qualityIn,
   }) + '\n',
 );
 process.exit(0);

@@ -19,6 +19,7 @@ import { cn } from "../lib/utils";
 import { api } from "../lib/api";
 import { useToast } from "../components/ui/toast";
 import { useAuthStore } from "../store/authStore";
+import { inspectGlb, type GlbInfo } from "../lib/viewer3d/glb-inspect";
 
 const FILE_SERVER_BASE = (
   import.meta.env.VITE_FILE_SERVER_URL || "http://localhost:3002/files"
@@ -39,6 +40,21 @@ export default function KmzUpload() {
   const [existingFile2d, setExistingFile2d] = useState<string | null>(null);
   const [loadingSchool, setLoadingSchool] = useState(true);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
+  const [glbInfo, setGlbInfo] = useState<GlbInfo | null>(null);
+
+  // Read the GLB header before upload: a file already compressed for the web
+  // has lost detail upstream (docs/3D_SURVEY_SPEC.md).
+  useEffect(() => {
+    setGlbInfo(null);
+    if (!file || uploadMode !== "3d" || !/\.glb$/i.test(file.name)) return;
+    let alive = true;
+    inspectGlb(file)
+      .then((info) => alive && setGlbInfo(info))
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [file, uploadMode]);
 
   useEffect(() => {
     if (!id) return;
@@ -168,7 +184,7 @@ export default function KmzUpload() {
       setUploadProgress(100);
       setMessage(
         uploadMode === "3d"
-          ? "Uploaded. The model is being prepared."
+          ? "Uploaded. The model is being prepared. Its detail level shows in the 3D view's info bar once ready."
           : "Uploaded. The site map is being prepared, and the school's location will update from it.",
       );
       toast.success(`${uploadMode === "3d" ? "3D model" : "2D map"} "${file.name}" ${isUpdate ? "replaced" : "uploaded"}`);
@@ -377,6 +393,19 @@ export default function KmzUpload() {
                 </div>
               )}
             </div>
+
+            {glbInfo?.precompressed && status !== "uploading" && (
+              <div className="flex gap-3 rounded-2xl bg-amber-50 dark:bg-amber-500/10 p-4 text-amber-800 dark:text-amber-300">
+                <AlertCircle className="h-5 w-5 shrink-0" />
+                <div className="text-sm space-y-1">
+                  <p className="font-medium">This file is already compressed for the web</p>
+                  <p className="text-amber-700/90 dark:text-amber-300/80">
+                    Some detail was removed before upload, so the model will look soft up close. You can still upload it.
+                    For a sharp model, ask the survey team for the full export (several texture pages or 3D Tiles).
+                  </p>
+                </div>
+              </div>
+            )}
 
             {status === "error" && (
               <div className="bg-destructive/10 border-l-4 border-destructive p-4 rounded-r-md flex gap-3 text-destructive">

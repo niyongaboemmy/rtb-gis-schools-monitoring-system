@@ -14,7 +14,14 @@ import { Repository } from 'typeorm';
 import * as JSZip from 'jszip';
 import * as xml2js from 'xml2js';
 import * as fs from 'fs';
-import { School, KmzProcessingStatus } from '../schools/entities/school.entity';
+import {
+  School,
+  KmzProcessingStatus,
+  type ModelQuality,
+  type ModelQualityMeasure,
+  type ModelVariants,
+} from '../schools/entities/school.entity';
+import { execFile } from 'child_process';
 import {
   SchoolBoundary,
   BoundaryType,
@@ -30,8 +37,15 @@ import {
   optimizeGlbFile,
   ensureGlbTools,
   isGlbOptimizerAvailable,
+  resolveHeapMb,
   type GlbOptimizeResult,
 } from './glb-optimizer';
+import {
+  buildKtx2Variant,
+  ktx2ObjectName,
+  shouldBuildKtx2,
+  webpGpuBytes,
+} from './glb-ktx2';
 import {
   pickKmlCoordinate,
   deriveCoordinateFromGlb,
@@ -77,6 +91,34 @@ import archiver from 'archiver';
 import type { Response } from 'express';
 import sharp from 'sharp';
 import * as os from 'os';
+import { createHash } from 'crypto';
+
+/** Manifest kept beside the original 3D model in `3d/_source/`. */
+export function sourceManifest(
+  fileName: string,
+  bytes: Buffer,
+  quality: unknown,
+): {
+  fileName: string;
+  bytes: number;
+  sha256: string;
+  keptAt: string;
+  precompressed: boolean | null;
+  quality: unknown;
+} {
+  const q = quality as { precompressed?: boolean } | null;
+  return {
+    fileName,
+    bytes: bytes.byteLength,
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+    keptAt: new Date().toISOString(),
+    precompressed: q?.precompressed ?? null,
+    quality,
+  };
+}
+
+/** The detail meter (glb-tools/quality.mjs), run as a child process. */
+const QUALITY_SCRIPT = path.join(process.cwd(), 'glb-tools', 'quality.mjs');
 
 /**
  * Scratch space for KMZ downloads / extraction. Defaults to the OS temp dir,
@@ -252,6 +294,21 @@ export class KmzService implements OnModuleInit {
         }
       }
 
+      // Detail of the served model and of the file as delivered (Phase 1).
+      if (optResult?.quality) {
+        await this.schoolRepository
+          .update(schoolId, {
+            modelQuality: {
+              served: optResult.quality as ModelQualityMeasure,
+              source: (optResult.qualityIn as ModelQualityMeasure) ?? null,
+              profile: optResult.profile ?? 'standard',
+              textures: (optResult.textures ?? []) as ModelQuality['textures'],
+              measuredAt: new Date().toISOString(),
+            },
+          })
+          .catch(() => null);
+      }
+
       await this.writeModelTelemetry(schoolId, {
         optimized: effective.optimized,
         bytes:
@@ -326,6 +383,20 @@ export class KmzService implements OnModuleInit {
       });
 
       this.logger.log(`GLB processing completed for school ${schoolId}`);
+
+      // 4. GPU-compressed variant for heavy textures (Phase 3). The model is
+      //    already live; this only adds a lighter option for phones.
+      if (optResult?.quality && effective.optimized) {
+        await this.refreshKtx2Variant(
+          schoolId,
+          filePath,
+          (optResult.quality as ModelQualityMeasure).textures ?? [],
+        ).catch((err: any) =>
+          this.logger.warn(
+            `KTX2 variant skipped for ${schoolId}: ${err?.message || err}`,
+          ),
+        );
+      }
     } catch (err: any) {
       this.logger.error(
         `GLB processing failed for school ${schoolId}: ${err.message}`,
@@ -345,6 +416,141 @@ export class KmzService implements OnModuleInit {
         }
       }
     }
+  }
+
+  /**
+   * Build (or drop) the KTX2 variant of the served model `servedObjectName`.
+   * Built only when the textures exceed the WebP GPU budget (glb-ktx2.ts);
+   * otherwise any older variant is removed so it can't go stale.
+   */
+  private async refreshKtx2Variant(
+    schoolId: string,
+    servedObjectName: string,
+    textures: Array<{ width?: number; height?: number; mime?: string }>,
+  ): Promise<void> {
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+      select: ['id', 'modelVariants'],
+    });
+    const previous = school?.modelVariants?.ktx2?.objectName;
+    const objectName = ktx2ObjectName(servedObjectName);
+    const clear = async () => {
+      for (const name of new Set([previous, objectName].filter(Boolean)))
+        await this.storageService.deleteFile(name as string).catch(() => {});
+      if (school?.modelVariants)
+        await this.schoolRepository.update(schoolId, { modelVariants: null });
+    };
+    if (!shouldBuildKtx2(textures)) return clear();
+
+    const served = await this.storageService.readFile(servedObjectName);
+    if (!served) throw new Error('served model not readable');
+    const workDir = path.join(KMZ_TMP_DIR, 'glb-ktx2');
+    fs.mkdirSync(workDir, { recursive: true });
+    const stamp = `${schoolId}-${Date.now()}`;
+    const input = path.join(workDir, `${stamp}.glb`);
+    const output = path.join(workDir, `${stamp}.ktx2.glb`);
+    try {
+      fs.writeFileSync(input, served);
+      const r = await buildKtx2Variant(input, output);
+      const url =
+        (await this.storageService.uploadFile(
+          objectName,
+          fs.readFileSync(output),
+          'model/gltf-binary',
+        )) ?? `/files/${objectName}`;
+      if (previous && previous !== objectName)
+        await this.storageService.deleteFile(previous).catch(() => {});
+      const modelVariants: ModelVariants = {
+        ktx2: {
+          url,
+          objectName,
+          bytes: r.bytesOut,
+          gpuBytes: r.gpuBytes,
+          webpGpuBytes: webpGpuBytes(textures),
+          builtAt: new Date().toISOString(),
+        },
+      };
+      await this.schoolRepository.update(schoolId, { modelVariants });
+      this.logger.log(
+        `KTX2 variant for ${schoolId}: ${(r.bytesOut / 1048576).toFixed(1)} MB, ` +
+          `GPU ${(r.gpuBytes / 1048576).toFixed(0)} MB (WebP ${(
+            webpGpuBytes(textures) / 1048576
+          ).toFixed(0)} MB), ${(r.ms / 1000).toFixed(0)}s`,
+      );
+    } catch (err) {
+      await clear(); // never leave a variant that no longer matches the model
+      throw err;
+    } finally {
+      for (const f of [input, output]) fs.rmSync(f, { force: true });
+    }
+  }
+
+  /** Schools whose model is being measured right now (one at a time each). */
+  private readonly measuring = new Set<string>();
+
+  /**
+   * Measure an already-processed model once, in the background (quality.mjs
+   * in a child process; reads files only, never re-optimizes). Used for
+   * schools processed before measurements existed.
+   */
+  private ensureModelQuality(school: School): void {
+    const root = this.storageService.getLocalRoot();
+    if (!root || school.modelQuality || !school.kmzFilePath) return;
+    if (!/\.glb(\?|$)/i.test(school.kmzFilePath)) return;
+    if (this.measuring.has(school.id)) return;
+    const objectName = this.storageService.urlToObjectName(school.kmzFilePath);
+    if (!objectName) return;
+    const served = path.join(root, objectName);
+    if (!fs.existsSync(served)) return;
+    const source = path.join(
+      path.dirname(served),
+      '_source',
+      path.basename(served),
+    );
+    this.measuring.add(school.id);
+    const measure = (file: string) =>
+      new Promise<ModelQualityMeasure | null>((resolve) => {
+        if (!fs.existsSync(file)) return resolve(null);
+        execFile(
+          process.execPath,
+          [`--max-old-space-size=${resolveHeapMb()}`, QUALITY_SCRIPT, file],
+          { timeout: 10 * 60_000, maxBuffer: 8 * 1024 * 1024 },
+          (err, stdout) => {
+            if (err) return resolve(null);
+            try {
+              resolve(
+                JSON.parse(String(stdout).trim().split('\n').pop() ?? 'null'),
+              );
+            } catch {
+              resolve(null);
+            }
+          },
+        );
+      });
+    void (async () => {
+      try {
+        const servedQ = await measure(served);
+        if (!servedQ) return;
+        const sourceQ = await measure(source);
+        await this.schoolRepository.update(school.id, {
+          modelQuality: {
+            served: servedQ,
+            source: sourceQ,
+            profile: 'measured',
+            measuredAt: new Date().toISOString(),
+          },
+        });
+        this.logger.log(
+          `[3D] Measured model detail for ${school.id}: ${servedQ.cmPerPixel?.horizontal?.median ?? '?'} cm/px (${servedQ.score})`,
+        );
+      } catch (e) {
+        this.logger.warn(
+          `[3D] Model measurement failed for ${school.id}: ${(e as Error).message}`,
+        );
+      } finally {
+        this.measuring.delete(school.id);
+      }
+    })();
   }
 
   /**
@@ -494,6 +700,24 @@ export class KmzService implements OnModuleInit {
         rawBuffer,
         mimetype,
       );
+      // What was delivered, so it can be checked and re-processed later.
+      await this.storageService
+        .uploadFile(
+          `schools/${schoolId}/3d/_source/${originalName}.manifest.json`,
+          Buffer.from(
+            JSON.stringify(
+              sourceManifest(originalName, rawBuffer, r.qualityIn ?? null),
+              null,
+              2,
+            ),
+          ),
+          'application/json',
+        )
+        .catch((err: any) =>
+          this.logger.warn(
+            `Could not write source manifest for ${schoolId}: ${err?.message || err}`,
+          ),
+        );
       await this.storageService.uploadFile(
         servedObjectName,
         optimizedBuffer,
@@ -1011,6 +1235,9 @@ export class KmzService implements OnModuleInit {
     });
     if (!school) throw new NotFoundException(`School ${schoolId} not found`);
 
+    // Models processed before detail measurement existed: measure once.
+    this.ensureModelQuality(school);
+
     return {
       schoolId,
       status: school.kmzStatus,
@@ -1023,6 +1250,9 @@ export class KmzService implements OnModuleInit {
       modelBytes: school.modelBytes == null ? null : Number(school.modelBytes),
       modelOptimizeError: school.modelOptimizeError ?? null,
       modelOptimizedAt: school.modelOptimizedAt ?? null,
+      // Detail: cm of surface per texture pixel, served vs delivered.
+      modelQuality: school.modelQuality ?? null,
+      modelVariants: school.modelVariants ?? null,
       // Scale check vs the KMZ footprint (WS6.4) and the model-frame origin
       // the viewers use to convert model ↔ WGS84 (WS5.3).
       modelScaleFactor: school.modelScaleFactor ?? null,

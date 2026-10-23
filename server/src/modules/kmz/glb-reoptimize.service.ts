@@ -1,3 +1,4 @@
+import { isKtx2Variant } from './glb-ktx2';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -115,8 +116,8 @@ export class GlbReoptimizeService implements OnModuleInit {
         continue; // no 3d/ dir for this school
       }
 
-      for (const name of entries.filter((f) =>
-        f.toLowerCase().endsWith('.glb'),
+      for (const name of entries.filter(
+        (f) => f.toLowerCase().endsWith('.glb') && !isKtx2Variant(f),
       )) {
         const served = path.join(dir, name);
         const archived = path.join(dir, '_source', name);

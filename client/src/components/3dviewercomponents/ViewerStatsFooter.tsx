@@ -1,10 +1,15 @@
 import React from 'react';
+import { detailCm, detailExplanation, DETAIL_LABEL, type ModelQuality } from '../../lib/viewer3d/model-quality';
 
 interface ViewerStatsFooterProps {
   stats: any;
   showMeasurePanel: boolean;
   formatBytes: (bytes: number) => string;
   formatTime: (ms: number) => string;
+  /** Detail measurement (cm of surface per texture pixel). */
+  quality?: ModelQuality | null;
+  /** GPU-compressed build shown, and whether textures were scaled down for this device. */
+  textureMode?: { ktx2: boolean; reduced: boolean } | null;
 }
 
 export const ViewerStatsFooter: React.FC<ViewerStatsFooterProps> = ({
@@ -12,6 +17,8 @@ export const ViewerStatsFooter: React.FC<ViewerStatsFooterProps> = ({
   showMeasurePanel,
   formatBytes,
   formatTime,
+  quality,
+  textureMode,
 }) => {
   if (!stats || showMeasurePanel) return null;
 
@@ -23,10 +30,16 @@ export const ViewerStatsFooter: React.FC<ViewerStatsFooterProps> = ({
         { val: formatTime(stats.loadTime), lbl: "Load time" },
         { val: stats.triangles.toLocaleString(), lbl: "Triangles" },
         { val: stats.meshes.toString(), lbl: "Meshes" },
-        { val: stats.textures.toString(), lbl: "Textures" },
-      ].map((s, i, arr) => (
+        { val: stats.textures.toString(), lbl: textureMode?.ktx2 ? "Textures (compressed)" : "Textures" },
+        ...(detailCm(quality) != null
+          ? [{ val: `${detailCm(quality)!.toFixed(1)} cm/px`, lbl: DETAIL_LABEL[quality?.served?.score ?? 'unknown'] ?? 'Detail', title: detailExplanation(quality) }]
+          : []),
+        ...(textureMode?.reduced
+          ? [{ val: "Reduced", lbl: "On this device", title: "Textures were scaled down to fit this device's graphics memory." }]
+          : []),
+      ].map((s: { val: string; lbl: string; title?: string }, i, arr) => (
         <span key={s.lbl} style={{ display: "contents" }}>
-          <div className="stat-item"><div className="stat-val">{s.val}</div><div className="stat-lbl">{s.lbl}</div></div>
+          <div className="stat-item" title={s.title} aria-label={s.title ? `${s.lbl}: ${s.val}. ${s.title}` : undefined}><div className="stat-val">{s.val}</div><div className="stat-lbl">{s.lbl}</div></div>
           {i < arr.length - 1 && <div className="stat-div" />}
         </span>
       ))}
