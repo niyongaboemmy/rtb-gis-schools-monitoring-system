@@ -165,6 +165,21 @@ test('geographic Metashape GLB is reprojected to a local metric frame', async ()
   assert.ok(Math.abs(mn[2] + mx[2]) < 1, `Z not centred: ${mn[2]}..${mx[2]}`);
 });
 
+test('a geographic (32-bit degrees) GLB gets its staircase repaired; GLB_DESTEP=0 skips it', async () => {
+  const input = await buildGlb('geo-destep.glb', 24, (u, v) => [
+    LON0 - LON_SPAN / 2 + u * LON_SPAN,
+    LAT0 - LAT_SPAN / 2 + v * LAT_SPAN,
+    ALT_LO + ((u + v) / 2) * ALT_SPAN,
+  ]);
+  const { report } = runOptimize(input);
+  assert.equal(report.reprojected, true);
+  assert.ok(report.destep, 'destep stats reported');
+  assert.ok(Math.abs(report.destep.stepEastCm - 21.2) < 0.3, `east step ${report.destep.stepEastCm} cm`);
+  assert.ok(report.destep.maxMoveSteps <= 0.5 + 1e-6);
+  const off = runOptimize(input, { GLB_DESTEP: '0' });
+  assert.equal(off.report.destep, null);
+});
+
 test('already-metric GLB is left untouched (no reprojection)', async () => {
   const input = await buildGlb('metric.glb', 20, (u, v) => [
     -100 + u * 200,

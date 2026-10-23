@@ -28,6 +28,8 @@ describe('optimizeProfile', () => {
     expect(p.env).toEqual({
       GLB_FORCE_SLOPPY: '1',
       GLB_MAX_OUT_TRIS: '1500000',
+      // Staircase repair only for files that fit (Nyanza's 40 M vertices skip it).
+      GLB_DESTEP_MAX_VERTS: '25000000',
     });
     // No lower texture quality is forced either.
     expect(p.env).not.toHaveProperty('GLB_TEXTURE_QUALITY');

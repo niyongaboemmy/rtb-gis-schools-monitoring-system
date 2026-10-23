@@ -21,8 +21,25 @@ Measured on **Fr Ramon TSS Kabuga**:
 
 ## Pipeline (`optimize.mjs`)
 
-`dedup → weld → simplify (Meshopt, keep 10% of tris, lockBorder) → prune →
-WebP textures (≤4096px) → quantize + reorder + EXT_meshopt_compression`
+`reproject degrees → local metres (with the staircase repair) → measure
+detail → simplify (Meshopt exact; tiled exact or sloppy for huge meshes; keep
+~30% of triangles, ≤ 5 M) → weld + prune → textures (JPEG/WebP ≤ 8192 px kept
+byte for byte, others → WebP q95; mipmapped samplers) → measure → 16-bit
+quantize + EXT_meshopt_compression`
+
+**Staircase repair (`destep.mjs`).** Exports in degrees (longitude/latitude
+in 32-bit floats) can only step ≈ 21 cm east–west near 30° E, which terraces
+every wall, kerb and roof edge. Before converting to metres, longitude and
+latitude are smoothed over the mesh with every vertex kept within ± half a
+step of its stored value: the steps go, no shape is invented. Nyamirama
+(19.4 M vertices): about 20 s, about 1 GB extra.
+
+- `GLB_DESTEP=0` turns it off.
+- `GLB_DESTEP_MAX_VERTS` is the size limit (default 60 M; 25 M on the
+  low-memory profile).
+- `GLB_DESTEP_ITERATIONS` defaults to 30.
+
+The run report shows what it did under `destep`.
 
 Output uses `EXT_meshopt_compression`, `KHR_mesh_quantization`,
 `EXT_texture_webp` — the viewer decodes these via `GLTFLoader` +
