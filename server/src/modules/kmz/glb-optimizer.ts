@@ -20,6 +20,40 @@ export function resolveHeapMb(): number {
 }
 
 /**
+ * Processing profile for one model. "Low-memory" (small heap, or an input
+ * larger than 15% of RAM) limits GEOMETRY only — rough decimation and a
+ * triangle cap. Textures are never shrunk for memory: web-ready atlases pass
+ * through optimize.mjs untouched, and the max texture edge stays 8192.
+ */
+export function optimizeProfile(o: {
+  heapMb: number;
+  inputBytes: number;
+  totalMem: number;
+  ratio?: number;
+  textureSize?: number;
+  env?: NodeJS.ProcessEnv;
+}): {
+  lowMem: boolean;
+  ratio: number;
+  textureSize: number;
+  env: Record<string, string>;
+} {
+  const env = o.env ?? {};
+  const lowMem = o.heapMb < 3072 || o.inputBytes > o.totalMem * 0.15;
+  return {
+    lowMem,
+    ratio: o.ratio ?? (lowMem ? 0.08 : 0.3),
+    textureSize: o.textureSize ?? 8192,
+    env: lowMem
+      ? {
+          GLB_FORCE_SLOPPY: env.GLB_FORCE_SLOPPY || '1',
+          GLB_MAX_OUT_TRIS: env.GLB_MAX_OUT_TRIS || String(1_500_000),
+        }
+      : {},
+  };
+}
+
+/**
  * Bridge to the standalone `server/glb-tools/optimize.mjs` pipeline.
  *
  * The optimizer is ESM-only (@gltf-transform) and briefly needs ~2 GB of heap
@@ -65,6 +99,13 @@ export interface GlbOptimizeResult {
    *  school's location can be synced to it. Null otherwise. */
   lat?: number | null;
   lng?: number | null;
+  /** Detail of the served model (quality.mjs) and of the file as delivered. */
+  quality?: Record<string, unknown> | null;
+  qualityIn?: Record<string, unknown> | null;
+  /** What happened to each texture: kept byte for byte, or re-encoded. */
+  textures?: Array<Record<string, unknown>>;
+  /** 'standard' or 'low-memory' (rough decimation, triangle cap). */
+  profile?: 'standard' | 'low-memory';
 }
 
 export interface GlbOptimizeOptions {
@@ -148,22 +189,32 @@ export function optimizeGlbFile(
   // exact simplifier's WASM heap + a multi-GB gltf-transform document + the
   // WebP encoder's native buffer all at once, and OOM-kills an 8 GB box even
   // with swap. When either signal fires, take the low-memory path: single-pass
-  // sloppy decimation, a hard triangle cap, and a 2K texture (its WebP encode
-  // buffer is ¼ the size of a 4K one — the step that was failing last).
+  // sloppy decimation and a hard triangle cap. Textures keep their size —
+  // web-ready ones pass through without being decoded (optimizeProfile).
   let inputBytes = 0;
   try {
     inputBytes = fs.statSync(inputPath).size;
   } catch {
     /* ignore */
   }
-  const lowMem = heapMb < 3072 || inputBytes > os.totalmem() * 0.15;
-  const { ratio = lowMem ? 0.08 : 0.3 } = opts;
-  const textureSize = opts.textureSize ?? (lowMem ? 2048 : 8192);
+  const {
+    lowMem,
+    ratio,
+    textureSize,
+    env: profileEnv,
+  } = optimizeProfile({
+    heapMb,
+    inputBytes,
+    totalMem: os.totalmem(),
+    ratio: opts.ratio,
+    textureSize: opts.textureSize,
+    env: process.env,
+  });
   if (lowMem) {
     logger.warn(
       `optimize: low-memory profile (heap ${heapMb}MB, input ${(
         inputBytes / 1048576
-      ).toFixed(0)}MB) — sloppy decimation, ≤1.5M tris, 2K texture`,
+      ).toFixed(0)}MB) — sloppy decimation, ≤1.5M tris (texture kept)`,
     );
   }
 
@@ -185,17 +236,7 @@ export function optimizeGlbFile(
       {
         execArgv: [`--max-old-space-size=${heapMb}`],
         stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-        env: {
-          ...process.env,
-          ...(lowMem
-            ? {
-                GLB_FORCE_SLOPPY: process.env.GLB_FORCE_SLOPPY || '1',
-                GLB_MAX_OUT_TRIS:
-                  process.env.GLB_MAX_OUT_TRIS || String(1_500_000),
-                GLB_TEXTURE_QUALITY: process.env.GLB_TEXTURE_QUALITY || '82',
-              }
-            : {}),
-        },
+        env: { ...process.env, ...profileEnv },
       },
     );
     logger.log(
@@ -237,7 +278,10 @@ export function optimizeGlbFile(
       }
       try {
         const lastLine = stdout.trim().split('\n').pop() as string;
-        resolve(JSON.parse(lastLine) as GlbOptimizeResult);
+        resolve({
+          ...(JSON.parse(lastLine) as GlbOptimizeResult),
+          profile: lowMem ? 'low-memory' : 'standard',
+        });
       } catch {
         reject(
           new Error(

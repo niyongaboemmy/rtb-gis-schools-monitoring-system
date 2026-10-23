@@ -37,6 +37,55 @@ export enum KmzProcessingStatus {
   FAILED = 'failed',
 }
 
+/** Detail measurement of a school's 3D model (see glb-tools/quality.mjs). */
+/** Extra builds of the served model, picked by the viewer per device. */
+export interface ModelVariants {
+  /** KTX2 / UASTC textures: ≈ 4× less GPU memory, larger download. */
+  ktx2?: {
+    url: string;
+    objectName: string;
+    bytes: number;
+    /** GPU texture memory once transcoded, and as WebP for comparison. */
+    gpuBytes: number;
+    webpGpuBytes: number;
+    builtAt: string;
+  } | null;
+}
+
+export interface ModelQuality {
+  /** The model as served to the viewer. */
+  served?: ModelQualityMeasure | null;
+  /** The file as the surveyor delivered it (before our processing). */
+  source?: ModelQualityMeasure | null;
+  profile?: 'standard' | 'low-memory' | 'measured';
+  textures?: Array<{
+    action?: string;
+    mime?: string;
+    width?: number;
+    height?: number;
+  }>;
+  measuredAt?: string;
+}
+
+export interface ModelQualityMeasure {
+  triangles?: number;
+  surfaceM2?: number;
+  cmPerPixel?: {
+    horizontal?: { median: number | null; p90: number | null };
+    vertical?: { median: number | null; p90: number | null };
+    overall?: { median: number | null; p90: number | null };
+  };
+  textures?: Array<{
+    mime?: string;
+    width?: number;
+    height?: number;
+    used?: number | null;
+  }>;
+  score?: 'sharp' | 'fair' | 'low' | 'unknown';
+  precompressed?: boolean;
+  warnings?: string[];
+}
+
 @Entity('schools')
 export class School {
   @PrimaryGeneratedColumn('uuid')
@@ -251,6 +300,18 @@ export class School {
   // Shown by the 3D viewer as a non-blocking banner when set.
   @Column({ type: 'text', nullable: true })
   modelScaleWarning: string | null;
+
+  /**
+   * Detail measurement of the 3D model (glb-tools/quality.mjs): centimetres
+   * of real surface per texture pixel for the served model and for the file
+   * as delivered, the processing profile used, and plain-word warnings.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  modelQuality: ModelQuality | null;
+
+  /** GPU-compressed build(s) of the served model (Phase 3, glb-ktx2.ts). */
+  @Column({ type: 'jsonb', nullable: true })
+  modelVariants: ModelVariants | null;
 
   // Origin of the model's local ENU frame (+X East, +Y Up, −Z North). Set when
   // the optimizer reprojected geographic vertices; null for plain models.

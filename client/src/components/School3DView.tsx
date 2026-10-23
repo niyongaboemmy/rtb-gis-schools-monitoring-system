@@ -4,6 +4,9 @@ import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+import { fitTexturesToBudget, hasCompressedTextures, ktx2LoaderFor, ktx2Url, pickModelVariant, type Ktx2Variant } from "../lib/viewer3d/model-variant";
+import { GPU_BUDGET, deviceClass } from "../lib/viewer3d/gpu-budget";
+import { parseGlbHeader } from "../lib/viewer3d/glb-inspect";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { api, apiErrorMessage, FILE_SERVER_URL } from "../lib/api";
 import { useAuthorization } from "../hooks/useAuthorization";
@@ -61,6 +64,8 @@ import {
   type ViewerToolId,
 } from "../lib/viewer-tools";
 import { useSchoolReports } from "./2dviewercomponents/hooks/useSchoolReports";
+import { attachViewerDebug } from "../lib/viewer3d/viewer-debug";
+import type { ModelQuality } from "../lib/viewer3d/model-quality";
 import { schoolPoint } from "../lib/school-location";
 import { useBuildingPanelAccess } from "./2dviewercomponents/hooks/useBuildingPanelAccess";
 import { MediaViewer } from "./2dviewercomponents/media/MediaViewer";
@@ -322,6 +327,16 @@ function makeGLTFLoader(): GLTFLoader {
   return loader;
 }
 
+/** Parse a GLB; KTX2 (KHR_texture_basisu) builds need the renderer to pick a GPU format. */
+async function parseModel(buf: ArrayBuffer, getRenderer: () => Promise<THREE.WebGLRenderer | null>): Promise<GLTF> {
+  const loader = makeGLTFLoader();
+  if (parseGlbHeader(buf)?.extensions.includes("KHR_texture_basisu")) {
+    const renderer = await getRenderer();
+    if (renderer) loader.setKTX2Loader(ktx2LoaderFor(renderer));
+  }
+  return new Promise<GLTF>((res, rej) => loader.parse(buf, "", res, rej));
+}
+
 // ─── 3D label helpers (module-level so drawOverlay + sprite sync can share) ──
 
 /** True midpoint along a polyline by arc-length, so the label sits at the middle of the line. */
@@ -418,6 +433,11 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const restartLoopRef = useRef<(() => void) | null>(null);
   const keyLoopWatchdogRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const modelRef = useRef<THREE.Object3D | null>(null);
+  const debugDetachRef = useRef<(() => void) | null>(null);
+  const [modelQuality, setModelQuality] = useState<ModelQuality | null>(null);
+  /** Which build is shown (WebP or GPU-compressed KTX2), and whether textures were scaled down to fit this device. */
+  const [textureMode, setTextureMode] = useState<{ ktx2: boolean; reduced: boolean } | null>(null);
+  useEffect(() => () => debugDetachRef.current?.(), []);
   /** True while the camera is moving — labels are hidden to prevent visual glitches */
   const interactingRef = useRef(false);
   /** Debounce timer: shows labels 150 ms after camera stops */
@@ -681,7 +701,13 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     const model = gltf.scene;
 
     const upgradeTex = (tex: THREE.Texture | null) => {
-      if (!tex) return; tex.anisotropy = maxAniso; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.magFilter = THREE.LinearFilter; tex.needsUpdate = true;
+      if (!tex) return; tex.anisotropy = maxAniso; tex.magFilter = THREE.LinearFilter;
+      // Exports often set a LINEAR sampler, so GLTFLoader turns mipmaps off.
+      // Switching the filter alone left WebGL sampling only the full-size level
+      // (distant roofs and grass shimmered). Build the mip chain too; GPU
+      // compressed (KTX2) textures bring their own levels.
+      if (!(tex as THREE.CompressedTexture).isCompressedTexture) tex.generateMipmaps = true;
+      tex.minFilter = THREE.LinearMipmapLinearFilter; tex.needsUpdate = true;
     };
     const bvhMeshes: THREE.Mesh[] = [];
     model.traverse(child => {
@@ -700,6 +726,17 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       unlitMatsRef.current.set(mesh, unlitMat);
       bvhMeshes.push(mesh);
     });
+
+    // GPU budget guard: plain textures beyond this device's budget are scaled
+    // down (KTX2 builds are already small on the GPU).
+    const texSet = new Set<THREE.Texture>();
+    model.traverse(o => {
+      const mesh = o as THREE.Mesh; if (!mesh.isMesh) return;
+      (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach(m => { const map = (m as THREE.MeshBasicMaterial).map; if (map) texSet.add(map); });
+    });
+    const textures = [...texSet];
+    const reduced = await fitTexturesToBudget(textures, GPU_BUDGET[deviceClass()]).catch(() => false);
+    setTextureMode({ ktx2: textures.some(t => (t as THREE.CompressedTexture).isCompressedTexture), reduced });
 
     scene.add(model); modelRef.current = model;
     bvhReadyRef.current = false;
@@ -855,9 +892,20 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     setStats({ fileName, fileSize, loadTime: Date.now() - startTime, triangles: Math.round(triangles), meshes: meshCount, textures: textureCount });
 
     setIsModelReady(true);
+    // Test hook for the quality/performance harness (dev builds only).
+    if (rendererRef.current && cameraRef.current && controlsRef.current) {
+      debugDetachRef.current?.();
+      debugDetachRef.current = attachViewerDebug({ renderer: rendererRef.current, camera: cameraRef.current, controls: controlsRef.current, getModel: () => modelRef.current });
+    }
     setProgress(100); setProgressLabel("Done!");
     setFrameVersion(v => v + 1);
   }, [renderMode, applyRenderMode, schoolId, importLegacyFeatures]);
+
+  // The renderer exists once the scene is initialised (KTX2 parsing needs it).
+  const getRenderer = useCallback(async () => {
+    if (!rendererRef.current) await threeInitPromiseRef.current;
+    return rendererRef.current;
+  }, []);
 
   const loadGLB = useCallback(async (file: File) => {
     setError(null); setPhase("loading"); setProgress(0); setProgressLabel("Reading file…");
@@ -868,11 +916,10 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     try {
       const arrayBuffer = await file.arrayBuffer();
       setProgress(78); setProgressLabel("Parsing GLB…");
-      const loader = makeGLTFLoader();
-      const gltf = await new Promise<GLTF>((res, rej) => loader.parse(arrayBuffer, "", res, rej));
+      const gltf = await parseModel(arrayBuffer, getRenderer);
       await finalizeGLTF(gltf, file.name, file.size, startTime);
     } catch (err: any) { setError(err?.message || "Failed to load model"); setPhase("idle"); }
-  }, [finalizeGLTF]);
+  }, [finalizeGLTF, getRenderer]);
 
   const loadGLBFromURL = useCallback(async (url: string, fileName: string) => {
     setError(null); setPhase("loading"); setProgress(0); setProgressLabel("Connecting…");
@@ -938,8 +985,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       }
 
       setProgress(80); setProgressLabel("Preparing 3D scene — almost there…");
-      const loader = makeGLTFLoader();
-      const gltf = await new Promise<GLTF>((res, rej) => loader.parse(arrayBuffer, "", res, rej));
+      const gltf = await parseModel(arrayBuffer, getRenderer);
       await finalizeGLTF(gltf, fileName, arrayBuffer.byteLength, startTime);
 
       // Persist the web-sized build for instant re-opens — but only a real
@@ -949,7 +995,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         void writeGlbCache(meta.schoolId, meta.versionTag, arrayBuffer);
       }
     } catch (err: any) { setError(err?.message || "Failed to fetch model"); setPhase("idle"); }
-  }, [finalizeGLTF]);
+  }, [finalizeGLTF, getRenderer]);
 
   // Parse a GLB we already have in memory (a cache hit) — no network, no
   // download progress. Mirrors loadGLB's File path.
@@ -961,14 +1007,13 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     const startTime = Date.now();
     try {
       setProgress(78); setProgressLabel("Parsing GLB…");
-      const loader = makeGLTFLoader();
-      const gltf = await new Promise<GLTF>((res, rej) => loader.parse(buf, "", res, rej));
+      const gltf = await parseModel(buf, getRenderer);
       await finalizeGLTF(gltf, fileName, buf.byteLength, startTime);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load saved model");
       setPhase("idle");
     }
-  }, [finalizeGLTF]);
+  }, [finalizeGLTF, getRenderer]);
 
   // Gate the download: serve from the persistent cache when we have this exact
   // build; else, if the server is still producing the optimized GLB, show a
@@ -986,10 +1031,23 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       modelScaleFactor?: number | null;
       modelScaleWarning?: string | null;
       modelOrigin?: { lat: number; lng: number; alt: number } | null;
+      modelQuality?: ModelQuality | null;
+      modelVariants?: { ktx2?: Ktx2Variant | null } | null;
     } | null = null;
     try {
       st = (await api.get(`/schools/${schoolId}/kmz/status`)).data;
     } catch { /* status unavailable — proceed without cache/gate */ }
+
+    // Detail measurement (cm per texture pixel) for the stats bar.
+    setModelQuality(st?.modelQuality ?? null);
+
+    // GPU-compressed build when this device needs it (model-variant.ts).
+    const useKtx2 =
+      pickModelVariant({ ktx2: st?.modelVariants?.ktx2, device: deviceClass(), compressed: hasCompressedTextures() }) === "ktx2";
+    if (useKtx2) {
+      finalUrl = ktx2Url(finalUrl);
+      pendingModelRef.current = { url: finalUrl, fileName };
+    }
 
     // Georeference + scale check for measurements and 2D↔3D sync.
     const sf = Number(st?.modelScaleFactor);
@@ -1001,9 +1059,9 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     });
 
     const versionTag =
-      st?.modelOptimizedAt ||
-      (st?.modelBytes != null ? String(st.modelBytes) : "") ||
-      "unversioned";
+      (st?.modelOptimizedAt ||
+        (st?.modelBytes != null ? String(st.modelBytes) : "") ||
+        "unversioned") + (useKtx2 ? ":ktx2" : "");
     cacheMetaRef.current = {
       schoolId: schoolId as string,
       versionTag,
@@ -2373,7 +2431,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
                 />
               )}
               <AnnotationPickerModal open={annotPickerOpen} annotationType="point" initialTitle={pinBuildingId ? (dbBuildings.find(b => b.id === pinBuildingId)?.buildingName || "") : ""} onConfirm={submit3DAnnotation} onCancel={cancelAnnotation} />
-              <ViewerStatsFooter stats={stats} showMeasurePanel={showMeasurePanel} formatBytes={formatBytes} formatTime={formatTime} />
+              <ViewerStatsFooter stats={stats} showMeasurePanel={showMeasurePanel} formatBytes={formatBytes} formatTime={formatTime} quality={modelQuality} textureMode={textureMode} />
               {showHelp && <ViewerHelpModal setShowHelp={setShowHelp} viewer="3d" />}
               <ViewerMovementControls 
                 keysRef={keysRef} 

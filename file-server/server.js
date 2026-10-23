@@ -9,6 +9,7 @@ const { v4: uuid } = require('uuid');
 const fs = require('fs');
 const { isUuid, resolveJwtSecret, createRequireUploader } = require('./auth');
 const { findRejectedFiles } = require('./file-types');
+const { pickServedModel } = require('./model-files');
 
 const app = express();
 
@@ -178,14 +179,12 @@ app.get('/files/schools/:schoolId/3d', rejectBadSchoolId, (req, res) => {
   const dir = path.join(STORAGE_DIR, 'schools', req.params.schoolId, '3d');
   if (!fs.existsSync(dir))
     return res.status(404).json({ error: 'No 3D folder found' });
-  const files = fs
-    .readdirSync(dir)
-    .filter((f) => f.toLowerCase().endsWith('.glb'));
-  if (!files.length)
+  const model = pickServedModel(fs.readdirSync(dir));
+  if (!model)
     return res.status(404).json({ error: 'No GLB file found' });
   res.json({
-    url: `/schools/${req.params.schoolId}/3d/${files[0]}`,
-    filename: files[0],
+    url: `/schools/${req.params.schoolId}/3d/${model}`,
+    filename: model,
   });
 });
 
