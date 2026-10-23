@@ -45,3 +45,16 @@ describe("GPU texture budget", () => {
     expect(sceneTextureBytes(g)).toBe(textureBytes(t));
   });
 });
+
+describe("draped models", () => {
+  it("the info bar shows the photo detail of roofs and explains walls", () => {
+    const q = {
+      served: { cmPerPixel: { horizontal: { median: 8.2, p90: 12 }, vertical: { median: 8.7, p90: 17 } }, score: "low" as const },
+      drape: { draped: 145670, pages: 2, cm: 2 },
+    };
+    render(<ViewerStatsFooter stats={{ fileName: "m.glb", fileSize: 1, loadTime: 1, triangles: 1, meshes: 1, textures: 3 }} showMeasurePanel={false} formatBytes={String} formatTime={String} quality={q} />);
+    expect(screen.getByText("2 cm/px")).toBeTruthy();
+    expect(screen.getByText("Roofs (photos)")).toBeTruthy();
+    expect(detailExplanation(q)).toMatch(/Roofs and ground use the drone photos at about 2 cm.*\n.*8\.7 cm/);
+  });
+});

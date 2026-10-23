@@ -146,7 +146,16 @@ function JobView({ job, now }: { job: ModelJob; now: number }) {
           <Fact label="Original" value={formatBytes(r.bytesIn)} />
           <Fact label="Web model" value={formatBytes(r.bytesOut)} />
           <Fact label="Triangles" value={r.trisIn != null && r.trisOut != null ? `${tris(r.trisIn)} → ${tris(r.trisOut)}` : "—"} />
-          <Fact label="Detail" value={r.detailCm != null ? `${formatNumber(r.detailCm, 1)} cm per pixel` : "—"} />
+          <Fact
+            label={r.drapeCm ? "Detail: roofs / walls" : "Detail"}
+            value={
+              r.drapeCm && r.detailCm != null
+                ? `${formatNumber(r.drapeCm, 1)} / ${formatNumber(r.detailCm, 1)} cm per pixel`
+                : r.detailCm != null
+                  ? `${formatNumber(r.detailCm, 1)} cm per pixel`
+                  : "—"
+            }
+          />
           {!r.optimized && r.error && <p className="col-span-full text-destructive">Kept the previous model: {r.error}</p>}
         </dl>
       )}

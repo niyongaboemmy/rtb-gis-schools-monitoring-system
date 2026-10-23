@@ -20,6 +20,8 @@ export interface ModelQuality {
   served?: ModelQualityMeasure | null;
   source?: ModelQualityMeasure | null;
   profile?: "standard" | "low-memory" | "measured";
+  /** Roofs and ground textured from the 2D drone photos. */
+  drape?: { draped?: number; pages?: number; cm?: number; skipped?: string } | null;
   measuredAt?: string;
 }
 
@@ -36,11 +38,21 @@ export const DETAIL_LABEL: Record<string, string> = {
   unknown: "Not measured",
 };
 
+/** Detail of roofs and ground when they are textured from the 2D drone photos. */
+export const drapedCm = (q: ModelQuality | null | undefined): number | null =>
+  q?.drape?.draped && q.drape.cm ? q.drape.cm : null;
+
 /** Plain-word explanation for a tooltip. */
 export function detailExplanation(q: ModelQuality | null | undefined): string {
   const cm = detailCm(q);
   if (cm == null) return "Detail not measured yet.";
   const walls = q?.served?.cmPerPixel?.vertical?.median;
+  const roofs = drapedCm(q);
+  if (roofs != null)
+    return [
+      `Roofs and ground use the drone photos at about ${roofs} cm per pixel.`,
+      `Walls and other surfaces: about ${(walls ?? cm).toFixed(1)} cm per pixel. A sharp survey is about 2 cm.`,
+    ].join("\n");
   const lines = [
     `Each texture pixel covers about ${cm.toFixed(1)} cm of ground and roofs${walls != null ? ` and ${walls.toFixed(1)} cm of walls` : ""}. A sharp survey is about 2 cm.`,
     ...(q?.served?.warnings ?? []),

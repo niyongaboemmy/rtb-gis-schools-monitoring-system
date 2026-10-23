@@ -12,6 +12,7 @@ export const MODEL_JOB_STAGES = [
   'textures',
   'compressing',
   'writing',
+  'draping',
   'saving',
   'gpu-copy',
   'done',
@@ -27,8 +28,9 @@ const STAGE_PERCENT: Record<ModelJobStage, number> = {
   simplifying: 18,
   textures: 62,
   compressing: 68,
-  writing: 78,
-  saving: 85,
+  writing: 76,
+  draping: 80,
+  saving: 86,
   'gpu-copy': 90,
   done: 100,
 };
@@ -59,6 +61,8 @@ export interface ModelJobResult {
   trisOut: number | null;
   /** Ground and roofs, median cm per texture pixel, of the served model. */
   detailCm: number | null;
+  /** Roofs and ground from the site map's photos: their detail, when draped. */
+  drapeCm: number | null;
   ktx2: boolean;
   error: string | null;
 }

@@ -291,6 +291,9 @@ process.stdout.write(
     lat: reprojection.lat,
     lng: reprojection.lng,
     destep: reprojection.destep ?? null,
+    // Exact centre of the local frame (X = east, Y = up, Z = -north, metres),
+    // for steps that map the model back to the map (drape.mjs).
+    origin: reprojection.origin ?? null,
     textures: textureReport,
     quality,
     qualityIn,
@@ -395,7 +398,7 @@ function reprojectIfGeographic(doc) {
     `reprojected geographic GLB @ ${lat0.toFixed(6)},${lon0.toFixed(6)} ` +
       `(site ${(spanX * mPerLon).toFixed(0)}×${(spanY * mPerLat).toFixed(0)}×${(maxZ - minZ).toFixed(0)} m)`,
   );
-  return { reprojected: true, lat: +lat0.toFixed(7), lng: +lon0.toFixed(7), destep: smooth?.stats ?? null };
+  return { reprojected: true, lat: +lat0.toFixed(7), lng: +lon0.toFixed(7), origin: { lat: lat0, lng: lon0, alt: alt0 }, destep: smooth?.stats ?? null };
 }
 
 /**

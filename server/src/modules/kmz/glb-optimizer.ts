@@ -109,6 +109,10 @@ export interface GlbOptimizeResult {
   textures?: Array<Record<string, unknown>>;
   /** 'standard' or 'low-memory' (rough decimation, triangle cap). */
   profile?: 'standard' | 'low-memory';
+  /** Exact centre of the local frame when the source was in degrees. */
+  origin?: { lat: number; lng: number; alt: number } | null;
+  /** Ortho draping of roofs and ground (glb-drape.ts), when it ran. */
+  drape?: import('./glb-drape').DrapeResult | null;
 }
 
 export interface GlbOptimizeOptions {

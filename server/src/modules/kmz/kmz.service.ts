@@ -41,6 +41,14 @@ import {
   type GlbOptimizeResult,
 } from './glb-optimizer';
 import {
+  DRAPE_PAGE,
+  buildDrape,
+  tilesDirFromUrl,
+  type DrapeResult,
+} from './glb-drape';
+import { optimizeProfile } from './glb-optimizer';
+import { GlbReoptimizeService } from './glb-reoptimize.service';
+import {
   buildKtx2Variant,
   ktx2ObjectName,
   shouldBuildKtx2,
@@ -182,6 +190,7 @@ export class KmzService implements OnModuleInit {
     @Optional() private readonly siteFeatures?: SiteFeaturesService,
     @Optional() private readonly eventEmitter?: EventEmitter2,
     @Optional() private readonly schoolLocation?: SchoolLocationService,
+    @Optional() private readonly glbReoptimize?: GlbReoptimizeService,
   ) {
     // Warm the GLB optimizer (installs its deps once if the deploy didn't).
     void ensureGlbTools();
@@ -338,6 +347,15 @@ export class KmzService implements OnModuleInit {
               profile: optResult.profile ?? 'standard',
               textures: (optResult.textures ?? []) as ModelQuality['textures'],
               measuredAt: new Date().toISOString(),
+              drape: optResult.drape
+                ? {
+                    draped: optResult.drape.draped,
+                    pages: optResult.drape.pages?.length,
+                    cm: optResult.drape.cm,
+                    skipped: optResult.drape.skipped,
+                    alignment: optResult.drape.alignment,
+                  }
+                : null,
             },
           })
           .catch(() => null);
@@ -422,7 +440,15 @@ export class KmzService implements OnModuleInit {
         ktx2 = await this.refreshKtx2Variant(
           schoolId,
           filePath,
-          (optResult.quality as ModelQualityMeasure).textures ?? [],
+          [
+            ...((optResult.quality as ModelQualityMeasure).textures ?? []),
+            // Draped pages are textures too (GPU memory).
+            ...(optResult.drape?.pages ?? []).map(() => ({
+              width: DRAPE_PAGE,
+              height: DRAPE_PAGE,
+              mime: 'image/webp',
+            })),
+          ],
           onStage,
         ).catch((err: any) => {
           this.logger.warn(
@@ -443,6 +469,7 @@ export class KmzService implements OnModuleInit {
           served?.cmPerPixel?.horizontal?.median ??
           served?.cmPerPixel?.overall?.median ??
           null,
+        drapeCm: optResult?.drape?.draped ? (optResult.drape.cm ?? null) : null,
         ktx2,
         error: effective.error,
       };
@@ -753,6 +780,10 @@ export class KmzService implements OnModuleInit {
         };
       }
 
+      // Roofs and ground from the site map's photos, when it has them.
+      r.drape = await this.drapeIfPossible(schoolId, outPath, r, onStage);
+      if (r.drape?.draped) r.bytesOut = fs.statSync(outPath).size;
+
       const optimizedBuffer = fs.readFileSync(outPath);
       // Keep the original — unless we are re-processing from that very
       // archived copy (rewriting a 1–2 GB file onto itself).
@@ -814,6 +845,101 @@ export class KmzService implements OnModuleInit {
         /* ignore */
       }
     }
+  }
+
+  /**
+   * Ortho draping (glb-drape.ts) of the optimized model at `modelPath`, in
+   * place: needs a geo-referenced model (the optimizer reprojected it) and the
+   * school's full-detail 2D tiles on local storage. Never throws; returns why
+   * it was skipped instead.
+   */
+  private async drapeIfPossible(
+    schoolId: string,
+    modelPath: string,
+    r: GlbOptimizeResult,
+    onStage: (stage: ModelJobStage) => void,
+  ): Promise<DrapeResult | null> {
+    if (process.env.GLB_DRAPE === '0') return null;
+    if (!r.reprojected || !r.origin)
+      return { skipped: 'model is not geo-referenced' };
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+      select: ['id', 'kmz2dManifest'],
+    });
+    const tiles = (school?.kmz2dManifest as Kmz2dManifestWithPyramid | null)
+      ?.tiles;
+    if (tiles?.status !== 'ready' || typeof tiles.url !== 'string')
+      return { skipped: 'no full-detail 2D map tiles yet' };
+    const dir = tilesDirFromUrl(tiles.url, this.storageService.getLocalRoot());
+    if (!dir || !fs.existsSync(dir))
+      return { skipped: '2D map tiles not on local storage' };
+    onStage('draping');
+    const out = modelPath.replace(/\.glb$/i, '.draped.glb');
+    try {
+      const d = await buildDrape(modelPath, out, {
+        lat: r.origin.lat,
+        lng: r.origin.lng,
+        tilesDir: dir,
+        tilesMaxZoom: Number(tiles.maxZoom),
+      });
+      if (!d.skipped && fs.existsSync(out)) {
+        fs.renameSync(out, modelPath);
+        this.logger.log(
+          `Draped ${schoolId}: ${d.draped} faces on ${d.pages?.length} page(s) at ${d.cm} cm/px ` +
+            `(alignment ${d.alignment?.shiftEastCm},${d.alignment?.shiftSouthCm} cm, ncc ${d.alignment?.ncc}), ${d.ms} ms`,
+        );
+      } else {
+        this.logger.log(`Drape skipped for ${schoolId}: ${d.skipped}`);
+      }
+      return d;
+    } catch (err) {
+      const msg = (err as Error).message?.slice(0, 200);
+      this.logger.warn(`Drape failed for ${schoolId}: ${msg}`);
+      return { skipped: `drape failed: ${msg}` };
+    } finally {
+      fs.rmSync(out, { force: true });
+    }
+  }
+
+  /**
+   * After new 2D tiles, re-process the school's 3D model so its roofs and
+   * ground pick them up — except when the stored original would take the
+   * low-memory path (it would lose triangles; Nyanza-sized files).
+   */
+  private async reprocessModelForTiles(schoolId: string): Promise<void> {
+    if (!this.glbReoptimize || process.env.GLB_DRAPE === '0') return;
+    const school = await this.schoolRepository.findOne({
+      where: { id: schoolId },
+      select: ['id', 'kmzFilePath'],
+    });
+    const objectName = school?.kmzFilePath
+      ? this.storageService.urlToObjectName(school.kmzFilePath)
+      : null;
+    const root = this.storageService.getLocalRoot();
+    if (!objectName || !root || !/\.glb$/i.test(objectName)) return;
+    const served = path.join(root, objectName);
+    const archived = path.join(
+      path.dirname(served),
+      '_source',
+      path.basename(served),
+    );
+    const source = fs.existsSync(archived) ? archived : served;
+    if (!fs.existsSync(source)) return;
+    const { lowMem } = optimizeProfile({
+      heapMb: resolveHeapMb(),
+      inputBytes: fs.statSync(source).size,
+      totalMem: os.totalmem(),
+    });
+    if (lowMem) {
+      this.logger.log(
+        `New 2D tiles for ${schoolId}: 3D model not re-processed automatically (large original, low-memory path) — use Reprocess on a bigger worker`,
+      );
+      return;
+    }
+    const r = await this.glbReoptimize.startForSchool(schoolId);
+    this.logger.log(
+      `New 2D tiles for ${schoolId}: 3D model re-processing ${r.reason}`,
+    );
   }
 
   /**
@@ -2754,6 +2880,12 @@ export class KmzService implements OnModuleInit {
           .catch(() => null);
       }
       onProgress(100, 100);
+      // The 3D model's roofs and ground can now use these photos.
+      await this.reprocessModelForTiles(schoolId).catch((e) =>
+        this.logger.warn(
+          `3D re-processing after tiles not started for ${schoolId}: ${(e as Error).message}`,
+        ),
+      );
       this.logger.log(
         `[2D] Tiles for ${schoolId}: ${built.tiles} tiles z${built.minZoom}-${built.maxZoom} ` +
           `(${built.groundCmPerPx} cm/px), ${(built.bytes / 1048576).toFixed(0)} MB, ${Date.now() - started} ms`,

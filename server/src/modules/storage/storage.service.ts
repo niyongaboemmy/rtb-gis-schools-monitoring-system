@@ -50,13 +50,19 @@ class LocalFsBackend implements IStorageBackend {
     buffer: Buffer,
     contentType: string,
   ): Promise<string | null> {
+    const fullPath = join(this.uploadDir, objectName);
+    // Write beside, then rename: a failed write (e.g. disk full) must never
+    // leave a truncated file in place of a good one — `3d/_source/` holds the
+    // only copy of a survey's original.
+    const tmp = `${fullPath}.part-${process.pid}-${Date.now()}`;
     try {
-      const fullPath = join(this.uploadDir, objectName);
       await this.ensureDir(dirname(fullPath));
-      await fs.writeFile(fullPath, buffer);
+      await fs.writeFile(tmp, buffer);
+      await fs.rename(tmp, fullPath);
       this.logger.log(`[local] uploaded: ${objectName}`);
       return `${this.urlPrefix}/${objectName}`;
     } catch (err) {
+      await fs.rm(tmp, { force: true }).catch(() => undefined);
       this.logger.error(`[local] upload failed: ${objectName}`, err);
       return null;
     }
