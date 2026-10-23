@@ -1,4 +1,4 @@
-import { optimizeProfile } from './glb-optimizer';
+import { createStageParser, optimizeProfile } from './glb-optimizer';
 
 describe('optimizeProfile', () => {
   const GB = 1024 ** 3;
@@ -44,5 +44,16 @@ describe('optimizeProfile', () => {
     });
     expect(p).toMatchObject({ lowMem: true, ratio: 0.2, textureSize: 4096 });
     expect(p.env.GLB_MAX_OUT_TRIS).toBe('3000000');
+  });
+});
+
+describe('createStageParser', () => {
+  it('passes progress markers on and keeps other stderr text', () => {
+    const stages: string[] = [];
+    const parse = createStageParser((s) => stages.push(s));
+    let rest = parse('@@progress reading\nreprojection skipped: x\n@@pro');
+    rest += parse('gress simplifying\nexact simplify failed\n');
+    expect(stages).toEqual(['reading', 'simplifying']);
+    expect(rest).toBe('reprojection skipped: x\nexact simplify failed\n');
   });
 });

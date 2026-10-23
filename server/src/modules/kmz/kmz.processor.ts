@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { KmzService } from './kmz.service';
 import { KMZ_QUEUE } from './kmz.constants';
+import { progressFor } from './model-job';
 
 export interface GlbJobData {
   schoolId: string;
@@ -41,7 +42,14 @@ export class KmzProcessor extends WorkerHost {
 
     switch (job.name) {
       case 'process-glb':
-        return this.kmzService.processGlbJob(job.data as GlbJobData);
+        // Each step is recorded on the job, so GET …/kmz/reoptimize (and the
+        // "Reprocess" panel) can show how far it is.
+        return this.kmzService.processGlbJob(
+          job.data as GlbJobData,
+          (stage) => {
+            job.updateProgress(progressFor(stage)).catch(() => {});
+          },
+        );
 
       case 'process-kmz2d':
         return this.kmzService.processKmz2dJob(job.data as Kmz2dJobData);

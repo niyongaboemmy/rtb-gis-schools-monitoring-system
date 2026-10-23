@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 /**
  * Helpers to pull a representative school coordinate out of an uploaded
  * KMZ/KML or GLB, so the School's latitude/longitude can be kept in sync with
@@ -568,4 +569,28 @@ export function compareModelScale(
       `(${m(footprint.extentEastM)} × ${m(footprint.extentNorthM)}), so its scale could not be verified. ` +
       `Check 3D measurements against a known dimension.`,
   };
+}
+
+/**
+ * The first bytes of a GLB file up to the end of its JSON chunk — all that
+ * deriveCoordinateFromGlb / deriveGlbGeoInfo read. Lets a 1–2 GB original be
+ * inspected without loading it. Null when the file is not a GLB.
+ */
+export function readGlbHeaderBytes(
+  file: string,
+  maxJsonBytes = 256 * 1024 * 1024,
+): Buffer | null {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const head = Buffer.alloc(20);
+    if (fs.readSync(fd, head, 0, 20, 0) < 20) return null;
+    if (head.readUInt32LE(0) !== 0x46546c67) return null; // "glTF"
+    const jsonLen = head.readUInt32LE(12);
+    if (jsonLen <= 0 || jsonLen > maxJsonBytes) return null;
+    const out = Buffer.alloc(20 + jsonLen);
+    head.copy(out, 0);
+    return fs.readSync(fd, out, 20, jsonLen, 20) === jsonLen ? out : null;
+  } finally {
+    fs.closeSync(fd);
+  }
 }

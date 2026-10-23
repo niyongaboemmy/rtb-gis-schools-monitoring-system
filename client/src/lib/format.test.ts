@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  formatArea, formatCurrency, formatDate, formatDateTime, formatHectares,
+  formatArea, formatBytes, formatCurrency, formatDate, formatDateTime, formatDuration, formatHectares,
   formatLength, formatPercent, formatRatio, formatRelative, formatScore,
 } from "./format";
 
@@ -42,5 +42,18 @@ describe("format", () => {
     const now = new Date("2026-10-13T12:00:00Z");
     expect(formatRelative(new Date("2026-10-13T11:55:00Z"), now)).toBe("5 minutes ago");
     expect(formatRelative(new Date("2026-08-01T00:00:00Z"), now)).toBe("1 Aug 2026");
+  });
+});
+
+describe("formatBytes / formatDuration", () => {
+  it("formats sizes and elapsed time", () => {
+    expect(formatBytes(18869744)).toBe("18.0 MB");
+    expect(formatBytes(977016488)).toBe("931.8 MB");
+    expect(formatBytes(2018998948)).toBe("1.88 GB");
+    expect(formatBytes(512)).toBe("512 B");
+    expect(formatBytes(null)).toBe("—");
+    expect(formatDuration(45_000)).toBe("45 s");
+    expect(formatDuration(185_000)).toBe("3 min 05 s");
+    expect(formatDuration(3_720_000)).toBe("1 h 02 min");
   });
 });

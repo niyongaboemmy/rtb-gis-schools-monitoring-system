@@ -55,7 +55,13 @@ import {
   compareModelScale,
   lonLatExtentMeters,
   collectGeoJsonPositions,
+  readGlbHeaderBytes,
 } from './geo-derive';
+import {
+  isModelJobStage,
+  type ModelJobResult,
+  type ModelJobStage,
+} from './model-job';
 import {
   SiteFeaturesService,
   type ActingUser,
@@ -93,10 +99,22 @@ import sharp from 'sharp';
 import * as os from 'os';
 import { createHash } from 'crypto';
 
+/** SHA-256 of a file, streamed (originals can be 1–2 GB). */
+export function hashFile(file: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const h = createHash('sha256');
+    fs.createReadStream(file)
+      .on('data', (d) => h.update(d))
+      .on('error', reject)
+      .on('end', () => resolve(h.digest('hex')));
+  });
+}
+
 /** Manifest kept beside the original 3D model in `3d/_source/`. */
 export function sourceManifest(
   fileName: string,
-  bytes: Buffer,
+  bytes: number,
+  sha256: string,
   quality: unknown,
 ): {
   fileName: string;
@@ -109,8 +127,8 @@ export function sourceManifest(
   const q = quality as { precompressed?: boolean } | null;
   return {
     fileName,
-    bytes: bytes.byteLength,
-    sha256: createHash('sha256').update(bytes).digest('hex'),
+    bytes,
+    sha256,
     keptAt: new Date().toISOString(),
     precompressed: q?.precompressed ?? null,
     quality,
@@ -231,11 +249,23 @@ export class KmzService implements OnModuleInit {
     };
   }
 
-  async processGlbJob(data: GlbJobData): Promise<void> {
+  /**
+   * Serve, optimize, measure and (when needed) build the KTX2 copy of one
+   * school model. `onStage` reports progress (model-job.ts) for the
+   * "Reprocess" panel. Re-processing reads only the original's header in this
+   * process — originals can be 1–2 GB; the optimizer child reads the rest.
+   */
+  async processGlbJob(
+    data: GlbJobData,
+    onStage: (stage: ModelJobStage) => void = () => {},
+  ): Promise<ModelJobResult> {
     const { schoolId, tempFilePath, originalName, mimetype } = data;
     const isRestore = data.source === 'restore';
     try {
-      const fileBuffer = fs.readFileSync(tempFilePath);
+      onStage('reading');
+      const sourceBytes = fs.statSync(tempFilePath).size;
+      // JSON header only: all the location / georeference readers need.
+      const header = readGlbHeaderBytes(tempFilePath) ?? Buffer.alloc(0);
       const filePath = `schools/${schoolId}/3d/${originalName}`;
 
       // 1. Serve the raw model straight away so the viewer works even if the
@@ -249,7 +279,7 @@ export class KmzService implements OnModuleInit {
       } else {
         publicPath = await this.storageService.uploadFile(
           filePath,
-          fileBuffer,
+          fs.readFileSync(tempFilePath),
           mimetype,
         );
       }
@@ -263,9 +293,9 @@ export class KmzService implements OnModuleInit {
         schoolId,
         tempFilePath,
         originalName,
-        fileBuffer,
         mimetype,
         filePath,
+        onStage,
       ).catch((err: any) => {
         const msg = String(err?.message || err);
         this.logger.warn(`GLB optimize skipped for school ${schoolId}: ${msg}`);
@@ -284,7 +314,7 @@ export class KmzService implements OnModuleInit {
       let effective = opt;
       if (!opt.optimized && isRestore) {
         const servedBytes = this.servedFileBytes(filePath);
-        if (servedBytes != null && servedBytes < fileBuffer.byteLength * 0.5) {
+        if (servedBytes != null && servedBytes < sourceBytes * 0.5) {
           this.logger.log(
             `Re-optimize failed for ${schoolId} but a ${(
               servedBytes / 1048576
@@ -294,6 +324,7 @@ export class KmzService implements OnModuleInit {
         }
       }
 
+      onStage('saving');
       // Detail of the served model and of the file as delivered (Phase 1).
       if (optResult?.quality) {
         await this.schoolRepository
@@ -314,7 +345,7 @@ export class KmzService implements OnModuleInit {
         bytes:
           effective.result?.bytesOut ??
           this.servedFileBytes(filePath) ??
-          fileBuffer.byteLength,
+          sourceBytes,
         error: effective.error,
       });
 
@@ -329,7 +360,7 @@ export class KmzService implements OnModuleInit {
               lng: optResult.lng,
               source: 'glb:reprojected',
             }
-          : deriveCoordinateFromGlb(fileBuffer);
+          : deriveCoordinateFromGlb(header);
       await this.syncSchoolCoordinate(
         schoolId,
         derivedCoord,
@@ -337,14 +368,11 @@ export class KmzService implements OnModuleInit {
       ).catch(() => {});
 
       // 3b. Georeference origin + model scale check (WS5.3 / WS6.4).
-      await this.writeModelGeoref(
-        schoolId,
-        fileBuffer,
-        effective.optimized,
-      ).catch((err: any) =>
-        this.logger.warn(
-          `Model scale check skipped for ${schoolId}: ${err?.message || err}`,
-        ),
+      await this.writeModelGeoref(schoolId, header, effective.optimized).catch(
+        (err: any) =>
+          this.logger.warn(
+            `Model scale check skipped for ${schoolId}: ${err?.message || err}`,
+          ),
       );
 
       // A bare GLB upload no longer creates a `school_buildings` row. The 3D
@@ -386,17 +414,35 @@ export class KmzService implements OnModuleInit {
 
       // 4. GPU-compressed variant for heavy textures (Phase 3). The model is
       //    already live; this only adds a lighter option for phones.
+      let ktx2 = false;
       if (optResult?.quality && effective.optimized) {
-        await this.refreshKtx2Variant(
+        ktx2 = await this.refreshKtx2Variant(
           schoolId,
           filePath,
           (optResult.quality as ModelQualityMeasure).textures ?? [],
-        ).catch((err: any) =>
+          onStage,
+        ).catch((err: any) => {
           this.logger.warn(
             `KTX2 variant skipped for ${schoolId}: ${err?.message || err}`,
-          ),
-        );
+          );
+          return false;
+        });
       }
+
+      const served = optResult?.quality as ModelQualityMeasure | undefined;
+      return {
+        optimized: effective.optimized,
+        bytesIn: sourceBytes,
+        bytesOut: optResult?.bytesOut ?? this.servedFileBytes(filePath),
+        trisIn: optResult?.trisIn ?? null,
+        trisOut: optResult?.trisOut ?? null,
+        detailCm:
+          served?.cmPerPixel?.horizontal?.median ??
+          served?.cmPerPixel?.overall?.median ??
+          null,
+        ktx2,
+        error: effective.error,
+      };
     } catch (err: any) {
       this.logger.error(
         `GLB processing failed for school ${schoolId}: ${err.message}`,
@@ -427,7 +473,8 @@ export class KmzService implements OnModuleInit {
     schoolId: string,
     servedObjectName: string,
     textures: Array<{ width?: number; height?: number; mime?: string }>,
-  ): Promise<void> {
+    onStage: (stage: ModelJobStage) => void = () => {},
+  ): Promise<boolean> {
     const school = await this.schoolRepository.findOne({
       where: { id: schoolId },
       select: ['id', 'modelVariants'],
@@ -440,7 +487,11 @@ export class KmzService implements OnModuleInit {
       if (school?.modelVariants)
         await this.schoolRepository.update(schoolId, { modelVariants: null });
     };
-    if (!shouldBuildKtx2(textures)) return clear();
+    if (!shouldBuildKtx2(textures)) {
+      await clear();
+      return false;
+    }
+    onStage('gpu-copy');
 
     const served = await this.storageService.readFile(servedObjectName);
     if (!served) throw new Error('served model not readable');
@@ -477,6 +528,7 @@ export class KmzService implements OnModuleInit {
             webpGpuBytes(textures) / 1048576
           ).toFixed(0)} MB), ${(r.ms / 1000).toFixed(0)}s`,
       );
+      return true;
     } catch (err) {
       await clear(); // never leave a variant that no longer matches the model
       throw err;
@@ -654,9 +706,9 @@ export class KmzService implements OnModuleInit {
     schoolId: string,
     sourcePath: string,
     originalName: string,
-    rawBuffer: Buffer,
     mimetype: string,
     servedObjectName: string,
+    onStage: (stage: ModelJobStage) => void = () => {},
   ): Promise<OptimizeOutcome> {
     if (!(await ensureGlbTools())) {
       this.logger.warn(
@@ -678,7 +730,11 @@ export class KmzService implements OnModuleInit {
       // glb-optimizer.ts / optimize.mjs and honour GLB_OPT_HEAP_MB /
       // GLB_OPT_TIMEOUT_MS / GLB_MAX_OUT_TRIS / GLB_TEXTURE_QUALITY /
       // GLB_SIMPLIFY_ERROR.
-      const r = await optimizeGlbFile(sourcePath, outPath);
+      const r = await optimizeGlbFile(sourcePath, outPath, {
+        onStage: (stage) => {
+          if (isModelJobStage(stage)) onStage(stage);
+        },
+      });
 
       // Keep the raw model only when the optimizer neither shrank it nor had to
       // reproject it — a reprojected build must replace the raw one even when it
@@ -695,23 +751,39 @@ export class KmzService implements OnModuleInit {
       }
 
       const optimizedBuffer = fs.readFileSync(outPath);
-      await this.storageService.uploadFile(
-        `schools/${schoolId}/3d/_source/${originalName}`,
-        rawBuffer,
-        mimetype,
-      );
+      // Keep the original — unless we are re-processing from that very
+      // archived copy (rewriting a 1–2 GB file onto itself).
+      const archiveName = `schools/${schoolId}/3d/_source/${originalName}`;
+      const localRoot = this.storageService.getLocalRoot();
+      const fromArchive =
+        !!localRoot &&
+        path.resolve(localRoot, archiveName) === path.resolve(sourcePath);
+      if (!fromArchive) {
+        await this.storageService.uploadFile(
+          archiveName,
+          fs.readFileSync(sourcePath),
+          mimetype,
+        );
+      }
       // What was delivered, so it can be checked and re-processed later.
-      await this.storageService
-        .uploadFile(
-          `schools/${schoolId}/3d/_source/${originalName}.manifest.json`,
-          Buffer.from(
-            JSON.stringify(
-              sourceManifest(originalName, rawBuffer, r.qualityIn ?? null),
-              null,
-              2,
+      await hashFile(sourcePath)
+        .then((sha256) =>
+          this.storageService.uploadFile(
+            `${archiveName}.manifest.json`,
+            Buffer.from(
+              JSON.stringify(
+                sourceManifest(
+                  originalName,
+                  fs.statSync(sourcePath).size,
+                  sha256,
+                  r.qualityIn ?? null,
+                ),
+                null,
+                2,
+              ),
             ),
+            'application/json',
           ),
-          'application/json',
         )
         .catch((err: any) =>
           this.logger.warn(
