@@ -8,6 +8,8 @@ import TileLayer from "ol/layer/Tile";
 import WebGLTileLayer from "ol/layer/WebGLTile";
 import GeoTIFFSource from "ol/source/GeoTIFF";
 import XYZ from "ol/source/XYZ";
+import { unByKey } from "ol/Observable";
+import type { EventsKey } from "ol/events";
 import TileGrid from "ol/tilegrid/TileGrid";
 import { transformExtent } from "ol/proj";
 import { createXYZ } from "ol/tilegrid";
@@ -47,6 +49,8 @@ export interface SiteMapTiles {
   url: string;
   minZoom: number;
   maxZoom: number;
+  /** The drone photos' own detail (ground cm per pixel). */
+  sourceCmPerPx?: number;
   /** EPSG:3857 */
   extent: [number, number, number, number];
 }
@@ -86,6 +90,83 @@ async function fetchManifestBundle(schoolId: string, signal?: AbortSignal): Prom
  */
 export function siteTilesGrid(maxZoom: number, pixelRatio: number) {
   return createXYZ({ maxZoom, tileSize: pixelRatio > 1 ? 128 : 256 });
+}
+
+/** Levels drawn past the deepest tiles, by enlarging them here (see enlargeTile). */
+export const OVERZOOM_LEVELS = 2;
+
+/**
+ * For a tile deeper than the deepest file level: the file tile it lies in and
+ * the square of it (in its 256 px) to enlarge. Null for a real file tile.
+ */
+export function overzoomSource(z: number, x: number, y: number, maxZoom: number) {
+  if (z <= maxZoom) return null;
+  const dz = z - maxZoom;
+  const n = 2 ** dz;
+  const size = 256 / n;
+  return { z: maxZoom, x: Math.floor(x / n), y: Math.floor(y / n), sx: (x % n) * size, sy: (y % n) * size, size };
+}
+
+/**
+ * Unsharp mask (3 × 3 box blur, `amount` of the difference added back): keeps
+ * edges crisp when a tile is enlarged. Cosmetic only — no detail is added.
+ */
+export function unsharp(data: Uint8ClampedArray, w: number, h: number, amount = 0.6) {
+  const src = new Uint8ClampedArray(data);
+  for (let y = 1; y < h - 1; y++)
+    for (let x = 1; x < w - 1; x++)
+      for (let c = 0; c < 3; c++) {
+        const i = (y * w + x) * 4 + c;
+        let sum = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) sum += src[i + (dy * w + dx) * 4];
+        data[i] = src[i] + amount * (src[i] - sum / 9);
+      }
+  return data;
+}
+
+/** Decoded file tiles reused by their enlarged children (≤ 16 per tile at 2 levels). */
+const enlargeCache = new Map<string, Promise<ImageBitmap | null>>();
+
+/** The deeper-than-files tile `src` describes (`<file url>#oz`), enlarged with the browser's best resampling. */
+async function enlargeTile(fileUrl: string, crop: { sx: number; sy: number; size: number }): Promise<HTMLCanvasElement | null> {
+  let base = enlargeCache.get(fileUrl);
+  if (!base) {
+    base = fetch(fileUrl)
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((b) => (b ? createImageBitmap(b) : null))
+      .catch(() => null);
+    enlargeCache.set(fileUrl, base);
+    if (enlargeCache.size > 64) enlargeCache.delete(enlargeCache.keys().next().value as string);
+  }
+  const bmp = await base;
+  if (!bmp) return null;
+  const big = await createImageBitmap(bmp, crop.sx, crop.sy, crop.size, crop.size, { resizeWidth: 256, resizeHeight: 256, resizeQuality: "high" });
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.drawImage(big, 0, 0);
+  big.close();
+  const img = ctx.getImageData(0, 0, 256, 256);
+  unsharp(img.data, 256, 256);
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
+
+/**
+ * Is the view zoomed in past the photos' own detail? One screen pixel
+ * (device pixels, so retina counts) then covers less ground than one photo
+ * pixel: zooming further only enlarges pixels. 10% slack against flicker.
+ */
+export function isPastFullDetail(o: {
+  viewResolution: number;
+  pixelRatio: number;
+  sourceCmPerPx: number;
+  centerY: number;
+}): boolean {
+  const lat = Math.atan(Math.sinh(o.centerY / 6378137));
+  const screenCm = (o.viewResolution / o.pixelRatio) * Math.cos(lat) * 100;
+  return screenCm < o.sourceCmPerPx * 0.9;
 }
 
 /** View zoom from which the full-detail tiles cover the site (one less on 2x screens). */
@@ -134,6 +215,8 @@ interface UseKmzLoaderProps {
   setLoadingProgress: (prog: number) => void;
   setIsTileLoading: (loading: boolean) => void;
   setDecodingCount: (count: number) => void;
+  /** Zoomed past the photos' own detail (for the "Full detail" hint). */
+  setPastFullDetail?: (past: boolean) => void;
   setFeatures: (features: any[]) => void;
   kmlLayerRef: React.MutableRefObject<VectorLayer | null>;
   groundOverlayLayersRef: React.MutableRefObject<any[]>;
@@ -153,6 +236,7 @@ export function useKmzLoader({
   setLoadingProgress,
   setIsTileLoading,
   setDecodingCount,
+  setPastFullDetail,
   setFeatures,
   kmlLayerRef,
   groundOverlayLayersRef,
@@ -168,6 +252,7 @@ export function useKmzLoader({
   const cleanupKmzRef = useRef<(() => void) | null>(null);
   const pyramidRef = useRef<SiteMapPyramid | null>(null);
   const tilesRef = useRef<SiteMapTiles | null>(null);
+  const detailListenerRef = useRef<EventsKey[] | null>(null);
   const visualsRef = useRef(visuals);
   const prefetchRef = useRef<{ key: string; promise: Promise<ManifestBundle | null> } | null>(null);
 
@@ -192,6 +277,9 @@ export function useKmzLoader({
     const loadGroundOverlays = async (overlays: GroundOverlayData[], assetBlobs?: Map<string, Blob>) => {
       groundOverlayLayersRef.current.forEach((l) => map.removeLayer(l));
       groundOverlayLayersRef.current = [];
+      if (detailListenerRef.current) unByKey(detailListenerRef.current);
+      detailListenerRef.current = null;
+      setPastFullDetail?.(false);
       const pyramid = pyramidRef.current;
       const tiles = tilesRef.current;
       const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
@@ -227,6 +315,9 @@ export function useKmzLoader({
         const lyr = new TileLayer({ source, opacity: kmzOpacity, preload: 1, ...opts });
         lyr.on("prerender", (e) => {
           const ctx = e.context as CanvasRenderingContext2D | undefined;
+          // Past the deepest tiles OpenLayers enlarges them: use the
+          // browser's best resampling rather than plain bilinear.
+          if (ctx) ctx.imageSmoothingQuality = "high";
           const v = visualsRef.current;
           if (ctx && (v.brightness !== 1 || v.contrast !== 1 || v.saturation !== 1)) {
             ctx.filter = `brightness(${v.brightness}) contrast(${v.contrast}) saturate(${v.saturation})`;
@@ -245,10 +336,29 @@ export function useKmzLoader({
       //     overlay-tiles.ts): only the tiles on screen, any zoom. Missing
       //     deep tiles fall back to the level above (OpenLayers interim tiles).
       if (tiles) {
+        const fileUrl = (z: number, x: number, y: number) =>
+          tiles.url.replace("{z}", String(z)).replace("{x}", String(x)).replace("{y}", String(y));
         addPhotoTiles(
           new XYZ({
-            url: tiles.url,
-            tileGrid: siteTilesGrid(tiles.maxZoom, dpr),
+            // Two levels past the deepest files are drawn here by enlarging
+            // them (sharper than the map's own bilinear stretch).
+            tileGrid: siteTilesGrid(tiles.maxZoom + OVERZOOM_LEVELS, dpr),
+            tileUrlFunction: ([z, x, y]) => {
+              const o = overzoomSource(z, x, y, tiles.maxZoom);
+              return o ? `${fileUrl(o.z, o.x, o.y)}#oz=${o.sx},${o.sy},${o.size}` : fileUrl(z, x, y);
+            },
+            tileLoadFunction: (tile, src) => {
+              const m = /#oz=(\d+(?:\.\d+)?),(\d+(?:\.\d+)?),(\d+(?:\.\d+)?)$/.exec(src);
+              const imageTile = tile as unknown as { getImage: () => HTMLImageElement; setImage: (c: HTMLCanvasElement) => void; setState: (s: number) => void };
+              if (!m) {
+                imageTile.getImage().src = src;
+                return;
+              }
+              void enlargeTile(src.slice(0, src.indexOf("#oz=")), { sx: +m[1], sy: +m[2], size: +m[3] }).then((canvas) => {
+                if (canvas) imageTile.setImage(canvas);
+                else imageTile.setState(3); // TileState.ERROR: keep the level above
+              });
+            },
             projection: "EPSG:3857",
             crossOrigin: "anonymous",
             interpolate: true,
@@ -257,6 +367,21 @@ export function useKmzLoader({
           }),
           { extent: tiles.extent, zIndex: 6, minZoom: tilesFrom! - 0.001 },
         );
+        // "Full detail" hint: zoomed past what the photos hold.
+        const sourceCm = Number(tiles.sourceCmPerPx);
+        if (setPastFullDetail && Number.isFinite(sourceCm) && sourceCm > 0) {
+          const view = map.getView();
+          const check = () => {
+            const res = view.getResolution();
+            const c = view.getCenter();
+            const inside = !!c && c[0] >= tiles.extent[0] && c[0] <= tiles.extent[2] && c[1] >= tiles.extent[1] && c[1] <= tiles.extent[3];
+            setPastFullDetail(
+              !!res && !!c && inside && isPastFullDetail({ viewResolution: res, pixelRatio: dpr, sourceCmPerPx: sourceCm, centerY: c[1] }),
+            );
+          };
+          detailListenerRef.current = view.on(["change:resolution", "change:center"], check);
+          check();
+        }
       }
 
       // 0b. The overview pyramid of all drone photos (8192 px): only below the
@@ -589,6 +714,8 @@ export function useKmzLoader({
     return () => {
       ignore = true;
       abortController.abort();
+      if (detailListenerRef.current) unByKey(detailListenerRef.current);
+      detailListenerRef.current = null;
     };
   // mapReady is the state trigger that fires once the map is mounted
   }, [mapReady, kmzUrl, tifUrl, schoolId]);

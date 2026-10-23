@@ -533,6 +533,7 @@ export default function School2DViewer({
     setLoadingProgress,
     setIsTileLoading: hud.setTilesLoading,
     setDecodingCount: hud.setDecoding,
+    setPastFullDetail: hud.setPastFullDetail,
     setFeatures,
     kmlLayerRef,
     groundOverlayLayersRef,

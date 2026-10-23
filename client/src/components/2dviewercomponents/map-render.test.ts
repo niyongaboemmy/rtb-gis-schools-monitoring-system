@@ -75,3 +75,39 @@ describe("full-detail site tiles grid", () => {
     expect(siteTilesMinViewZoom(16, 2)).toBe(15);
   });
 });
+
+describe("full-detail hint", () => {
+  it("knows when a screen pixel covers less ground than a photo pixel", async () => {
+    const { isPastFullDetail } = await import("./hooks/useKmzLoader");
+    const world = 2 * Math.PI * 6378137;
+    const res = (z: number) => world / (256 * 2 ** z);
+    const centerY = -218522; // Nyamirama (≈ -1.96°)
+    const at = (z: number, pixelRatio: number) => isPastFullDetail({ viewResolution: res(z), pixelRatio, sourceCmPerPx: 0.74, centerY });
+    expect(at(24, 1)).toBe(false); // 0.93 cm per screen pixel: still real detail
+    expect(at(24, 2)).toBe(true); // retina: 0.47 cm
+    expect(at(25, 1)).toBe(true);
+    expect(at(23, 2)).toBe(false);
+  });
+});
+
+describe("enlarging past the deepest tiles", () => {
+  it("maps a deeper tile to its file tile and the square to enlarge", async () => {
+    const { overzoomSource } = await import("./hooks/useKmzLoader");
+    expect(overzoomSource(24, 10, 20, 24)).toBeNull(); // a real file tile
+    // One level deeper: a quarter of the parent.
+    expect(overzoomSource(25, 21, 41, 24)).toEqual({ z: 24, x: 10, y: 20, sx: 128, sy: 128, size: 128 });
+    // Two levels: a sixteenth.
+    expect(overzoomSource(26, 43, 80, 24)).toEqual({ z: 24, x: 10, y: 20, sx: 192, sy: 0, size: 64 });
+  });
+
+  it("the sharpen filter steepens an edge and leaves flat areas alone", async () => {
+    const { unsharp } = await import("./hooks/useKmzLoader");
+    const w = 6, h = 3, d = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) d.fill(x < 3 ? 100 : 200, (y * w + x) * 4, (y * w + x) * 4 + 3);
+    unsharp(d, w, h);
+    const at = (x: number) => d[(1 * w + x) * 4];
+    expect(at(1)).toBe(100); // flat
+    expect(at(2)).toBeLessThan(100); // dark side of the edge gets darker
+    expect(at(3)).toBeGreaterThan(200); // light side lighter
+  });
+});
