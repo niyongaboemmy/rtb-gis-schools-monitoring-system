@@ -11,10 +11,9 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
-import { cumulativeLengths, formatCoord, parseView, serializeView, type LatLng, type MapView } from "../geo";
+import { cumulativeLengths, formatCoord, HOME_VIEW, parseView, serializeView, type LatLng, type MapView } from "../geo";
 import { formatLength } from "../../../lib/format";
 import type { ToolMode, ViewRequest } from "../types";
-import { RWANDA_BBOX, type MapRegion } from "../region";
 
 const vertexIcon = L.divIcon({ className: "nm-vertex", html: "<span></span>", iconSize: [12, 12], iconAnchor: [6, 6] });
 const originIcon = L.divIcon({ className: "nm-vertex nm-origin", html: "<span></span>", iconSize: [14, 14], iconAnchor: [7, 7] });
@@ -109,16 +108,15 @@ export function CursorReadout({ target }: { target: HTMLElement | null }) {
 }
 
 /**
- * Two-way camera sync. Applies one-shot view requests (fly / bounds / Rwanda
+ * Two-way camera sync. Applies one-shot view requests (fly / bounds / home
  * / zoom), reports every settled view (for the URL) and bounds, and on mount
- * restores the URL view or frames Rwanda.
+ * restores the URL view or opens on the home view.
  */
 export function ViewController({
   request,
   initialView,
   pendingFocus,
   expectFocus,
-  region,
   padding,
   reduceMotion,
   onView,
@@ -129,7 +127,6 @@ export function ViewController({
   pendingFocus: LatLng | null;
   /** A school focus is still coming (schools loading) — don't frame Rwanda yet. */
   expectFocus: boolean;
-  region: MapRegion | null;
   /** [top, right, bottom, left] px kept clear for floating UI. */
   padding: [number, number, number, number];
   reduceMotion: boolean;
@@ -150,16 +147,9 @@ export function ViewController({
     const [t, r, b, l] = padRef.current;
     return { paddingTopLeft: L.point(l, t), paddingBottomRight: L.point(r, b) };
   };
-  // Framing the whole country: hug it. The command bar and legend are glass,
-  // so the border may tuck under their edges — the country fills the stage.
-  const rwandaOpts = () => {
-    const [t, r, b, l] = padRef.current;
-    return { paddingTopLeft: L.point(l, Math.min(t, 64)), paddingBottomRight: L.point(r, Math.min(b, 8)) };
-  };
 
   // Initial camera: the URL view; else a shared ?school= link centres on
-  // that school once it loads; else (once the accurate outline has loaded)
-  // Rwanda.
+  // that school once it loads; else the home view.
   useEffect(() => {
     if (framed.current) return;
     if (initialView) {
@@ -168,12 +158,12 @@ export function ViewController({
     } else if (pendingFocus) {
       framed.current = true;
       map.setView(pendingFocus, 14, { animate: false });
-    } else if (region && !expectFocus) {
+    } else if (!expectFocus) {
       framed.current = true;
-      map.fitBounds(region.rwandaBounds, { ...rwandaOpts(), animate: false });
+      map.setView([HOME_VIEW.lat, HOME_VIEW.lng], HOME_VIEW.zoom, { animate: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, region, pendingFocus, expectFocus]);
+  }, [map, pendingFocus, expectFocus]);
 
   // Back/forward: the URL's `v` string changed and isn't the camera's own
   // last write. Keyed on the string so unrelated URL patches (filters,
@@ -211,17 +201,15 @@ export function ViewController({
         });
         break;
       case "rwanda":
-        map[animate ? "flyToBounds" : "fitBounds"](region?.rwandaBounds ?? RWANDA_BBOX, {
-          ...rwandaOpts(),
-          ...(animate ? { duration } : { animate: false }),
-        });
+        if (animate) map.flyTo([HOME_VIEW.lat, HOME_VIEW.lng], HOME_VIEW.zoom, { duration });
+        else map.setView([HOME_VIEW.lat, HOME_VIEW.lng], HOME_VIEW.zoom, { animate: false });
         break;
       case "zoom":
         if (request.delta > 0) map.zoomIn();
         else map.zoomOut();
         break;
     }
-  }, [request, map, region, reduceMotion]);
+  }, [request, map, reduceMotion]);
 
   useMapEvents({
     moveend: () => {

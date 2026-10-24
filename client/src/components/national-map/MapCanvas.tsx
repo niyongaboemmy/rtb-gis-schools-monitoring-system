@@ -4,7 +4,7 @@ import type L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "./nationalMap.css";
 import { basemapById, type BasemapId } from "../maps/schoolMap";
-import type { LatLng, MapView } from "./geo";
+import { HOME_VIEW, type LatLng, type MapView } from "./geo";
 import type { MapRegion } from "./region";
 import type { OverlayId, PlottedSchool, ProvinceSummary, ToolMode, ViewRequest } from "./types";
 import { DistrictLayer, LakeLayer, ProvinceLabels, ProvinceLayer, RwandaFocus } from "./layers/RegionLayers";
@@ -18,8 +18,6 @@ import {
   ToolClicks,
   ViewController,
 } from "./layers/ToolLayers";
-
-const RWANDA_CENTER: LatLng = [-1.9403, 29.8739];
 
 /** Custom panes so region art sits under the school pins and labels never eat clicks. */
 function Panes() {
@@ -85,12 +83,12 @@ export function MapCanvas(props: MapCanvasProps) {
   const tone = def.tone?.(theme) ?? null;
   const imagery = basemap === "satellite";
   const ref = def.reference?.(theme) ?? null;
-  const [zoom, setZoom] = useState(8);
+  const [zoom, setZoom] = useState(HOME_VIEW.zoom);
 
   return (
     <MapContainer
-      center={RWANDA_CENTER}
-      zoom={8}
+      center={[HOME_VIEW.lat, HOME_VIEW.lng]}
+      zoom={HOME_VIEW.zoom}
       minZoom={6}
       maxZoom={18}
       zoomSnap={0.25}
@@ -180,7 +178,6 @@ export function MapCanvas(props: MapCanvasProps) {
         initialView={props.initialView}
         pendingFocus={props.pendingFocus}
         expectFocus={props.expectFocus}
-        region={region}
         padding={props.padding}
         reduceMotion={props.reduceMotion}
         onView={props.onView}

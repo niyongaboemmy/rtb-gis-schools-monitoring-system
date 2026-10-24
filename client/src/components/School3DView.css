@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 .glb-root *,
 .glb-root *::before,
@@ -12,7 +11,7 @@
     background: #060b1a;
     display: flex;
     flex-direction: column;
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-sans);
     color: #e8e8f0;
     overflow: hidden
 }
@@ -50,7 +49,7 @@
 }
 
 .badge {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 10px;
     padding: 3px 8px;
     background: rgba(59, 130, 246, 0.15);
@@ -143,7 +142,7 @@
     font-size: 12px;
     color: rgba(232, 232, 240, 0.45);
     text-align: center;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     line-height: 1.7
 }
 
@@ -153,7 +152,7 @@
     border: none;
     background: linear-gradient(135deg, #3b82f6, #60a5fa);
     color: #fff;
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-sans);
     font-size: 13px;
     font-weight: 700;
     cursor: pointer;
@@ -181,7 +180,7 @@
 }
 
 .info-card-value {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 15px;
     font-weight: 500;
     color: #60a5fa
@@ -203,7 +202,7 @@
     border: 1px solid rgba(255, 71, 71, 0.25);
     color: #ff7070;
     font-size: 12px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     display: flex;
     align-items: center;
     gap: 8px
@@ -270,7 +269,7 @@
 }
 
 .progress-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
     color: rgba(232, 232, 240, 0.45);
     letter-spacing: 0.3px;
@@ -392,7 +391,7 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 7px;
     padding: 5px 10px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 10px;
     color: #e8e8f0;
     letter-spacing: 0.3px;
@@ -413,7 +412,7 @@
 }
 
 .speed-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 9px;
     color: rgba(232, 232, 240, 0.35);
     text-transform: uppercase;
@@ -424,7 +423,7 @@
 }
 
 .speed-val {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
     font-weight: 600;
     color: #60a5fa;
@@ -461,7 +460,7 @@
 }
 
 .mode-label-hdr {
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-sans);
     font-size: 10px;
     font-weight: 700;
     color: rgba(255, 255, 255, 0.3);
@@ -479,7 +478,7 @@
     backdrop-filter: blur(24px);
     -webkit-backdrop-filter: blur(24px);
     color: rgba(232, 232, 240, 0.45);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
     cursor: pointer;
     transition: all .2s ease;
@@ -570,7 +569,7 @@
 }
 
 .stat-val {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 13px;
     font-weight: 700;
     color: #60a5fa;
@@ -611,7 +610,7 @@
     border: 1px solid rgba(50, 200, 100, 0.3);
     border-radius: 8px;
     padding: 7px 12px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 10px;
     color: #60e8a0;
     z-index: 30;
@@ -627,7 +626,7 @@
     border: 1px solid rgba(50, 150, 255, 0.3);
     border-radius: 8px;
     padding: 7px 12px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 10px;
     color: #70b8ff;
     z-index: 30;
@@ -683,7 +682,7 @@
     border: 1px solid transparent;
     background: transparent;
     color: rgba(232, 232, 240, 0.5);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 10px;
     cursor: pointer;
     transition: all .18s ease;
@@ -720,7 +719,7 @@
 }
 
 .meas-hint {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 9px;
     color: rgba(59, 130, 246, 0.7);
     padding: 0 4px;
@@ -738,7 +737,7 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
     background: rgba(255, 255, 255, 0.04);
     color: rgba(232, 232, 240, 0.65);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 10px;
     cursor: pointer;
     display: flex;
@@ -787,7 +786,7 @@
     border: none;
     background: transparent;
     color: rgba(232, 232, 240, 0.55);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 10px;
     cursor: pointer;
     text-align: left;
@@ -861,7 +860,7 @@
 }
 
 .mp-count {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 9px;
     padding: 2px 7px;
     background: rgba(59, 130, 246, 0.15);
@@ -875,7 +874,7 @@
     border: none;
     background: rgba(255, 71, 71, 0.08);
     color: rgba(255, 112, 112, 0.7);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 9px;
     cursor: pointer;
     transition: all .15s
@@ -926,7 +925,7 @@
 }
 
 .mp-item-type {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 8px;
     text-transform: uppercase;
     letter-spacing: 1px;
@@ -955,7 +954,7 @@
 }
 
 .mp-item-val {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 14px;
     font-weight: 600;
     color: #e8e8f0;
@@ -963,7 +962,7 @@
 }
 
 .mp-item-pts {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 9px;
     color: rgba(232, 232, 240, 0.3);
     margin-top: 2px
@@ -977,7 +976,7 @@
     height: 100%;
     gap: 10px;
     color: rgba(232, 232, 240, 0.2);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
     text-align: center;
     padding: 20px
@@ -1059,7 +1058,7 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
     padding: 14px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
     resize: vertical;
     min-height: 90px;
@@ -1087,7 +1086,7 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
     background: transparent;
     color: rgba(232, 232, 240, 0.5);
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-sans);
     font-size: 11px;
     font-weight: 600;
     cursor: pointer;
@@ -1105,7 +1104,7 @@
     border: none;
     background: linear-gradient(135deg, #3b82f6, #2563eb);
     color: #fff;
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-sans);
     font-size: 11px;
     font-weight: 700;
     cursor: pointer;
@@ -1381,7 +1380,7 @@
     border: 1px solid rgba(255, 255, 255, 0.14);
     border-bottom: 2px solid rgba(255, 255, 255, 0.2);
     border-radius: 5px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 9px;
     font-weight: 600;
     color: #93c5fd;
@@ -1406,7 +1405,7 @@
     border-radius: 10px;
     background: rgba(59, 130, 246, 0.07);
     border: 1px solid rgba(59, 130, 246, 0.2);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 10px;
     color: rgba(157, 122, 255, 0.8);
     line-height: 1.8
@@ -1417,7 +1416,7 @@
     border-radius: 10px;
     background: rgba(50, 200, 100, 0.06);
     border: 1px solid rgba(50, 200, 100, 0.2);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 10px;
     color: rgba(96, 232, 160, 0.9);
     line-height: 1.9
@@ -1486,7 +1485,7 @@
 }
 
 .bld-panel-code {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 8px;
     font-weight: 700;
     color: rgba(255, 255, 255, 0.3);
@@ -1542,7 +1541,7 @@
 }
 
 .bld-info-label {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 9px;
     font-weight: 600;
     color: rgba(232, 232, 240, 0.3);
@@ -1551,14 +1550,14 @@
 }
 
 .bld-info-val {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
     font-weight: 600;
     color: #e8e8f0
 }
 
 .bld-info-badge {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 9px;
     font-weight: 700;
     text-transform: capitalize;
@@ -1573,7 +1572,7 @@
 }
 
 .bld-notes-text {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 10px;
     color: rgba(232, 232, 240, 0.5);
     line-height: 1.6;
@@ -1588,7 +1587,7 @@
 }
 
 .bld-no-data {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 10px;
     color: rgba(232, 232, 240, 0.2);
     text-align: center;

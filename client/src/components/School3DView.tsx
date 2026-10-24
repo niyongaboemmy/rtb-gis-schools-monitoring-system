@@ -75,6 +75,7 @@ import { collectMedia, collectReportMedia, type GalleryItem } from "./2dviewerco
 // Styles
 import "./School3DView.css";
 import { buildingPayloadFields } from "../lib/buildingPayload";
+import { FONT_SANS, FONT_MONO } from "../lib/fonts";
 
 // ─── GLB browser cache ──────────────────────────────────────────────────────
 // The Cache API keeps a downloaded optimized GLB across tab reloads / sessions
@@ -1379,7 +1380,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       const camDist = camera.position.distanceTo(new THREE.Vector3(pt.x, pt.y, pt.z));
       const scale = Math.max(0.65, Math.min(1.5, 30 / Math.max(camDist, 0.001)));
       const fontSize = Math.round(11 * scale);
-      ctx.font = `bold ${fontSize}px 'JetBrains Mono', monospace`;
+      ctx.font = `bold ${fontSize}px ${FONT_MONO}`;
       const tw = ctx.measureText(text).width;
       const padX = 6 * scale, padY = 3 * scale;
       const bw = tw + padX * 2, bh = fontSize + padY * 2;
@@ -1473,7 +1474,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * scale; ctx.setLineDash([]); ctx.stroke();
 
       const label = building.buildingName || building.name || "Block";
-      ctx.font = `bold ${Math.round(11 * scale)}px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif`;
+      ctx.font = `bold ${Math.round(11 * scale)}px ${FONT_SANS}`;
       const tw = ctx.measureText(label).width;
       const padX = 6 * scale, bh = 18 * scale, bw = tw + padX * 2;
       const bx = px - bw / 2, by = py - 20 * scale - bh;
@@ -1497,7 +1498,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         const proj = project3Dto2D(a.point, camera, W, H); if (!proj) return;
         const [x, y] = proj;
 
-        ctx.font = "bold 13px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif";
+        ctx.font = `bold 13px ${FONT_SANS}`;
         const labelText = a.text.split("\n")[0];
         const textW = ctx.measureText(labelText).width;
         const padX = 7, padY = 3, bh = 22, bw = textW + padX * 2;

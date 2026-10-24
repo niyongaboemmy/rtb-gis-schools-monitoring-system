@@ -1,6 +1,7 @@
 import { Fill, Stroke, Style, Circle as CircleStyle, Text } from "ol/style";
 import { formatArea as sharedFormatArea, formatLength as sharedFormatLength } from "../../lib/format";
 import Feature from "ol/Feature";
+import { FONT_SANS } from "../../lib/fonts";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types & Interfaces
@@ -76,7 +77,7 @@ export const kmlStyle = (feature: any): Style => {
     text: name
       ? new Text({
           text: name,
-          font: "bold 11px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif",
+          font: `bold 11px ${FONT_SANS}`,
           fill: KML_LABEL_FILL,
           stroke: KML_LABEL_STROKE,
           offsetY: type === "Point" ? 18 : 0,
@@ -142,7 +143,7 @@ export const placesStyleFunction = (feature: any) => {
       text: name
         ? new Text({
             text: name,
-            font: "bold 13px 'Inter', system-ui, sans-serif",
+            font: `bold 13px ${FONT_SANS}`,
             fill: new Fill({ color: "#fff" }),
             stroke: new Stroke({ color: "rgba(0, 0, 0, 0.8)", width: 3 }),
             offsetY: 20,
@@ -158,7 +159,7 @@ export const placesStyleFunction = (feature: any) => {
     text: name
       ? new Text({
           text: name,
-          font: "bold 13px 'Inter', system-ui, sans-serif",
+          font: `bold 13px ${FONT_SANS}`,
           fill: new Fill({ color: "#fff" }),
           stroke: new Stroke({ color: "rgba(0, 0, 0, 0.8)", width: 3 }),
           offsetY: 0,
@@ -201,7 +202,7 @@ export const blockStyle = (feature?: any) => {
       stroke: new Stroke({ color: "#3b82f6", width: 3.5 }),
       text: labelText ? new Text({
         text: labelText,
-        font: "bold 12px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif",
+        font: `bold 12px ${FONT_SANS}`,
         fill: new Fill({ color: "#fff" }),
         stroke: new Stroke({ color: "rgba(15, 23, 42, 0.95)", width: 4 }),
         overflow: true,
@@ -218,7 +219,7 @@ export const blockStyle = (feature?: any) => {
     }),
     text: labelText ? new Text({
       text: labelText,
-      font: "bold 12px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif",
+      font: `bold 12px ${FONT_SANS}`,
       fill: new Fill({ color: "#fff" }),
       stroke: new Stroke({ color: "rgba(15, 23, 42, 0.95)", width: 4 }),
       offsetY: 22,
@@ -293,7 +294,7 @@ export function siteAnnotationStyle(feature: Feature): Style {
       }),
       text: label ? new Text({
         text: label,
-        font: "bold 13px 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif",
+        font: `bold 13px ${FONT_SANS}`,
         fill: new Fill({ color: "#ffffff" }),
         stroke: new Stroke({ color: "rgba(10, 10, 20, 0.9)", width: 4 }),
         offsetY: -20,
@@ -320,7 +321,7 @@ export function siteAnnotationStyle(feature: Feature): Style {
     }),
     text: finalLabel ? new Text({
       text: finalLabel,
-      font: "bold 11px 'Inter', system-ui, sans-serif",
+      font: `bold 11px ${FONT_SANS}`,
       fill: new Fill({ color: "#ffffff" }),
       stroke: new Stroke({ color: "rgba(10, 10, 20, 0.85)", width: 3 }),
       offsetY: -14,
