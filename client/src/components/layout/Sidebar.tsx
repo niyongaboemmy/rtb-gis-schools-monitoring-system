@@ -135,7 +135,7 @@ export function Sidebar({
         />
 
         {!collapsed && (
-          <span className={cn("relative z-10 truncate", opts.nested ? "text-[12.5px]" : "text-[13px]", "font-medium")}>
+          <span className={cn("relative z-10 truncate", opts.nested ? "text-[13px]" : "text-[15px]", "font-medium")}>
             {leaf.name}
           </span>
         )}
@@ -151,8 +151,8 @@ export function Sidebar({
               className={cn(
                 "z-10 rounded-full bg-red-500 text-center font-medium tabular-nums text-white",
                 collapsed
-                  ? "absolute -right-1 -top-1 min-w-4 px-1 text-[9px] leading-4 ring-2 ring-background"
-                  : "relative ml-auto min-w-5 px-1.5 text-[11px] leading-5",
+                  ? "absolute -right-1 -top-1 min-w-4 px-1 text-[12px] leading-4 ring-2 ring-background"
+                  : "relative ml-auto min-w-5 px-1.5 text-[13px] leading-5",
               )}
               title={`${badge} report${badge === "1" ? "" : "s"} waiting for review`}
             >
@@ -207,7 +207,7 @@ export function Sidebar({
           )}
         >
           <g.icon aria-hidden="true" className="h-4 w-4 shrink-0 transition-transform duration-150 group-hover/head:scale-110" />
-          <span className="truncate text-[13px] font-medium">{g.name}</span>
+          <span className="truncate text-[15px] font-medium">{g.name}</span>
           <span className="ml-auto flex items-center gap-1.5">
             <AnimatePresence initial={false}>
               {!open && groupBadge && (
@@ -215,7 +215,7 @@ export function Sidebar({
                   initial={{ scale: 0.4, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.4, opacity: 0 }}
-                  className="min-w-5 rounded-full bg-red-500 px-1.5 text-center text-[11px] font-medium leading-5 tabular-nums text-white"
+                  className="min-w-5 rounded-full bg-red-500 px-1.5 text-center text-[13px] font-medium leading-5 tabular-nums text-white"
                 >
                   {groupBadge}
                   <span className="sr-only"> waiting for review</span>
@@ -308,7 +308,7 @@ export function Sidebar({
           </TooltipTrigger>
           <TooltipContent side="right" sideOffset={8} className="text-xs">
             {collapsed ? "Expand" : "Collapse"} sidebar
-            <kbd className="ml-2 rounded border border-border/60 px-1 font-sans text-[10px] text-muted-foreground">Ctrl B</kbd>
+            <kbd className="ml-2 rounded border border-border/60 px-1 font-sans text-[12px] text-muted-foreground">Ctrl B</kbd>
           </TooltipContent>
         </Tooltip>
       )}
@@ -325,7 +325,7 @@ export function Sidebar({
           {!collapsed && (
             <div className="min-w-0 flex-1">
               <p className="whitespace-nowrap text-sm font-semibold leading-none text-foreground">TVET 3D GIS</p>
-              <p className="mt-0.5 whitespace-nowrap text-[10px] text-muted-foreground">Control center</p>
+              <p className="mt-0.5 whitespace-nowrap text-[12px] text-muted-foreground">Control center</p>
             </div>
           )}
           {!isDesktop && (
@@ -347,7 +347,7 @@ export function Sidebar({
           className={cn("flex-1 space-y-0.5 overflow-y-auto overscroll-contain py-3", collapsed ? "px-0" : "px-3")}
         >
           {!collapsed && (
-            <p className="px-3 pb-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+            <p className="px-3 pb-1.5 text-[12px] font-medium uppercase tracking-wider text-muted-foreground/60">
               Workspace
             </p>
           )}
@@ -367,7 +367,7 @@ export function Sidebar({
                   aria-label="My profile"
                   aria-current={profileActive ? "page" : undefined}
                   className={cn(
-                    "mx-auto flex h-9 w-9 items-center justify-center rounded-full border text-[11px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                    "mx-auto flex h-9 w-9 items-center justify-center rounded-full border text-[13px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                     profileActive
                       ? "border-primary bg-primary text-primary-foreground"
                       : "border-primary/20 bg-primary/15 text-primary hover:bg-primary/25",
@@ -394,7 +394,7 @@ export function Sidebar({
             >
               <div
                 className={cn(
-                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[11px] font-medium transition-colors",
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[13px] font-medium transition-colors",
                   profileActive ? "border-primary bg-primary text-primary-foreground" : "border-primary/20 bg-primary/15 text-primary",
                 )}
               >
@@ -404,7 +404,7 @@ export function Sidebar({
                 <p className={cn("truncate text-xs font-normal leading-none", profileActive ? "text-primary" : "text-foreground")}>{user.fullName}</p>
                 {/* Role · level on one line; the level truncates first, full text on hover. */}
                 <p
-                  className="mt-1 flex min-w-0 items-center gap-1 text-[10px] leading-none"
+                  className="mt-1 flex min-w-0 items-center gap-1 text-[12px] leading-none"
                   title={user.scopeLine ? `${user.roleName} · ${user.scopeLine}` : user.roleName}
                 >
                   <span className="shrink-0 capitalize text-muted-foreground">{user.roleName}</span>

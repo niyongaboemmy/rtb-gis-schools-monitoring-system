@@ -79,7 +79,7 @@ export function FilePreview({ url, filename, className, showDetails = true }: Fi
             <Button 
               variant="ghost" 
               size="sm" 
-              className="mt-4 rounded-full text-[10px] font-black uppercase tracking-widest h-8"
+              className="mt-4 rounded-full text-[12px] font-black uppercase tracking-widest h-8"
               onClick={() => setIsLightboxOpen(true)}
             >
               <Eye className="w-3.5 h-3.5 mr-2" /> View PDF
@@ -91,10 +91,10 @@ export function FilePreview({ url, filename, className, showDetails = true }: Fi
       {showDetails && (
         <div className="p-3 bg-card/50 flex items-center justify-between">
           <div className="min-w-0 pr-2">
-            <p className="text-[10px] font-black uppercase tracking-tight truncate text-muted-foreground">
+            <p className="text-[12px] font-black uppercase tracking-tight truncate text-muted-foreground">
               {filename || url.split("/").pop()}
             </p>
-            <p className="text-[8px] font-bold text-primary opacity-60 uppercase">{fileExtension}</p>
+            <p className="text-[11px] font-bold text-primary opacity-60 uppercase">{fileExtension}</p>
           </div>
           {!isImage && !isPdf && (
             <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full shrink-0" asChild>
@@ -133,7 +133,7 @@ export function FilePreview({ url, filename, className, showDetails = true }: Fi
                   </div>
                   <div className="min-w-0">
                     <h3 className="truncate text-sm font-black uppercase tracking-tight">{filename || "Document Preview"}</h3>
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase opacity-60">{fileExtension} Document</p>
+                    <p className="text-[12px] font-bold text-muted-foreground uppercase opacity-60">{fileExtension} Document</p>
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">

@@ -41,7 +41,7 @@ const NAV_2D: Row[] = [
 type Tab = "move" | "tools" | "keys";
 
 const Kbd = ({ k }: { k: string }) => (
-  <kbd className="inline-flex h-6 min-w-6 items-center justify-center rounded-lg bg-white/70 px-2 font-sans text-[11px] text-slate-700 ring-1 ring-slate-900/10 dark:bg-white/10 dark:text-white/80 dark:ring-white/12">{k}</kbd>
+  <kbd className="inline-flex h-6 min-w-6 items-center justify-center rounded-lg bg-white/70 px-2 font-sans text-[13px] text-slate-700 ring-1 ring-slate-900/10 dark:bg-white/10 dark:text-white/80 dark:ring-white/12">{k}</kbd>
 );
 
 function Rows({ rows }: { rows: Row[] }) {
@@ -56,7 +56,7 @@ function Rows({ rows }: { rows: Row[] }) {
           transition={{ duration: 0.25, delay: Math.min(i * 0.03, 0.3), ease: EASE }}
           className="flex items-center justify-between gap-3 rounded-2xl bg-white/40 px-3.5 py-2.5 ring-1 ring-white/50 dark:bg-white/4 dark:ring-white/8"
         >
-          <span className="text-[13px] text-slate-800 dark:text-white/85">{r.desc}</span>
+          <span className="text-[15px] text-slate-800 dark:text-white/85">{r.desc}</span>
           <span className="flex shrink-0 gap-1">{r.keys.map((k) => <Kbd key={k} k={k} />)}</span>
         </motion.li>
       ))}
@@ -144,7 +144,7 @@ export const ViewerHelpModal: React.FC<ViewerHelpModalProps> = ({ setShowHelp, v
                   aria-selected={on}
                   onClick={() => setTab(t.key)}
                   className={cn(
-                    "relative flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                    "relative flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-[15px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
                     on ? "text-white" : "text-slate-700 hover:text-slate-900 dark:text-white/65 dark:hover:text-white",
                   )}
                 >
@@ -183,13 +183,13 @@ export const ViewerHelpModal: React.FC<ViewerHelpModalProps> = ({ setShowHelp, v
                               aria-pressed={on}
                               onClick={() => setToolId(t.id)}
                               className={cn(
-                                "flex w-full items-center gap-2.5 rounded-2xl px-3 py-2.5 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                                "flex w-full items-center gap-2.5 rounded-2xl px-3 py-2.5 text-left text-[15px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
                                 on ? "bg-primary text-white" : "text-slate-800 hover:bg-white/60 dark:text-white/80 dark:hover:bg-white/8",
                               )}
                             >
                               <t.icon className="h-4 w-4 shrink-0" aria-hidden />
                               <span className="flex-1 truncate">{t.label}</span>
-                              {t.shortcut && <span className={cn("hidden text-[11px] sm:inline", on ? "text-white/70" : "text-slate-500 dark:text-white/40")}>{t.shortcut.toUpperCase()}</span>}
+                              {t.shortcut && <span className={cn("hidden text-[13px] sm:inline", on ? "text-white/70" : "text-slate-500 dark:text-white/40")}>{t.shortcut.toUpperCase()}</span>}
                             </button>
                           </li>
                         );
@@ -221,9 +221,9 @@ export const ViewerHelpModal: React.FC<ViewerHelpModalProps> = ({ setShowHelp, v
                                 initial={reduce ? false : { opacity: 0, x: 8 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ duration: 0.25, delay: 0.05 + i * 0.06, ease: EASE }}
-                                className="flex gap-3 text-[13px] leading-relaxed text-slate-800 dark:text-white/85"
+                                className="flex gap-3 text-[15px] leading-relaxed text-slate-800 dark:text-white/85"
                               >
-                                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] text-white">{i + 1}</span>
+                                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[13px] text-white">{i + 1}</span>
                                 {st}
                               </motion.li>
                             ))}
@@ -245,7 +245,7 @@ export const ViewerHelpModal: React.FC<ViewerHelpModalProps> = ({ setShowHelp, v
                       type="button"
                       aria-expanded={accuracyOpen}
                       onClick={() => setAccuracyOpen((v) => !v)}
-                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-[13px] text-slate-800 dark:text-white/85"
+                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-[15px] text-slate-800 dark:text-white/85"
                     >
                       <span>
                         How exact are measurements? <span className="text-slate-500 dark:text-white/45">· map {accuracyLabel("2d")} · 3D {accuracyLabel("3d")}</span>

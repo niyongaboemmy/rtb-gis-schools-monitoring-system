@@ -160,13 +160,13 @@ export function ReportsDetail({ schoolId, data, loading = false, error = false, 
               <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {REPORT_STATUS.map((s) => (
                   <li key={s.key} className="rounded-xl px-3 py-2 ring-1 ring-slate-900/6 dark:ring-white/8">
-                    <p className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-white/50">
+                    <p className="flex items-center gap-1.5 text-[13px] text-slate-500 dark:text-white/50">
                       <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} aria-hidden />
                       {s.label}
                     </p>
                     <p className="mt-0.5 flex items-baseline gap-1.5">
                       <span className="text-base font-semibold tabular-nums text-slate-900 dark:text-white">{formatNumber(counts[s.key])}</span>
-                      <span className="text-[11px] tabular-nums text-slate-400 dark:text-white/40">{formatPercent((counts[s.key] / total) * 100)}</span>
+                      <span className="text-[13px] tabular-nums text-slate-400 dark:text-white/40">{formatPercent((counts[s.key] / total) * 100)}</span>
                     </p>
                   </li>
                 ))}
@@ -207,7 +207,7 @@ export function ReportsDetail({ schoolId, data, loading = false, error = false, 
                 data={data.months.map((m) => ({ key: m.key, label: m.label, values: { created: m.created, resolved: m.resolved } }))}
               />
             )}
-            <p className="text-[11px] text-slate-400 dark:text-white/40">Kigali calendar months.</p>
+            <p className="text-[13px] text-slate-400 dark:text-white/40">Kigali calendar months.</p>
           </DetailSection>
         </div>
       )}
@@ -247,12 +247,12 @@ export function ReportsDetail({ schoolId, data, loading = false, error = false, 
                     >
                       <span className="absolute inset-y-3 left-0 w-[3px] rounded-r-full" style={{ background: st.color }} aria-hidden />
                       <div className="flex items-start justify-between gap-3">
-                        <p className="line-clamp-2 min-w-0 break-words text-[13px] font-medium leading-snug text-slate-900 dark:text-white/90">
+                        <p className="line-clamp-2 min-w-0 break-words text-[15px] font-medium leading-snug text-slate-900 dark:text-white/90">
                           {r.description?.trim() ? r.description : `Report ${String(r.id).slice(0, 8)}…`}
                         </p>
                         <StatusPill color={st.color}>{st.label}</StatusPill>
                       </div>
-                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-white/50">
+                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[13px] text-slate-500 dark:text-white/50">
                         {r.building?.name && (
                           <span className="inline-flex items-center gap-1">
                             <Building2 className="h-3 w-3" aria-hidden />
@@ -275,7 +275,7 @@ export function ReportsDetail({ schoolId, data, loading = false, error = false, 
                 })}
               </ul>
               {total > rows.length && (
-                <p className="text-center text-[11px] text-slate-500 dark:text-white/45">
+                <p className="text-center text-[13px] text-slate-500 dark:text-white/45">
                   The {formatNumber(rows.length)} most recent of {formatNumber(total)} reports.
                 </p>
               )}
@@ -301,7 +301,7 @@ export function ReportsFooter({
 }) {
   return (
     <>
-      <p className="text-[11px] text-slate-500 dark:text-white/50">
+      <p className="text-[13px] text-slate-500 dark:text-white/50">
         {error ? "Refresh failed — showing earlier data. " : ""}Updated {loadedAt ? formatDateTime(loadedAt) : "—"}
       </p>
       <button

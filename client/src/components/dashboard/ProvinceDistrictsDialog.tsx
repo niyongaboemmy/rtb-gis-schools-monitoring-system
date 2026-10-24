@@ -44,7 +44,7 @@ function Ring({ score, size = 44, stroke = 4, delay = 0 }: { score: number | nul
           transition={{ duration: reduce ? 0 : 1.1, delay: reduce ? 0 : delay, ease: [0.22, 1, 0.36, 1] }}
         />
       </svg>
-      <span className="absolute text-[11px] font-semibold tabular-nums text-slate-900 dark:text-white" style={{ fontSize: size > 60 ? 18 : 11 }}>
+      <span className="absolute text-[13px] font-semibold tabular-nums text-slate-900 dark:text-white" style={{ fontSize: size > 60 ? 18 : 11 }}>
         {score === null ? "—" : Math.round(score)}
       </span>
     </span>
@@ -138,7 +138,7 @@ export function ProvinceDistrictsDialog({ open, onClose, province, districts, er
               />
               <Ring score={score} size={72} stroke={6} delay={0.15} />
               <div className="min-w-0 flex-1">
-                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-white/50">
+                <p className="flex items-center gap-1.5 text-[13px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-white/50">
                   <MapPin className="h-3.5 w-3.5" aria-hidden /> Province
                 </p>
                 <h2 className="truncate text-xl font-semibold tracking-tight text-slate-900 dark:text-white">{province.province}</h2>
@@ -159,7 +159,7 @@ export function ProvinceDistrictsDialog({ open, onClose, province, districts, er
             {/* Province priority mix */}
             <div className="space-y-2 px-6 pb-5">
               <PriorityBar item={province} />
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 dark:text-white/55">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-slate-500 dark:text-white/55">
                 {KEYS.map((k) => (
                   <span key={k} className="inline-flex items-center gap-1.5">
                     <span className="h-1.5 w-1.5 rounded-full" style={{ background: PRIORITY_META[k].color }} />
@@ -172,7 +172,7 @@ export function ProvinceDistrictsDialog({ open, onClose, province, districts, er
 
             {/* Districts */}
             <div className="min-h-0 flex-1 overflow-y-auto bg-slate-900/[0.025] px-3 py-3 dark:bg-white/[0.02]">
-              <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-white/45">
+              <p className="px-3 pb-2 text-[13px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-white/45">
                 Districts {rows.length ? `· ${rows.length}` : ""}{" "}
                 <span className="font-normal normal-case tracking-normal text-slate-400 dark:text-white/30">— lowest score first</span>
               </p>
@@ -209,7 +209,7 @@ export function ProvinceDistrictsDialog({ open, onClose, province, districts, er
                         <div className="min-w-0 flex-1 space-y-1.5">
                           <div className="flex items-baseline justify-between gap-3">
                             <span className="truncate text-sm font-medium text-slate-900 dark:text-white">{d.label}</span>
-                            <span className="shrink-0 text-[11px] tabular-nums text-slate-500 dark:text-white/50">
+                            <span className="shrink-0 text-[13px] tabular-nums text-slate-500 dark:text-white/50">
                               {formatNumber(Number(d.total))} {Number(d.total) === 1 ? "school" : "schools"}
                             </span>
                           </div>

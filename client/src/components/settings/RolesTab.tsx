@@ -171,7 +171,7 @@ function Highlight({ text, query }: { text: string; query: string }) {
 
 function SaveIndicator({ state }: { state: SaveState }) {
   return (
-    <span role="status" aria-live="polite" className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+    <span role="status" aria-live="polite" className="flex items-center gap-1.5 text-[15px] text-muted-foreground">
       <AnimatePresence mode="wait" initial={false}>
         <motion.span
           key={state}
@@ -498,15 +498,15 @@ export function RolesTab() {
           )}
         >
           <span className="flex items-center justify-between gap-2">
-            <span className={cn("truncate text-[13px]", selected ? "text-primary" : "text-foreground")}>
+            <span className={cn("truncate text-[15px]", selected ? "text-primary" : "text-foreground")}>
               <Highlight text={titleCase(role.name)} query={roleQuery} />
             </span>
-            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+            <span className="shrink-0 text-[13px] tabular-nums text-muted-foreground">
               {granted}/{TOTAL_PERMISSIONS}
             </span>
           </span>
           <span className="mt-1.5 flex items-center gap-2">
-            <span className="w-16 shrink-0 truncate text-[11px] text-muted-foreground">{levelName(role)}</span>
+            <span className="w-16 shrink-0 truncate text-[13px] text-muted-foreground">{levelName(role)}</span>
             <Meter value={granted} max={TOTAL_PERMISSIONS} className="flex-1" />
           </span>
         </button>
@@ -517,7 +517,7 @@ export function RolesTab() {
   const roleSection = (title: string, list: RoleRow[]) =>
     list.length > 0 && (
       <div>
-        <p className="px-3 pb-1 pt-3 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">{title}</p>
+        <p className="px-3 pb-1 pt-3 text-[12px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">{title}</p>
         <ul className="space-y-0.5">{list.map(roleItem)}</ul>
       </div>
     );
@@ -644,7 +644,7 @@ export function RolesTab() {
             {/* Summary: level · coverage · save state, on one aligned row */}
             <div className="mx-4 mt-4 grid divide-y divide-border/40 rounded-2xl bg-background/70 ring-1 ring-inset ring-border/40 min-[400px]:mx-5 sm:mx-6 @xl:grid-cols-3 @xl:divide-x @xl:divide-y-0 dark:bg-background/40">
               <div className="flex min-w-0 flex-col gap-1 px-4 py-3">
-                <label htmlFor="role-level" className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                <label htmlFor="role-level" className="text-[12px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                   Access level
                 </label>
                 <RichDropdown
@@ -662,16 +662,16 @@ export function RolesTab() {
                 />
               </div>
               <div className="flex min-w-0 flex-col gap-1 px-4 py-3">
-                <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Permissions</span>
+                <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Permissions</span>
                 <span className="flex h-8 items-center gap-3">
-                  <span className="shrink-0 text-[13px] tabular-nums text-foreground">
+                  <span className="shrink-0 text-[15px] tabular-nums text-foreground">
                     {formatNumber(granted)} <span className="text-muted-foreground">of {formatNumber(TOTAL_PERMISSIONS)}</span>
                   </span>
                   <Meter value={granted} max={TOTAL_PERMISSIONS} className="flex-1" />
                 </span>
               </div>
               <div className="flex min-w-0 flex-col gap-1 px-4 py-3">
-                <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Status</span>
+                <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Status</span>
                 <div className="flex h-8 items-center">
                   <SaveIndicator state={saveState[role.id] ?? "idle"} />
                 </div>
@@ -769,8 +769,8 @@ export function RolesTab() {
                             aria-hidden
                             className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200", open && "rotate-90")}
                           />
-                          <span className="truncate text-[13px] text-foreground">{group}</span>
-                          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                          <span className="truncate text-[15px] text-foreground">{group}</span>
+                          <span className="shrink-0 text-[13px] tabular-nums text-muted-foreground">
                             {groupGranted}/{items.length}
                           </span>
                           <Meter value={groupGranted} max={items.length} className="ml-auto hidden w-20 @md:block" />
@@ -803,7 +803,7 @@ export function RolesTab() {
                                     className="flex w-full items-center gap-4 px-4 py-3 text-left outline-none transition-colors hover:bg-slate-900/[0.02] focus-visible:bg-primary/5 dark:hover:bg-white/[0.03]"
                                   >
                                     <span className="min-w-0 flex-1">
-                                      <span className="block text-[13px] text-foreground">
+                                      <span className="block text-[15px] text-foreground">
                                         <Highlight text={label} query={permQuery} />
                                       </span>
                                       {description && (

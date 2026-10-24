@@ -43,7 +43,7 @@ function Delta({ v, peers, label }: { v: number | null | undefined; peers?: numb
     <span
       title={v == null ? `${label}: needs 3+ scored peers (${peers ?? 0})` : `${label}: ${v > 0 ? "+" : ""}${v} points`}
       className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[13px] font-medium",
         v == null
           ? "bg-slate-900/5 text-slate-500 dark:bg-white/6 dark:text-white/50"
           : v >= 0
@@ -135,7 +135,7 @@ export function DataQualityCard({ metrics, index }: Props) {
                 <li
                   key={k}
                   title={M.fix}
-                  className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:text-amber-300"
+                  className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[13px] font-medium text-amber-800 dark:text-amber-300"
                 >
                   <M.icon className="h-3 w-3" aria-hidden />
                   {M.label}

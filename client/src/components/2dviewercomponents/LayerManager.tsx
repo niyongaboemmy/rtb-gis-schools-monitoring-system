@@ -102,7 +102,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
   const empty = (Icon: React.ElementType, title: string) => (
     <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
       <Icon className="h-6 w-6 text-slate-300 dark:text-white/25" aria-hidden />
-      <p className="text-[13px] text-slate-700 dark:text-white/80">{title}</p>
+      <p className="text-[15px] text-slate-700 dark:text-white/80">{title}</p>
     </div>
   );
 
@@ -160,7 +160,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
                 aria-selected={on}
                 onClick={() => setActiveTab(t.id)}
                 className={cn(
-                  "relative flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                  "relative flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-[15px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
                   on
                     ? "text-white"
                     : "text-slate-600 hover:bg-slate-900/5 hover:text-slate-900 dark:text-white/60 dark:hover:bg-white/8 dark:hover:text-white",
@@ -178,7 +178,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
                 )}
                 <t.icon className="relative h-3.5 w-3.5" aria-hidden />
                 <span className="relative">{t.label}</span>
-                <span className="relative tabular-nums text-[11px] opacity-70">
+                <span className="relative tabular-nums text-[13px] opacity-70">
                   {count}
                 </span>
               </button>
@@ -201,7 +201,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={`Search ${activeTab === "features" ? "site features" : "building blocks"}`}
-            className="h-9 w-full rounded-full bg-slate-900/[0.04] pl-8.5 pr-8 text-[13px] text-slate-900 placeholder:text-slate-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/50 dark:bg-white/6 dark:text-white dark:placeholder:text-white/35 dark:focus:bg-white/8"
+            className="h-9 w-full rounded-full bg-slate-900/[0.04] pl-8.5 pr-8 text-[15px] text-slate-900 placeholder:text-slate-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/50 dark:bg-white/6 dark:text-white dark:placeholder:text-white/35 dark:focus:bg-white/8"
           />
           {searchQuery && (
             <button
@@ -225,7 +225,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
             {/* Group visibility filter chips */}
             {annotationGroups.length > 1 && (
               <div className="px-1.5 pb-2 pt-1">
-                <p className="mb-1.5 px-0.5 text-[11px] text-slate-600 dark:text-white/50">
+                <p className="mb-1.5 px-0.5 text-[13px] text-slate-600 dark:text-white/50">
                   Filter by type
                 </p>
                 <div className="flex flex-wrap gap-1">
@@ -240,7 +240,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
                         title={isHidden ? `Show ${ic.label}` : `Hide ${ic.label}`}
                         aria-pressed={!isHidden}
                         className={cn(
-                          "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                          "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
                           isHidden
                             ? "bg-transparent text-slate-500 line-through decoration-slate-400/60 hover:bg-slate-900/5 dark:text-white/40 dark:hover:bg-white/8"
                             : "bg-slate-900/[0.05] text-slate-700 hover:bg-slate-900/[0.08] dark:bg-white/8 dark:text-white/80 dark:hover:bg-white/12",
@@ -303,14 +303,14 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
                           />
                         </span>
                         <span className="flex min-w-0 flex-1 flex-col">
-                          <span className="truncate text-[13px] font-medium text-slate-800 dark:text-white/90">
+                          <span className="truncate text-[15px] font-medium text-slate-800 dark:text-white/90">
                             {title}
                           </span>
-                          <span className="truncate text-[11px] text-slate-600 dark:text-white/50">
+                          <span className="truncate text-[13px] text-slate-600 dark:text-white/50">
                             {iconDef.label} · {ann.type}
                           </span>
                           {ann.description && (
-                            <span className="truncate text-[11px] text-slate-500 dark:text-white/40">
+                            <span className="truncate text-[13px] text-slate-500 dark:text-white/40">
                               {ann.description}
                             </span>
                           )}
@@ -379,7 +379,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
                           <span className="flex items-center gap-1.5">
                             <span
                               className={cn(
-                                "truncate text-[13px] font-medium",
+                                "truncate text-[15px] font-medium",
                                 on
                                   ? "text-primary dark:text-blue-300"
                                   : "text-slate-800 dark:text-white/90",
@@ -394,7 +394,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
                               />
                             )}
                           </span>
-                          <span className="truncate text-[11px] tabular-nums text-slate-600 dark:text-white/50">
+                          <span className="truncate text-[13px] tabular-nums text-slate-600 dark:text-white/50">
                             Code: {b.buildingCode || "N/A"}
                           </span>
                         </span>
@@ -418,7 +418,7 @@ export const LayerManager: React.FC<LayerManagerProps> = ({
       </div>
 
       <footer className="shrink-0 px-4 pb-3 pt-1">
-        <p className="text-center text-[11px] text-slate-600 dark:text-white/45">
+        <p className="text-center text-[13px] text-slate-600 dark:text-white/45">
           {activeTab === "features"
             ? "Add notes from the toolbar"
             : "Draw buildings from the toolbar"}

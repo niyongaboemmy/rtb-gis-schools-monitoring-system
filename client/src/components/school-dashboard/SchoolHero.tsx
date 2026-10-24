@@ -89,7 +89,7 @@ export function SchoolHero({ name, code, district, province, mapped, metrics, on
             transition={{ duration: 0.7, ease: EASE }}
           >
             <ul className="mb-5 flex flex-wrap items-center gap-2 sm:mb-6">
-              {code && <li className={cn(pill, "font-mono text-[11px] tracking-wide")}>{code}</li>}
+              {code && <li className={cn(pill, "font-mono text-[13px] tracking-wide")}>{code}</li>}
               {place && (
                 <li className={pill}>
                   <MapPin className="h-3.5 w-3.5 text-primary" aria-hidden />
@@ -187,14 +187,14 @@ export function SchoolHero({ name, code, district, province, mapped, metrics, on
                 <span className="text-3xl font-semibold leading-none tabular-nums tracking-tight text-slate-900 lg:text-4xl dark:text-white">
                   {hasScore ? formatScore(score) : "—"}
                 </span>
-                <span className="mt-1 text-[9px] uppercase tracking-[0.18em] text-slate-500 dark:text-white/50">score</span>
+                <span className="mt-1 text-[12px] uppercase tracking-[0.18em] text-slate-500 dark:text-white/50">score</span>
               </span>
             </button>
 
             {/* Three indicators, no prose */}
             <dl className="grid min-w-0 gap-3 rounded-2xl bg-white/55 px-4 py-3.5 shadow-[0_8px_30px_-12px_rgba(15,23,42,0.18)] ring-1 ring-white/70 backdrop-blur-xl sm:min-w-[11.5rem] sm:px-5 sm:py-4 dark:bg-white/[0.05] dark:shadow-[0_8px_30px_-12px_rgba(0,0,0,0.6)] dark:ring-white/10">
               <div>
-                <dt className="flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-slate-500 dark:text-white/50">
+                <dt className="flex items-center gap-1 text-[12px] uppercase tracking-[0.14em] text-slate-500 dark:text-white/50">
                   Priority <MetricInfo id="school.priority" size="xs" />
                 </dt>
                 <dd className="mt-1">
@@ -214,7 +214,7 @@ export function SchoolHero({ name, code, district, province, mapped, metrics, on
                 </dd>
               </div>
               <div className="border-t border-slate-900/6 pt-3 dark:border-white/8">
-                <dt className="flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-slate-500 dark:text-white/50">
+                <dt className="flex items-center gap-1 text-[12px] uppercase tracking-[0.14em] text-slate-500 dark:text-white/50">
                   Due <MetricInfo id="school.urgencyMonths" size="xs" />
                 </dt>
                 <dd className="mt-0.5 text-sm font-semibold tabular-nums text-slate-900 dark:text-white">
@@ -222,7 +222,7 @@ export function SchoolHero({ name, code, district, province, mapped, metrics, on
                 </dd>
               </div>
               <div className="border-t border-slate-900/6 pt-3 dark:border-white/8">
-                <dt className="text-[10px] uppercase tracking-[0.14em] text-slate-500 dark:text-white/50">Real data</dt>
+                <dt className="text-[12px] uppercase tracking-[0.14em] text-slate-500 dark:text-white/50">Real data</dt>
                 <dd className="mt-1 flex items-center gap-2">
                   <span className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-900/8 dark:bg-white/10" aria-hidden>
                     <motion.span

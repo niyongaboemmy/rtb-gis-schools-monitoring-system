@@ -85,7 +85,7 @@ export function KPICard({
       )}>
         <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
           <div className="flex min-w-0 items-center gap-1">
-            <CardTitle className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground group-hover:text-foreground/80 transition-colors">
+            <CardTitle className="text-[13px] font-bold uppercase tracking-wider text-muted-foreground group-hover:text-foreground/80 transition-colors">
               {title}
             </CardTitle>
             {metricId && <MetricInfo id={metricId} size="xs" />}
@@ -100,7 +100,7 @@ export function KPICard({
           </div>
           {estimated && <DataGapBadge metricId={metricId} className="mt-1.5" />}
           {subValue && (
-            <p className={cn("text-[11px] font-semibold mt-1 flex items-center gap-1", subColor || "text-muted-foreground")}>
+            <p className={cn("text-[13px] font-semibold mt-1 flex items-center gap-1", subColor || "text-muted-foreground")}>
               {TrendIcon && <TrendIcon className="h-3 w-3" />}
               {subValue}
             </p>

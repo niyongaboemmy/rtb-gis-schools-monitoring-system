@@ -36,7 +36,7 @@ export function NotificationBell() {
       >
         <Bell className="w-4 h-4" aria-hidden="true" />
         {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-primary text-[10px] font-bold leading-4 text-primary-foreground text-center">
+          <span className="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-primary text-[12px] font-bold leading-4 text-primary-foreground text-center">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -102,7 +102,7 @@ export function NotificationBell() {
                             {!n.read && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" role="img" aria-label="unread" />}
                           </span>
                           <span className="block wrap-break-word text-xs text-muted-foreground">{n.body}</span>
-                          <span className="block text-[11px] text-muted-foreground mt-0.5">{formatRelative(n.createdAt)}</span>
+                          <span className="block text-[13px] text-muted-foreground mt-0.5">{formatRelative(n.createdAt)}</span>
                         </span>
                       </>
                     );

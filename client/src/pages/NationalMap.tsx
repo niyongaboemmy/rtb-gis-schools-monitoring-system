@@ -835,7 +835,7 @@ export default function NationalMap() {
         {/* Cursor + attribution */}
         <p
           className={cn(
-            "absolute bottom-1 right-4 hidden items-center gap-2 text-[10px] md:flex",
+            "absolute bottom-1 right-4 hidden items-center gap-2 text-[12px] md:flex",
             MUTED,
           )}
         >

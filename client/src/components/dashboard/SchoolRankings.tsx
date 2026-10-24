@@ -102,7 +102,7 @@ function RankList({
                         transition={{ duration: reduce ? 0 : 1, delay: delay + 0.15 + i * 0.06, ease: EASE }}
                       />
                     </svg>
-                    <span className="text-[13px] font-semibold tabular-nums text-slate-900 dark:text-white">
+                    <span className="text-[15px] font-semibold tabular-nums text-slate-900 dark:text-white">
                       {formatScore(s.calculatedScore)}
                     </span>
                   </span>
@@ -115,7 +115,7 @@ function RankList({
                     </p>
                   </div>
                   <span
-                    className="hidden shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium sm:inline"
+                    className="hidden shrink-0 rounded-full px-2 py-0.5 text-[13px] font-medium sm:inline"
                     style={{ background: `${c}1f`, color: c }}
                   >
                     {label("priority", band)}

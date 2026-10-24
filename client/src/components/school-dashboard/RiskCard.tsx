@@ -77,7 +77,7 @@ export function RiskCard({ risk, onOpen, index }: Props) {
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: level.color }} aria-hidden />
                 {level.label}
               </span>
-              <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-400 dark:text-white/40">Estimate</p>
+              <p className="mt-1 text-[12px] uppercase tracking-wider text-slate-400 dark:text-white/40">Estimate</p>
             </div>
           </div>
 
@@ -92,7 +92,7 @@ export function RiskCard({ risk, onOpen, index }: Props) {
                     key={f.id}
                     role="listitem"
                     tabIndex={0}
-                    className="grid cursor-default grid-cols-[5.5rem_1fr_1.75rem] items-center gap-2 rounded-md text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                    className="grid cursor-default grid-cols-[5.5rem_1fr_1.75rem] items-center gap-2 rounded-md text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
                     {...bind(
                       <span>
                         {f.title}: <b>{f.riskScore}</b> ({l.label})
@@ -118,7 +118,7 @@ export function RiskCard({ risk, onOpen, index }: Props) {
           </div>
 
           {unknown > 0 && (
-            <p className="mt-auto inline-flex items-center gap-1 pt-2 text-[11px] text-slate-500 dark:text-white/50" title="Factors without data are not counted">
+            <p className="mt-auto inline-flex items-center gap-1 pt-2 text-[13px] text-slate-500 dark:text-white/50" title="Factors without data are not counted">
               <HelpCircle className="h-3 w-3" aria-hidden /> {unknown} without data
             </p>
           )}

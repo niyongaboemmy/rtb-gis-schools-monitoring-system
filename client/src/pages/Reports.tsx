@@ -216,8 +216,8 @@ export default function Reports() {
             <FileSearch className="h-5 w-5" aria-hidden />
           </span>
           <div className="min-w-0">
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Reports</h1>
-            <p className="text-[13px] text-slate-500 dark:text-white/55">Reports from your schools: what is waiting, and what was decided.</p>
+            <h1 className="text-[1.625rem] sm:text-[1.875rem] font-semibold tracking-tight text-slate-900 dark:text-white">Reports</h1>
+            <p className="text-[15px] text-slate-500 dark:text-white/55">Reports from your schools: what is waiting, and what was decided.</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -311,19 +311,19 @@ export default function Reports() {
             <ul className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
               {STAGES.map((s) => (
                 <li key={s.status} className="rounded-2xl px-3.5 py-3 ring-1 ring-slate-900/6 dark:ring-white/8">
-                  <p className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-white/50">
+                  <p className="flex items-center gap-1.5 text-[13px] font-medium text-slate-500 dark:text-white/50">
                     <span className="h-1.5 w-1.5 rounded-full" style={{ background: STATUS[s.status].color }} aria-hidden />
                     {s.label}
                   </p>
                   <p className="mt-1 flex items-baseline gap-1.5">
                     <span className="text-xl font-semibold tabular-nums text-slate-900 dark:text-white">{formatNumber(count(s.status))}</span>
-                    <span className="text-[11px] tabular-nums text-slate-400 dark:text-white/40">{formatPercent((count(s.status) / issues.length) * 100)}</span>
+                    <span className="text-[13px] tabular-nums text-slate-400 dark:text-white/40">{formatPercent((count(s.status) / issues.length) * 100)}</span>
                   </p>
-                  <p className="text-[11px] text-slate-500 dark:text-white/45">{s.hint}</p>
+                  <p className="text-[13px] text-slate-500 dark:text-white/45">{s.hint}</p>
                 </li>
               ))}
             </ul>
-            <p className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-white/50">
+            <p className="mt-3 flex items-center gap-1.5 text-[13px] text-slate-500 dark:text-white/50">
               <Hourglass className="h-3.5 w-3.5" aria-hidden />
               {stats.medianDaysToDecision == null
                 ? "No decisions recorded yet."

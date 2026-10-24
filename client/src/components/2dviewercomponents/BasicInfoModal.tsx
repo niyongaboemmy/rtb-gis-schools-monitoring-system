@@ -39,8 +39,8 @@ const Fact: React.FC<{ term: string; children: React.ReactNode; className?: stri
   className,
 }) => (
   <div className={cn("min-w-0", className)}>
-    <dt className="text-[11px] text-slate-500 dark:text-white/50">{term}</dt>
-    <dd className="mt-0.5 truncate text-[13px] text-slate-800 dark:text-white/90">
+    <dt className="text-[13px] text-slate-500 dark:text-white/50">{term}</dt>
+    <dd className="mt-0.5 truncate text-[15px] text-slate-800 dark:text-white/90">
       {children}
     </dd>
   </div>
@@ -112,7 +112,7 @@ export const BasicInfoModal: React.FC<BasicInfoModalProps> = ({
             >
               {school.name}
             </h2>
-            <p className="mt-0.5 truncate text-[12px] text-slate-500 dark:text-white/55">
+            <p className="mt-0.5 truncate text-[14px] text-slate-500 dark:text-white/55">
               {school.code ? (
                 <span className="tabular-nums">{school.code}</span>
               ) : null}
@@ -153,9 +153,9 @@ export const BasicInfoModal: React.FC<BasicInfoModalProps> = ({
             </span>
           </Fact>
           <div className="col-span-2 min-w-0">
-            <dt className="text-[11px] text-slate-500 dark:text-white/50">Coordinates</dt>
+            <dt className="text-[13px] text-slate-500 dark:text-white/50">Coordinates</dt>
             <dd className="mt-1 flex items-center gap-2">
-              <span className="min-w-0 flex-1 truncate rounded-full bg-slate-900/5 px-3 py-1.5 text-[13px] tabular-nums text-slate-700 dark:bg-white/6 dark:text-white/80">
+              <span className="min-w-0 flex-1 truncate rounded-full bg-slate-900/5 px-3 py-1.5 text-[15px] tabular-nums text-slate-700 dark:bg-white/6 dark:text-white/80">
                 {coords ?? "—"}
               </span>
               {coords && (

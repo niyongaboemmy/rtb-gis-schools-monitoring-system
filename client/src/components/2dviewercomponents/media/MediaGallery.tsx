@@ -85,7 +85,7 @@ export function MediaGallery({ items, initialBuildingId = null, openReports, onO
 
   const pill = (on: boolean) =>
     cn(
-      "relative inline-flex shrink-0 items-center gap-2 rounded-full px-3.5 py-2 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+      "relative inline-flex shrink-0 items-center gap-2 rounded-full px-3.5 py-2 text-[15px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
       on ? "text-white" : "text-slate-700 hover:bg-white/50 dark:text-white/70 dark:hover:bg-white/8",
     );
 
@@ -109,7 +109,7 @@ export function MediaGallery({ items, initialBuildingId = null, openReports, onO
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
             <h2 className="text-2xl font-medium tracking-tight text-slate-900 sm:text-3xl dark:text-white">Gallery</h2>
-            <p className="mt-0.5 text-[13px] text-slate-600 dark:text-white/55">
+            <p className="mt-0.5 text-[15px] text-slate-600 dark:text-white/55">
               {counts.all} {counts.all === 1 ? "file" : "files"} · {buildings.length} {buildings.length === 1 ? "place" : "places"}
             </p>
           </div>
@@ -232,7 +232,7 @@ function spanFor(i: number, n: number): string {
 
 function chip(on: boolean) {
   return cn(
-    "inline-flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-3.5 text-[13px] ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+    "inline-flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-3.5 text-[15px] ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
     on ? "bg-primary text-white ring-primary" : "bg-white/50 text-slate-700 ring-white/60 hover:bg-white/80 dark:bg-white/6 dark:text-white/75 dark:ring-white/10 dark:hover:bg-white/10",
   );
 }
@@ -274,7 +274,7 @@ function Thumb({ item, className }: { item: GalleryItem; className?: string }) {
 function SourceBadge({ item }: { item: GalleryItem }) {
   if (item.source !== "report") return null;
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-white/85 px-2 py-0.5 text-[11px] text-slate-800 backdrop-blur dark:bg-slate-900/70 dark:text-white/90">
+    <span className="inline-flex items-center gap-1 rounded-full bg-white/85 px-2 py-0.5 text-[13px] text-slate-800 backdrop-blur dark:bg-slate-900/70 dark:text-white/90">
       <MessageSquareWarning className="h-3 w-3 text-primary dark:text-blue-300" aria-hidden /> Report
     </span>
   );
@@ -301,8 +301,8 @@ function Tile({ item, span, delay, onOpen }: { item: GalleryItem; span: string; 
           <SourceBadge item={item} />
         </span>
         <span className="pointer-events-none absolute inset-x-0 bottom-0 translate-y-1 bg-gradient-to-t from-black/75 via-black/25 to-transparent px-3 pb-2.5 pt-10 opacity-0 transition-[opacity,transform] duration-300 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100 [@media(hover:none)]:translate-y-0 [@media(hover:none)]:opacity-100">
-          <span className="block truncate text-[13px] text-white">{item.media.title || item.buildingName}</span>
-          {item.media.createdAt && <span className="block text-[11px] text-white/70">{formatDate(item.media.createdAt)}</span>}
+          <span className="block truncate text-[15px] text-white">{item.media.title || item.buildingName}</span>
+          {item.media.createdAt && <span className="block text-[13px] text-white/70">{formatDate(item.media.createdAt)}</span>}
         </span>
       </button>
     </motion.li>

@@ -358,7 +358,7 @@ function MethodOption({
       <span className="flex-1 min-w-0 space-y-1">
         <span className="flex flex-wrap items-center gap-2">
           <span className="text-[15px] font-semibold text-foreground dark:text-white">{title}</span>
-          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[13px] font-medium text-primary">
             {badge}
           </span>
         </span>

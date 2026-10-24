@@ -606,8 +606,8 @@ export default function SchoolsList() {
       {/* ── header ── */}
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">Schools</h1>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">TVET institutions in your access area</p>
+          <h1 className="text-[1.625rem] sm:text-[1.875rem] font-semibold tracking-tight text-foreground">Schools</h1>
+          <p className="mt-0.5 text-[15px] text-muted-foreground">TVET institutions in your access area</p>
         </div>
         <div className="flex items-center gap-2">
           {canExport && (
@@ -621,7 +621,7 @@ export default function SchoolsList() {
             />
           )}
           {canCreate && (
-            <Button onClick={() => setIsAddModalOpen(true)} className="h-9 gap-1.5 rounded-full px-4 text-[13px] font-normal">
+            <Button onClick={() => setIsAddModalOpen(true)} className="h-9 gap-1.5 rounded-full px-4 text-[15px] font-normal">
               <Plus className="h-4 w-4" /> <span>Add school</span>
             </Button>
           )}
@@ -650,7 +650,7 @@ export default function SchoolsList() {
         {/* ── toolbar ── */}
         <div className="space-y-2.5 p-3 sm:p-4">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-0 flex-1 basis-56">
+            <div className="relative min-w-0 flex-1 basis-64">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 ref={searchRef}
@@ -666,7 +666,7 @@ export default function SchoolsList() {
                 }}
                 onBlur={() => patch({ q: searchDraft || null })}
                 placeholder="Search name, code or district"
-                className="h-9 w-full rounded-full bg-muted/50 pl-9 pr-9 text-[13px] outline-none transition-colors placeholder:text-muted-foreground/70 focus:bg-background focus:ring-2 focus:ring-primary/30 dark:bg-white/[0.05] dark:focus:bg-white/[0.08]"
+                className="h-9 w-full rounded-full bg-muted/50 pl-9 pr-9 text-[15px] outline-none transition-colors placeholder:text-muted-foreground/70 focus:bg-background focus:ring-2 focus:ring-primary/30 dark:bg-white/[0.05] dark:focus:bg-white/[0.08]"
               />
               {searchDraft ? (
                 <button
@@ -680,7 +680,7 @@ export default function SchoolsList() {
                   <X className="h-3.5 w-3.5" />
                 </button>
               ) : (
-                <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded bg-muted px-1.5 text-[10px] text-muted-foreground sm:block">
+                <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded bg-muted px-1.5 text-[12px] text-muted-foreground sm:block">
                   /
                 </kbd>
               )}
@@ -695,14 +695,14 @@ export default function SchoolsList() {
               aria-expanded={filtersOpen}
               aria-controls="schools-filters"
               className={cn(
-                "inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[13px] transition-colors lg:hidden",
+                "inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[15px] transition-colors lg:hidden",
                 filtersOpen ? "bg-foreground/10 text-foreground" : "bg-muted/50 text-foreground/80 hover:bg-muted dark:bg-white/[0.05]",
               )}
             >
               <SlidersHorizontal className="h-4 w-4" />
               Filters
               {filterCount > 0 && (
-                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] tabular-nums text-primary-foreground">
+                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[12px] tabular-nums text-primary-foreground">
                   {filterCount}
                 </span>
               )}
@@ -765,13 +765,13 @@ export default function SchoolsList() {
                     if (c.key === "q") setSearchDraft("");
                     patch({ [c.key]: null });
                   }}
-                  className="inline-flex h-6 items-center gap-1 rounded-full bg-primary/10 pl-2.5 pr-1.5 text-[11px] text-foreground/90 transition-colors hover:bg-primary/15"
+                  className="inline-flex h-6 items-center gap-1 rounded-full bg-primary/10 pl-2.5 pr-1.5 text-[13px] text-foreground/90 transition-colors hover:bg-primary/15"
                 >
                   {c.label}
                   <X className="h-3 w-3 opacity-70" />
                 </button>
               ))}
-              <button onClick={clearFilters} className="px-1.5 text-[11px] text-primary hover:underline">
+              <button onClick={clearFilters} className="px-1.5 text-[13px] text-primary hover:underline">
                 Clear all
               </button>
             </div>
@@ -892,22 +892,22 @@ export default function SchoolsList() {
                                       e.stopPropagation();
                                       openSchool(school.id);
                                     }}
-                                    className="block max-w-full truncate rounded text-left text-[13px] font-medium text-foreground transition-colors group-hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    className="line-clamp-2 max-w-full rounded text-left text-[15px] font-medium text-foreground transition-colors group-hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                   >
                                     {school.name}
                                   </button>
                                 ) : (
-                                  <div className="truncate text-[13px] font-medium text-foreground">{school.name}</div>
+                                  <div className="line-clamp-2 text-[15px] font-medium text-foreground">{school.name}</div>
                                 )}
-                                <div className="text-[11px] tabular-nums text-muted-foreground">{school.code}</div>
+                                <div className="text-[13px] tabular-nums text-muted-foreground">{school.code}</div>
                               </div>
                             </TableCell>
                             <TableCell
                               onClick={() => openSchool(school.id)}
                               className={cn("py-3", canOpenDetail && "cursor-pointer")}
                             >
-                              <div className="text-[13px] text-foreground/90">{resolveDistrictName(school.district)}</div>
-                              <div className="text-[11px] text-muted-foreground">{shortProvince(resolveProvinceName(school.province))}</div>
+                              <div className="text-[15px] text-foreground/90">{resolveDistrictName(school.district)}</div>
+                              <div className="text-[13px] text-muted-foreground">{shortProvince(resolveProvinceName(school.province))}</div>
                             </TableCell>
                             <TableCell className="py-3 text-xs text-muted-foreground">{school.type}</TableCell>
                             <TableCell className="py-3">
@@ -988,7 +988,7 @@ export default function SchoolsList() {
             exit={{ opacity: 0, y: 20 }}
             className="fixed bottom-6 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-border/40 bg-background/90 py-1.5 pl-4 pr-1.5 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-[#0c1120]/90"
           >
-            <span className="text-[13px] tabular-nums text-foreground">{selected.size} selected</span>
+            <span className="text-[15px] tabular-nums text-foreground">{selected.size} selected</span>
             <Button size="sm" onClick={exportSelectedCsv} className="h-8 gap-1.5 rounded-full px-3 text-xs font-normal">
               <FileDown className="h-3.5 w-3.5" aria-hidden /> Export CSV
             </Button>
@@ -1142,7 +1142,7 @@ function SavedViewsMenu({
       >
         <Bookmark className="h-4 w-4" aria-hidden="true" />
         {views.length > 0 && (
-          <span className="absolute right-0.5 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] tabular-nums text-primary-foreground">
+          <span className="absolute right-0.5 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-primary px-0.5 text-[12px] tabular-nums text-primary-foreground">
             {views.length}
           </span>
         )}
@@ -1272,7 +1272,7 @@ function ExportMenu({
         disabled={busy}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="h-9 gap-1.5 rounded-full border-border/50 bg-transparent px-3.5 text-[13px] font-normal shadow-none hover:bg-muted dark:border-white/10"
+        className="h-9 gap-1.5 rounded-full border-border/50 bg-transparent px-3.5 text-[15px] font-normal shadow-none hover:bg-muted dark:border-white/10"
       >
         <FileDown className={cn("h-4 w-4", busy && "animate-pulse")} aria-hidden="true" />
         <span className="hidden sm:inline">{busy ? "Exporting…" : "Export"}</span>
@@ -1314,7 +1314,7 @@ function ExportMenu({
 
 const ICON_BTN =
   "flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35 dark:hover:bg-white/[0.07]";
-const TH = "h-10 text-[11px] font-normal normal-case tracking-normal text-muted-foreground";
+const TH = "h-10 text-[13px] font-normal normal-case tracking-normal text-muted-foreground";
 
 /** "Northern Province" → "Northern"; "City of Kigali" stays readable. */
 const shortProvince = (p: string) => p.replace(/\s+Province$/i, "");
@@ -1486,7 +1486,7 @@ function PillSelect({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={cn(
-          "h-9 w-full min-w-0 cursor-pointer appearance-none truncate rounded-full pl-3.5 pr-8 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+          "h-9 w-full min-w-0 cursor-pointer appearance-none truncate rounded-full pl-3.5 pr-8 text-[15px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
           "[&>option]:bg-background [&>option]:text-foreground",
           value
             ? "bg-primary/10 text-foreground dark:bg-primary/20"
@@ -1566,7 +1566,7 @@ function GisCell({ school }: { school: School }) {
       <span className={state === "pending" ? "text-muted-foreground" : undefined}>{m.label}</span>
       {school.tifFilePath && (
         <span
-          className="rounded-full bg-blue-500/10 px-1.5 text-[10px] text-blue-600 dark:text-blue-400"
+          className="rounded-full bg-blue-500/10 px-1.5 text-[12px] text-blue-600 dark:text-blue-400"
           title="Native high-resolution drone imagery available"
         >
           4K
@@ -1612,10 +1612,10 @@ function SchoolCard({
           disabled={!onOpen}
           className="min-w-0 flex-1 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
         >
-          <h3 className="truncate text-[13px] font-medium text-foreground transition-colors group-hover:text-primary">
+          <h3 className="truncate text-[15px] font-medium text-foreground transition-colors group-hover:text-primary">
             {school.name}
           </h3>
-          <p className="truncate text-[11px] text-muted-foreground">
+          <p className="truncate text-[13px] text-muted-foreground">
             {school.code} · {resolveDistrictName(school.district)}, {shortProvince(resolveProvinceName(school.province))}
           </p>
         </button>
@@ -1628,7 +1628,7 @@ function SchoolCard({
       </div>
       <div className="mt-2 flex items-center justify-between gap-2">
         <GisCell school={school} />
-        <span className="text-[11px] text-muted-foreground">{school.type}</span>
+        <span className="text-[13px] text-muted-foreground">{school.type}</span>
       </div>
     </motion.div>
   );

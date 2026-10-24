@@ -141,7 +141,7 @@ export function BuildingReportingTab({ reports, loaded, initialReportId, canDeci
               >
                 <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> All reports
               </button>
-              <span className="ml-auto text-[11px] tabular-nums text-slate-400 dark:text-white/40">
+              <span className="ml-auto text-[13px] tabular-nums text-slate-400 dark:text-white/40">
                 {pos + 1} of {stepList.length}
               </span>
               <IconBtn label="Previous report" disabled={pos <= 0} onClick={() => open(stepList[pos - 1], -1)}>
@@ -223,7 +223,7 @@ export function BuildingReportingTab({ reports, loaded, initialReportId, canDeci
             {rows.length === 0 ? (
               <div className="flex flex-col items-center gap-1.5 rounded-2xl bg-slate-900/[0.03] px-4 py-8 text-center dark:bg-white/[0.03]">
                 <ClipboardCheck className="h-6 w-6 text-slate-300 dark:text-white/25" aria-hidden />
-                <p className="text-[13px] text-slate-700 dark:text-white/80">No problems reported</p>
+                <p className="text-[15px] text-slate-700 dark:text-white/80">No problems reported</p>
                 <p className="text-xs text-slate-500 dark:text-white/50">Reports for this building show here.</p>
               </div>
             ) : (
@@ -252,8 +252,8 @@ export function BuildingReportingTab({ reports, loaded, initialReportId, canDeci
                           <span className={cn("h-2 w-2 rounded-full", isOpen(r.status) && !reduce && "animate-pulse")} style={{ background: st.color }} />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="line-clamp-2 text-[13px] leading-snug text-slate-800 dark:text-white/85">{r.description || "No description"}</span>
-                          <span className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-white/45">
+                          <span className="line-clamp-2 text-[15px] leading-snug text-slate-800 dark:text-white/85">{r.description || "No description"}</span>
+                          <span className="mt-1 flex items-center gap-1.5 text-[13px] text-slate-500 dark:text-white/45">
                             <span className="text-slate-700 dark:text-white/75">{st.label}</span>
                             {what && <span className="truncate">· {what}</span>}
                             {(r.attachments?.length ?? 0) > 0 && (
@@ -264,7 +264,7 @@ export function BuildingReportingTab({ reports, loaded, initialReportId, canDeci
                             )}
                           </span>
                         </span>
-                        <span className={cn("shrink-0 pt-0.5 text-[11px] tabular-nums", AGE_TEXT[tone])}>{days == null ? "" : days === 0 ? "Today" : `${days}d`}</span>
+                        <span className={cn("shrink-0 pt-0.5 text-[13px] tabular-nums", AGE_TEXT[tone])}>{days == null ? "" : days === 0 ? "Today" : `${days}d`}</span>
                       </button>
                     </motion.li>
                   );

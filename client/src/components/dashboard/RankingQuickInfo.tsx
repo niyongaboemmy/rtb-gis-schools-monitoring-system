@@ -27,7 +27,7 @@ export function RankingQuickInfo({ score, top, bottom }: { score: number | null;
         <span className="flex items-baseline gap-1.5">
           <span className="text-lg font-semibold tabular-nums text-slate-900 dark:text-white">{formatScore(score)}</span>
           {band && (
-            <span className="text-[11px] font-medium" style={{ color: BAND_HEX[band] }}>
+            <span className="text-[13px] font-medium" style={{ color: BAND_HEX[band] }}>
               {label("priority", band)}
             </span>
           )}
@@ -41,7 +41,7 @@ export function RankingQuickInfo({ score, top, bottom }: { score: number | null;
             className="group -mx-1.5 flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-slate-900/4 dark:hover:bg-white/5"
           >
             <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: tone }} aria-hidden />
-            <span className="w-11 shrink-0 text-[11px] text-slate-500 dark:text-white/45">{tag}</span>
+            <span className="w-11 shrink-0 text-[13px] text-slate-500 dark:text-white/45">{tag}</span>
             <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-800 group-hover:text-primary dark:text-white/85">
               {school.name}
             </span>

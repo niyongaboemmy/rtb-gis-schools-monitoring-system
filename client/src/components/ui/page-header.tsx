@@ -49,7 +49,7 @@ export function PageHeader({
 
             <div className="flex items-center gap-3 mb-0.5">
               {typeof title === "string" ? (
-                <h2 className="text-xl font-black tracking-tight text-foreground leading-none">
+                <h2 className="text-[1.625rem] sm:text-[1.875rem] font-black tracking-tight text-foreground leading-tight">
                   {title}
                 </h2>
               ) : (
@@ -59,7 +59,7 @@ export function PageHeader({
 
             {description &&
               (typeof description === "string" ? (
-                <p className="text-muted-foreground mt-1 font-normal text-[12px] tracking-widest">
+                <p className="text-muted-foreground mt-1 font-normal text-[14px] tracking-widest">
                   {description}
                 </p>
               ) : (

@@ -541,13 +541,13 @@ export function AuthGlobe({ className }: { className?: string }) {
             <span className="h-1.5 w-1.5 rounded-full bg-brand-gold" />
             Rwanda
           </p>
-          <p className="text-[11px] text-brand-ink/65 dark:text-brand-soft/70">National TVET school network</p>
+          <p className="text-[13px] text-brand-ink/65 dark:text-brand-soft/70">National TVET school network</p>
         </div>
       </div>
       <GlobeDrone ref={droneRef} />
       <p
         className={cn(
-          "pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 text-[11px] text-brand-ink/50 dark:text-white/40 transition-opacity duration-500",
+          "pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 text-[13px] text-brand-ink/50 dark:text-white/40 transition-opacity duration-500",
           interacted && "opacity-0",
         )}
       >

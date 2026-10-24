@@ -43,7 +43,7 @@ export function DistributionChart({
           <MetricInfo id="national.provinceDistribution" size="xs" />
         </CardTitle>
         {onItemClick && (
-          <p className="text-[11px] font-semibold text-muted-foreground mt-0.5">
+          <p className="text-[13px] font-semibold text-muted-foreground mt-0.5">
             Select a province to see its districts
           </p>
         )}
@@ -88,21 +88,21 @@ export function DistributionChart({
                 )}
               >
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-bold text-foreground/80 uppercase text-[11px] tracking-tight flex items-center gap-2">
+                  <span className="font-bold text-foreground/80 uppercase text-[13px] tracking-tight flex items-center gap-2">
                     {item.label}
                     {isClickable && (
-                      <span className="text-[8px] text-muted-foreground/40 normal-case font-normal tracking-normal">
+                      <span className="text-[11px] text-muted-foreground/40 normal-case font-normal tracking-normal">
                         {isSelected ? '▾ selected' : '›'}
                       </span>
                     )}
                   </span>
                   <div className="flex items-center gap-2">
                     {item.avgScore != null && (
-                      <span className="text-[9px] font-black text-primary/70 tabular-nums">
+                      <span className="text-[12px] font-black text-primary/70 tabular-nums">
                         avg score {formatScore(item.avgScore)}
                       </span>
                     )}
-                    <span className="text-[10px] font-black uppercase text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full border border-border/10">
+                    <span className="text-[12px] font-black uppercase text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full border border-border/10">
                       {item.total} schools
                     </span>
                   </div>
@@ -138,7 +138,7 @@ export function DistributionChart({
                   )}
                 </div>
 
-                <div className="flex gap-4 text-[9px] font-black uppercase tracking-tighter opacity-70">
+                <div className="flex gap-4 text-[12px] font-black uppercase tracking-tighter opacity-70">
                   <div className="flex items-center gap-1">
                     <div className="w-1.5 h-1.5 rounded-full bg-destructive" />
                     <span>{critical} Critical</span>

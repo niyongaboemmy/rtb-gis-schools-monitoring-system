@@ -67,7 +67,7 @@ export function ToolHud({
           <Icon className="h-4 w-4" aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
-          <p className={cn("truncate text-[13px] tabular-nums", STRONG)}>
+          <p className={cn("truncate text-[15px] tabular-nums", STRONG)}>
             {value ?? meta.title}
           </p>
           <p className={cn("truncate text-xs", MUTED)}>
@@ -94,7 +94,7 @@ export function ToolHud({
                 <span className={cn("w-4 text-center text-xs tabular-nums", MUTED)}>{i + 1}</span>
                 <ScoreRing score={point.score} size={30} stroke={3} />
                 <span className="min-w-0 flex-1">
-                  <span className={cn("block truncate text-[13px]", STRONG)}>{point.school.name}</span>
+                  <span className={cn("block truncate text-[15px]", STRONG)}>{point.school.name}</span>
                   <span className={cn("block truncate text-xs", MUTED)}>{point.school.district}</span>
                 </span>
                 <span className={cn("shrink-0 text-xs tabular-nums", STRONG)}>{formatLength(meters)}</span>
@@ -142,7 +142,7 @@ export function Legend({
       role="group"
       onPointerLeave={() => onFocusBand(null)}
     >
-      <p className={cn("px-1 pb-1 text-[11px]", MUTED)}>
+      <p className={cn("px-1 pb-1 text-[13px]", MUTED)}>
         Intervention priority <span className="opacity-60">· click to filter</span>
       </p>
       <ul className="flex flex-wrap items-center gap-0.5">
@@ -180,7 +180,7 @@ export function Legend({
         )}
       </ul>
       {(density || clusters) && (
-        <p className={cn("px-1 pt-1 text-[11px]", MUTED)}>
+        <p className={cn("px-1 pt-1 text-[13px]", MUTED)}>
           {clusters && "Rings show the priority mix of grouped schools. "}
           {density && "Glow = schools within ~9 km."}
         </p>
@@ -224,10 +224,10 @@ export function MapStateCard({
           <MapIcon className="h-5 w-5" aria-hidden />
         )}
       </span>
-      <p className={cn("text-[13px] font-semibold", STRONG)}>{title}</p>
+      <p className={cn("text-[15px] font-semibold", STRONG)}>{title}</p>
       {description && <p className={cn("text-xs leading-relaxed", MUTED)}>{description}</p>}
       {onRetry && (
-        <button type="button" onClick={onRetry} className="mt-1 rounded-full bg-primary px-4 py-2 text-[13px] text-primary-foreground">
+        <button type="button" onClick={onRetry} className="mt-1 rounded-full bg-primary px-4 py-2 text-[15px] text-primary-foreground">
           Try again
         </button>
       )}

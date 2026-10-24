@@ -173,8 +173,8 @@ export function FloatingStat({
             </span>
 
             <div className="min-w-0 flex-1">
-              <dt className={cn("flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-white/55", compact ? "font-medium" : "font-semibold uppercase tracking-[0.08em]")}>
-                <span className="truncate">{label}</span>
+              <dt className={cn("flex items-center gap-1.5 text-[13px] text-slate-600 dark:text-white/55", compact ? "font-medium" : "font-semibold uppercase tracking-[0.08em]")}>
+                <span className="line-clamp-2">{label}</span>
                 {info}
               </dt>
               <dd className="mt-0.5 flex items-baseline gap-2">
@@ -182,7 +182,7 @@ export function FloatingStat({
                   {format(shown === null ? null : Math.round(shown))}
                 </span>
               </dd>
-              <p className="mt-1 truncate text-xs text-slate-600 dark:text-white/55">{caption}</p>
+              <p className="mt-1 line-clamp-2 text-xs text-slate-600 dark:text-white/55">{caption}</p>
             </div>
           </div>
         </motion.div>

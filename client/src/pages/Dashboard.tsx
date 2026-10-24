@@ -298,7 +298,7 @@ export default function Dashboard() {
             </div>
 
             <div ref={mapSlotRef} className="relative min-h-0">
-              <p className="pointer-events-auto absolute bottom-2 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-white/40 px-3 py-1.5 text-[11px] text-muted-foreground backdrop-blur-xl dark:bg-white/5 dark:text-white/45">
+              <p className="pointer-events-auto absolute bottom-2 left-1/2 z-10 inline-flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-white/40 px-3 py-1.5 text-[13px] text-muted-foreground backdrop-blur-xl dark:bg-white/5 dark:text-white/45">
                 <MapPinned className="h-3.5 w-3.5 text-primary" aria-hidden />
                 <span className="font-semibold text-foreground dark:text-white/80">Rwanda</span>·{" "}
                 {formatNumber(provinceCount)} province{provinceCount === 1 ? "" : "s"} ·{" "}

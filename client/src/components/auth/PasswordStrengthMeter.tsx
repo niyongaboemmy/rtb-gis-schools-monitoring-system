@@ -96,7 +96,7 @@ export function PasswordStrengthMeter({
           </li>
         ))}
       </ul>
-      <p className="text-[11px] text-muted-foreground">Your last 5 passwords cannot be reused.</p>
+      <p className="text-[13px] text-muted-foreground">Your last 5 passwords cannot be reused.</p>
     </div>
   );
 }

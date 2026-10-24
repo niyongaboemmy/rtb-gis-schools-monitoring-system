@@ -29,13 +29,13 @@ interface Props {
 export function Pagination({ page, pageSize, total, onChange, label = "Pages", noun = ["report", "reports"] }: Props) {
   const count = Math.max(1, Math.ceil(total / pageSize));
   if (total <= pageSize) {
-    return total > 0 ? <p className="px-1 text-[11px] text-slate-500 dark:text-white/45">{formatNumber(total)} {total === 1 ? noun[0] : noun[1]}</p> : null;
+    return total > 0 ? <p className="px-1 text-[13px] text-slate-500 dark:text-white/45">{formatNumber(total)} {total === 1 ? noun[0] : noun[1]}</p> : null;
   }
   const btn =
     "flex h-8 min-w-8 items-center justify-center rounded-full px-2 text-xs font-medium tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:opacity-40";
   return (
     <nav aria-label={label} className="flex flex-wrap items-center justify-between gap-2">
-      <p className="px-1 text-[11px] tabular-nums text-slate-500 dark:text-white/45">
+      <p className="px-1 text-[13px] tabular-nums text-slate-500 dark:text-white/45">
         {formatNumber((page - 1) * pageSize + 1)}–{formatNumber(Math.min(page * pageSize, total))} of {formatNumber(total)}
       </p>
       <div className="flex items-center gap-1">

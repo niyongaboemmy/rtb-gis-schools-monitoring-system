@@ -130,7 +130,7 @@ export const DecisionIntelligenceScore = React.memo(
             </CardTitle>
             <Badge
               variant="outline"
-              className="rounded-full bg-slate-50 dark:bg-white/5 text-slate-600 dark:text-white/60 border-slate-200 dark:border-blue-500/20 text-[12px] font-medium px-4 py-1 tracking-wide"
+              className="rounded-full bg-slate-50 dark:bg-white/5 text-slate-600 dark:text-white/60 border-slate-200 dark:border-blue-500/20 text-[14px] font-medium px-4 py-1 tracking-wide"
             >
               0–100 · higher is better
             </Badge>
@@ -175,7 +175,7 @@ export const DecisionIntelligenceScore = React.memo(
                       {formatScore(overallScore)}
                     </span>
                   </div>
-                  <span className="text-[12px] font-normal tracking-wider text-slate-500 dark:text-white/50 mt-2">
+                  <span className="text-[14px] font-normal tracking-wider text-slate-500 dark:text-white/50 mt-2">
                     out of 100
                   </span>
                 </div>
@@ -185,7 +185,7 @@ export const DecisionIntelligenceScore = React.memo(
               {coverage != null && (
                 <p
                   className={cn(
-                    "mt-4 text-[12px] text-center",
+                    "mt-4 text-[14px] text-center",
                     coverage < 0.5
                       ? "text-amber-700 dark:text-amber-400 font-medium"
                       : "text-slate-500 dark:text-white/50",
@@ -199,14 +199,14 @@ export const DecisionIntelligenceScore = React.memo(
               {/* Urgency + operational health ── */}
               <div className="mt-8 grid grid-cols-2 gap-4 w-full">
                 <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/2 border border-slate-200 dark:border-blue-500/12 text-center">
-                  <p className="text-[12px] font-normal text-slate-500 dark:text-white mb-2 flex items-center justify-center gap-1">
+                  <p className="text-[14px] font-normal text-slate-500 dark:text-white mb-2 flex items-center justify-center gap-1">
                     Intervention Priority
                     <MetricInfo id="school.priority" size="xs" />
                   </p>
                   <Badge
                     variant="outline"
                     className={cn(
-                      "rounded-xl font-medium text-[11px] px-4 py-1 border-slate-200 dark:border-blue-500/12 bg-white dark:bg-white/2",
+                      "rounded-xl font-medium text-[13px] px-4 py-1 border-slate-200 dark:border-blue-500/12 bg-white dark:bg-white/2",
                       scoreColor,
                     )}
                   >
@@ -214,7 +214,7 @@ export const DecisionIntelligenceScore = React.memo(
                   </Badge>
                 </div>
                 <div className="p-4 rounded-3xl bg-slate-50 dark:bg-white/2 border border-slate-200 dark:border-blue-500/12 text-center">
-                  <p className="text-[12px] font-normal text-slate-500 dark:text-white mb-2 flex items-center justify-center gap-1">
+                  <p className="text-[14px] font-normal text-slate-500 dark:text-white mb-2 flex items-center justify-center gap-1">
                     Months to intervention
                     <MetricInfo id="school.urgencyMonths" size="xs" />
                   </p>
@@ -230,11 +230,11 @@ export const DecisionIntelligenceScore = React.memo(
 
               {/* Benchmarking strip — uses scoreDeltaFromDistrict when available */}
               <div className="mt-8 w-full px-4 pt-4 border-t border-slate-100 dark:border-blue-500/12 flex items-center justify-between">
-                <span className="text-[12px] font-normal text-slate-500 dark:text-white/50 tracking-wide flex items-center gap-1">
+                <span className="text-[14px] font-normal text-slate-500 dark:text-white/50 tracking-wide flex items-center gap-1">
                   vs district average
                   <MetricInfo id="school.peerDelta" size="xs" />
                 </span>
-                <span className="text-[12px] font-medium text-primary tabular-nums">
+                <span className="text-[14px] font-medium text-primary tabular-nums">
                   {(() => {
                     const delta = Number(assessment?.scoreDeltaFromDistrict);
                     if (assessment?.scoreDeltaFromDistrict == null || !isFinite(delta)) {
@@ -270,18 +270,18 @@ export const DecisionIntelligenceScore = React.memo(
                         {/* Score value — 0–100 factor score, not a share of the total */}
                         <span className="text-lg font-medium text-slate-900 dark:text-white/80 tabular-nums">
                           {hasScore ? metric.score : "—"}
-                          <span className="text-[11px] text-slate-400 dark:text-white/30">/100</span>
+                          <span className="text-[13px] text-slate-400 dark:text-white/30">/100</span>
                         </span>
                       </div>
 
                       <div className="space-y-2">
                         {/* Label + weight chip on same row */}
                         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-                          <p className="flex min-w-0 items-center gap-1 text-[13px] font-normal text-slate-600 dark:text-white group-hover/metric:text-slate-800 dark:group-hover/metric:text-white/70 transition-colors leading-tight">
+                          <p className="flex min-w-0 items-center gap-1 text-[15px] font-normal text-slate-600 dark:text-white group-hover/metric:text-slate-800 dark:group-hover/metric:text-white/70 transition-colors leading-tight">
                             {metric.label}
                             <MetricInfo id={metric.metricId} size="xs" />
                           </p>
-                          <span className="shrink-0 text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-white/30 border border-slate-200 dark:border-white/6">
+                          <span className="shrink-0 text-[12px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-white/30 border border-slate-200 dark:border-white/6">
                             weight {formatPercent(metric.weight * 100)}
                           </span>
                         </div>
@@ -298,7 +298,7 @@ export const DecisionIntelligenceScore = React.memo(
 
                         {/* How this factor feeds the overall index */}
                         {hasScore && (
-                          <p className="text-[11px] tabular-nums text-slate-500 dark:text-white/40">
+                          <p className="text-[13px] tabular-nums text-slate-500 dark:text-white/40">
                             {scoreValue} × {formatPercent(metric.weight * 100)} = {formatNumber(scoreValue * metric.weight, 1)} points of the score
                           </p>
                         )}
@@ -312,11 +312,11 @@ export const DecisionIntelligenceScore = React.memo(
               {/* Decision directives ── */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between px-2">
-                  <h4 className="text-[11px] font-medium text-slate-500 dark:text-white/50 flex items-center gap-2 tracking-wide">
+                  <h4 className="text-[13px] font-medium text-slate-500 dark:text-white/50 flex items-center gap-2 tracking-wide">
                     <div className="w-1.5 h-1.5 rounded-full bg-primary/40" />
                     Top recommendations
                   </h4>
-                  <span className="text-[10px] font-normal text-slate-500 dark:text-white/40 italic">
+                  <span className="text-[12px] font-normal text-slate-500 dark:text-white/40 italic">
                     Rule-based, from the scores
                   </span>
                 </div>
@@ -336,10 +336,10 @@ export const DecisionIntelligenceScore = React.memo(
                           <Sparkles className="w-5 h-5 text-slate-400 dark:text-white/40 group-hover/rec:text-primary transition-colors" />
                         </div>
                         <div>
-                          <p className="text-[12px] font-medium text-slate-500 dark:text-white/40 mb-0.5 tracking-wide">
+                          <p className="text-[14px] font-medium text-slate-500 dark:text-white/40 mb-0.5 tracking-wide">
                             Recommendation {i + 1}
                           </p>
-                          <p className="text-[13px] font-normal text-slate-700 dark:text-white/70 leading-relaxed group-hover:text-slate-900 dark:group-hover:text-white/90 transition-colors">
+                          <p className="text-[15px] font-normal text-slate-700 dark:text-white/70 leading-relaxed group-hover:text-slate-900 dark:group-hover:text-white/90 transition-colors">
                             {rec.replace(/^\[[A-Z]+\]\s*/, "").trim()}
                           </p>
                         </div>
@@ -355,9 +355,9 @@ export const DecisionIntelligenceScore = React.memo(
 
                 {/* ── Score interpretation legend (collapsible) ──────── */}
                 <details className="group/legend border-t border-slate-100 dark:border-blue-500/6 pt-3 mt-2">
-                  <summary className="cursor-pointer list-none flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-white/30 hover:text-slate-600 dark:hover:text-white/50 transition-colors select-none">
+                  <summary className="cursor-pointer list-none flex items-center justify-between text-[12px] font-black uppercase tracking-widest text-slate-400 dark:text-white/30 hover:text-slate-600 dark:hover:text-white/50 transition-colors select-none">
                     <span>Intervention Priority bands</span>
-                    <span className="transition-transform group-open/legend:rotate-180 text-[9px]">
+                    <span className="transition-transform group-open/legend:rotate-180 text-[12px]">
                       ▾
                     </span>
                   </summary>
@@ -367,10 +367,10 @@ export const DecisionIntelligenceScore = React.memo(
                         key={key}
                         className={`rounded-lg p-2 text-center ${BAND_STYLE[key]}`}
                       >
-                        <div className="text-[10px] font-black tabular-nums">
+                        <div className="text-[12px] font-black tabular-nums">
                           {range}
                         </div>
-                        <div className="text-[9px] font-medium uppercase tracking-wide mt-0.5">
+                        <div className="text-[12px] font-medium uppercase tracking-wide mt-0.5">
                           {label("priority", key)}
                         </div>
                       </div>

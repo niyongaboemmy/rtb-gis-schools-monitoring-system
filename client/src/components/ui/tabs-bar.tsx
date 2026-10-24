@@ -69,7 +69,7 @@ export function TabsBar<T extends string>({ tabs, active, onSelect, idPrefix, la
               tabIndex={selected ? 0 : -1}
               onClick={() => select(tab.id)}
               className={cn(
-                "group relative flex h-11 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                "group relative flex h-11 items-center gap-1.5 rounded-md px-2.5 text-[15px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                 selected ? "text-foreground" : "text-muted-foreground hover:text-foreground",
               )}
             >

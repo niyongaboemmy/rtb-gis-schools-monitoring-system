@@ -116,7 +116,7 @@ export function Toolbar({ children, className }: { children: ReactNode; classNam
 /** Small uppercase label (dashboard stat label style). */
 export function Eyebrow({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <p className={cn("text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground", className)}>{children}</p>
+    <p className={cn("text-[12px] font-medium uppercase tracking-[0.08em] text-muted-foreground", className)}>{children}</p>
   );
 }
 
@@ -128,7 +128,7 @@ export function FieldLabel({ htmlFor, icon: Icon, children, hint }: { htmlFor?: 
         {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />}
         {children}
       </label>
-      {hint && <span className="text-[11px] text-muted-foreground/70">{hint}</span>}
+      {hint && <span className="text-[13px] text-muted-foreground/70">{hint}</span>}
     </div>
   );
 }
@@ -155,7 +155,7 @@ export function Initials({ first, last, size = "md", className }: { first?: stri
       aria-hidden
       className={cn(
         "flex shrink-0 items-center justify-center rounded-full bg-primary/12 font-medium text-primary ring-1 ring-inset ring-primary/20",
-        size === "sm" && "h-8 w-8 text-[11px]",
+        size === "sm" && "h-8 w-8 text-[13px]",
         size === "md" && "h-10 w-10 text-xs",
         size === "lg" && "h-16 w-16 text-xl",
         className,
@@ -242,7 +242,7 @@ export function Th({ children, className, align = "left" }: { children?: ReactNo
     <th
       scope="col"
       className={cn(
-        "border-y border-border/40 bg-slate-900/[0.02] px-4 py-2.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground first:pl-6 last:pr-6 dark:bg-white/[0.02]",
+        "border-y border-border/40 bg-slate-900/[0.02] px-4 py-2.5 text-[12px] font-medium uppercase tracking-[0.08em] text-muted-foreground first:pl-6 last:pr-6 dark:bg-white/[0.02]",
         align === "right" && "text-right",
         align === "center" && "text-center",
         className,

@@ -184,7 +184,7 @@ export function ReportAnalytics({
     return (
       <div className="py-20 text-center space-y-4">
         <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin mx-auto" />
-        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+        <p className="text-[12px] font-black uppercase tracking-widest text-muted-foreground">
           Calculating Analytics...
         </p>
       </div>
@@ -199,7 +199,7 @@ export function ReportAnalytics({
           <h3 className="text-xl font-bold tracking-tighter leading-none mb-2">
             Issue Report analytics
           </h3>
-          <p className="text-muted-foreground text-[11px] font-normal tracking-wide">
+          <p className="text-muted-foreground text-[13px] font-normal tracking-wide">
             Reports filed in the selected period
           </p>
         </div>
@@ -262,7 +262,7 @@ export function ReportAnalytics({
               <div className="text-2xl font-black uppercase tracking-tighter sm:mt-2">
                 {s.value}
               </div>
-              <div className="text-[9px] font-black uppercase text-muted-foreground tracking-widest leading-tight opacity-60">
+              <div className="text-[12px] font-black uppercase text-muted-foreground tracking-widest leading-tight opacity-60">
                 {s.label}
               </div>
             </div>
@@ -294,7 +294,7 @@ export function ReportAnalytics({
                     <h4 className="text-sm font-black uppercase tracking-tight">
                       Daily Report Trend
                     </h4>
-                    <p className="text-[8px] font-black uppercase text-muted-foreground tracking-widest opacity-60">
+                    <p className="text-[11px] font-black uppercase text-muted-foreground tracking-widest opacity-60">
                       Reports submitted per day
                     </p>
                   </div>
@@ -327,19 +327,19 @@ export function ReportAnalytics({
                       dataKey="date"
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fontSize: 9, fontWeight: 700 }}
+                      tick={{ fontSize: 12, fontWeight: 700 }}
                     />
                     <YAxis
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fontSize: 9, fontWeight: 700 }}
+                      tick={{ fontSize: 12, fontWeight: 700 }}
                     />
                     <RechartsTooltip
                       contentStyle={{
                         borderRadius: "12px",
                         border: "none",
                         boxShadow: "0 10px 30px rgba(0,0,0,0.1)",
-                        fontSize: "10px",
+                        fontSize: "12px",
                         fontWeight: "900",
                         textTransform: "uppercase",
                       }}
@@ -391,7 +391,7 @@ export function ReportAnalytics({
                         borderRadius: "12px",
                         border: "none",
                         boxShadow: "0 10px 30px rgba(0,0,0,0.1)",
-                        fontSize: "10px",
+                        fontSize: "12px",
                         fontWeight: "900",
                         textTransform: "uppercase",
                       }}
@@ -404,8 +404,8 @@ export function ReportAnalytics({
                 {pieData.map((d, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-                    <span className="text-[9px] font-semibold text-muted-foreground">{d.name}</span>
-                    <span className="ml-auto text-[9px] font-black">{d.value}</span>
+                    <span className="text-[12px] font-semibold text-muted-foreground">{d.name}</span>
+                    <span className="ml-auto text-[12px] font-black">{d.value}</span>
                   </div>
                 ))}
               </div>
@@ -443,7 +443,7 @@ export function ReportAnalytics({
                       type="category"
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fontSize: 9 }}
+                      tick={{ fontSize: 12 }}
                       width={100}
                     />
                     <RechartsTooltip
@@ -472,7 +472,7 @@ export function ReportAnalytics({
                 <h4 className="text-xl font-bold tracking-tighter">
                   Facility Structure
                 </h4>
-                <p className="text-[10px] font-normal text-muted-foreground tracking-widest">
+                <p className="text-[12px] font-normal text-muted-foreground tracking-widest">
                   Organization by Building & Area
                 </p>
               </div>
@@ -491,7 +491,7 @@ export function ReportAnalytics({
                       </h5>
                       <Badge
                         variant="outline"
-                        className="rounded-full px-2 py-0.5 text-[8px] font-black border-primary text-primary whitespace-nowrap"
+                        className="rounded-full px-2 py-0.5 text-[11px] font-black border-primary text-primary whitespace-nowrap"
                       >
                         {building.reportsCount} LOGS
                       </Badge>
@@ -513,7 +513,7 @@ export function ReportAnalytics({
                               {fac.name}
                             </span>
                           </div>
-                          <Badge className="bg-primary/10 text-primary border-none rounded-full px-2.5 text-[10px] font-black">
+                          <Badge className="bg-primary/10 text-primary border-none rounded-full px-2.5 text-[12px] font-black">
                             {fac.count}
                           </Badge>
                         </div>
@@ -526,13 +526,13 @@ export function ReportAnalytics({
                               className="p-4 bg-muted/20 rounded-2xl flex items-center justify-between group/report cursor-pointer hover:bg-primary/5 transition-all active:scale-[0.98]"
                             >
                               <div className="flex-1 min-w-0 pr-3">
-                                <div className="text-[10px] font-black text-muted-foreground uppercase opacity-70 mb-1">
+                                <div className="text-[12px] font-black text-muted-foreground uppercase opacity-70 mb-1">
                                   {report.itemId}
                                 </div>
-                                <div className="text-[11px] font-bold truncate leading-none mb-1">
+                                <div className="text-[13px] font-bold truncate leading-none mb-1">
                                   {report.description}
                                 </div>
-                                <div className="text-[8px] font-black text-primary uppercase opacity-50">
+                                <div className="text-[11px] font-black text-primary uppercase opacity-50">
                                   {formatDate(report.createdAt)}
                                 </div>
                               </div>

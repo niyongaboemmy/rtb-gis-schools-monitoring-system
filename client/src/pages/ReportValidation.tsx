@@ -1,20 +1,43 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowLeft, CheckCheck, ChevronLeft, ChevronRight, ClipboardCheck, Inbox, PartyPopper, Play, RefreshCw, Search, Siren, X } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCheck,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  Inbox,
+  PartyPopper,
+  Play,
+  RefreshCw,
+  Search,
+  Siren,
+  X,
+} from "lucide-react";
 import { cn } from "../lib/utils";
 import { formatNumber } from "../lib/format";
 import { useAuthorization } from "../hooks/useAuthorization";
 import { Permission } from "../lib/permissions";
 import { DashboardError } from "../components/dashboard/DashboardStates";
 import { EASE, glassSurface } from "../components/school-dashboard/tokens";
-import { EmptyNote, FilterChips, SegmentedTabs } from "../components/school-dashboard/details/primitives";
+import {
+  EmptyNote,
+  FilterChips,
+  SegmentedTabs,
+} from "../components/school-dashboard/details/primitives";
 import { ValidationList } from "../components/report-review/ValidationList";
 import { Pagination } from "../components/report-review/Pagination";
 import { ReportAssessment } from "../components/report-review/ReportAssessment";
 import { ValidationSkeleton } from "../components/report-review/ReviewSkeleton";
 import { useReviewData } from "../components/report-review/useReviewData";
-import { ageDays, REVIEW_VERB, STATUS, type ReviewReport, type Status } from "../components/report-review/review-utils";
+import {
+  ageDays,
+  REVIEW_VERB,
+  STATUS,
+  type ReviewReport,
+  type Status,
+} from "../components/report-review/review-utils";
 
 type Tab = "new" | "escalated" | "history";
 type Kind = "all" | "issue" | "data_change_request";
@@ -23,13 +46,24 @@ const TAB_STATUSES: Record<Tab, Status[]> = {
   escalated: ["NEED_INTERVENTION"],
   history: ["SOLVED", "FAILED"],
 };
-const TAB_NAME: Record<Tab, string> = { new: "New", escalated: "Needs action", history: "Done" };
+const TAB_NAME: Record<Tab, string> = {
+  new: "New",
+  escalated: "Needs action",
+  history: "Done",
+};
 const PAGE_SIZE = 10;
 
-const tabOf = (s: Status): Tab => (s === "PENDING" ? "new" : s === "NEED_INTERVENTION" ? "escalated" : "history");
+const tabOf = (s: Status): Tab =>
+  s === "PENDING" ? "new" : s === "NEED_INTERVENTION" ? "escalated" : "history";
 const typing = (el: EventTarget | null) => {
   const t = el as HTMLElement | null;
-  return !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+  return (
+    !!t &&
+    (t.tagName === "INPUT" ||
+      t.tagName === "TEXTAREA" ||
+      t.tagName === "SELECT" ||
+      t.isContentEditable)
+  );
 };
 
 /**
@@ -44,14 +78,33 @@ export default function ReportValidation() {
   const reduce = useReducedMotion();
   const tabsId = useId();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { rows, loaded, loading, error, load, decide, deciding, facilityTitle, itemLabel, haystack } = useReviewData();
+  const {
+    rows,
+    loaded,
+    loading,
+    error,
+    load,
+    decide,
+    deciding,
+    facilityTitle,
+    itemLabel,
+    haystack,
+  } = useReviewData();
 
   const canManage = isAuthorized(Permission.MANAGE_REPORTS);
   const canCloseRequests = isAuthorized(Permission.EDIT_SCHOOL_LOCATION);
-  const changeRequestDesk = !isAuthorized(Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD) && canCloseRequests;
+  const changeRequestDesk =
+    !isAuthorized(Permission.VIEW_ALL_SCHOOLS_REPORTING_DASHBOARD) &&
+    canCloseRequests;
 
-  const [tab, setTab] = useState<Tab>((searchParams.get("tab") as Tab) || "new");
-  const [kind, setKind] = useState<Kind>(searchParams.get("type") === "data_change_request" || changeRequestDesk ? "data_change_request" : "all");
+  const [tab, setTab] = useState<Tab>(
+    (searchParams.get("tab") as Tab) || "new",
+  );
+  const [kind, setKind] = useState<Kind>(
+    searchParams.get("type") === "data_change_request" || changeRequestDesk
+      ? "data_change_request"
+      : "all",
+  );
   const [query, setQuery] = useState("");
   const [province, setProvince] = useState("");
   const [page, setPage] = useState(1);
@@ -59,7 +112,9 @@ export default function ReportValidation() {
   /** Slide direction for the next screen: 1 forward / next, -1 back / previous. */
   const [dir, setDir] = useState<1 | -1>(1);
   /** Brief confirmation after a decision, before the next report slides in. */
-  const [flash, setFlash] = useState<{ label: string; color: string } | null>(null);
+  const [flash, setFlash] = useState<{ label: string; color: string } | null>(
+    null,
+  );
 
   const openId = searchParams.get("report");
 
@@ -74,11 +129,24 @@ export default function ReportValidation() {
     }
   }
 
-  const provinces = useMemo(() => [...new Set(rows.map((r) => r.school?.province).filter(Boolean) as string[])].sort(), [rows]);
+  const provinces = useMemo(
+    () =>
+      [
+        ...new Set(
+          rows.map((r) => r.school?.province).filter(Boolean) as string[],
+        ),
+      ].sort(),
+    [rows],
+  );
 
   const scoped = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return rows.filter((r) => (kind === "all" || (r.type ?? "issue") === kind) && (!province || r.school?.province === province) && (!q || haystack(r).includes(q)));
+    return rows.filter(
+      (r) =>
+        (kind === "all" || (r.type ?? "issue") === kind) &&
+        (!province || r.school?.province === province) &&
+        (!q || haystack(r).includes(q)),
+    );
   }, [rows, kind, province, query, haystack]);
 
   const counts = useMemo(() => {
@@ -92,24 +160,38 @@ export default function ReportValidation() {
     const t = (iso?: string | null) => (iso ? new Date(iso).getTime() || 0 : 0);
     const l = scoped.filter((r) => TAB_STATUSES[tab].includes(r.status));
     return tab === "history"
-      ? l.sort((a, b) => t(b.reviewedAt ?? b.updatedAt ?? b.createdAt) - t(a.reviewedAt ?? a.updatedAt ?? a.createdAt))
+      ? l.sort(
+          (a, b) =>
+            t(b.reviewedAt ?? b.updatedAt ?? b.createdAt) -
+            t(a.reviewedAt ?? a.updatedAt ?? a.createdAt),
+        )
       : l.sort((a, b) => t(a.createdAt) - t(b.createdAt));
   }, [scoped, tab]);
 
   const oldestNew = useMemo(() => {
-    const ages = scoped.filter((r) => r.status === "PENDING").map((r) => ageDays(r.createdAt) ?? 0);
+    const ages = scoped
+      .filter((r) => r.status === "PENDING")
+      .map((r) => ageDays(r.createdAt) ?? 0);
     return ages.length ? Math.max(...ages) : null;
   }, [scoped]);
   const decidedThisWeek = useMemo(
-    () => scoped.filter((r) => (r.status === "SOLVED" || r.status === "FAILED") && (ageDays(r.reviewedAt ?? null) ?? 99) <= 7).length,
+    () =>
+      scoped.filter(
+        (r) =>
+          (r.status === "SOLVED" || r.status === "FAILED") &&
+          (ageDays(r.reviewedAt ?? null) ?? 99) <= 7,
+      ).length,
     [scoped],
   );
 
   const pageCount = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
-  const pageRows = list.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const pageRows = list.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
 
-  const open = openId ? rows.find((r) => r.id === openId) ?? null : null;
+  const open = openId ? (rows.find((r) => r.id === openId) ?? null) : null;
   const index = open ? list.findIndex((r) => r.id === open.id) : -1;
   const prev = index > 0 ? list[index - 1] : null;
   const next = index >= 0 && index < list.length - 1 ? list[index + 1] : null;
@@ -135,7 +217,14 @@ export default function ReportValidation() {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || document.querySelector('[role="dialog"]')) return;
+      if (
+        e.metaKey ||
+        e.ctrlKey ||
+        e.altKey ||
+        typing(e.target) ||
+        document.querySelector('[role="dialog"]')
+      )
+        return;
       const k = e.key.toLowerCase();
       if (k === "escape") backToList();
       else if ((k === "arrowleft" || k === "k") && prev) openReport(prev, -1);
@@ -147,14 +236,25 @@ export default function ReportValidation() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const canDecide = (r: ReviewReport) => canManage || (r.type === "data_change_request" && canCloseRequests);
+  const canDecide = (r: ReviewReport) =>
+    canManage || (r.type === "data_change_request" && canCloseRequests);
 
-  const onDecide = async (r: ReviewReport, action: Parameters<typeof decide>[1], note: string) => {
+  const onDecide = async (
+    r: ReviewReport,
+    action: Parameters<typeof decide>[1],
+    note: string,
+  ) => {
     const after = list.filter((x) => x.id !== r.id);
-    const at = Math.max(0, list.findIndex((x) => x.id === r.id));
+    const at = Math.max(
+      0,
+      list.findIndex((x) => x.id === r.id),
+    );
     const ok = await decide(r, action, note);
     if (!ok) return;
-    setFlash({ label: REVIEW_VERB[action.status] ?? "Saved", color: STATUS[action.status]?.color ?? "#2563eb" });
+    setFlash({
+      label: REVIEW_VERB[action.status] ?? "Saved",
+      color: STATUS[action.status]?.color ?? "#2563eb",
+    });
     await new Promise((res) => setTimeout(res, reduce ? 300 : 900));
     setFlash(null);
     if (!autoAdvance) return;
@@ -170,105 +270,133 @@ export default function ReportValidation() {
 
   // ── Step 2: one report ──────────────────────────────────────────
   const stepTwo = openId && (
-      <div className="relative mx-auto max-w-4xl space-y-4 pb-10">
-        <motion.div
-          initial={reduce ? false : { opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, ease: EASE }}
-          className="flex flex-wrap items-center justify-between gap-3"
+    <div className="relative mx-auto max-w-4xl space-y-4 pb-10">
+      <motion.div
+        initial={reduce ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: EASE }}
+        className="flex flex-wrap items-center justify-between gap-3"
+      >
+        <button
+          type="button"
+          onClick={backToList}
+          className="inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium text-slate-700 ring-1 ring-slate-900/10 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 dark:text-white/80 dark:ring-white/12 dark:hover:bg-white/8"
         >
-          <button
-            type="button"
-            onClick={backToList}
-            className="inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium text-slate-700 ring-1 ring-slate-900/10 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 dark:text-white/80 dark:ring-white/12 dark:hover:bg-white/8"
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          Back to {TAB_NAME[tab].toLowerCase()} reports
+        </button>
+        {index >= 0 && (
+          <nav
+            aria-label="Move between reports"
+            className="flex items-center gap-1.5"
           >
-            <ArrowLeft className="h-4 w-4" aria-hidden />
-            Back to {TAB_NAME[tab].toLowerCase()} reports
-          </button>
-          {index >= 0 && (
-            <nav aria-label="Move between reports" className="flex items-center gap-1.5">
-              <span className="px-1 text-xs tabular-nums text-slate-500 dark:text-white/50">
-                {formatNumber(index + 1)} of {formatNumber(list.length)}
-              </span>
-              <button
-                type="button"
-                onClick={() => prev && openReport(prev, -1)}
-                disabled={!prev}
-                aria-label="Previous report"
-                className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 ring-1 ring-slate-900/10 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:opacity-40 dark:text-white/70 dark:ring-white/12 dark:hover:bg-white/8"
-              >
-                <ChevronLeft className="h-4 w-4" aria-hidden />
-              </button>
-              <button
-                type="button"
-                onClick={() => next && openReport(next)}
-                disabled={!next}
-                aria-label="Next report"
-                className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 ring-1 ring-slate-900/10 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:opacity-40 dark:text-white/70 dark:ring-white/12 dark:hover:bg-white/8"
-              >
-                <ChevronRight className="h-4 w-4" aria-hidden />
-              </button>
-            </nav>
-          )}
-        </motion.div>
+            <span className="px-1 text-xs tabular-nums text-slate-500 dark:text-white/50">
+              {formatNumber(index + 1)} of {formatNumber(list.length)}
+            </span>
+            <button
+              type="button"
+              onClick={() => prev && openReport(prev, -1)}
+              disabled={!prev}
+              aria-label="Previous report"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 ring-1 ring-slate-900/10 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:opacity-40 dark:text-white/70 dark:ring-white/12 dark:hover:bg-white/8"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => next && openReport(next)}
+              disabled={!next}
+              aria-label="Next report"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-600 ring-1 ring-slate-900/10 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:opacity-40 dark:text-white/70 dark:ring-white/12 dark:hover:bg-white/8"
+            >
+              <ChevronRight className="h-4 w-4" aria-hidden />
+            </button>
+          </nav>
+        )}
+      </motion.div>
 
-        <section aria-label="Selected report" className={cn("relative p-5 sm:p-7", glassSurface)}>
-          <AnimatePresence>
-            {flash && (
-              <motion.div
-                role="status"
-                className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-[1.75rem] bg-white/80 backdrop-blur-sm dark:bg-[hsl(224_40%_7%)]/85"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
+      <section
+        aria-label="Selected report"
+        className={cn("relative p-5 sm:p-7", glassSurface)}
+      >
+        <AnimatePresence>
+          {flash && (
+            <motion.div
+              role="status"
+              className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-[1.75rem] bg-white/80 backdrop-blur-sm dark:bg-[hsl(224_40%_7%)]/85"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <motion.span
+                className="flex h-16 w-16 items-center justify-center rounded-full text-white"
+                style={{ background: flash.color }}
+                initial={reduce ? false : { scale: 0.4, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 420, damping: 20 }}
               >
-                <motion.span
-                  className="flex h-16 w-16 items-center justify-center rounded-full text-white"
-                  style={{ background: flash.color }}
-                  initial={reduce ? false : { scale: 0.4, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ type: "spring", stiffness: 420, damping: 20 }}
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-8 w-8"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
                 >
-                  <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <motion.path d="M5 12.5l4.5 4.5L19 7.5" initial={reduce ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.4, delay: 0.15, ease: "easeOut" }} />
-                  </svg>
-                </motion.span>
-                <motion.p
-                  className="text-sm font-semibold text-slate-900 dark:text-white"
-                  initial={reduce ? false : { opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                >
-                  {flash.label}
-                  {autoAdvance && <span className="block text-center text-xs font-normal text-slate-500 dark:text-white/55">Opening the next report…</span>}
-                </motion.p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-          {open ? (
-            <ReportAssessment
-              key={open.id}
-              report={open}
-              facilityTitle={facilityTitle(open.facilityId)}
-              itemLabel={itemLabel(open.facilityId, open.itemId)}
-              onDecide={canDecide(open) ? (a, note) => onDecide(open, a, note) : null}
-              busy={deciding}
-              autoAdvance={autoAdvance}
-              onAutoAdvanceChange={setAutoAdvance}
-              shortcuts
-              pinClassName="top-16"
-            />
-          ) : (
-            <EmptyNote title="This report was not found">It may have been removed, or it is outside your access area.</EmptyNote>
+                  <motion.path
+                    d="M5 12.5l4.5 4.5L19 7.5"
+                    initial={reduce ? false : { pathLength: 0 }}
+                    animate={{ pathLength: 1 }}
+                    transition={{ duration: 0.4, delay: 0.15, ease: "easeOut" }}
+                  />
+                </svg>
+              </motion.span>
+              <motion.p
+                className="text-sm font-semibold text-slate-900 dark:text-white"
+                initial={reduce ? false : { opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+              >
+                {flash.label}
+                {autoAdvance && (
+                  <span className="block text-center text-xs font-normal text-slate-500 dark:text-white/55">
+                    Opening the next report…
+                  </span>
+                )}
+              </motion.p>
+            </motion.div>
           )}
-        </section>
-      </div>
+        </AnimatePresence>
+        {open ? (
+          <ReportAssessment
+            key={open.id}
+            report={open}
+            facilityTitle={facilityTitle(open.facilityId)}
+            itemLabel={itemLabel(open.facilityId, open.itemId)}
+            onDecide={
+              canDecide(open) ? (a, note) => onDecide(open, a, note) : null
+            }
+            busy={deciding}
+            autoAdvance={autoAdvance}
+            onAutoAdvanceChange={setAutoAdvance}
+            shortcuts
+            pinClassName="top-16"
+          />
+        ) : (
+          <EmptyNote title="This report was not found">
+            It may have been removed, or it is outside your access area.
+          </EmptyNote>
+        )}
+      </section>
+    </div>
   );
 
   // ── Step 1: the list ────────────────────────────────────────────
   const stepOne = (
-    <div className="relative mx-auto max-w-4xl space-y-5 pb-10">
+    <div className="relative mx-auto max-w-6xl space-y-5 pb-10">
       <motion.header
         initial={reduce ? false : { opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -280,8 +408,12 @@ export default function ReportValidation() {
             <ClipboardCheck className="h-5 w-5" aria-hidden />
           </span>
           <div className="min-w-0">
-            <h1 className="text-xl font-medium tracking-tight text-slate-900 dark:text-white">Review reports</h1>
-            <p className="text-[13px] text-slate-500 dark:text-white/55">Pick a report to open it and decide.</p>
+            <h1 className="text-[1.625rem] sm:text-[1.875rem] font-medium tracking-tight text-slate-900 dark:text-white">
+              Review reports
+            </h1>
+            <p className="text-[15px] text-slate-500 dark:text-white/55">
+              Pick a report to open it and decide.
+            </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -299,7 +431,13 @@ export default function ReportValidation() {
             aria-label="Refresh"
             className="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-600 ring-1 ring-slate-900/10 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:opacity-60 dark:text-white/70 dark:ring-white/12 dark:hover:bg-white/8"
           >
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin motion-reduce:animate-none")} aria-hidden />
+            <RefreshCw
+              className={cn(
+                "h-4 w-4",
+                loading && "animate-spin motion-reduce:animate-none",
+              )}
+              aria-hidden
+            />
           </button>
           {tab !== "history" && list.length > 0 && (
             <motion.button
@@ -316,15 +454,49 @@ export default function ReportValidation() {
         </div>
       </motion.header>
 
-      {error && <DashboardError title="We couldn't load the reports" message={error} onRetry={() => void load()} retrying={loading} />}
+      {error && (
+        <DashboardError
+          title="We couldn't load the reports"
+          message={error}
+          onRetry={() => void load()}
+          retrying={loading}
+        />
+      )}
 
       {/* ── At a glance (tap to switch list) ──────────────────────── */}
       <div className="grid grid-cols-3 gap-2.5">
         {(
           [
-            { key: "new", icon: Inbox, label: "Waiting", value: counts.new, hint: oldestNew == null ? "nothing waiting" : `oldest ${formatNumber(oldestNew)} days`, tone: oldestNew != null && oldestNew > 30 ? "text-red-500/80 dark:text-red-300/70" : "text-slate-500 dark:text-white/50" },
-            { key: "escalated", icon: Siren, label: "Needs action", value: counts.escalated, hint: "RTB or the district must act", tone: "text-slate-500 dark:text-white/50" },
-            { key: "history", icon: CheckCheck, label: "Decided this week", value: decidedThisWeek, hint: `${formatNumber(counts.history)} done in total`, tone: "text-slate-500 dark:text-white/50" },
+            {
+              key: "new",
+              icon: Inbox,
+              label: "Waiting",
+              value: counts.new,
+              hint:
+                oldestNew == null
+                  ? "nothing waiting"
+                  : `oldest ${formatNumber(oldestNew)} days`,
+              tone:
+                oldestNew != null && oldestNew > 30
+                  ? "text-red-500/80 dark:text-red-300/70"
+                  : "text-slate-500 dark:text-white/50",
+            },
+            {
+              key: "escalated",
+              icon: Siren,
+              label: "Needs action",
+              value: counts.escalated,
+              hint: "RTB or the district must act",
+              tone: "text-slate-500 dark:text-white/50",
+            },
+            {
+              key: "history",
+              icon: CheckCheck,
+              label: "Decided this week",
+              value: decidedThisWeek,
+              hint: `${formatNumber(counts.history)} done in total`,
+              tone: "text-slate-500 dark:text-white/50",
+            },
           ] as const
         ).map((t, i) => (
           <motion.button
@@ -346,13 +518,27 @@ export default function ReportValidation() {
                 : "bg-white/70 ring-slate-900/6 hover:bg-white dark:bg-white/[0.03] dark:ring-white/8 dark:hover:bg-white/[0.06]",
             )}
           >
-            <span className={cn("hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:flex", tab === t.key ? "bg-primary text-white" : "bg-primary/10 text-primary dark:text-blue-300")} aria-hidden>
+            <span
+              className={cn(
+                "hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:flex",
+                tab === t.key
+                  ? "bg-primary text-white"
+                  : "bg-primary/10 text-primary dark:text-blue-300",
+              )}
+              aria-hidden
+            >
               <t.icon className="h-5 w-5" />
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-[11px] font-medium text-slate-500 dark:text-white/50">{t.label}</span>
-              <span className="block text-xl font-medium leading-tight tabular-nums text-slate-900 dark:text-white/90">{formatNumber(t.value)}</span>
-              <span className={cn("block truncate text-[11px]", t.tone)}>{t.hint}</span>
+              <span className="block truncate text-[13px] font-medium text-slate-500 dark:text-white/50">
+                {t.label}
+              </span>
+              <span className="block text-xl font-medium leading-tight tabular-nums text-slate-900 dark:text-white/90">
+                {formatNumber(t.value)}
+              </span>
+              <span className={cn("block truncate text-[13px]", t.tone)}>
+                {t.hint}
+              </span>
             </span>
           </motion.button>
         ))}
@@ -387,8 +573,10 @@ export default function ReportValidation() {
                   {name}
                   <span
                     className={cn(
-                      "min-w-5 rounded-full px-1.5 text-center text-[10px] font-medium leading-[18px] tabular-nums",
-                      tab === key ? "bg-primary/15 text-primary dark:bg-primary/25 dark:text-blue-200" : "bg-slate-900/6 text-slate-500 dark:bg-white/8 dark:text-white/55",
+                      "min-w-5 rounded-full px-1.5 text-center text-[12px] font-medium leading-[18px] tabular-nums",
+                      tab === key
+                        ? "bg-primary/15 text-primary dark:bg-primary/25 dark:text-blue-200"
+                        : "bg-slate-900/6 text-slate-500 dark:bg-white/8 dark:text-white/55",
                     )}
                   >
                     {n}
@@ -414,7 +602,10 @@ export default function ReportValidation() {
         <div className="flex gap-2">
           <label className="relative block min-w-0 flex-1">
             <span className="sr-only">Search reports</span>
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+              aria-hidden
+            />
             <input
               type="search"
               value={query}
@@ -443,7 +634,10 @@ export default function ReportValidation() {
                 </option>
               ))}
             </select>
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400" aria-hidden>
+            <span
+              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-slate-400"
+              aria-hidden
+            >
               ▾
             </span>
           </label>
@@ -466,7 +660,9 @@ export default function ReportValidation() {
 
         {list.length === 0 ? (
           filtersActive ? (
-            <EmptyNote title="No reports match">Try clearing the filters.</EmptyNote>
+            <EmptyNote title="No reports match">
+              Try clearing the filters.
+            </EmptyNote>
           ) : (
             <motion.div
               initial={reduce ? false : { opacity: 0, scale: 0.97 }}
@@ -478,20 +674,45 @@ export default function ReportValidation() {
                 className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/12 text-emerald-600 dark:text-emerald-300"
                 initial={reduce ? false : { scale: 0.6, rotate: -20 }}
                 animate={{ scale: 1, rotate: 0 }}
-                transition={{ type: "spring", stiffness: 380, damping: 18, delay: 0.1 }}
+                transition={{
+                  type: "spring",
+                  stiffness: 380,
+                  damping: 18,
+                  delay: 0.1,
+                }}
               >
                 <PartyPopper className="h-7 w-7" aria-hidden />
               </motion.span>
-              <p className="text-sm font-medium text-slate-900 dark:text-white/90">{tab === "history" ? "No decisions yet" : "All caught up"}</p>
+              <p className="text-sm font-medium text-slate-900 dark:text-white/90">
+                {tab === "history" ? "No decisions yet" : "All caught up"}
+              </p>
               <p className="max-w-xs text-xs text-slate-500 dark:text-white/50">
-                {tab === "new" ? "New reports from schools appear here, oldest first." : tab === "escalated" ? "Nothing is waiting for RTB or the district." : "Reviewed reports and their notes appear here."}
+                {tab === "new"
+                  ? "New reports from schools appear here, oldest first."
+                  : tab === "escalated"
+                    ? "Nothing is waiting for RTB or the district."
+                    : "Reviewed reports and their notes appear here."}
               </p>
             </motion.div>
           )
         ) : (
-          <ValidationList rows={pageRows} selectedId={null} onSelect={openReport} facilityTitle={facilityTitle} history={tab === "history"} grouped showStatus={tab === "history"} />
+          <ValidationList
+            rows={pageRows}
+            selectedId={null}
+            onSelect={openReport}
+            facilityTitle={facilityTitle}
+            history={tab === "history"}
+            grouped
+            showStatus={tab === "history"}
+          />
         )}
-        <Pagination page={currentPage} pageSize={PAGE_SIZE} total={list.length} onChange={setPage} label="Report pages" />
+        <Pagination
+          page={currentPage}
+          pageSize={PAGE_SIZE}
+          total={list.length}
+          onChange={setPage}
+          label="Report pages"
+        />
       </motion.section>
     </div>
   );
@@ -503,10 +724,22 @@ export default function ReportValidation() {
         key={openId ?? "list"}
         custom={dir}
         variants={{
-          enter: (d: number) => (reduce ? { opacity: 0 } : { opacity: 0, x: d * 32 }),
+          enter: (d: number) =>
+            reduce ? { opacity: 0 } : { opacity: 0, x: d * 32 },
           // Enter takes a moment; leaving is quick so there is no empty gap.
-          center: { opacity: 1, x: 0, transition: { duration: 0.24, ease: EASE } },
-          exit: (d: number) => (reduce ? { opacity: 0, transition: { duration: 0.08 } } : { opacity: 0, x: d * -24, transition: { duration: 0.1, ease: "easeIn" } }),
+          center: {
+            opacity: 1,
+            x: 0,
+            transition: { duration: 0.24, ease: EASE },
+          },
+          exit: (d: number) =>
+            reduce
+              ? { opacity: 0, transition: { duration: 0.08 } }
+              : {
+                  opacity: 0,
+                  x: d * -24,
+                  transition: { duration: 0.1, ease: "easeIn" },
+                },
         }}
         initial="enter"
         animate="center"

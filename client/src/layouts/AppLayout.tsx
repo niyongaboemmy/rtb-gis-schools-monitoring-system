@@ -341,7 +341,7 @@ export function AppLayout() {
                   data-tour="scope"
                   tabIndex={0}
                   className={cn(
-                    "hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[13px] font-semibold select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     scope.isNational
                       ? "border-border/30 text-muted-foreground"
                       : "border-primary/25 text-primary bg-primary/10",
@@ -378,7 +378,7 @@ export function AppLayout() {
                   : "border-border/20 hover:bg-accent hover:border-border",
               )}
             >
-              <div className="w-6 h-6 rounded-full bg-primary/15 text-primary flex items-center justify-center text-[9px] font-semibold border border-primary/20">
+              <div className="w-6 h-6 rounded-full bg-primary/15 text-primary flex items-center justify-center text-[12px] font-semibold border border-primary/20">
                 {initials}
               </div>
               <span className="hidden sm:block text-xs font-medium text-foreground leading-none">
@@ -425,16 +425,16 @@ export function AppLayout() {
                     <p className="text-sm font-semibold text-foreground leading-none truncate">
                       {user?.firstName} {user?.lastName}
                     </p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                    <p className="text-[13px] text-muted-foreground mt-0.5 truncate">
                       {user?.email}
                     </p>
-                    <span className="inline-block mt-1 text-[9px] font-semibold text-primary bg-primary/10 border border-primary/15 rounded-full px-2 py-0.5 capitalize">
+                    <span className="inline-block mt-1 text-[12px] font-semibold text-primary bg-primary/10 border border-primary/15 rounded-full px-2 py-0.5 capitalize">
                       {roleName}
                     </span>
                     {accessLevelName && (
                       <div className="flex items-center gap-1 mt-1">
                         <Layers className="w-2.5 h-2.5 text-primary/60 shrink-0" />
-                        <span className="text-[9px] font-semibold text-primary/70">
+                        <span className="text-[12px] font-semibold text-primary/70">
                           {accessLevelName}
                           {scopeLabel && ` · ${scopeLabel}`}
                         </span>
@@ -443,7 +443,7 @@ export function AppLayout() {
                     {scopeLabel && !accessLevelName && (
                       <div className="flex items-center gap-1 mt-1">
                         <MapPin className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
-                        <span className="text-[9px] text-muted-foreground font-medium">
+                        <span className="text-[12px] text-muted-foreground font-medium">
                           {scopeLabel}
                         </span>
                       </div>

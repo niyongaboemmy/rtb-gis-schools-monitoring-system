@@ -33,7 +33,7 @@ export function ScoreDial({ score, size = 46 }: { score: number | null; size?: n
           transition={{ duration: reduce ? 0 : 1, ease: EASE, delay: 0.1 }}
         />
       </svg>
-      <span className="absolute inset-0 flex items-center justify-center text-[13px] font-semibold tabular-nums text-slate-900 dark:text-white">{formatScore(score)}</span>
+      <span className="absolute inset-0 flex items-center justify-center text-[15px] font-semibold tabular-nums text-slate-900 dark:text-white">{formatScore(score)}</span>
     </div>
   );
 }
@@ -79,12 +79,12 @@ export function QueueRow({ d, rank, model, onOpen, index }: Props) {
         <span className="min-w-0">
           <span className="flex items-center gap-2">
             <span className="truncate text-sm font-semibold text-slate-900 dark:text-white">{name}</span>
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-slate-900/5 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-white/7 dark:text-white/80">
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-slate-900/5 px-2 py-0.5 text-[13px] font-medium text-slate-700 dark:bg-white/7 dark:text-white/80">
               <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} aria-hidden />
               {band ? label("priority", band) : "Not assessed"}
             </span>
           </span>
-          <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-500 dark:text-white/50">
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px] text-slate-500 dark:text-white/50">
             {place && (
               <span className="inline-flex items-center gap-1">
                 <MapPin className="h-3 w-3" aria-hidden />
@@ -116,7 +116,7 @@ export function QueueRow({ d, rank, model, onOpen, index }: Props) {
           ) : (
             <span className="block text-xs text-slate-400 dark:text-white/40">No measured factor yet</span>
           )}
-          <span className={cn("mt-1 flex items-center gap-1.5 text-[11px]", coverage != null && coverage < 0.5 ? "text-amber-700 dark:text-amber-300" : "text-slate-500 dark:text-white/45")}>
+          <span className={cn("mt-1 flex items-center gap-1.5 text-[13px]", coverage != null && coverage < 0.5 ? "text-amber-700 dark:text-amber-300" : "text-slate-500 dark:text-white/45")}>
             {coverage != null && coverage < 0.5 && <CircleDashed className="h-3 w-3" aria-hidden />}
             {coverage == null ? "Coverage unknown" : `${formatPercent(coverage * 100)} real data`}
           </span>

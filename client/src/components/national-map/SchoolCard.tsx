@@ -151,7 +151,7 @@ export function SchoolCardBody({
 
       <div className="custom-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 pb-4">
         {filteredOut && (
-          <p className="rounded-xl bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+          <p className="rounded-xl bg-amber-500/10 px-3 py-1.5 text-[13px] text-amber-700 dark:text-amber-300">
             Hidden on the map by your filters.
           </p>
         )}
@@ -160,7 +160,7 @@ export function SchoolCardBody({
         <dl className="grid grid-cols-3 divide-x divide-slate-900/[0.06] rounded-2xl bg-slate-900/[0.03] py-2.5 dark:divide-white/[0.06] dark:bg-white/[0.04]">
           {stats.map((f) => (
             <div key={f.k} className="min-w-0 px-3 text-center">
-              <dd className={cn("truncate text-[13px] tabular-nums", STRONG)}>{f.v}</dd>
+              <dd className={cn("truncate text-[15px] tabular-nums", STRONG)}>{f.v}</dd>
               <dt className={cn("text-[10.5px]", MUTED)}>{f.k}</dt>
             </div>
           ))}
@@ -171,7 +171,7 @@ export function SchoolCardBody({
           {canDecision && (
             <Link
               to={`/schools/${s.id}/decision`}
-              className="group inline-flex h-9 min-w-0 flex-1 items-center justify-between gap-2 rounded-full bg-primary pl-4 pr-1 text-[13px] text-primary-foreground shadow-[0_6px_16px_-8px_hsl(var(--primary)/0.8)] transition-transform hover:-translate-y-px motion-reduce:hover:translate-y-0"
+              className="group inline-flex h-9 min-w-0 flex-1 items-center justify-between gap-2 rounded-full bg-primary pl-4 pr-1 text-[15px] text-primary-foreground shadow-[0_6px_16px_-8px_hsl(var(--primary)/0.8)] transition-transform hover:-translate-y-px motion-reduce:hover:translate-y-0"
             >
               Open school
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 transition-transform duration-300 group-hover:rotate-45">
@@ -250,7 +250,7 @@ export function SchoolCardBody({
                     {details.map((f) => (
                       <div key={f.k} className="min-w-0">
                         <dt className={cn("text-[10.5px]", MUTED)}>{f.k}</dt>
-                        <dd className={cn("truncate text-[13px] tabular-nums", STRONG)}>{f.v}</dd>
+                        <dd className={cn("truncate text-[15px] tabular-nums", STRONG)}>{f.v}</dd>
                       </div>
                     ))}
                     <div className="col-span-2 flex min-w-0 items-center gap-1">
@@ -265,7 +265,7 @@ export function SchoolCardBody({
 
                   {nearby.length > 0 && (
                     <div>
-                      <p className={cn("pb-1 text-[11px]", MUTED)}>Nearest schools</p>
+                      <p className={cn("pb-1 text-[13px]", MUTED)}>Nearest schools</p>
                       <ul>
                         {nearby.slice(0, 3).map(({ point: n, meters }) => (
                           <li key={n.school.id}>
@@ -275,8 +275,8 @@ export function SchoolCardBody({
                               className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.06]"
                             >
                               <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: scoreColor(n.score) }} />
-                              <span className={cn("min-w-0 flex-1 truncate text-[13px]", STRONG)}>{n.school.name}</span>
-                              <span className={cn("shrink-0 text-[11px] tabular-nums", MUTED)}>{formatLength(meters)}</span>
+                              <span className={cn("min-w-0 flex-1 truncate text-[15px]", STRONG)}>{n.school.name}</span>
+                              <span className={cn("shrink-0 text-[13px] tabular-nums", MUTED)}>{formatLength(meters)}</span>
                             </button>
                           </li>
                         ))}

@@ -78,7 +78,7 @@ export function ValidationList({ rows, selectedId, onSelect, facilityTitle, hist
               <li
                 aria-hidden
                 className={cn(
-                  "bg-slate-900/[0.025] px-4 py-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground dark:bg-white/[0.025]",
+                  "bg-slate-900/[0.025] px-4 py-1.5 text-[12px] font-medium uppercase tracking-[0.08em] text-muted-foreground dark:bg-white/[0.025]",
                   heading === "Over a month old" && "text-destructive/80",
                 )}
               >
@@ -102,7 +102,7 @@ export function ValidationList({ rows, selectedId, onSelect, facilityTitle, hist
               >
                 {/* School badge, tinted by status */}
                 <span
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-medium"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-medium"
                   style={{ background: `color-mix(in srgb, ${st.color} 12%, transparent)`, color: `color-mix(in srgb, ${st.color} 85%, currentColor)` }}
                   aria-hidden
                 >
@@ -110,7 +110,7 @@ export function ValidationList({ rows, selectedId, onSelect, facilityTitle, hist
                 </span>
 
                 <span className="min-w-0 flex-1">
-                  <span className={cn("block truncate text-[13px]", on ? "text-primary" : "text-foreground")}>
+                  <span className={cn("block truncate text-[15px]", on ? "text-primary" : "text-foreground")}>
                     {r.school?.name ?? "Unknown school"}
                   </span>
                   {showReview ? (
@@ -146,7 +146,7 @@ export function ValidationList({ rows, selectedId, onSelect, facilityTitle, hist
                 )}
                 {!history && isOpen(r.status) && (
                   <span
-                    className={cn("shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] tabular-nums", AGE_CHIP[tone])}
+                    className={cn("shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[13px] tabular-nums", AGE_CHIP[tone])}
                     title={`Filed ${formatDate(r.createdAt)}`}
                   >
                     {waited}

@@ -28,8 +28,8 @@ const focusRing =
 
 const Coord: React.FC<{ name: string; value: string }> = ({ name, value }) => (
   <div className="min-w-0 rounded-2xl bg-slate-900/5 px-3 py-2 dark:bg-white/6">
-    <span className="block text-[11px] text-slate-500 dark:text-white/50">{name}</span>
-    <span className="block truncate text-[13px] tabular-nums text-slate-800 dark:text-white/90">
+    <span className="block text-[13px] text-slate-500 dark:text-white/50">{name}</span>
+    <span className="block truncate text-[15px] tabular-nums text-slate-800 dark:text-white/90">
       {value}
     </span>
   </div>
@@ -64,10 +64,10 @@ export const SchoolLocationEditorPanel: React.FC<Props> = ({
             <MapPin className="h-4 w-4" aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-[14px] font-medium text-slate-900 dark:text-white">
+            <p className="text-[15px] font-medium text-slate-900 dark:text-white">
               Set school location
             </p>
-            <p className="text-[12px] text-slate-600 dark:text-white/60">
+            <p className="text-[14px] text-slate-600 dark:text-white/60">
               Click the map or drag the pin, then save.
             </p>
           </div>
@@ -84,7 +84,7 @@ export const SchoolLocationEditorPanel: React.FC<Props> = ({
             onClick={onCancel}
             disabled={saving}
             className={cn(
-              "inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[13px] text-slate-700 transition-colors",
+              "inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[15px] text-slate-700 transition-colors",
               "hover:bg-slate-900/5 dark:text-white/80 dark:hover:bg-white/8",
               "disabled:pointer-events-none disabled:opacity-50",
               focusRing,
@@ -98,7 +98,7 @@ export const SchoolLocationEditorPanel: React.FC<Props> = ({
             onClick={onSave}
             disabled={saving || !hasChange || !draft}
             className={cn(
-              "inline-flex h-9 min-w-30 items-center justify-center gap-1.5 rounded-full bg-primary px-4 text-[13px] font-medium text-white transition-colors",
+              "inline-flex h-9 min-w-30 items-center justify-center gap-1.5 rounded-full bg-primary px-4 text-[15px] font-medium text-white transition-colors",
               "hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50",
               focusRing,
             )}

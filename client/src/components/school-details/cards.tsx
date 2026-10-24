@@ -53,11 +53,11 @@ export function LocationCard({
 
       <div className="mt-4 rounded-2xl bg-slate-900/[0.03] p-3.5 ring-1 ring-slate-900/5 dark:bg-white/[0.04] dark:ring-white/8">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[11px] font-medium text-slate-500 dark:text-white/45">GPS position</p>
+          <p className="text-[13px] font-medium text-slate-500 dark:text-white/45">GPS position</p>
           <StatusPill color={site.color}>{site.label}</StatusPill>
         </div>
         <div className="mt-1.5 flex items-center gap-2">
-          <p className="min-w-0 flex-1 truncate font-mono text-[13px] tabular-nums text-slate-900 dark:text-white/90">{coords ?? <Missing />}</p>
+          <p className="min-w-0 flex-1 truncate font-mono text-[15px] tabular-nums text-slate-900 dark:text-white/90">{coords ?? <Missing />}</p>
           {coords && (
             <button
               type="button"
@@ -75,12 +75,12 @@ export function LocationCard({
           )}
         </div>
         {coords && source && (
-          <p className="mt-1 text-[11px] text-slate-500 dark:text-white/45">
+          <p className="mt-1 text-[13px] text-slate-500 dark:text-white/45">
             {source}
             {s.locationUpdatedAt && ` · ${formatDate(s.locationUpdatedAt)}`}
           </p>
         )}
-        <p className="mt-1 text-[11px] text-slate-500 dark:text-white/45">
+        <p className="mt-1 text-[13px] text-slate-500 dark:text-white/45">
           Elevation {num(s.elevation) != null ? `${formatNumber(num(s.elevation))} m` : <Missing>not recorded</Missing>}
         </p>
       </div>
@@ -106,7 +106,7 @@ function ContactRow({ icon: Icon, label: text, value, href }: { icon: typeof Pho
         <Icon className="h-3.5 w-3.5" />
       </span>
       <span className="min-w-0">
-        <span className="block text-[11px] text-slate-500 dark:text-white/45">{text}</span>
+        <span className="block text-[13px] text-slate-500 dark:text-white/45">{text}</span>
         <span className={cn("block truncate text-sm font-medium", has ? "text-slate-900 dark:text-white/90" : "")}>{has ? value : <Missing />}</span>
       </span>
     </>
@@ -129,7 +129,7 @@ export function ContactCard({ school: s, index }: { school: SchoolRecord; index?
           {s.headTeacher ? initials(String(s.headTeacher)) : <UserRound className="h-5 w-5" />}
         </span>
         <div className="min-w-0">
-          <p className="text-[11px] text-slate-500 dark:text-white/45">Head teacher</p>
+          <p className="text-[13px] text-slate-500 dark:text-white/45">Head teacher</p>
           <p className="truncate text-sm font-semibold text-slate-900 dark:text-white">{s.headTeacher || <Missing />}</p>
         </div>
       </div>
@@ -155,7 +155,7 @@ export function PeopleCard({ school: s, metrics, index }: { school: SchoolRecord
       <div className="space-y-5">
         <div>
           <div className="mb-2 flex items-baseline justify-between">
-            <p className="text-[11px] font-medium text-slate-500 dark:text-white/45">Students</p>
+            <p className="text-[13px] font-medium text-slate-500 dark:text-white/45">Students</p>
             <p className="text-xl font-semibold tabular-nums text-slate-900 dark:text-white">{formatNumber(num(metrics?.totalStudents ?? s.totalStudents))}</p>
           </div>
           <SplitBar
@@ -168,7 +168,7 @@ export function PeopleCard({ school: s, metrics, index }: { school: SchoolRecord
         </div>
         <div>
           <div className="mb-2 flex items-baseline justify-between">
-            <p className="text-[11px] font-medium text-slate-500 dark:text-white/45">
+            <p className="text-[13px] font-medium text-slate-500 dark:text-white/45">
               Teachers
               {metrics?.studentToTeacherRatio != null && (
                 <span className="ml-1.5 text-slate-400 dark:text-white/35">· {formatNumber(metrics.studentToTeacherRatio, 1)} students each</span>
@@ -205,7 +205,7 @@ export function LandAccessCard({ school: s, metrics, index }: { school: SchoolRe
   return (
     <GlassCard title="Land & access" icon={LandPlot} index={index} info={<MetricInfo id="school.landArea" size="xs" />}>
       <div className="flex items-baseline justify-between">
-        <p className="text-[11px] font-medium text-slate-500 dark:text-white/45">Total land</p>
+        <p className="text-[13px] font-medium text-slate-500 dark:text-white/45">Total land</p>
         <p className="text-xl font-semibold tabular-nums text-slate-900 dark:text-white">{total != null ? formatHectares(total) : <span className="text-sm"><Missing>No land data</Missing></span>}</p>
       </div>
       {used != null || unused != null ? (
@@ -222,7 +222,7 @@ export function LandAccessCard({ school: s, metrics, index }: { school: SchoolRe
 
       <div className="mt-5 space-y-3 border-t border-slate-900/6 pt-4 dark:border-white/8">
         <div className="flex items-center justify-between gap-3">
-          <p className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-white/45">
+          <p className="flex items-center gap-1.5 text-[13px] font-medium text-slate-500 dark:text-white/45">
             <Route className="h-3.5 w-3.5" aria-hidden /> Roads
           </p>
           <p className="text-sm font-medium text-slate-900 dark:text-white/90">
@@ -231,7 +231,7 @@ export function LandAccessCard({ school: s, metrics, index }: { school: SchoolRe
           </p>
         </div>
         <div>
-          <div className="mb-1.5 flex items-center justify-between text-[11px]">
+          <div className="mb-1.5 flex items-center justify-between text-[13px]">
             <span className="flex items-center gap-1 font-medium text-slate-500 dark:text-white/45">
               All-season access <MetricInfo id="school.roadAccess" size="xs" />
             </span>
@@ -267,10 +267,10 @@ export function BuildingsListCard({ buildings, index, className }: { buildings: 
       icon={Building2}
       index={index}
       className={className}
-      badge={<span className="rounded-full bg-slate-900/5 px-2 py-0.5 text-[11px] font-medium tabular-nums text-slate-600 dark:bg-white/8 dark:text-white/65">{formatNumber(buildings.length)}</span>}
+      badge={<span className="rounded-full bg-slate-900/5 px-2 py-0.5 text-[13px] font-medium tabular-nums text-slate-600 dark:bg-white/8 dark:text-white/65">{formatNumber(buildings.length)}</span>}
     >
       {buildings.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-slate-300 p-5 text-center text-[13px] text-slate-500 dark:border-white/12 dark:text-white/50">
+        <p className="rounded-2xl border border-dashed border-slate-300 p-5 text-center text-[15px] text-slate-500 dark:border-white/12 dark:text-white/50">
           No buildings recorded. Add them from the 2D map or upload a site map (KMZ).
         </p>
       ) : (
@@ -291,7 +291,7 @@ export function BuildingsListCard({ buildings, index, className }: { buildings: 
               ),
             }))}
           />
-          <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-white/50">
+          <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[13px] text-slate-500 dark:text-white/50">
             {CONDITIONS.filter((c) => counts[c.key] > 0).map((c) => (
               <li key={c.key} className="inline-flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: c.color }} aria-hidden />
@@ -310,10 +310,10 @@ export function BuildingsListCard({ buildings, index, className }: { buildings: 
                   <span className="h-8 w-1 shrink-0 rounded-full" style={{ background: c.color }} aria-hidden />
                   <div className="min-w-0 flex-1">
                     <p className="flex items-baseline gap-2">
-                      <span className="truncate text-[13px] font-medium text-slate-900 dark:text-white/90">{b.name || "Unnamed building"}</span>
-                      {b.buildingCode && <span className="shrink-0 font-mono text-[10px] text-slate-400 dark:text-white/35">{b.buildingCode}</span>}
+                      <span className="truncate text-[15px] font-medium text-slate-900 dark:text-white/90">{b.name || "Unnamed building"}</span>
+                      {b.buildingCode && <span className="shrink-0 font-mono text-[12px] text-slate-400 dark:text-white/35">{b.buildingCode}</span>}
                     </p>
-                    <p className="truncate text-[11px] text-slate-500 dark:text-white/45">{facts.join(" · ")}</p>
+                    <p className="truncate text-[13px] text-slate-500 dark:text-white/45">{facts.join(" · ")}</p>
                   </div>
                   <StatusPill color={c.color}>{c.label}</StatusPill>
                 </li>

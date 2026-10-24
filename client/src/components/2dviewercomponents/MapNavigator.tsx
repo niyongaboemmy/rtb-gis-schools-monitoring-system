@@ -48,7 +48,7 @@ export const MapNavigator: React.FC<MapNavigatorProps> = ({
     >
       <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-slate-900/15 dark:bg-white/20 md:hidden" aria-hidden />
       <div className="flex items-center justify-between px-4 pb-2 pt-3">
-        <span className="text-[14px] font-medium text-slate-900 dark:text-white">
+        <span className="text-[15px] font-medium text-slate-900 dark:text-white">
           Navigator
         </span>
         <button
@@ -77,7 +77,7 @@ export const MapNavigator: React.FC<MapNavigatorProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className={cn(
-              "h-9 w-full rounded-full bg-slate-900/5 pl-8 pr-3 text-[13px] text-slate-800 placeholder:text-slate-500",
+              "h-9 w-full rounded-full bg-slate-900/5 pl-8 pr-3 text-[15px] text-slate-800 placeholder:text-slate-500",
               "dark:bg-white/6 dark:text-white dark:placeholder:text-white/40",
               focusRing,
             )}
@@ -87,7 +87,7 @@ export const MapNavigator: React.FC<MapNavigatorProps> = ({
 
       <div className="custom-scrollbar min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-3 md:max-h-95">
         {filteredFeatures.length === 0 ? (
-          <p className="py-6 text-center text-[12px] text-slate-500 dark:text-white/50">
+          <p className="py-6 text-center text-[14px] text-slate-500 dark:text-white/50">
             No features found
           </p>
         ) : (
@@ -97,7 +97,7 @@ export const MapNavigator: React.FC<MapNavigatorProps> = ({
               type="button"
               onClick={() => onFlyTo(feature)}
               className={cn(
-                "w-full truncate rounded-2xl px-3 py-2 text-left text-[13px] transition-colors",
+                "w-full truncate rounded-2xl px-3 py-2 text-left text-[15px] transition-colors",
                 selectedFeatureName === name
                   ? "bg-primary/10 font-medium text-primary dark:text-blue-300"
                   : "text-slate-700 hover:bg-slate-900/5 dark:text-white/80 dark:hover:bg-white/8",

@@ -337,7 +337,7 @@ export function AccessLevelsTab() {
                       </div>
                     </div>
 
-                    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[13px] text-muted-foreground">
                       <span className="font-normal text-foreground/80">
                         {levelRoles.length === 0 ? "No roles yet" : plural(levelRoles.length, "role")}
                       </span>

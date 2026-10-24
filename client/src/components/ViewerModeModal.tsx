@@ -83,7 +83,7 @@ export default function ViewerModeModal({
                 <p className="font-black text-base uppercase tracking-tight leading-tight">
                   {label}
                 </p>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mt-0.5">
+                <p className="text-[12px] font-semibold uppercase tracking-widest text-muted-foreground mt-0.5">
                   {tagline}
                 </p>
               </div>
@@ -102,7 +102,7 @@ export default function ViewerModeModal({
             {/* CTA hint */}
             <p
               className={cn(
-                "text-[10px] font-black uppercase tracking-widest mt-auto transition-opacity",
+                "text-[12px] font-black uppercase tracking-widest mt-auto transition-opacity",
                 hovered === mode ? "opacity-100 text-primary" : "opacity-0",
               )}
             >

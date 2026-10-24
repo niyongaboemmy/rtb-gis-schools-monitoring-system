@@ -128,7 +128,7 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search"
-            className="h-9 w-full rounded-full bg-slate-900/[0.04] pl-8.5 pr-8 text-[13px] text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/50 dark:bg-white/6 dark:text-white dark:placeholder:text-white/35 dark:focus:bg-white/8"
+            className="h-9 w-full rounded-full bg-slate-900/[0.04] pl-8.5 pr-8 text-[15px] text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/50 dark:bg-white/6 dark:text-white dark:placeholder:text-white/35 dark:focus:bg-white/8"
           />
           {query && (
             <button type="button" onClick={() => setQuery("")} aria-label="Clear search" className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-white">
@@ -168,7 +168,7 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
         {rows.length === 0 ? (
           <li className="flex flex-col items-center gap-1.5 px-6 py-10 text-center">
             <Building2 className="h-6 w-6 text-slate-300 dark:text-white/25" aria-hidden />
-            <p className="text-[13px] text-slate-700 dark:text-white/80">{q ? "No match" : "No buildings yet"}</p>
+            <p className="text-[15px] text-slate-700 dark:text-white/80">{q ? "No match" : "No buildings yet"}</p>
             <p className="text-xs text-slate-500 dark:text-white/45">{q ? "Try another name." : canEdit && onAdd ? "Tap + to draw one on the map." : "Buildings appear once mapped."}</p>
           </li>
         ) : (
@@ -202,7 +202,7 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
                         transition={{ duration: 0.15 }}
                         className="flex items-center gap-2 rounded-2xl bg-destructive/[0.07] px-3 py-2.5 dark:bg-destructive/15"
                       >
-                        <p className="min-w-0 flex-1 truncate text-[13px] text-slate-800 dark:text-white/85">Delete {buildingName(b)}?</p>
+                        <p className="min-w-0 flex-1 truncate text-[15px] text-slate-800 dark:text-white/85">Delete {buildingName(b)}?</p>
                         <button type="button" onClick={() => setConfirm(null)} className="h-8 rounded-full px-3 text-xs text-slate-600 hover:bg-slate-900/5 dark:text-white/65 dark:hover:bg-white/8">
                           Cancel
                         </button>
@@ -242,8 +242,8 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
                           <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-white dark:ring-[hsl(224_40%_7%)]" style={{ background: cond.color }} title={cond.label} />
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className={cn("block truncate text-[13px]", on ? "text-primary dark:text-blue-300" : "text-slate-900 dark:text-white/90")}>{buildingName(b)}</span>
-                          <span className="mt-0.5 block truncate text-[11px] text-slate-500 dark:text-white/45">
+                          <span className={cn("block truncate text-[15px]", on ? "text-primary dark:text-blue-300" : "text-slate-900 dark:text-white/90")}>{buildingName(b)}</span>
+                          <span className="mt-0.5 block truncate text-[13px] text-slate-500 dark:text-white/45">
                             {[fn ? fn.charAt(0).toUpperCase() + fn.slice(1) : null, area ? formatArea(area) : null].filter(Boolean).join(" · ") || cond.label}
                           </span>
                         </span>
@@ -253,7 +253,7 @@ export const BuildingsListPanel: React.FC<BuildingsListPanelProps> = ({
                             initial={reduce ? false : { scale: 0.5 }}
                             animate={{ scale: 1 }}
                             transition={{ type: "spring", stiffness: 500, damping: 22 }}
-                            className="min-w-5.5 rounded-full bg-primary px-1.5 text-center text-[11px] leading-5.5 tabular-nums text-white"
+                            className="min-w-5.5 rounded-full bg-primary px-1.5 text-center text-[13px] leading-5.5 tabular-nums text-white"
                             title={[c.action && `${c.action} need action`, c.waiting && `${c.waiting} waiting`].filter(Boolean).join(" · ")}
                             aria-label={`${c.open} open report${c.open === 1 ? "" : "s"}`}
                           >

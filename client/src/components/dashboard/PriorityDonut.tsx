@@ -95,7 +95,7 @@ export function PriorityDonut({ segments, unit = "schools", vertical = false, fo
           >
             {focus ? focus.value : total}
           </motion.span>
-          <span className="mt-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500 dark:text-white/45">
+          <span className="mt-1 text-[12px] font-medium uppercase tracking-[0.14em] text-slate-500 dark:text-white/45">
             {focus ? focus.label : unit}
           </span>
         </div>
@@ -116,13 +116,13 @@ export function PriorityDonut({ segments, unit = "schools", vertical = false, fo
                 active && active !== s.key && "opacity-50",
               )}
             >
-              <span className="flex items-center gap-1.5 text-[11px] font-medium text-slate-600 dark:text-white/55">
+              <span className="flex items-center gap-1.5 text-[13px] font-medium text-slate-600 dark:text-white/55">
                 <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s.color, boxShadow: `0 0 8px ${s.color}88` }} />
                 <span className="truncate">{s.label}</span>
               </span>
               <span className="mt-0.5 flex items-baseline gap-1.5">
                 <span className="text-lg font-semibold leading-none tabular-nums text-slate-900 dark:text-white">{s.value}</span>
-                <span className="text-[10px] tabular-nums text-slate-400 dark:text-white/35">{pct}%</span>
+                <span className="text-[12px] tabular-nums text-slate-400 dark:text-white/35">{pct}%</span>
               </span>
             </li>
           );

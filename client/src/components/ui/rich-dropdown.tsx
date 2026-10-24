@@ -78,7 +78,7 @@ export const RichDropdown = ({
         data-open={isOpen}
         className={cn(
           ghost
-            ? "-ml-2 flex h-8 w-max min-w-28 shrink-0 items-center justify-between gap-2 rounded-lg px-2.5 text-left text-[13px] text-foreground outline-none transition-colors hover:bg-slate-900/[0.04] focus-visible:ring-2 focus-visible:ring-ring data-[open=true]:bg-slate-900/[0.05] dark:hover:bg-white/[0.05] dark:data-[open=true]:bg-white/[0.07]"
+            ? "-ml-2 flex h-8 w-max min-w-28 shrink-0 items-center justify-between gap-2 rounded-lg px-2.5 text-left text-[15px] text-foreground outline-none transition-colors hover:bg-slate-900/[0.04] focus-visible:ring-2 focus-visible:ring-ring data-[open=true]:bg-slate-900/[0.05] dark:hover:bg-white/[0.05] dark:data-[open=true]:bg-white/[0.07]"
             : cn(
                 "flex h-11 w-full items-center justify-between gap-2 px-4 py-2 text-left text-base outline-none sm:text-sm",
                 fieldShell,
@@ -153,7 +153,7 @@ export const RichDropdown = ({
                       setSearch("");
                     }}
                     className={cn(
-                      "flex w-full items-center justify-between rounded-lg px-3 py-2 text-[13px] transition-colors",
+                      "flex w-full items-center justify-between rounded-lg px-3 py-2 text-[15px] transition-colors",
                       value === option.value
                         ? "bg-primary/10 text-primary dark:text-white font-normal"
                         : "hover:bg-muted/50 text-muted-foreground hover:text-foreground",

@@ -90,7 +90,7 @@ const ToolButton: React.FC<{
       >
         {children}
         {badge != null && badge > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[8px] font-black text-white">
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-500 px-1 text-[11px] font-black text-white">
             {badge}
           </span>
         )}
@@ -202,7 +202,7 @@ export const ViewerRightToolbar: React.FC<ViewerRightToolbarProps> = ({
         <div className="pointer-events-auto relative">
           {showRenders && (
             <Card className="absolute bottom-14 right-0 flex w-48 flex-col gap-1 rounded-3xl border border-slate-200 bg-background/95 p-3 shadow-2xl backdrop-blur-2xl dark:border-white/6 md:-bottom-25 md:right-16">
-              <div className="mb-1 px-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Render mode</div>
+              <div className="mb-1 px-1 text-[12px] font-black uppercase tracking-widest text-muted-foreground">Render mode</div>
               {(["unlit", "lit", "wireframe"] as RenderMode[]).map((m) => (
                 <button
                   key={m}
@@ -224,8 +224,8 @@ export const ViewerRightToolbar: React.FC<ViewerRightToolbarProps> = ({
           {showSpeeds && (
             <Card className="absolute bottom-14 right-0 flex w-56 flex-col gap-3 rounded-3xl border border-slate-200 bg-background/95 p-4 shadow-2xl backdrop-blur-2xl dark:border-white/6 md:-bottom-10 md:right-16">
               <div className="flex items-center justify-between">
-                <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Movement speed</div>
-                <div className="rounded-lg bg-primary/10 px-2 py-0.5 font-mono text-[10px] text-primary">{fmtSpeed(speedSteps[speedIdx])}</div>
+                <div className="text-[12px] font-black uppercase tracking-widest text-muted-foreground">Movement speed</div>
+                <div className="rounded-lg bg-primary/10 px-2 py-0.5 font-mono text-[12px] text-primary">{fmtSpeed(speedSteps[speedIdx])}</div>
               </div>
               <div className="flex items-center gap-3">
                 <button type="button" aria-label="Decrease movement speed" className={cn("h-10 w-10 shrink-0 rounded-lg border border-slate-200 dark:border-white/10 disabled:opacity-40", focusRing)} onClick={speedDown} disabled={speedIdx <= 0}>−</button>

@@ -34,7 +34,7 @@ export function useChartTooltip() {
   const tooltip = tip ? (
     <div
       role="tooltip"
-      className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-[calc(100%+10px)] whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1.5 text-[11px] font-medium text-white shadow-lg dark:bg-white dark:text-slate-900"
+      className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-[calc(100%+10px)] whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1.5 text-[13px] font-medium text-white shadow-lg dark:bg-white dark:text-slate-900"
       style={{ left: tip.x, top: tip.y }}
     >
       {tip.content}

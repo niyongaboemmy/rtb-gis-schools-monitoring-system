@@ -192,7 +192,7 @@ export function GlobalSearch() {
       >
         <Search className="w-3.5 h-3.5 shrink-0" />
         <span>Search...</span>
-        <span className="ml-1 flex items-center gap-0.5 text-[10px] text-muted-foreground/60">
+        <span className="ml-1 flex items-center gap-0.5 text-[12px] text-muted-foreground/60">
           <Command className="w-2.5 h-2.5" />K
         </span>
       </button>
@@ -254,7 +254,7 @@ export function GlobalSearch() {
                     <X className="w-3.5 h-3.5" aria-hidden />
                   </button>
                 )}
-                <kbd className="hidden sm:flex items-center px-1.5 py-0.5 rounded border border-border/60 text-[10px] text-muted-foreground font-mono">
+                <kbd className="hidden sm:flex items-center px-1.5 py-0.5 rounded border border-border/60 text-[12px] text-muted-foreground font-mono">
                   esc
                 </kbd>
               </div>
@@ -268,7 +268,7 @@ export function GlobalSearch() {
                 ) : (
                   results.map((group) => (
                     <div key={group.group}>
-                      <p className="px-4 pt-3 pb-1 text-[10px] font-semibold text-muted-foreground/60 tracking-wide">
+                      <p className="px-4 pt-3 pb-1 text-[12px] font-semibold text-muted-foreground/60 tracking-wide">
                         {group.group}
                       </p>
                       {group.items.map((item) => {
@@ -303,7 +303,7 @@ export function GlobalSearch() {
                               >
                                 {item.label}
                               </p>
-                              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                              <p className="text-[13px] text-muted-foreground mt-0.5 truncate">
                                 {item.description}
                               </p>
                             </div>
@@ -319,7 +319,7 @@ export function GlobalSearch() {
               </div>
 
               {/* Footer hint */}
-              <div className="flex items-center gap-4 px-4 py-2.5 border-t border-border/20 text-[10px] text-muted-foreground/50">
+              <div className="flex items-center gap-4 px-4 py-2.5 border-t border-border/20 text-[12px] text-muted-foreground/50">
                 <span className="flex items-center gap-1">
                   <kbd className="px-1 py-0.5 rounded border border-border/20 font-mono">
                     ↑↓

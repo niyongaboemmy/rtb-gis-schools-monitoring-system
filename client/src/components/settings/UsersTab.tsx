@@ -106,7 +106,7 @@ function SecurityMarkers({ user }: { user: ManagedUser }) {
       {user.mustChangePassword && (
         <span
           title="Must set a new password at next sign-in"
-          className="inline-flex items-center gap-1 rounded-full bg-warning/12 px-1.5 py-0.5 text-[10px] font-medium text-warning"
+          className="inline-flex items-center gap-1 rounded-full bg-warning/12 px-1.5 py-0.5 text-[12px] font-medium text-warning"
         >
           <KeyRound className="h-3 w-3" aria-hidden />
           Password pending
@@ -445,7 +445,7 @@ export function UsersTab() {
                     <Td>
                       <div className="flex min-w-0 items-center gap-2.5" title={u.email}>
                         <PersonIcon className="h-7 w-7" />
-                        <p className="truncate text-[13px] leading-5 text-foreground">
+                        <p className="truncate text-[15px] leading-5 text-foreground">
                           {u.firstName} {u.lastName}
                         </p>
                         <SecurityMarkers user={u} />
@@ -476,7 +476,7 @@ export function UsersTab() {
                     <PersonIcon className="h-7 w-7" />
                     <div className="min-w-0 flex-1" title={u.email}>
                       {/* Line box = icon height, so the name centres on the icon */}
-                      <p className="truncate text-[13px] leading-7 text-foreground">
+                      <p className="truncate text-[15px] leading-7 text-foreground">
                         {u.firstName} {u.lastName}
                       </p>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
@@ -488,7 +488,7 @@ export function UsersTab() {
                   </div>
                   <div className="flex min-w-0 items-end justify-between gap-3">
                     <ScopeCell user={u} />
-                    <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                    <span className="shrink-0 text-[13px] tabular-nums text-muted-foreground">
                       Added {formatDate(u.createdAt)}
                     </span>
                   </div>

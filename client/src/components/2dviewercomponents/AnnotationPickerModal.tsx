@@ -61,7 +61,7 @@ interface AnnotationPickerModalProps {
 }
 
 const fieldClass =
-  "w-full rounded-xl bg-white/70 dark:bg-white/6 ring-1 ring-slate-900/10 dark:ring-white/12 px-3.5 text-[13px] text-slate-800 dark:text-white placeholder:text-slate-500/70 dark:placeholder:text-white/35 outline-none focus:ring-2 focus:ring-primary transition-shadow";
+  "w-full rounded-xl bg-white/70 dark:bg-white/6 ring-1 ring-slate-900/10 dark:ring-white/12 px-3.5 text-[15px] text-slate-800 dark:text-white placeholder:text-slate-500/70 dark:placeholder:text-white/35 outline-none focus:ring-2 focus:ring-primary transition-shadow";
 
 function subtitleFor(type: AnnotationPickerModalProps["annotationType"]) {
   if (type === "line") return "Line on the map";
@@ -188,7 +188,7 @@ function PickerPanel({
               <p id={titleId} className="text-[15px] font-medium text-slate-800 dark:text-white">
                 New note
               </p>
-              <p className="text-[12px] text-slate-600 dark:text-white/55">
+              <p className="text-[14px] text-slate-600 dark:text-white/55">
                 {subtitleFor(annotationType)}
               </p>
             </div>
@@ -206,7 +206,7 @@ function PickerPanel({
         <div className="space-y-4 px-5 pb-2">
           {/* Title */}
           <div className="space-y-1.5">
-            <label htmlFor={nameId} className="block text-[12px] font-medium text-slate-700 dark:text-white/70">
+            <label htmlFor={nameId} className="block text-[14px] font-medium text-slate-700 dark:text-white/70">
               Title
             </label>
             <input
@@ -221,9 +221,9 @@ function PickerPanel({
 
           {/* Description */}
           <div className="space-y-1.5">
-            <label htmlFor={descId} className="flex items-baseline gap-1.5 text-[12px] font-medium text-slate-700 dark:text-white/70">
+            <label htmlFor={descId} className="flex items-baseline gap-1.5 text-[14px] font-medium text-slate-700 dark:text-white/70">
               Description
-              <span className="text-[11px] font-normal text-slate-500 dark:text-white/40">optional, shows on hover</span>
+              <span className="text-[13px] font-normal text-slate-500 dark:text-white/40">optional, shows on hover</span>
             </label>
             <textarea
               id={descId}
@@ -237,7 +237,7 @@ function PickerPanel({
 
           {/* Category */}
           <fieldset className="space-y-1.5">
-            <legend className="mb-1.5 text-[12px] font-medium text-slate-700 dark:text-white/70">
+            <legend className="mb-1.5 text-[14px] font-medium text-slate-700 dark:text-white/70">
               Category
             </legend>
             <div className="grid grid-cols-3 gap-1.5">
@@ -252,7 +252,7 @@ function PickerPanel({
                     title={ic.label}
                     aria-pressed={selected}
                     className={cn(
-                      "flex h-9 min-w-0 items-center gap-1.5 rounded-xl px-2.5 text-[12px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                      "flex h-9 min-w-0 items-center gap-1.5 rounded-xl px-2.5 text-[14px] transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
                       selected
                         ? "bg-primary text-white"
                         : "bg-white/50 dark:bg-white/5 text-slate-700 dark:text-white/75 ring-1 ring-slate-900/5 dark:ring-white/8 hover:bg-slate-900/5 dark:hover:bg-white/8",
@@ -280,13 +280,13 @@ function PickerPanel({
           <button
             type="button"
             onClick={onCancel}
-            className="h-10 rounded-full px-4 text-[13px] font-medium text-slate-700 dark:text-white/75 hover:bg-slate-900/5 dark:hover:bg-white/8 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+            className="h-10 rounded-full px-4 text-[15px] font-medium text-slate-700 dark:text-white/75 hover:bg-slate-900/5 dark:hover:bg-white/8 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="inline-flex h-10 items-center gap-1.5 rounded-full bg-primary px-5 text-[13px] font-medium text-white hover:bg-primary/90 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+            className="inline-flex h-10 items-center gap-1.5 rounded-full bg-primary px-5 text-[15px] font-medium text-white hover:bg-primary/90 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
           >
             <Check className="h-3.5 w-3.5" aria-hidden />
             Place on map

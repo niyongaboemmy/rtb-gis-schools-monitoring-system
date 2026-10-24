@@ -60,7 +60,7 @@ export function MetricInfo({
 function Section({ icon: Icon, title, children }: { icon: typeof Info; title: string; children: ReactNode }) {
   return (
     <section className="space-y-2">
-      <h3 className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 dark:text-white/50">
+      <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 dark:text-white/50">
         <Icon className="h-3.5 w-3.5" aria-hidden="true" />
         {title}
       </h3>
@@ -174,7 +174,7 @@ function DrawerPanel({ id, onClose }: { id: MetricId; onClose: () => void }) {
               <Info className="h-5 w-5" aria-hidden />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-white/45">What does this mean?</p>
+              <p className="text-[13px] font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-white/45">What does this mean?</p>
               <h2 id={titleId} className="text-lg font-semibold leading-snug tracking-tight sm:text-xl">
                 {metric.title}
               </h2>
@@ -200,7 +200,7 @@ function DrawerPanel({ id, onClose }: { id: MetricId; onClose: () => void }) {
 
           {/* The formula is the answer most people came for — give it a card */}
           <div className="rounded-2xl bg-primary/[0.06] p-4 ring-1 ring-primary/15 dark:bg-primary/10 dark:ring-primary/20">
-            <h3 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-primary dark:text-blue-300">
+            <h3 className="mb-1.5 flex items-center gap-1.5 text-[13px] font-semibold text-primary dark:text-blue-300">
               <Calculator className="h-3.5 w-3.5" aria-hidden="true" />
               How it is calculated
             </h3>
@@ -221,7 +221,7 @@ function DrawerPanel({ id, onClose }: { id: MetricId; onClose: () => void }) {
               </div>
               <div className="rounded-2xl bg-slate-900/[0.035] p-3.5 ring-1 ring-slate-900/5 dark:bg-white/[0.045] dark:ring-white/8">
                 <Section icon={LayoutDashboard} title="Shown on">
-                  <ul className="space-y-0.5 text-[13px]">
+                  <ul className="space-y-0.5 text-[15px]">
                     {metric.shownOn.map((s) => (
                       <li key={s}>{s}</li>
                     ))}
@@ -236,7 +236,7 @@ function DrawerPanel({ id, onClose }: { id: MetricId; onClose: () => void }) {
               {metric.sources.map((s) => (
                 <li
                   key={s}
-                  className="break-all rounded-lg bg-slate-900/5 px-2 py-1 font-mono text-[11.5px] text-slate-700 ring-1 ring-slate-900/5 dark:bg-white/6 dark:text-white/75 dark:ring-white/8"
+                  className="break-all rounded-lg bg-slate-900/5 px-2 py-1 font-mono text-[12px] text-slate-700 ring-1 ring-slate-900/5 dark:bg-white/6 dark:text-white/75 dark:ring-white/8"
                 >
                   {s}
                 </li>
@@ -246,18 +246,18 @@ function DrawerPanel({ id, onClose }: { id: MetricId; onClose: () => void }) {
 
           <div className="relative overflow-hidden rounded-2xl bg-amber-500/[0.08] py-3.5 pl-4 pr-3.5 ring-1 ring-amber-500/20">
             <span className="absolute inset-y-3 left-0 w-[3px] rounded-r-full bg-amber-500" aria-hidden />
-            <h3 className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+            <h3 className="mb-1 flex items-center gap-1.5 text-[13px] font-semibold text-amber-800 dark:text-amber-300">
               <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" /> When data is missing
             </h3>
             <p className="text-sm leading-relaxed text-slate-800 dark:text-white/85">{metric.missingData}</p>
           </div>
 
-          {"notes" in metric && metric.notes && <p className="text-[13px] leading-relaxed text-slate-500 dark:text-white/55">{metric.notes}</p>}
+          {"notes" in metric && metric.notes && <p className="text-[15px] leading-relaxed text-slate-500 dark:text-white/55">{metric.notes}</p>}
         </div>
 
         {/* ── Footer: where the number comes from ─────────────────── */}
         <div className="flex shrink-0 items-center gap-2 border-t border-slate-900/6 bg-slate-50/80 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 dark:border-white/8 dark:bg-white/[0.02]">
-          <p className="min-w-0 flex-1 truncate font-mono text-[11px] text-slate-500 dark:text-white/45" title={`${metric.endpoint} · ${id}`}>
+          <p className="min-w-0 flex-1 truncate font-mono text-[13px] text-slate-500 dark:text-white/45" title={`${metric.endpoint} · ${id}`}>
             {metric.endpoint} · <span className="select-all">{id}</span>
           </p>
           <button

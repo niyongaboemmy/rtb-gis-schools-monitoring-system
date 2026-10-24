@@ -110,7 +110,7 @@ export function BlockInspector({
             initial={reduce ? false : { scale: 0.85, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: "spring", stiffness: 420, damping: 26 }}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-[13px] font-medium text-primary dark:text-blue-300"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-[15px] font-medium text-primary dark:text-blue-300"
             aria-hidden
           >
             {buildingInitials(building)}
@@ -121,7 +121,7 @@ export function BlockInspector({
               <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: cond.overall.color }} aria-hidden />
               <span className="shrink-0">{cond.overall.label}</span>
               {fn && <span className="truncate capitalize">· {fn}</span>}
-              {code && code !== name && <span className="shrink-0 font-mono text-[11px] text-slate-400 dark:text-white/35">· {code}</span>}
+              {code && code !== name && <span className="shrink-0 font-mono text-[13px] text-slate-400 dark:text-white/35">· {code}</span>}
             </p>
           </div>
           <button
@@ -174,9 +174,9 @@ export function BlockInspector({
                 {!reduce && <span className="absolute inset-0 animate-ping rounded-full bg-primary opacity-50" />}
                 <span className="relative h-2.5 w-2.5 rounded-full bg-primary" />
               </span>
-              <span className="min-w-0 flex-1 text-[13px] text-slate-800 dark:text-white/85">
+              <span className="min-w-0 flex-1 text-[15px] text-slate-800 dark:text-white/85">
                 {open.length} open report{open.length === 1 ? "" : "s"}
-                <span className="block text-[11px] text-slate-500 dark:text-white/50">
+                <span className="block text-[13px] text-slate-500 dark:text-white/50">
                   {[action && `${action} need${action === 1 ? "s" : ""} action`, waiting && `${waiting} waiting`].filter(Boolean).join(" · ")}
                 </span>
               </span>
@@ -219,7 +219,7 @@ export function BlockInspector({
                 {t.badge != null && (
                   <span
                     className={cn(
-                      "relative min-w-4.5 rounded-full px-1 text-[10px] leading-4.5 tabular-nums",
+                      "relative min-w-4.5 rounded-full px-1 text-[12px] leading-4.5 tabular-nums",
                       t.alert ? "bg-primary text-white" : "bg-slate-900/8 text-slate-500 dark:bg-white/10 dark:text-white/60",
                     )}
                   >
@@ -343,7 +343,7 @@ function Details({
           </span>
         </div>
         <div className="min-w-0">
-          <p className="text-[11px] text-slate-500 dark:text-white/45">Condition</p>
+          <p className="text-[13px] text-slate-500 dark:text-white/45">Condition</p>
           <p className="text-lg leading-tight text-slate-900 dark:text-white">
             {cond.overall.label}
           </p>
@@ -358,10 +358,10 @@ function Details({
       <dl className="grid grid-cols-2 gap-2">
         {facts.map((f) => (
           <div key={f.label} className="rounded-2xl px-3.5 py-3 ring-1 ring-slate-900/6 dark:ring-white/8">
-            <dt className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-white/45">
+            <dt className="flex items-center gap-1.5 text-[13px] text-slate-500 dark:text-white/45">
               <f.icon className="h-3.5 w-3.5" aria-hidden /> {f.label}
             </dt>
-            <dd className={cn("mt-1 truncate text-[13px]", f.label === "Use" && "capitalize", f.value ? "text-slate-900 dark:text-white/90" : "text-slate-400 dark:text-white/35")}>{f.value ?? "Not recorded"}</dd>
+            <dd className={cn("mt-1 truncate text-[15px]", f.label === "Use" && "capitalize", f.value ? "text-slate-900 dark:text-white/90" : "text-slate-400 dark:text-white/35")}>{f.value ?? "Not recorded"}</dd>
           </div>
         ))}
       </dl>
@@ -411,9 +411,9 @@ function Details({
               const rooms = Number(f.number_of_rooms || f.count || 0);
               return (
                 <li key={i} className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-                  <span className="truncate text-[13px] text-slate-800 dark:text-white/85">{f.facility_name || f.name || "Facility"}</span>
+                  <span className="truncate text-[15px] text-slate-800 dark:text-white/85">{f.facility_name || f.name || "Facility"}</span>
                   {rooms > 0 && (
-                    <span className="shrink-0 text-[11px] tabular-nums text-slate-500 dark:text-white/50">
+                    <span className="shrink-0 text-[13px] tabular-nums text-slate-500 dark:text-white/50">
                       {rooms} room{rooms === 1 ? "" : "s"}
                     </span>
                   )}
@@ -427,7 +427,7 @@ function Details({
       {notes && (
         <section aria-label="Notes" className="flex gap-2.5 rounded-2xl bg-slate-900/[0.03] p-3.5 dark:bg-white/[0.04]">
           <NotebookText className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-white/40" aria-hidden />
-          <p className="whitespace-pre-line break-words text-[13px] leading-relaxed text-slate-700 dark:text-white/75">{notes}</p>
+          <p className="whitespace-pre-line break-words text-[15px] leading-relaxed text-slate-700 dark:text-white/75">{notes}</p>
         </section>
       )}
     </div>
@@ -436,7 +436,7 @@ function Details({
 
 function Part({ label, v }: { label: string; v: ConditionView }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] text-slate-600 ring-1 ring-slate-900/6 dark:bg-white/6 dark:text-white/70 dark:ring-white/8">
+    <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[13px] text-slate-600 ring-1 ring-slate-900/6 dark:bg-white/6 dark:text-white/70 dark:ring-white/8">
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: v.color }} aria-hidden />
       {label}: {v.label}
     </span>

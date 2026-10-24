@@ -2256,7 +2256,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     <div className="glb-root">
       {(error || saveError) && <div className="error-bar"><span>⚠</span> {error || saveError}</div>}
       {isSaving && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-primary/20 backdrop-blur-md border border-primary/30 rounded-full text-[10px] font-black text-primary uppercase tracking-[0.2em] animate-pulse">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-primary/20 backdrop-blur-md border border-primary/30 rounded-full text-[12px] font-black text-primary uppercase tracking-[0.2em] animate-pulse">
           Saving Changes...
         </div>
       )}
@@ -2270,14 +2270,14 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
         <div className="loading-overlay">
           <div className="spinner-ring" />
           <div className="progress-label">Preparing an optimized 3D model on the server…</div>
-          <div style={{ opacity: 0.7, fontSize: 12, marginTop: 10, maxWidth: 440, textAlign: "center", lineHeight: 1.6 }}>
+          <div style={{ opacity: 0.7, fontSize: 14, marginTop: 10, maxWidth: 440, textAlign: "center", lineHeight: 1.6 }}>
             This runs in the background — you can leave this page and come back.
             {modelPrep.bytes ? ` The raw model is ${(modelPrep.bytes / 1_048_576).toFixed(0)} MB.` : ""}
             {modelPrep.error ? ` Last attempt: ${modelPrep.error}.` : ""}
           </div>
           <button
             onClick={loadModelAnyway}
-            style={{ marginTop: 16, padding: "8px 16px", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 999, border: "1px solid rgba(255,255,255,0.25)", background: "transparent", color: "inherit" }}
+            style={{ marginTop: 16, padding: "8px 16px", fontSize: 13, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", cursor: "pointer", borderRadius: 999, border: "1px solid rgba(255,255,255,0.25)", background: "transparent", color: "inherit" }}
           >
             Load raw model anyway (large, may be slow)
           </button>

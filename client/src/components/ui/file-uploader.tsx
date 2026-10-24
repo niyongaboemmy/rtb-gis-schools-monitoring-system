@@ -67,13 +67,13 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
           </div>
           <div className="flex flex-col">
             <span className="text-xs font-black uppercase tracking-widest">Upload Files</span>
-            <span className="text-[10px] text-muted-foreground font-medium">Images or PDF</span>
+            <span className="text-[12px] text-muted-foreground font-medium">Images or PDF</span>
           </div>
         </Button>
 
         <div className="flex sm:flex-col items-center justify-center px-2 py-2 sm:py-0">
             <div className="w-full sm:w-px h-px sm:h-full bg-border/50" />
-            <span className="px-3 sm:px-0 py-2 text-[10px] font-black text-muted-foreground bg-background">OR</span>
+            <span className="px-3 sm:px-0 py-2 text-[12px] font-black text-muted-foreground bg-background">OR</span>
             <div className="w-full sm:w-px h-px sm:h-full bg-border/50" />
         </div>
 
@@ -88,7 +88,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
           </div>
           <div className="flex flex-col">
             <span className="text-xs font-black uppercase tracking-widest">Capture Photo</span>
-            <span className="text-[10px] text-muted-foreground font-medium">Use Camera</span>
+            <span className="text-[12px] text-muted-foreground font-medium">Use Camera</span>
           </div>
         </Button>
       </div>
@@ -135,7 +135,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center p-2 text-center">
                     <FileIcon className="w-8 h-8 text-primary mb-1" />
-                    <span className="text-[10px] truncate w-full px-1">{file.name}</span>
+                    <span className="text-[12px] truncate w-full px-1">{file.name}</span>
                   </div>
                 )}
                 

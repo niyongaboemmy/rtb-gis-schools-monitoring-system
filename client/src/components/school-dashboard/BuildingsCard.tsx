@@ -54,7 +54,7 @@ export function BuildingsCard({ buildings, attention, onOpen, onBuildingClick, i
               <span className="text-2xl font-semibold leading-none tabular-nums text-slate-900 dark:text-white">
                 {formatNumber(buildings.length)}
               </span>
-              <span className="mt-0.5 text-[10px] uppercase tracking-wider text-slate-500 dark:text-white/50">total</span>
+              <span className="mt-0.5 text-[12px] uppercase tracking-wider text-slate-500 dark:text-white/50">total</span>
             </>
           }
         />
@@ -95,7 +95,7 @@ export function BuildingsCard({ buildings, attention, onOpen, onBuildingClick, i
                   >
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0" style={{ color: SEVERITY_COLOR[row.severity] }} aria-hidden />
                     <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-800 dark:text-white/85">{row.name}</span>
-                    <span className="shrink-0 rounded-md bg-slate-900/6 px-1.5 text-[10px] font-semibold tabular-nums text-slate-700 dark:bg-white/8 dark:text-white/75">
+                    <span className="shrink-0 rounded-md bg-slate-900/6 px-1.5 text-[12px] font-semibold tabular-nums text-slate-700 dark:bg-white/8 dark:text-white/75">
                       {open > 0 ? `${open} open` : label("buildingCondition", row.condition)}
                     </span>
                     <span className="sr-only">{label("priority", row.severity)}</span>

@@ -115,7 +115,7 @@ function StatChip({ icon: Icon, label, value, delay = 0 }: {
     >
       <div className="flex items-center gap-1 text-muted-foreground">
         <Icon className="w-3.5 h-3.5" />
-        <span className="text-[10px] font-medium uppercase tracking-wide">{label}</span>
+        <span className="text-[12px] font-medium uppercase tracking-wide">{label}</span>
       </div>
       <span className="text-base font-bold text-foreground leading-none">{value}</span>
     </motion.div>
@@ -144,7 +144,7 @@ function CopyButton({ text }: { text: string }) {
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-2 before:flex-1 before:h-px before:bg-border/30 after:flex-1 after:h-px after:bg-border/30">
+    <p className="text-[13px] font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-2 before:flex-1 before:h-px before:bg-border/30 after:flex-1 after:h-px after:bg-border/30">
       <span className="shrink-0">{children}</span>
     </p>
   );
@@ -286,7 +286,7 @@ export function BuildingDetailsModal({
                   {building.buildingName || `Building #${buildingIndex + 1}`}
                 </h2>
                 {building.buildingCode && (
-                  <span className="text-[11px] font-mono text-muted-foreground bg-background/70 px-1.5 py-0.5 rounded backdrop-blur">
+                  <span className="text-[13px] font-mono text-muted-foreground bg-background/70 px-1.5 py-0.5 rounded backdrop-blur">
                     {building.buildingCode}
                   </span>
                 )}
