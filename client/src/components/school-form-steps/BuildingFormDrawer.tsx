@@ -373,7 +373,7 @@ export function BuildingFormDrawer({
                       {isNew ? "New Block" : `Edit Block`}
                     </h3>
                     {!isNew && draft.buildingName && (
-                      <p className="text-[9px] font-black uppercase tracking-widest text-white/30 truncate max-w-[150px]">
+                      <p className="text-[12px] font-black uppercase tracking-widest text-white/30 truncate max-w-[150px]">
                         {draft.buildingName}
                       </p>
                     )}
@@ -651,7 +651,7 @@ export function BuildingFormDrawer({
                           <Hash className="w-3 h-3 text-muted-foreground" />
                           Structural Score (0–100)
                         </div>
-                        <span className="text-[10px] font-normal text-muted-foreground">
+                        <span className="text-[12px] font-normal text-muted-foreground">
                           From the structural inspection, if one was done
                         </span>
                       </label>

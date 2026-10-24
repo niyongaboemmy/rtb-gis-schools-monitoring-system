@@ -22,7 +22,7 @@ export function DataGapBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-700 dark:text-amber-300",
+        "inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[12px] font-semibold leading-none text-amber-700 dark:text-amber-300",
         className,
       )}
     >

@@ -24,13 +24,13 @@ interface SummaryStatProps {
 export function SummaryStat({ label, value, hint, accent, meter, info }: SummaryStatProps) {
   return (
     <div className="min-w-0 rounded-2xl bg-slate-900/[0.035] px-3.5 py-3 ring-1 ring-slate-900/5 dark:bg-white/[0.045] dark:ring-white/8">
-      <dt className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-white/50">
+      <dt className="flex items-center gap-1.5 text-[13px] font-medium text-slate-500 dark:text-white/50">
         {accent && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: accent }} aria-hidden />}
         <span className="truncate">{label}</span>
         {info}
       </dt>
       <dd className="mt-1 truncate text-xl font-semibold leading-tight tracking-tight text-slate-900 tabular-nums dark:text-white">{value}</dd>
-      {hint && <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-white/45">{hint}</p>}
+      {hint && <p className="mt-0.5 truncate text-[13px] text-slate-500 dark:text-white/45">{hint}</p>}
       {meter != null && <Meter value={meter} color={accent} className="mt-2" />}
     </div>
   );
@@ -51,8 +51,8 @@ export function DetailSection({
   return (
     <section className={cn("min-w-0 space-y-3", className)}>
       <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-900 dark:text-white">{title}</h3>
-        {aside && <div className="text-[11px] text-slate-500 dark:text-white/50">{aside}</div>}
+        <h3 className="flex items-center gap-1.5 text-[15px] font-semibold text-slate-900 dark:text-white">{title}</h3>
+        {aside && <div className="text-[13px] text-slate-500 dark:text-white/50">{aside}</div>}
       </header>
       {children}
     </section>
@@ -107,7 +107,7 @@ export function StatusPill({ color, children, className }: { color?: string; chi
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full bg-slate-900/5 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-white/7 dark:text-white/80",
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full bg-slate-900/5 px-2 py-0.5 text-[13px] font-medium text-slate-700 dark:bg-white/7 dark:text-white/80",
         className,
       )}
     >
@@ -130,7 +130,7 @@ export function RuleTip({ rule, label }: { rule: string; label: string }) {
           <HelpCircle className="h-3.5 w-3.5" aria-hidden />
         </button>
       </TooltipTrigger>
-      <TooltipContent className="max-w-xs whitespace-normal text-[12px] font-medium normal-case leading-snug tracking-normal">{rule}</TooltipContent>
+      <TooltipContent className="max-w-xs whitespace-normal text-[14px] font-medium normal-case leading-snug tracking-normal">{rule}</TooltipContent>
     </Tooltip>
   );
 }
@@ -165,7 +165,7 @@ export function FilterChips<K extends string>({
             aria-pressed={on}
             onClick={() => onChange(o.key)}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium ring-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
               on
                 ? "bg-primary text-white ring-primary"
                 : "bg-white text-slate-600 ring-slate-900/8 hover:bg-slate-50 dark:bg-white/4 dark:text-white/65 dark:ring-white/10 dark:hover:bg-white/8",
@@ -209,7 +209,7 @@ export function SegmentedTabs<K extends string>({
             aria-controls={`${idPrefix}-panel-${t.key}`}
             onClick={() => onChange(t.key)}
             className={cn(
-              "relative rounded-full px-4 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+              "relative rounded-full px-4 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
               on ? "text-slate-900 dark:text-white" : "text-slate-500 hover:text-slate-800 dark:text-white/55 dark:hover:text-white/85",
             )}
           >
@@ -233,7 +233,7 @@ export function EmptyNote({ title, children }: { title: ReactNode; children?: Re
   return (
     <div className="rounded-2xl border border-dashed border-slate-300 px-5 py-8 text-center dark:border-white/12">
       <p className="text-sm font-medium text-slate-800 dark:text-white/85">{title}</p>
-      {children && <p className="mx-auto mt-1 max-w-md text-[13px] text-slate-500 dark:text-white/50">{children}</p>}
+      {children && <p className="mx-auto mt-1 max-w-md text-[15px] text-slate-500 dark:text-white/50">{children}</p>}
     </div>
   );
 }

@@ -353,7 +353,7 @@ export default function SchoolDecisionDashboard({
             It may have been removed, or it is outside your access level.
           </p>
         </div>
-        <Button asChild variant="outline" className="rounded-full mt-2 font-medium text-[12px] px-6">
+        <Button asChild variant="outline" className="rounded-full mt-2 font-medium text-[14px] px-6">
           <Link to="/schools">Back to schools</Link>
         </Button>
       </div>

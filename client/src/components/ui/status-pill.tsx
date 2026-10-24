@@ -20,7 +20,7 @@ export function StatusPill({
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-medium",
+        "inline-flex max-w-full items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[13px] font-medium",
         p.box,
         className,
       )}

@@ -53,7 +53,7 @@ export function ScoreFactorsCard({ metrics, onOpen, index }: Props) {
           {formatScore(overall)}
           <span className="text-sm font-normal text-slate-400 dark:text-white/40"> / 100</span>
         </span>
-        <span className="text-[11px] text-slate-500 dark:text-white/50">points per part</span>
+        <span className="text-[13px] text-slate-500 dark:text-white/50">points per part</span>
       </div>
 
       <div className="mt-3">
@@ -81,7 +81,7 @@ export function ScoreFactorsCard({ metrics, onOpen, index }: Props) {
           <li key={r.k} className="min-w-0" title={r.estimated ? "No data yet — counted as 50" : undefined}>
             <div className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ background: FACTOR[r.k].color }} aria-hidden />
-              <span className="min-w-0 flex-1 truncate text-[11px] text-slate-600 dark:text-white/60">{FACTOR[r.k].name}</span>
+              <span className="min-w-0 flex-1 truncate text-[13px] text-slate-600 dark:text-white/60">{FACTOR[r.k].name}</span>
               <span className="text-xs font-semibold tabular-nums text-slate-900 dark:text-white">{formatScore(r.score)}</span>
             </div>
             {/* the factor's own 0–100 value */}

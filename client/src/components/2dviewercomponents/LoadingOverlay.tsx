@@ -58,7 +58,7 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
                   </span>
                 )}
               </p>
-              <span className="text-[13px] tabular-nums text-white/70">{pct}%</span>
+              <span className="text-[15px] tabular-nums text-white/70">{pct}%</span>
             </div>
 
             <div
@@ -87,7 +87,7 @@ export const LoadingOverlay: React.FC<LoadingOverlayProps> = ({
               </motion.div>
             </div>
 
-            <p className="mt-2.5 truncate text-[12px] text-white/60">{loadingMessage}</p>
+            <p className="mt-2.5 truncate text-[14px] text-white/60">{loadingMessage}</p>
           </motion.div>
         </motion.div>
       )}

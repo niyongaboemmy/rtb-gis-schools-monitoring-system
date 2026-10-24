@@ -17,7 +17,7 @@ export const ViewerCameraNav: React.FC<ViewerCameraNavProps> = ({ setView }) => 
               <Button 
                 variant="ghost" 
                 size="sm" 
-                className="h-8 px-2 text-[10px] font-black uppercase tracking-widest hover:bg-white/10"
+                className="h-8 px-2 text-[12px] font-black uppercase tracking-widest hover:bg-white/10"
                 onClick={() => setView("top")}
                 aria-label="Top view"
               >
@@ -33,7 +33,7 @@ export const ViewerCameraNav: React.FC<ViewerCameraNavProps> = ({ setView }) => 
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  className="h-8 w-10 text-[9px] font-black uppercase tracking-tight hover:bg-white/10"
+                  className="h-8 w-10 text-[12px] font-black uppercase tracking-tight hover:bg-white/10"
                   onClick={() => setView("front")}
                   aria-label="Front view"
                 >
@@ -47,7 +47,7 @@ export const ViewerCameraNav: React.FC<ViewerCameraNavProps> = ({ setView }) => 
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  className="h-8 w-10 text-[9px] font-black uppercase tracking-tight hover:bg-white/10"
+                  className="h-8 w-10 text-[12px] font-black uppercase tracking-tight hover:bg-white/10"
                   onClick={() => setView("back")}
                   aria-label="Back view"
                 >
@@ -64,7 +64,7 @@ export const ViewerCameraNav: React.FC<ViewerCameraNavProps> = ({ setView }) => 
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  className="h-8 w-10 text-[9px] font-black uppercase tracking-tight hover:bg-white/10"
+                  className="h-8 w-10 text-[12px] font-black uppercase tracking-tight hover:bg-white/10"
                   onClick={() => setView("left")}
                   aria-label="Left view"
                 >
@@ -78,7 +78,7 @@ export const ViewerCameraNav: React.FC<ViewerCameraNavProps> = ({ setView }) => 
                 <Button 
                   variant="ghost" 
                   size="sm" 
-                  className="h-8 w-10 text-[9px] font-black uppercase tracking-tight hover:bg-white/10"
+                  className="h-8 w-10 text-[12px] font-black uppercase tracking-tight hover:bg-white/10"
                   onClick={() => setView("right")}
                   aria-label="Right view"
                 >

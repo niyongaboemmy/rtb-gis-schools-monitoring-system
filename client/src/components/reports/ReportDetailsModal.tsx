@@ -80,7 +80,7 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
       maxWidth="max-w-3xl"
       title={
         <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-          <Badge className={cn("rounded-full font-black text-[10px] px-3 py-1 border tracking-widest uppercase", status.color)}>
+          <Badge className={cn("rounded-full font-black text-[12px] px-3 py-1 border tracking-widest uppercase", status.color)}>
             {status.icon} <span className="ml-2">{status.label}</span>
           </Badge>
           <span className="text-xl font-black uppercase tracking-tighter">
@@ -94,8 +94,8 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
         <div className="w-full space-y-4">
           <div className="flex items-center justify-between">
             <div className="text-left">
-              <h5 className="text-[10px] font-black uppercase tracking-tighter">Intervention Logic</h5>
-              <p className="text-[9px] font-black text-muted-foreground opacity-50 uppercase">Update report status based on findings</p>
+              <h5 className="text-[12px] font-black uppercase tracking-tighter">Intervention Logic</h5>
+              <p className="text-[12px] font-black text-muted-foreground opacity-50 uppercase">Update report status based on findings</p>
             </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -112,7 +112,7 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
                 onClick={() => handleStatusChange(btn.id)}
                 disabled={isUpdating || report.status === btn.id}
                 className={cn(
-                  "h-10 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all active:scale-95 flex items-center justify-center gap-2",
+                  "h-10 rounded-xl text-[12px] font-black uppercase tracking-widest border transition-all active:scale-95 flex items-center justify-center gap-2",
                   report.status === btn.id 
                     ? "bg-primary text-primary-foreground border-primary" 
                     : cn("bg-background hover:bg-muted/50 transition-colors", btn.color)
@@ -182,7 +182,7 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="text-[9px] font-black uppercase text-muted-foreground opacity-60">Building / Asset</p>
+                    <p className="text-[12px] font-black uppercase text-muted-foreground opacity-60">Building / Asset</p>
                     <p className="text-sm font-black uppercase tracking-tight">{report.building?.name || "Main Structure"} · {report.itemId}</p>
                   </div>
                   {report.school && (
@@ -190,7 +190,7 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
                       variant="ghost"
                       size="sm"
                       onClick={() => setIsMapOpen(true)}
-                      className="h-8 px-3 rounded-full text-[9px] font-black uppercase tracking-widest text-primary hover:bg-primary/5 flex items-center gap-2 border border-primary/10"
+                      className="h-8 px-3 rounded-full text-[12px] font-black uppercase tracking-widest text-primary hover:bg-primary/5 flex items-center gap-2 border border-primary/10"
                     >
                       <Globe2 className="w-3.5 h-3.5" /> View on Map
                     </Button>
@@ -204,7 +204,7 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
                 <Tag className="w-4 h-4" />
               </div>
               <div>
-                <p className="text-[9px] font-black uppercase text-muted-foreground opacity-60">Facility / Category</p>
+                <p className="text-[12px] font-black uppercase text-muted-foreground opacity-60">Facility / Category</p>
                 <div className="flex flex-wrap gap-1 mt-0.5">
                   <span className="text-sm font-semibold capitalize mr-2">
                     {report.facilityId?.replace(/_/g, " ").replace(/-/g, " ")}
@@ -225,8 +225,8 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
                 <Clock className="w-4 h-4" />
               </div>
               <div>
-                <p className="text-[9px] font-black uppercase text-muted-foreground opacity-60">Captured At</p>
-                <p className="text-[11px] font-bold uppercase">{format(new Date(report.createdAt), "PPP p")}</p>
+                <p className="text-[12px] font-black uppercase text-muted-foreground opacity-60">Captured At</p>
+                <p className="text-[13px] font-bold uppercase">{format(new Date(report.createdAt), "PPP p")}</p>
               </div>
             </div>
 
@@ -235,8 +235,8 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
                 <UserIcon className="w-4 h-4" />
               </div>
               <div>
-                <p className="text-[9px] font-black uppercase text-muted-foreground opacity-60">Author Signature</p>
-                <p className="text-[11px] font-black uppercase">{report.reporter?.name || "Maintenance Staff"}</p>
+                <p className="text-[12px] font-black uppercase text-muted-foreground opacity-60">Author Signature</p>
+                <p className="text-[13px] font-black uppercase">{report.reporter?.name || "Maintenance Staff"}</p>
               </div>
             </div>
           </div>
@@ -247,7 +247,7 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
         {/* Description Section */}
         <div className="bg-muted/50 p-5 rounded-2xl border border-border/10 relative overflow-hidden group">
           <AlertCircle className="absolute -bottom-2 -right-2 w-16 h-16 text-primary opacity-5" />
-          <label className="text-[9px] font-black uppercase text-primary tracking-widest flex items-center gap-2 mb-3">
+          <label className="text-[12px] font-black uppercase text-primary tracking-widest flex items-center gap-2 mb-3">
             <Layers className="w-3 h-3" /> Detailed Narrative
           </label>
           <p className="text-sm font-medium leading-relaxed text-card-foreground/80">{report.description}</p>
@@ -255,7 +255,7 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
 
         {/* Visual Evidence Section */}
         <div>
-          <label className="text-[9px] font-black uppercase text-primary tracking-widest mb-4 flex items-center gap-2">
+          <label className="text-[12px] font-black uppercase text-primary tracking-widest mb-4 flex items-center gap-2">
             <History className="w-3 h-3" /> Evidence Artifacts
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -266,7 +266,7 @@ export function ReportDetailsModal({ report, onClose, onUpdateStatus, isUpdating
             ) : (
               <div className="col-span-full border-2 border-dashed border-border/10 rounded-2xl p-8 flex flex-col items-center justify-center opacity-40 bg-muted/30">
                 <Camera className="w-8 h-8 mb-2" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">No imagery detected</span>
+                <span className="text-[12px] font-black uppercase tracking-widest text-muted-foreground">No imagery detected</span>
               </div>
             )}
           </div>

@@ -120,7 +120,7 @@ export function ProvinceCardBody({
           <MixRing counts={counts} size={56} stroke={6}>
             <span className="flex flex-col items-center leading-none">
               {summary.total}
-              <span className="mt-0.5 text-[8px] text-slate-500 dark:text-white/50">{summary.total === 1 ? "school" : "schools"}</span>
+              <span className="mt-0.5 text-[11px] text-slate-500 dark:text-white/50">{summary.total === 1 ? "school" : "schools"}</span>
             </span>
           </MixRing>
           <ul className="grid flex-1 grid-cols-2 gap-x-3 gap-y-1.5">
@@ -138,14 +138,14 @@ export function ProvinceCardBody({
           <button
             type="button"
             onClick={onShowList}
-            className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-full bg-primary text-[13px] text-primary-foreground transition-transform hover:-translate-y-px motion-reduce:hover:translate-y-0"
+            className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-full bg-primary text-[15px] text-primary-foreground transition-transform hover:-translate-y-px motion-reduce:hover:translate-y-0"
           >
             <ListFilter className="h-4 w-4" aria-hidden /> List its schools
           </button>
           <button
             type="button"
             onClick={onClear}
-            className="inline-flex h-10 items-center justify-center rounded-full bg-slate-900/[0.06] px-4 text-[13px] text-slate-800 hover:bg-slate-900/10 dark:bg-white/[0.08] dark:text-white dark:hover:bg-white/[0.14]"
+            className="inline-flex h-10 items-center justify-center rounded-full bg-slate-900/[0.06] px-4 text-[15px] text-slate-800 hover:bg-slate-900/10 dark:bg-white/[0.08] dark:text-white dark:hover:bg-white/[0.14]"
           >
             Clear
           </button>
@@ -157,13 +157,13 @@ export function ProvinceCardBody({
             type="button"
             onClick={() => void loadDistricts()}
             disabled={loading}
-            className="flex w-full items-center justify-between rounded-2xl bg-slate-900/[0.035] px-4 py-3 text-left text-[13px] text-slate-800 transition-colors hover:bg-slate-900/[0.06] dark:bg-white/[0.04] dark:text-white dark:hover:bg-white/[0.07]"
+            className="flex w-full items-center justify-between rounded-2xl bg-slate-900/[0.035] px-4 py-3 text-left text-[15px] text-slate-800 transition-colors hover:bg-slate-900/[0.06] dark:bg-white/[0.04] dark:text-white dark:hover:bg-white/[0.07]"
           >
             {error ? "Couldn't load the districts — try again" : "View districts"}
             {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <ChevronRight className="h-4 w-4" aria-hidden />}
           </button>
         ) : districts.length === 0 ? (
-          <p className={cn("py-4 text-center text-[13px]", MUTED)}>No active schools in this province yet.</p>
+          <p className={cn("py-4 text-center text-[15px]", MUTED)}>No active schools in this province yet.</p>
         ) : (
           <div>
             <p className={cn("pb-1.5 text-xs", MUTED)}>
@@ -189,7 +189,7 @@ export function ProvinceCardBody({
                       )}
                     >
                       <ScoreRing score={num(d.avgScore)} size={34} stroke={3.5} delay={0.1 + i * 0.04} />
-                      <span className={cn("min-w-0 flex-1 truncate text-[13px]", STRONG)}>{d.label}</span>
+                      <span className={cn("min-w-0 flex-1 truncate text-[15px]", STRONG)}>{d.label}</span>
                       <MixRing counts={{ critical: d.critical, high: d.high, medium: d.medium, low: d.low }} size={22} stroke={4} />
                       <span className={cn("w-16 shrink-0 text-right text-xs tabular-nums", MUTED)}>
                         {formatNumber(Number(d.total))} {Number(d.total) === 1 ? "school" : "schools"}

@@ -87,7 +87,7 @@ export default function Settings() {
           {/* The area this account administers */}
           <span
             className={cn(
-              "inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium",
+              "inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] font-medium",
               scope.isNational ? "bg-slate-900/[0.04] text-muted-foreground dark:bg-white/[0.05]" : "bg-primary/10 text-primary",
             )}
           >

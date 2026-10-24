@@ -127,10 +127,10 @@ function OverviewField({ icon: Icon, label, value }: { icon: React.ElementType; 
         <Icon className="w-4 h-4 text-slate-500 dark:text-white/40" />
       </div>
       <div className="min-w-0">
-        <p className="text-[11px] font-medium text-slate-400 dark:text-white/40 tracking-wide uppercase mb-0.5">
+        <p className="text-[13px] font-medium text-slate-400 dark:text-white/40 tracking-wide uppercase mb-0.5">
           {label}
         </p>
-        <p className="text-[14px] font-medium text-slate-800 dark:text-white/80 truncate">
+        <p className="text-[15px] font-medium text-slate-800 dark:text-white/80 truncate">
           {value || "—"}
         </p>
       </div>
@@ -182,17 +182,17 @@ function BuildingsTab({ buildings }: { buildings: any[] }) {
                 <div className="p-1.5 rounded-lg bg-slate-50 dark:bg-white/5 border border-slate-100 dark:border-white/4">
                   <Building2 className="w-4 h-4 text-slate-400 dark:text-white/30" />
                 </div>
-                <span className="text-[13px] font-medium text-slate-800 dark:text-white/80 truncate max-w-35">
+                <span className="text-[15px] font-medium text-slate-800 dark:text-white/80 truncate max-w-35">
                   {b.name || `Building ${i + 1}`}
                 </span>
               </div>
               {condition && (
-                <Badge variant="outline" className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full border shrink-0", conditionStyle)}>
+                <Badge variant="outline" className={cn("text-[12px] font-medium px-2 py-0.5 rounded-full border shrink-0", conditionStyle)}>
                   {label("buildingCondition", b.condition)}
                 </Badge>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500 dark:text-white/40">
+            <div className="grid grid-cols-2 gap-2 text-[13px] text-slate-500 dark:text-white/40">
               {b.type && <span>Type: <span className="text-slate-700 dark:text-white/60">{b.type}</span></span>}
               {b.yearBuilt && <span>Built: <span className="text-slate-700 dark:text-white/60">{b.yearBuilt}</span></span>}
               {b.floors && <span>Floors: <span className="text-slate-700 dark:text-white/60">{b.floors}</span></span>}
@@ -329,8 +329,8 @@ function ActionsTab({ id, user }: { id: string; user: any }) {
                 <action.icon className="w-5 h-5 text-slate-500 dark:text-white/40 group-hover:text-primary transition-colors" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[14px] font-medium text-slate-800 dark:text-white/80">{action.label}</p>
-                <p className="text-[12px] text-slate-500 dark:text-white/40 mt-0.5 leading-relaxed">{action.description}</p>
+                <p className="text-[15px] font-medium text-slate-800 dark:text-white/80">{action.label}</p>
+                <p className="text-[14px] text-slate-500 dark:text-white/40 mt-0.5 leading-relaxed">{action.description}</p>
               </div>
               <ChevronRight className="w-4 h-4 text-slate-300 dark:text-white/20 group-hover:text-primary/60 transition-colors shrink-0" />
             </Link>
@@ -340,8 +340,8 @@ function ActionsTab({ id, user }: { id: string; user: any }) {
                 <action.icon className="w-5 h-5 text-slate-400 dark:text-white/30" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[14px] font-medium text-slate-600 dark:text-white/50">{action.label}</p>
-                <p className="text-[12px] text-slate-400 dark:text-white/30 mt-0.5">
+                <p className="text-[15px] font-medium text-slate-600 dark:text-white/50">{action.label}</p>
+                <p className="text-[14px] text-slate-400 dark:text-white/30 mt-0.5">
                   Requires <span className="font-mono">{action.permission}</span> permission
                 </p>
               </div>
@@ -429,16 +429,16 @@ export default function SchoolDetail() {
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-1">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold text-slate-900 dark:text-white wrap-break-word">{school.name}</h1>
+          <h1 className="text-[1.625rem] sm:text-[1.875rem] font-semibold text-slate-900 dark:text-white wrap-break-word">{school.name}</h1>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span className="text-[12px] text-slate-600 dark:text-white/60 font-mono">{school.code}</span>
+            <span className="text-[14px] text-slate-600 dark:text-white/60 font-mono">{school.code}</span>
             {school.type && (
-              <Badge variant="outline" className="text-[10px] rounded-full px-2 py-0.5 border-slate-200 dark:border-white/6 text-slate-500 dark:text-white/40">
+              <Badge variant="outline" className="text-[12px] rounded-full px-2 py-0.5 border-slate-200 dark:border-white/6 text-slate-500 dark:text-white/40">
                 {label("schoolTypeShort", school.type)}
               </Badge>
             )}
             {school.province && (
-              <span className="text-[12px] text-slate-600 dark:text-white/60 flex items-center gap-1">
+              <span className="text-[14px] text-slate-600 dark:text-white/60 flex items-center gap-1">
                 <MapPin className="w-3 h-3" aria-hidden="true" />
                 {school.province}{school.district ? `, ${school.district}` : ""}
               </span>
@@ -447,7 +447,7 @@ export default function SchoolDetail() {
               <button
                 type="button"
                 onClick={() => setRequestingChange(true)}
-                className="text-[12px] font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                className="text-[14px] font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
               >
                 Location or buildings wrong? Request a change
               </button>
@@ -457,7 +457,7 @@ export default function SchoolDetail() {
         <div className="flex items-baseline gap-1">
           <span className={cn("text-3xl font-semibold tabular-nums", scoreColor)}>{priorityScore}</span>
           <span className="text-sm text-slate-400 dark:text-white/30">/ 100</span>
-          <span className="text-[11px] text-slate-400 dark:text-white/30 ml-1">score</span>
+          <span className="text-[13px] text-slate-400 dark:text-white/30 ml-1">score</span>
         </div>
       </div>
 
@@ -474,7 +474,7 @@ export default function SchoolDetail() {
             aria-pressed={activeTab === tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              "flex shrink-0 items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "flex shrink-0 items-center gap-1.5 px-4 py-2 rounded-xl text-[15px] font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               activeTab === tab.id
                 ? "bg-white dark:bg-white/10 text-slate-900 dark:text-white shadow-sm"
                 : "text-slate-600 dark:text-white/60 hover:text-slate-800 dark:hover:text-white/80",

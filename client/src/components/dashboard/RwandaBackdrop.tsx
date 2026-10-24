@@ -360,7 +360,7 @@ export function RwandaBackdrop({ schools, anchor, onSchoolClick, provinces, onPr
                   x={l.x}
                   y={l.y}
                   textAnchor="middle"
-                  className="fill-slate-500/70 text-[10px] font-semibold tracking-[0.3em] dark:fill-white/40"
+                  className="fill-slate-500/70 text-[12px] font-semibold tracking-[0.3em] dark:fill-white/40"
                 >
                   {l.name}
                 </text>
@@ -402,7 +402,7 @@ export function RwandaBackdrop({ schools, anchor, onSchoolClick, provinces, onPr
                   y={drawing.kivuLabel[1]}
                   textAnchor="middle"
                   transform={`rotate(-62 ${drawing.kivuLabel[0]} ${drawing.kivuLabel[1]})`}
-                  className="fill-sky-700/60 text-[10px] font-medium italic tracking-[0.2em] dark:fill-sky-200/45"
+                  className="fill-sky-700/60 text-[12px] font-medium italic tracking-[0.2em] dark:fill-sky-200/45"
                 >
                   Lake Kivu
                 </text>
@@ -587,7 +587,7 @@ function SchoolTip({ hover, dot }: { hover: Hover; dot: Dot }) {
         {dot.meta.label} priority
         {dot.school.district ? <span className="text-slate-400 dark:text-white/35">· {dot.school.district}</span> : null}
       </p>
-      <p className="mt-1.5 text-[11px] font-medium text-primary">Click to open the school →</p>
+      <p className="mt-1.5 text-[13px] font-medium text-primary">Click to open the school →</p>
     </div>
   );
 }
@@ -679,7 +679,7 @@ function ProvinceBadge({
           <text
             textAnchor="middle"
             dominantBaseline="central"
-            className="fill-slate-900 text-[12px] font-semibold tabular-nums dark:fill-white"
+            className="fill-slate-900 text-[14px] font-semibold tabular-nums dark:fill-white"
           >
             {score === null ? "—" : Math.round(score)}
           </text>
@@ -706,7 +706,7 @@ function ProvinceBadge({
             </text>
           )}
           {active && (
-            <text textAnchor="middle" y={16} dominantBaseline="central" className="text-[10px] font-medium tabular-nums">
+            <text textAnchor="middle" y={16} dominantBaseline="central" className="text-[12px] font-medium tabular-nums">
               {(["critical", "high", "medium", "low"] as const).map((k, i) => (
                 <tspan key={k} fill={PRIORITY_META[k].color} dx={i ? 6 : 0}>
                   ● <tspan className="fill-slate-600 dark:fill-white/70">{summary[k]}</tspan>

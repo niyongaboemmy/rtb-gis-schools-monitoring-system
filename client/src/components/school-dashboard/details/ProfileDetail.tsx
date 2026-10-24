@@ -71,7 +71,7 @@ const Missing = ({ children = "Not recorded" }: { children?: ReactNode }) => (
 function Group({ title, icon: Icon, children }: { title: string; icon: LucideIcon; children: ReactNode }) {
   return (
     <section className="rounded-2xl px-4 pb-1.5 pt-3.5 ring-1 ring-slate-900/6 dark:ring-white/8">
-      <h3 className="flex items-center gap-2 text-[13px] font-semibold text-slate-900 dark:text-white">
+      <h3 className="flex items-center gap-2 text-[15px] font-semibold text-slate-900 dark:text-white">
         <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary dark:text-blue-300" aria-hidden>
           <Icon className="h-3.5 w-3.5" />
         </span>

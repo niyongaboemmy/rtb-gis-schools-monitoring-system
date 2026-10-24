@@ -42,7 +42,7 @@ export function IssueReportsCard({ summary, reporting, onOpen, index }: Props) {
               <span className="text-2xl font-semibold leading-none tabular-nums text-slate-900 dark:text-white">
                 {formatNumber(summary?.active ?? null)}
               </span>
-              <span className="mt-0.5 text-[10px] uppercase tracking-wider text-slate-500 dark:text-white/50">open</span>
+              <span className="mt-0.5 text-[12px] uppercase tracking-wider text-slate-500 dark:text-white/50">open</span>
             </>
           }
         />
@@ -71,7 +71,7 @@ export function IssueReportsCard({ summary, reporting, onOpen, index }: Props) {
             ),
           }))}
         />
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[13px]">
           <span
             className={cn(
               "inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 font-medium",

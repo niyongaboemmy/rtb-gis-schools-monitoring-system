@@ -76,7 +76,7 @@ export const ActiveToolBanner: React.FC<Props> = ({
             <Icon className="h-4 w-4" aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-[12px] leading-snug text-slate-700 dark:text-white/80">{def.help}</p>
+            <p className="text-[14px] leading-snug text-slate-700 dark:text-white/80">{def.help}</p>
             {(liveValue || notSaved) && (
               <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
                 <AnimatePresence mode="popLayout" initial={false}>
@@ -94,17 +94,17 @@ export const ActiveToolBanner: React.FC<Props> = ({
                   )}
                 </AnimatePresence>
                 {liveValue && accuracy && (
-                  <span className="text-[11px] tabular-nums text-slate-500 dark:text-white/50">{accuracy}</span>
+                  <span className="text-[13px] tabular-nums text-slate-500 dark:text-white/50">{accuracy}</span>
                 )}
                 {notSaved && (
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary dark:bg-primary/20 dark:text-blue-200">
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[13px] text-primary dark:bg-primary/20 dark:text-blue-200">
                     Not saved — you can measure but not save
                   </span>
                 )}
               </div>
             )}
             {warning && (
-              <p className="mt-1.5 flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary dark:bg-primary/20 dark:text-blue-200">
+              <p className="mt-1.5 flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-[13px] text-primary dark:bg-primary/20 dark:text-blue-200">
                 <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
                 <span className="min-w-0">{warning}</span>
               </p>
@@ -120,7 +120,7 @@ export const ActiveToolBanner: React.FC<Props> = ({
             {onFinish && pointCount >= 2 && (
               <button type="button" onClick={onFinish} aria-label="Finish (Enter)" title="Finish (Enter)"
                 className={cn(
-                  "flex h-10 items-center gap-1 rounded-full bg-primary px-3 text-[13px] font-medium text-white transition-colors hover:bg-primary/90",
+                  "flex h-10 items-center gap-1 rounded-full bg-primary px-3 text-[15px] font-medium text-white transition-colors hover:bg-primary/90",
                   focusRing,
                 )}>
                 <Check className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Finish</span>

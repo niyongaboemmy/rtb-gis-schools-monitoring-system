@@ -31,7 +31,7 @@ export function MonthBars({ data, series, height = 150, ariaLabel }: MonthBarsPr
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600 dark:text-white/60">
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-slate-600 dark:text-white/60">
         {series.map((s) => (
           <span key={s.key} className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: s.color }} aria-hidden />
@@ -45,7 +45,7 @@ export function MonthBars({ data, series, height = 150, ariaLabel }: MonthBarsPr
           <div className="pointer-events-none absolute inset-0" aria-hidden>
             {[1, 0.5, 0].map((f) => (
               <div key={f} className="absolute inset-x-0 flex items-center gap-2" style={{ bottom: `${f * 100}%`, transform: "translateY(50%)" }}>
-                <span className="w-6 text-right text-[10px] tabular-nums text-slate-400 dark:text-white/35">{Number.isInteger(top * f) ? formatNumber(top * f) : ""}</span>
+                <span className="w-6 text-right text-[12px] tabular-nums text-slate-400 dark:text-white/35">{Number.isInteger(top * f) ? formatNumber(top * f) : ""}</span>
                 <span className={f === 0 ? "h-px flex-1 bg-slate-900/15 dark:bg-white/15" : "h-px flex-1 border-t border-dashed border-slate-900/8 dark:border-white/8"} />
               </div>
             ))}
@@ -87,7 +87,7 @@ export function MonthBars({ data, series, height = 150, ariaLabel }: MonthBarsPr
         <div className="ml-8 mt-1.5 flex gap-1 sm:gap-1.5" aria-hidden>
           {data.map((d, i) => (
             // Every other label on phones, but keep the slot so labels stay under their bars.
-            <span key={d.key} className={cn("min-w-0 flex-1 truncate text-center text-[10px] text-slate-400 dark:text-white/40", i % 2 === 1 && "invisible sm:visible")}>
+            <span key={d.key} className={cn("min-w-0 flex-1 truncate text-center text-[12px] text-slate-400 dark:text-white/40", i % 2 === 1 && "invisible sm:visible")}>
               {d.label}
             </span>
           ))}

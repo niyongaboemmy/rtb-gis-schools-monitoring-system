@@ -78,7 +78,7 @@ export function StaffStep({
             <h3 className="text-sm font-bold text-foreground/80">{title}</h3>
           </div>
           <div className="flex flex-col items-end">
-            <span className="text-[10px] font-bold uppercase tracking-tighter text-muted-foreground/60">
+            <span className="text-[12px] font-bold uppercase tracking-tighter text-muted-foreground/60">
               Total
             </span>
             <span className="text-lg font-black text-primary leading-none">
@@ -91,7 +91,7 @@ export function StaffStep({
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5 pl-1">
               <div className="w-1.5 h-1.5 rounded-full bg-blue-500/60" />
-              <span className="text-[10px] font-bold text-muted-foreground uppercase">
+              <span className="text-[12px] font-bold text-muted-foreground uppercase">
                 Male
               </span>
             </div>
@@ -107,7 +107,7 @@ export function StaffStep({
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5 pl-1">
               <div className="w-1.5 h-1.5 rounded-full bg-pink-500/60" />
-              <span className="text-[10px] font-bold text-muted-foreground uppercase">
+              <span className="text-[12px] font-bold text-muted-foreground uppercase">
                 Female
               </span>
             </div>

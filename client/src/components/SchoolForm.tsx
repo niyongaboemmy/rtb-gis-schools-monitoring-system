@@ -860,7 +860,7 @@ export function SchoolForm({
                   {currentStep > step.id ? (
                     <Check className="w-3.5 h-3.5 text-white" />
                   ) : (
-                    <span className="text-[10px]">{step.id}</span>
+                    <span className="text-[12px]">{step.id}</span>
                   )}
                 </div>
                 {step.title}

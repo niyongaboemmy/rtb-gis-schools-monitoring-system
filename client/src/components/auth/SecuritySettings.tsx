@@ -274,7 +274,7 @@ function TwoFactorSection({ index, className }: { index: number; className?: str
         <div className="space-y-4">
           <dl className="grid grid-cols-2 gap-2.5">
             <div className="rounded-2xl bg-slate-900/[0.02] p-3 ring-1 ring-inset ring-border/40 dark:bg-white/[0.02]">
-              <dt className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Turned on</dt>
+              <dt className="text-[12px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Turned on</dt>
               <dd className="mt-0.5 text-sm font-normal text-foreground">
                 {status.enabledAt ? formatDate(status.enabledAt) : "—"}
               </dd>
@@ -285,7 +285,7 @@ function TwoFactorSection({ index, className }: { index: number; className?: str
                 lowCodes ? "bg-warning/10 ring-warning/25" : "bg-slate-900/[0.02] ring-border/40 dark:bg-white/[0.02]",
               )}
             >
-              <dt className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Recovery codes</dt>
+              <dt className="text-[12px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Recovery codes</dt>
               <dd className={cn("mt-0.5 text-sm font-normal tabular-nums", lowCodes ? "text-warning" : "text-foreground")}>
                 {status.recoveryCodesRemaining} left
               </dd>
@@ -317,7 +317,7 @@ function TwoFactorSection({ index, className }: { index: number; className?: str
                 key={step.label}
                 className="flex items-center gap-2.5 rounded-2xl bg-slate-900/[0.02] p-2.5 ring-1 ring-inset ring-border/40 dark:bg-white/[0.02]"
               >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-medium text-primary">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[13px] font-medium text-primary">
                   {i + 1}
                 </span>
                 <span className="text-xs font-normal leading-tight text-foreground/90">{step.label}</span>

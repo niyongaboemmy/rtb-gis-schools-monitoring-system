@@ -267,7 +267,7 @@ export default function KmzUpload() {
                 )}
               />
               {!loadingSchool && fileLabel && (
-                <span className="text-[9px] font-black uppercase tracking-widest bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full">
+                <span className="text-[12px] font-black uppercase tracking-widest bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full">
                   Uploaded
                 </span>
               )}
@@ -275,9 +275,9 @@ export default function KmzUpload() {
             <p className="text-sm font-black uppercase tracking-tight">
               {label}
             </p>
-            <p className="text-[10px] text-muted-foreground mt-1">{desc}</p>
+            <p className="text-[12px] text-muted-foreground mt-1">{desc}</p>
             {!loadingSchool && fileLabel && (
-              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-2 truncate">
+              <p className="text-[12px] text-emerald-600 dark:text-emerald-400 mt-2 truncate">
                 {fileLabel}
               </p>
             )}

@@ -237,7 +237,7 @@ export function PersonalDetails({ user, onSaved, onOpenSecurity }: Props) {
             <h2 className="text-lg font-semibold tracking-tight text-foreground">Personal details</h2>
             <p className="mt-0.5 text-xs text-muted-foreground/70">How colleagues see you</p>
           </div>
-          <kbd className="hidden rounded-md border border-border/60 px-1.5 py-0.5 font-sans text-[10px] text-muted-foreground sm:inline [@media(hover:none)]:hidden">
+          <kbd className="hidden rounded-md border border-border/60 px-1.5 py-0.5 font-sans text-[12px] text-muted-foreground sm:inline [@media(hover:none)]:hidden">
             Ctrl S to save
           </kbd>
         </div>
@@ -451,10 +451,10 @@ export function PersonalDetails({ user, onSaved, onOpenSecurity }: Props) {
                   <Check className="h-3 w-3" />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className={cn("block text-[13px] font-normal", item.done ? "text-muted-foreground line-through decoration-muted-foreground/40" : "text-foreground")}>
+                  <span className={cn("block text-[15px] font-normal", item.done ? "text-muted-foreground line-through decoration-muted-foreground/40" : "text-foreground")}>
                     {item.label}
                   </span>
-                  <span className="block text-[11px] text-muted-foreground">{item.hint}</span>
+                  <span className="block text-[13px] text-muted-foreground">{item.hint}</span>
                 </span>
                 {!item.done && item.action && (
                   <ArrowRight className="mt-1 h-3.5 w-3.5 shrink-0 text-primary opacity-0 transition-all duration-200 group-hover:translate-x-0.5 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100" aria-hidden />

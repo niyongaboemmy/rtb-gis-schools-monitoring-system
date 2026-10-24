@@ -180,7 +180,7 @@ export function CommandBar({
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: m.color, boxShadow: `0 0 8px ${m.color}` }} />
           </span>
           <span className="min-w-0 flex-1">
-            <span className={cn("block truncate text-[13px]", STRONG)}>
+            <span className={cn("block truncate text-[15px]", STRONG)}>
               <Highlight text={hit.point.school.name} q={q.trim()} />
             </span>
             <span className={cn("block truncate text-xs", MUTED)}>
@@ -198,7 +198,7 @@ export function CommandBar({
           <Icon className="h-4 w-4" aria-hidden />
         </span>
         <span className="min-w-0 flex-1">
-          <span className={cn("block truncate text-[13px]", STRONG)}>
+          <span className={cn("block truncate text-[15px]", STRONG)}>
             <Highlight text={hit.name} q={q.trim()} />
           </span>
           <span className={cn("block truncate text-xs", MUTED)}>
@@ -226,8 +226,8 @@ export function CommandBar({
               <MapIcon className="h-[18px] w-[18px]" aria-hidden />
             </span>
             <span className="hidden min-w-0 flex-col leading-tight lg:flex">
-              <h1 className={cn("text-[13px] font-semibold tracking-tight", STRONG)}>National map</h1>
-              <span className={cn("whitespace-nowrap text-[11px]", MUTED)}>
+              <h1 className={cn("text-[15px] font-semibold tracking-tight", STRONG)}>National map</h1>
+              <span className={cn("whitespace-nowrap text-[13px]", MUTED)}>
                 {formatNumber(total)} {total === 1 ? "school" : "schools"} · {formatNumber(inView)} in view
               </span>
             </span>
@@ -255,7 +255,7 @@ export function CommandBar({
             aria-activedescendant={open && flat[cur] ? `${listId}-${cur}` : undefined}
             placeholder={compact ? "Search the map" : "Search schools, districts, provinces"}
             className={cn(
-              "h-10 w-full min-w-0 rounded-full bg-slate-900/[0.04] pl-9 pr-16 text-[13px] outline-none transition-colors placeholder:text-slate-500 focus:bg-white/80 dark:bg-white/[0.06] dark:placeholder:text-white/40 dark:focus:bg-white/[0.1]",
+              "h-10 w-full min-w-0 rounded-full bg-slate-900/[0.04] pl-9 pr-16 text-[15px] outline-none transition-colors placeholder:text-slate-500 focus:bg-white/80 dark:bg-white/[0.06] dark:placeholder:text-white/40 dark:focus:bg-white/[0.1]",
               STRONG,
             )}
           />
@@ -270,7 +270,7 @@ export function CommandBar({
               <X className="h-3.5 w-3.5" aria-hidden />
             </button>
           ) : (
-            <kbd className={cn("pointer-events-none absolute right-3 hidden rounded-md bg-slate-900/5 px-1.5 py-0.5 font-sans text-[10px] sm:block dark:bg-white/10", MUTED)}>
+            <kbd className={cn("pointer-events-none absolute right-3 hidden rounded-md bg-slate-900/5 px-1.5 py-0.5 font-sans text-[12px] sm:block dark:bg-white/10", MUTED)}>
               /
             </kbd>
           )}
@@ -283,7 +283,7 @@ export function CommandBar({
           aria-controls="national-map-panel"
           aria-label={panelOpen ? "Hide filters and list" : "Show filters and list"}
           className={cn(
-            "relative inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-3 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "relative inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-3 text-[15px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             panelOpen
               ? "bg-primary text-primary-foreground"
               : "text-slate-700 hover:bg-slate-900/5 dark:text-white/80 dark:hover:bg-white/10",
@@ -294,7 +294,7 @@ export function CommandBar({
           {activeFilters > 0 && (
             <span
               className={cn(
-                "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[11px] tabular-nums",
+                "inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[13px] tabular-nums",
                 panelOpen ? "bg-white/25" : "bg-primary text-primary-foreground",
               )}
             >
@@ -315,7 +315,7 @@ export function CommandBar({
           >
             <ul id={listId} role="listbox" aria-label="Search results" className="custom-scrollbar max-h-[min(60dvh,440px)] overflow-y-auto p-2">
               {flat.length === 0 ? (
-                <li className={cn("px-3 py-6 text-center text-[13px]", MUTED)}>
+                <li className={cn("px-3 py-6 text-center text-[15px]", MUTED)}>
                   No schools, districts or provinces match “{q.trim()}”.
                 </li>
               ) : (
@@ -330,7 +330,7 @@ export function CommandBar({
                 ))
               )}
             </ul>
-            <p className={cn("hidden items-center gap-3 bg-slate-900/[0.03] px-4 py-2 text-[11px] sm:flex dark:bg-white/[0.03]", MUTED)}>
+            <p className={cn("hidden items-center gap-3 bg-slate-900/[0.03] px-4 py-2 text-[13px] sm:flex dark:bg-white/[0.03]", MUTED)}>
               <span>↑ ↓ to move</span>
               <span>Enter to fly there</span>
               <span>Esc to close</span>

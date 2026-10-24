@@ -102,7 +102,7 @@ export function MetricCard({
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/80">
+        <span className="text-[12px] font-black uppercase tracking-widest text-muted-foreground/80">
           {label}
         </span>
         <span
@@ -128,7 +128,7 @@ export function MetricCard({
         {delta != null && (
           <span
             className={cn(
-              "mb-0.5 inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[10px] font-black tabular-nums",
+              "mb-0.5 inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[12px] font-black tabular-nums",
               deltaUp && "bg-emerald-500/12 text-emerald-500",
               deltaDown && "bg-rose-500/12 text-rose-500",
               !deltaUp && !deltaDown && "bg-muted text-muted-foreground",
@@ -147,7 +147,7 @@ export function MetricCard({
       </div>
 
       {hint && (
-        <p className="mt-1 text-[10px] font-semibold text-muted-foreground/70">
+        <p className="mt-1 text-[12px] font-semibold text-muted-foreground/70">
           {hint}
         </p>
       )}

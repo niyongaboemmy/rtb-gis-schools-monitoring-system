@@ -63,7 +63,7 @@ function Chip({ icon: Icon, children, tone = "muted" }: { icon: LucideIcon; chil
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium",
+        "inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-[13px] font-medium",
         tone === "primary"
           ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/20"
           : "bg-slate-900/[0.04] text-muted-foreground ring-1 ring-inset ring-border/40 dark:bg-white/[0.04]",
@@ -206,9 +206,9 @@ export function ProfileHero({ user, onOpenSecurity }: Props) {
                   <t.icon className="h-4 w-4" aria-hidden />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{t.label}</span>
+                  <span className="block text-[12px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{t.label}</span>
                   <span className="block truncate text-sm font-normal text-foreground">{t.value}</span>
-                  <span className="block truncate text-[11px] text-muted-foreground">{t.caption}</span>
+                  <span className="block truncate text-[13px] text-muted-foreground">{t.caption}</span>
                 </span>
               </button>
             </motion.div>

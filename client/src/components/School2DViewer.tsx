@@ -1372,11 +1372,11 @@ export default function School2DViewer({
             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" aria-hidden />
           </button>
           <div className="hidden lg:flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/60 dark:bg-[hsl(224_40%_7%)]/60 backdrop-blur-2xl backdrop-saturate-150 ring-1 ring-white/40 dark:ring-white/10 max-w-45">
-            <span className="text-[13px] font-medium text-slate-800 dark:text-white/80 truncate">
+            <span className="text-[15px] font-medium text-slate-800 dark:text-white/80 truncate">
               {school.name}
             </span>
             {school.code && (
-              <span className="text-[10px] font-mono text-slate-400 dark:text-white/25 shrink-0 hidden sm:block">
+              <span className="text-[12px] font-mono text-slate-400 dark:text-white/25 shrink-0 hidden sm:block">
                 {school.code}
               </span>
             )}
@@ -1402,13 +1402,13 @@ export default function School2DViewer({
                 aria-label={label}
                 aria-current={activeTab === id ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 sm:px-3.5 h-7 rounded-full text-[11px] font-medium transition-colors",
+                  "flex items-center gap-1.5 px-3 sm:px-3.5 h-8 rounded-full text-[14px] font-medium transition-colors",
                   activeTab === id
                     ? "bg-primary text-white"
                     : "text-slate-600 dark:text-white/80 hover:text-primary dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5",
                 )}
               >
-                <Icon className="w-3 h-3 shrink-0" aria-hidden />
+                <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden />
                 <span className="hidden sm:inline">{label}</span>
               </button>
             ))}
@@ -1545,12 +1545,12 @@ export default function School2DViewer({
                     >
                       <IconComp className={cn("w-3 h-3", iconDef.color)} />
                     </div>
-                    <p className="text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-wider leading-none truncate">
+                    <p className="text-[12px] font-black text-slate-900 dark:text-white uppercase tracking-wider leading-none truncate">
                       {ann.title || ann.label}
                     </p>
                   </div>
                   {ann.description && (
-                    <p className="text-[9px] text-slate-500 dark:text-white/50 font-medium leading-snug">
+                    <p className="text-[12px] text-slate-500 dark:text-white/50 font-medium leading-snug">
                       {ann.description}
                     </p>
                   )}
@@ -1579,10 +1579,10 @@ export default function School2DViewer({
               <MapPin className="w-4 h-4 text-white" />
             </div>
             <div className="min-w-0">
-              <p className="text-[8px] md:text-[10px] font-black uppercase tracking-widest text-white/60">
+              <p className="text-[11px] md:text-[12px] font-black uppercase tracking-widest text-white/60">
                 Picker Mode
               </p>
-              <p className="text-[11px] md:text-sm font-bold text-white truncate">
+              <p className="text-[13px] md:text-sm font-bold text-white truncate">
                 {pickerSelected
                   ? pickerSelected.buildingName || "Building selected"
                   : "Click map feature…"}
@@ -1596,7 +1596,7 @@ export default function School2DViewer({
                   if (onPickerSelect) onPickerSelect(pickerSelected);
                   if (onClose) onClose();
                 }}
-                className="px-3 md:px-4 py-1.5 md:py-2 rounded-xl bg-white text-primary font-black text-[9px] md:text-xs uppercase tracking-widest hover:bg-white/90 transition-all border border-slate-200 dark:border-transparent shrink-0"
+                className="px-3 md:px-4 py-1.5 md:py-2 rounded-xl bg-white text-primary font-black text-[12px] md:text-xs uppercase tracking-widest hover:bg-white/90 transition-all border border-slate-200 dark:border-transparent shrink-0"
               >
                 ✓ Confirm
               </button>
@@ -1702,7 +1702,7 @@ export default function School2DViewer({
                 <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
                 <span className="hidden sm:inline">{label}</span>
                 {count > 0 && active && (
-                  <span className="min-w-4 rounded-full bg-primary px-1 text-center text-[10px] leading-4 tabular-nums text-white">{count}</span>
+                  <span className="min-w-4 rounded-full bg-primary px-1 text-center text-[12px] leading-4 tabular-nums text-white">{count}</span>
                 )}
               </button>
             ))}

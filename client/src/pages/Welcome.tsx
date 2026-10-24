@@ -196,7 +196,7 @@ export default function Welcome() {
                   className="w-full h-full object-contain"
                 />
               </motion.div>
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest border border-primary/20 backdrop-blur-md">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-[12px] font-black uppercase tracking-widest border border-primary/20 backdrop-blur-md">
                 <Shield className="w-3.5 h-3.5" />
                 Authenticated Session
               </div>

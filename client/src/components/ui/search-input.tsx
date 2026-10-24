@@ -90,7 +90,7 @@ export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
                 onClick={() => onSearch(value as string)}
                 disabled={isLoading || !hasValue}
                 className={cn(
-                  "rounded-full h-9 px-5 text-[10px] font-black uppercase tracking-widest transition-all shadow-none",
+                  "rounded-full h-9 px-5 text-[12px] font-black uppercase tracking-widest transition-all shadow-none",
                   hasValue
                     ? "bg-primary text-primary-foreground hover:opacity-90"
                     : "bg-muted text-muted-foreground cursor-not-allowed",

@@ -164,10 +164,10 @@ export function BuildingMediaTab({ building, schoolId, canEdit, onUpdateBuilding
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             </motion.span>
             <span className="min-w-0 flex-1">
-              <span className="block text-[13px] text-slate-800 dark:text-white/85">
+              <span className="block text-[15px] text-slate-800 dark:text-white/85">
                 {busy ? `Uploading${progress ? ` · ${progress}%` : "…"}` : dragging ? "Drop to upload" : "Add photos or videos"}
               </span>
-              <span className="block text-[11px] text-slate-500 dark:text-white/45">Drop here or tap · up to {MAX_MB} MB each</span>
+              <span className="block text-[13px] text-slate-500 dark:text-white/45">Drop here or tap · up to {MAX_MB} MB each</span>
             </span>
             {busy && (
               <motion.span
@@ -197,12 +197,12 @@ export function BuildingMediaTab({ building, schoolId, canEdit, onUpdateBuilding
                   onChange={(e) => setLink(e.target.value)}
                   placeholder="https://…"
                   aria-label="Link to a photo or video"
-                  className="h-9 min-w-0 flex-1 rounded-xl bg-white px-3 text-[13px] text-slate-900 ring-1 ring-slate-900/10 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary dark:bg-white/[0.06] dark:text-white dark:ring-white/15"
+                  className="h-9 min-w-0 flex-1 rounded-xl bg-white px-3 text-[15px] text-slate-900 ring-1 ring-slate-900/10 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary dark:bg-white/[0.06] dark:text-white dark:ring-white/15"
                 />
-                <button type="submit" className="h-9 rounded-xl bg-primary px-3.5 text-[13px] text-white transition-colors hover:bg-primary/90">
+                <button type="submit" className="h-9 rounded-xl bg-primary px-3.5 text-[15px] text-white transition-colors hover:bg-primary/90">
                   Add
                 </button>
-                <button type="button" onClick={() => setLinkOpen(false)} className="h-9 rounded-xl px-2.5 text-[13px] text-slate-500 hover:bg-slate-900/5 dark:text-white/55 dark:hover:bg-white/8">
+                <button type="button" onClick={() => setLinkOpen(false)} className="h-9 rounded-xl px-2.5 text-[15px] text-slate-500 hover:bg-slate-900/5 dark:text-white/55 dark:hover:bg-white/8">
                   Cancel
                 </button>
               </motion.form>
@@ -267,7 +267,7 @@ export function BuildingMediaTab({ building, schoolId, canEdit, onUpdateBuilding
                       <img src={m.path} alt="" loading="lazy" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                     )}
                     {m.title && (
-                      <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/65 to-transparent px-2 pb-1.5 pt-4 text-left text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100">
+                      <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/65 to-transparent px-2 pb-1.5 pt-4 text-left text-[12px] text-white opacity-0 transition-opacity group-hover:opacity-100">
                         {m.title}
                       </span>
                     )}
@@ -280,7 +280,7 @@ export function BuildingMediaTab({ building, schoolId, canEdit, onUpdateBuilding
                       aria-label={asking ? `Confirm removing ${m.title || "this file"}` : `Remove ${m.title || "this file"}`}
                       className={cn(
                         "absolute right-1 top-1 flex h-7 items-center justify-center gap-1 rounded-full text-white backdrop-blur transition-all focus-visible:opacity-100",
-                        asking ? "bg-destructive px-2.5 text-[11px] opacity-100" : "w-7 bg-slate-900/55 opacity-0 hover:bg-destructive group-hover:opacity-100 [@media(hover:none)]:opacity-100",
+                        asking ? "bg-destructive px-2.5 text-[13px] opacity-100" : "w-7 bg-slate-900/55 opacity-0 hover:bg-destructive group-hover:opacity-100 [@media(hover:none)]:opacity-100",
                       )}
                     >
                       {removing === i ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Trash2 className="h-3.5 w-3.5" aria-hidden />}

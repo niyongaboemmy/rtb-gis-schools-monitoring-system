@@ -39,11 +39,11 @@ export function DecisionDetail({ d, model }: { d: DecisionRow; model?: ScoringMo
               const { tag, text } = parseRecommendation(r);
               return (
                 <li key={i} className="flex items-start gap-3 rounded-2xl bg-slate-900/[0.03] p-3 ring-1 ring-slate-900/5 dark:bg-white/[0.04] dark:ring-white/8">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary dark:text-blue-300" aria-hidden>
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[13px] font-semibold text-primary dark:text-blue-300" aria-hidden>
                     {i + 1}
                   </span>
-                  <p className="text-[13px] leading-relaxed text-slate-700 dark:text-white/80">
-                    {tag && <span className={cn("mr-1.5 inline-block rounded-md px-1.5 py-px align-[1px] text-[10px] font-semibold", tag.tone)}>{tag.label}</span>}
+                  <p className="text-[15px] leading-relaxed text-slate-700 dark:text-white/80">
+                    {tag && <span className={cn("mr-1.5 inline-block rounded-md px-1.5 py-px align-[1px] text-[12px] font-semibold", tag.tone)}>{tag.label}</span>}
                     {text}
                   </p>
                 </li>
@@ -55,7 +55,7 @@ export function DecisionDetail({ d, model }: { d: DecisionRow; model?: ScoringMo
 
       <ScoreBreakdown metrics={asMetrics(d, model)} />
 
-      <p className="text-[11px] text-slate-400 dark:text-white/40">
+      <p className="text-[13px] text-slate-400 dark:text-white/40">
         Scored {d.updatedAt || d.createdAt ? formatDate(d.updatedAt ?? d.createdAt) : "—"} · scores update when school records change.
       </p>
     </div>
@@ -67,7 +67,7 @@ export function DecisionFooter({ d }: { d: DecisionRow }) {
   const id = d.schoolId ?? d.school?.id;
   return (
     <>
-      <p className="truncate text-[11px] text-slate-500 dark:text-white/50">{d.school?.code ?? ""}</p>
+      <p className="truncate text-[13px] text-slate-500 dark:text-white/50">{d.school?.code ?? ""}</p>
       {id && (
         <Link
           to={`/schools/${id}/decision`}
@@ -100,7 +100,7 @@ export function ScoringModelInfo({ model: m }: { model?: ScoringModel | null }) 
         </div>
         <ul className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
           {COMPONENT_ORDER.map((k, i) => (
-            <li key={k} className="flex items-center gap-2 text-[13px]">
+            <li key={k} className="flex items-center gap-2 text-[15px]">
               <span className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ background: colors[i] }} aria-hidden />
               <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-white/80">{FACTOR_NAME[k]}</span>
               <span className="font-semibold tabular-nums text-slate-900 dark:text-white">{Math.round(weightOf(k, model) * 100)}%</span>
@@ -115,7 +115,7 @@ export function ScoringModelInfo({ model: m }: { model?: ScoringModel | null }) 
             <div key={b} className="min-w-0" style={{ flexGrow: model.bands[b].max - model.bands[b].min + 1, flexBasis: 0 }}>
               <span className="block h-2.5 rounded-full" style={{ background: BAND_HEX[b] }} />
               <p className="mt-1.5 truncate text-xs font-medium text-slate-800 dark:text-white/85">{label("priority", b)}</p>
-              <p className="text-[11px] tabular-nums text-slate-500 dark:text-white/45">
+              <p className="text-[13px] tabular-nums text-slate-500 dark:text-white/45">
                 {model.bands[b].min}–{model.bands[b].max}
               </p>
             </div>

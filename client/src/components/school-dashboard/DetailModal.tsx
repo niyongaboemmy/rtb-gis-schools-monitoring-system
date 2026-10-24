@@ -138,13 +138,13 @@ function Panel({
             )}
             <div className="min-w-0 flex-1">
               {eyebrow && (
-                <p className="truncate text-[11px] font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-white/45">{eyebrow}</p>
+                <p className="truncate text-[13px] font-medium uppercase tracking-[0.12em] text-slate-500 dark:text-white/45">{eyebrow}</p>
               )}
               <h2 id={titleId} className="text-lg font-semibold leading-snug tracking-tight text-slate-900 sm:text-xl dark:text-white">
                 {title}
               </h2>
               {description && (
-                <p id={descId} className="mt-1 max-w-[62ch] text-[13px] leading-relaxed text-slate-600 dark:text-white/55">
+                <p id={descId} className="mt-1 max-w-[62ch] text-[15px] leading-relaxed text-slate-600 dark:text-white/55">
                   {description}
                 </p>
               )}

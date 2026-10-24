@@ -230,7 +230,7 @@ export function IntelligenceScore({
                 />
               )}
             </div>
-            <div className="flex justify-between text-[10px] tabular-nums text-slate-400 dark:text-white/30">
+            <div className="flex justify-between text-[12px] tabular-nums text-slate-400 dark:text-white/30">
               <span>0</span>
               <span>{model.bands.high.min}</span>
               <span>{model.bands.medium.min}</span>
@@ -295,9 +295,9 @@ export function IntelligenceScore({
                   )}
                 >
                   {isFocus && (
-                    <span className="absolute right-2 top-2 rounded-full bg-primary/12 px-1.5 py-px text-[10px] font-medium text-primary">Focus</span>
+                    <span className="absolute right-2 top-2 rounded-full bg-primary/12 px-1.5 py-px text-[12px] font-medium text-primary">Focus</span>
                   )}
-                  <span className="absolute left-2.5 top-2.5 text-[10px] tabular-nums text-slate-400 dark:text-white/35">
+                  <span className="absolute left-2.5 top-2.5 text-[12px] tabular-nums text-slate-400 dark:text-white/35">
                     {Math.round((m.weight ?? 0) * 100)}%
                   </span>
                   <div className="relative h-[54px] w-[100px]">
@@ -328,7 +328,7 @@ export function IntelligenceScore({
                     <span
                       tabIndex={0}
                       data-tooltip={m.estimatedNote}
-                      className="mt-1 text-[10px] font-medium text-amber-600 dark:text-amber-400"
+                      className="mt-1 text-[12px] font-medium text-amber-600 dark:text-amber-400"
                     >
                       Estimated
                     </span>

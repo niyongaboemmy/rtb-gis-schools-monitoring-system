@@ -439,7 +439,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
                           aria-pressed={on}
                           onClick={() => switchBasemap(bm.id)}
                           className={cn(
-                            "flex flex-col items-center gap-1.5 rounded-2xl py-2.5 text-[11px] transition-colors",
+                            "flex flex-col items-center gap-1.5 rounded-2xl py-2.5 text-[13px] transition-colors",
                             on ? "bg-primary text-white" : "text-slate-600 hover:bg-slate-900/5 dark:text-white/70 dark:hover:bg-white/8",
                           )}
                         >
@@ -478,7 +478,7 @@ export const MapToolbar: React.FC<MapToolbarProps> = ({
 
 function Divider({ expanded, label }: { expanded: boolean; label: string }) {
   return expanded ? (
-    <span className="hidden px-3 pb-0.5 pt-2 text-[11px] text-slate-600 md:block dark:text-white/35">{label}</span>
+    <span className="hidden px-3 pb-0.5 pt-2 text-[13px] text-slate-600 md:block dark:text-white/35">{label}</span>
   ) : (
     <span className="mx-0.5 h-6 w-px shrink-0 self-center bg-slate-900/8 md:mx-0 md:my-0.5 md:h-px md:w-6 dark:bg-white/10" aria-hidden />
   );
@@ -529,7 +529,7 @@ function FlyItem({
         aria-pressed={active}
         onClick={onClick}
         className={cn(
-          "group flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+          "group flex w-full items-center gap-3 rounded-2xl px-2.5 py-2 text-left text-[15px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
           active
             ? "bg-primary text-white"
             : muted
@@ -548,7 +548,7 @@ function FlyItem({
         </span>
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {hint && (
-          <kbd className={cn("rounded px-1.5 font-sans text-[10px]", active ? "bg-white/20 text-white" : "bg-slate-900/5 text-slate-600 dark:bg-white/8 dark:text-white/45")}>{hint}</kbd>
+          <kbd className={cn("rounded px-1.5 font-sans text-[12px]", active ? "bg-white/20 text-white" : "bg-slate-900/5 text-slate-600 dark:bg-white/8 dark:text-white/45")}>{hint}</kbd>
         )}
       </button>
     </motion.li>
@@ -616,8 +616,8 @@ function RailButton({
         {/* A group button carries a tiny corner mark: it opens more tools. */}
         {group && !expanded && <span className={cn("absolute -bottom-1.5 -right-1.5 h-0 w-0 border-l-[4px] border-t-[4px] border-l-transparent", active ? "border-t-white/70" : "border-t-current opacity-50")} style={{ transform: "rotate(-45deg)" }} aria-hidden />}
       </span>
-      {expanded && <span className="hidden min-w-0 flex-1 truncate text-left text-[13px] md:block">{label}</span>}
-      {expanded && hint && <kbd className="hidden rounded bg-slate-900/5 px-1.5 font-sans text-[10px] text-slate-600 md:inline dark:bg-white/8 dark:text-white/45">{hint}</kbd>}
+      {expanded && <span className="hidden min-w-0 flex-1 truncate text-left text-[15px] md:block">{label}</span>}
+      {expanded && hint && <kbd className="hidden rounded bg-slate-900/5 px-1.5 font-sans text-[12px] text-slate-600 md:inline dark:bg-white/8 dark:text-white/45">{hint}</kbd>}
       {expanded && group && <ChevronRight className={cn("hidden h-3.5 w-3.5 shrink-0 opacity-60 transition-transform md:block", open && "rotate-90")} aria-hidden />}
       {badge != null && (
         <motion.span
@@ -626,7 +626,7 @@ function RailButton({
           animate={{ scale: 1 }}
           transition={{ type: "spring", stiffness: 500, damping: 22 }}
           className={cn(
-            "flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] tabular-nums text-white ring-2 ring-white dark:ring-[hsl(224_40%_7%)]",
+            "flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[12px] tabular-nums text-white ring-2 ring-white dark:ring-[hsl(224_40%_7%)]",
             expanded ? "absolute -right-0.5 -top-0.5 md:static md:ring-0" : "absolute -right-0.5 -top-0.5",
             active && "bg-white text-primary",
           )}

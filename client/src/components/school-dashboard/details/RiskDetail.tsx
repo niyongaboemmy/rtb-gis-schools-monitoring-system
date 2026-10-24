@@ -56,7 +56,7 @@ function RiskMap({ factors }: { factors: RiskAssessmentData["factors"] }) {
   return (
     <figure className="min-w-0">
       <div className="flex gap-2">
-        <span className="flex w-3 items-center justify-center text-[10px] text-slate-400 [writing-mode:vertical-rl] rotate-180 dark:text-white/40">How likely →</span>
+        <span className="flex w-3 items-center justify-center text-[12px] text-slate-400 [writing-mode:vertical-rl] rotate-180 dark:text-white/40">How likely →</span>
         <div
           ref={boxRef}
           className="relative aspect-square w-full overflow-visible rounded-2xl ring-1 ring-slate-900/6 dark:ring-white/8"
@@ -87,7 +87,7 @@ function RiskMap({ factors }: { factors: RiskAssessmentData["factors"] }) {
               <motion.span
                 key={f.id}
                 tabIndex={0}
-                className="absolute flex h-6 w-6 -translate-x-1/2 translate-y-1/2 cursor-default items-center justify-center rounded-full text-[11px] font-semibold text-white outline-none ring-2 ring-white focus-visible:ring-primary dark:ring-[hsl(224_40%_7%)]"
+                className="absolute flex h-6 w-6 -translate-x-1/2 translate-y-1/2 cursor-default items-center justify-center rounded-full text-[13px] font-semibold text-white outline-none ring-2 ring-white focus-visible:ring-primary dark:ring-[hsl(224_40%_7%)]"
                 style={{ left: `${Math.min(94, Math.max(6, f.impact))}%`, bottom: `${Math.min(94, Math.max(6, f.probability))}%`, background: l.color }}
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
@@ -108,7 +108,7 @@ function RiskMap({ factors }: { factors: RiskAssessmentData["factors"] }) {
           {tooltip}
         </div>
       </div>
-      <figcaption className="mt-1.5 pl-5 text-center text-[10px] text-slate-400 dark:text-white/40">How serious →</figcaption>
+      <figcaption className="mt-1.5 pl-5 text-center text-[12px] text-slate-400 dark:text-white/40">How serious →</figcaption>
     </figure>
   );
 }
@@ -124,7 +124,7 @@ export function RiskDetail({ risk }: { risk: RiskAssessmentData | null | undefin
 
   return (
     <div className="space-y-8">
-      <p className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-800 dark:text-amber-300">
+      <p className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-[13px] font-medium text-amber-800 dark:text-amber-300">
         An estimate to help plan — not a measurement
       </p>
 
@@ -151,7 +151,7 @@ export function RiskDetail({ risk }: { risk: RiskAssessmentData | null | undefin
                   <div className="flex items-start gap-3">
                     <span
                       className={cn(
-                        "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
+                        "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold",
                         off ? "bg-slate-900/8 text-slate-500 dark:bg-white/10 dark:text-white/50" : "text-white",
                       )}
                       style={off ? undefined : { background: l.color }}
@@ -161,16 +161,16 @@ export function RiskDetail({ risk }: { risk: RiskAssessmentData | null | undefin
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <h4 className="text-[13px] font-semibold text-slate-900 dark:text-white">{f.title}</h4>
+                        <h4 className="text-[15px] font-semibold text-slate-900 dark:text-white">{f.title}</h4>
                         <RuleTip rule={f.rule} label={f.title} />
                         <StatusPill color={l.color}>{f.level === "unknown" ? "No data" : l.label}</StatusPill>
-                        {off && <span className="text-[11px] text-slate-500 dark:text-white/45">Not counted in the total</span>}
+                        {off && <span className="text-[13px] text-slate-500 dark:text-white/45">Not counted in the total</span>}
                       </div>
                       <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-white/60">{f.mitigation}</p>
                       <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-2">
                         {(["impact", "probability"] as const).map((k) => (
                           <div key={k}>
-                            <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-white/50">
+                            <div className="mb-1 flex items-center justify-between text-[13px] text-slate-500 dark:text-white/50">
                               <span>{k === "impact" ? "How serious" : "How likely"}</span>
                               <span className="font-medium tabular-nums text-slate-700 dark:text-white/75">{formatNumber(f[k])}</span>
                             </div>
@@ -178,7 +178,7 @@ export function RiskDetail({ risk }: { risk: RiskAssessmentData | null | undefin
                           </div>
                         ))}
                       </div>
-                      <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-white/50">
+                      <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 text-[13px] text-slate-500 dark:text-white/50">
                         <span className="inline-flex items-center gap-1">
                           <Clock className="h-3 w-3" aria-hidden />
                           {f.timeline}
@@ -191,7 +191,7 @@ export function RiskDetail({ risk }: { risk: RiskAssessmentData | null | undefin
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="text-lg font-semibold leading-none tabular-nums text-slate-900 dark:text-white">{formatNumber(f.riskScore)}</p>
-                      <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-400 dark:text-white/40">Risk</p>
+                      <p className="mt-1 text-[12px] uppercase tracking-wider text-slate-400 dark:text-white/40">Risk</p>
                     </div>
                   </div>
                 </motion.li>
@@ -234,13 +234,13 @@ export function RiskDetail({ risk }: { risk: RiskAssessmentData | null | undefin
                         transition={{ duration: reduce ? 0 : 0.9, delay: reduce ? 0 : 0.2 + i * 0.06, ease: EASE }}
                       />
                     </svg>
-                    <span className="absolute inset-0 flex items-center justify-center text-[11px] font-semibold tabular-nums text-slate-900 dark:text-white">
+                    <span className="absolute inset-0 flex items-center justify-center text-[13px] font-semibold tabular-nums text-slate-900 dark:text-white">
                       {formatNumber(s.effectiveness)}
                     </span>
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start gap-1">
-                      <h4 className="text-[13px] font-semibold leading-snug text-slate-900 dark:text-white">{s.title}</h4>
+                      <h4 className="text-[15px] font-semibold leading-snug text-slate-900 dark:text-white">{s.title}</h4>
                       <RuleTip rule={s.rule} label={s.title} />
                     </div>
                     <p className="mt-0.5 line-clamp-3 text-xs leading-relaxed text-slate-600 dark:text-white/60">{s.description}</p>

@@ -105,7 +105,7 @@ export function ReportAssessment({ report: r, facilityTitle, itemLabel, onDecide
               Change request
             </StatusPill>
           )}
-          <span className="text-[11px] text-slate-500 dark:text-white/50">
+          <span className="text-[13px] text-slate-500 dark:text-white/50">
             Filed {formatDate(r.createdAt)}
             {days != null && ` · ${days === 0 ? "today" : `${days} days ago`}`}
           </span>
@@ -113,7 +113,7 @@ export function ReportAssessment({ report: r, facilityTitle, itemLabel, onDecide
         <h2 className="text-lg font-semibold leading-snug tracking-tight text-slate-900 dark:text-white">
           {cr ? "Request to change the school record" : [facilityTitle, itemLabel].filter(Boolean).join(" — ") || "Issue report"}
         </h2>
-        <p className="flex flex-wrap items-center gap-x-2 text-[13px] text-slate-600 dark:text-white/60">
+        <p className="flex flex-wrap items-center gap-x-2 text-[15px] text-slate-600 dark:text-white/60">
           <span className="font-medium text-slate-800 dark:text-white/85">{r.school?.name ?? "Unknown school"}</span>
           {(r.school?.district || r.school?.province) && <span>· {[r.school?.district, r.school?.province].filter(Boolean).join(", ")}</span>}
           {r.schoolId && (
@@ -142,12 +142,12 @@ export function ReportAssessment({ report: r, facilityTitle, itemLabel, onDecide
             transition={{ duration: 0.45, delay: 0.05, ease: EASE }}
             className="relative overflow-hidden rounded-2xl bg-primary/[0.06] p-4 ring-1 ring-primary/25 dark:bg-primary/10"
           >
-            <h3 id={`${noteId}-what`} className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-primary dark:text-blue-300">
+            <h3 id={`${noteId}-what`} className="flex items-center gap-1.5 text-[13px] font-semibold uppercase tracking-[0.12em] text-primary dark:text-blue-300">
               <GitPullRequestArrow className="h-3.5 w-3.5" aria-hidden /> Requested change
             </h3>
             <div className="mt-2.5 overflow-hidden rounded-xl bg-white ring-1 ring-slate-900/6 dark:bg-white/[0.04] dark:ring-white/8">
               <table className="w-full text-sm">
-                <thead className="bg-slate-900/[0.03] text-left text-[11px] text-slate-500 dark:bg-white/[0.03] dark:text-white/45">
+                <thead className="bg-slate-900/[0.03] text-left text-[13px] text-slate-500 dark:bg-white/[0.03] dark:text-white/45">
                   <tr>
                     <th scope="col" className="px-3 py-2 font-medium">Field</th>
                     <th scope="col" className="px-3 py-2 font-medium">Now</th>
@@ -180,7 +180,7 @@ export function ReportAssessment({ report: r, facilityTitle, itemLabel, onDecide
             transition={{ duration: 0.45, delay: 0.05, ease: EASE }}
             className="relative overflow-hidden rounded-2xl bg-primary/[0.06] p-4 ring-1 ring-primary/25 dark:bg-primary/10 dark:ring-primary/30"
           >
-            <h3 id={`${noteId}-what`} className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-primary dark:text-blue-300">
+            <h3 id={`${noteId}-what`} className="flex items-center gap-1.5 text-[13px] font-semibold uppercase tracking-[0.12em] text-primary dark:text-blue-300">
               <AlertTriangle className="h-3.5 w-3.5" aria-hidden /> Reported problem
             </h3>
             <p className="mt-1.5 whitespace-pre-line break-words text-sm font-medium leading-relaxed text-slate-900 sm:text-[15px] dark:text-white">
@@ -189,7 +189,7 @@ export function ReportAssessment({ report: r, facilityTitle, itemLabel, onDecide
             {cats.length > 0 && (
               <ul className="mt-2.5 flex flex-wrap gap-1.5" aria-label="Categories">
                 {cats.map((c) => (
-                  <li key={c} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 ring-1 ring-primary/20 dark:bg-white/8 dark:text-white/80 dark:ring-white/10">
+                  <li key={c} className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[13px] font-medium text-slate-700 ring-1 ring-primary/20 dark:bg-white/8 dark:text-white/80 dark:ring-white/10">
                     <Tag className="h-3 w-3 text-primary dark:text-blue-300" aria-hidden />
                     {c}
                   </li>
@@ -211,11 +211,11 @@ export function ReportAssessment({ report: r, facilityTitle, itemLabel, onDecide
           >
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
               <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Your decision</h3>
-              <ol className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-white/55">
+              <ol className="flex items-center gap-3 text-[13px] text-slate-500 dark:text-white/55">
                 <li className={cn("inline-flex items-center gap-1 transition-colors", noted && "text-primary dark:text-blue-300")}>
                   <span
                     className={cn(
-                      "flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-semibold text-white transition-colors duration-300",
+                      "flex h-4 w-4 items-center justify-center rounded-full text-[12px] font-semibold text-white transition-colors duration-300",
                       noted ? "bg-primary" : "bg-primary/70",
                     )}
                   >
@@ -235,7 +235,7 @@ export function ReportAssessment({ report: r, facilityTitle, itemLabel, onDecide
                   Write a note
                 </li>
                 <li className={cn("inline-flex items-center gap-1 transition-colors", noted && "font-medium text-slate-800 dark:text-white/85")}>
-                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-white">2</span>
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[12px] font-semibold text-white">2</span>
                   Choose an action
                 </li>
               </ol>
@@ -294,12 +294,12 @@ export function ReportAssessment({ report: r, facilityTitle, itemLabel, onDecide
                 >
                   {a.label}
                   {shortcuts && (
-                    <kbd aria-hidden className={cn("hidden rounded px-1 font-mono sm:inline text-[10px] uppercase", i === 0 ? "bg-white/20" : "bg-slate-900/8 dark:bg-white/10")}>{a.shortcut}</kbd>
+                    <kbd aria-hidden className={cn("hidden rounded px-1 font-mono sm:inline text-[12px] uppercase", i === 0 ? "bg-white/20" : "bg-slate-900/8 dark:bg-white/10")}>{a.shortcut}</kbd>
                   )}
                 </motion.button>
               ))}
               {onAutoAdvanceChange && (
-                <label className="ml-auto inline-flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-500 dark:text-white/50">
+                <label className="ml-auto inline-flex cursor-pointer items-center gap-1.5 text-[13px] text-slate-500 dark:text-white/50">
                   <input type="checkbox" checked={!!autoAdvance} onChange={(e) => onAutoAdvanceChange(e.target.checked)} className="h-3.5 w-3.5 accent-[hsl(var(--primary))]" />
                   Next report after deciding
                 </label>
@@ -316,7 +316,7 @@ export function ReportAssessment({ report: r, facilityTitle, itemLabel, onDecide
         {/* ── Evidence ──────────────────────────────────────────── */}
         {!cr && (
           <section aria-label="Photos and files" className="space-y-2">
-            <h3 className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 dark:text-white/50">
+            <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-slate-500 dark:text-white/50">
               <Camera className="h-3.5 w-3.5" aria-hidden /> Photos and files {files.length > 0 && `· ${files.length}`}
             </h3>
             {files.length === 0 ? (
@@ -345,7 +345,7 @@ export function ReportAssessment({ report: r, facilityTitle, itemLabel, onDecide
           <Fact icon={CalendarDays} label="Filed" value={formatDateTime(r.createdAt)} />
           {r.resolvedAt && <Fact icon={Check} label="Resolved" value={formatDateTime(r.resolvedAt)} />}
           <div className="min-w-0">
-            <dt className="text-[11px] text-slate-500 dark:text-white/45">Report number</dt>
+            <dt className="text-[13px] text-slate-500 dark:text-white/45">Report number</dt>
             <dd className="mt-0.5 flex items-center gap-1 font-mono text-xs text-slate-700 dark:text-white/75">
               {r.id.slice(0, 8)}
               <button
@@ -369,7 +369,7 @@ export function ReportAssessment({ report: r, facilityTitle, itemLabel, onDecide
         {(r.reviewedAt || r.reviewNote) && (
           <section aria-label="Last review" className="flex gap-3 rounded-2xl bg-primary/[0.05] p-3.5 ring-1 ring-primary/15 dark:bg-primary/10">
             <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0 text-primary dark:text-blue-300" aria-hidden />
-            <div className="min-w-0 text-[13px]">
+            <div className="min-w-0 text-[15px]">
               <p className="text-slate-700 dark:text-white/80">
                 <b className="font-semibold">{REVIEW_VERB[r.status] ?? st.label}</b>
                 {reviewer && <> by {reviewer}</>}
@@ -388,11 +388,11 @@ export function ReportAssessment({ report: r, facilityTitle, itemLabel, onDecide
 function Fact({ icon: Icon, label, value }: { icon: typeof Tag; label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <dt className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-white/45">
+      <dt className="flex items-center gap-1 text-[13px] text-slate-500 dark:text-white/45">
         <Icon className="h-3 w-3" aria-hidden />
         {label}
       </dt>
-      <dd className="mt-0.5 break-words text-[13px] font-medium text-slate-900 dark:text-white/90">{value}</dd>
+      <dd className="mt-0.5 break-words text-[15px] font-medium text-slate-900 dark:text-white/90">{value}</dd>
     </div>
   );
 }

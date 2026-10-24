@@ -69,7 +69,7 @@ export function DetailsHero({ name, code, place, status, type, priority, establi
         >
           <div className="min-w-0 max-w-3xl">
             <ul className="mb-5 flex flex-wrap items-center gap-2">
-              {code && <li className={cn(pill, "font-mono text-[11px] tracking-wide")}>{code}</li>}
+              {code && <li className={cn(pill, "font-mono text-[13px] tracking-wide")}>{code}</li>}
               {status && (
                 <li className={pill}>
                   <span className="h-1.5 w-1.5 rounded-full" style={{ background: STATUS_DOT[status] ?? "#94a3b8" }} aria-hidden />

@@ -64,7 +64,7 @@ export function Recommendations({ items, actions, onToggle, limit, onViewAll, ca
               ) : null;
             })}
           </div>
-          <span className="text-[11px] tabular-nums text-slate-500 dark:text-white/50">
+          <span className="text-[13px] tabular-nums text-slate-500 dark:text-white/50">
             {done}/{items.length}
           </span>
         </div>
@@ -110,7 +110,7 @@ export function Recommendations({ items, actions, onToggle, limit, onViewAll, ca
                   <p
                     title={compact ? text : undefined}
                     className={cn(
-                      "text-[13px] leading-relaxed",
+                      "text-[15px] leading-relaxed",
                       compact && "line-clamp-1 leading-snug",
                       status === "done"
                         ? "text-slate-400 line-through dark:text-white/35"
@@ -118,14 +118,14 @@ export function Recommendations({ items, actions, onToggle, limit, onViewAll, ca
                     )}
                   >
                     {tag && (
-                      <span className={cn("mr-1.5 inline-block rounded-md px-1.5 py-px align-[1px] text-[10px] font-semibold no-underline", tag.tone)}>
+                      <span className={cn("mr-1.5 inline-block rounded-md px-1.5 py-px align-[1px] text-[12px] font-semibold no-underline", tag.tone)}>
                         {tag.label}
                       </span>
                     )}
                     {text}
                   </p>
                   {status !== "open" && (
-                    <span className="text-[10px] font-medium text-slate-500 dark:text-white/50">{STATUS_LABEL[status]}</span>
+                    <span className="text-[12px] font-medium text-slate-500 dark:text-white/50">{STATUS_LABEL[status]}</span>
                   )}
                 </div>
               </motion.li>

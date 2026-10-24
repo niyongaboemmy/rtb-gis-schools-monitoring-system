@@ -143,7 +143,7 @@ export const ViewerAddBuildingModal: React.FC<ViewerAddBuildingModalProps> = ({
           <div style={{ flex: 1 }}>
             <div
               style={{
-                fontSize: 12,
+                fontSize: 14,
                 fontWeight: 700,
                 color: "#fff",
                 letterSpacing: "-0.2px",
@@ -153,7 +153,7 @@ export const ViewerAddBuildingModal: React.FC<ViewerAddBuildingModalProps> = ({
             </div>
             <div
               style={{
-                fontSize: 9,
+                fontSize: 12,
                 color: "rgba(255,255,255,0.3)",
                 fontFamily: FONT_MONO,
                 letterSpacing: "0.8px",
@@ -179,7 +179,7 @@ export const ViewerAddBuildingModal: React.FC<ViewerAddBuildingModalProps> = ({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 11,
+              fontSize: 13,
             }}
           >
             ✕
@@ -201,7 +201,7 @@ export const ViewerAddBuildingModal: React.FC<ViewerAddBuildingModalProps> = ({
           {error && (
             <div
               style={{
-                fontSize: 10,
+                fontSize: 12,
                 color: "#ff7070",
                 background: "rgba(255,70,70,0.1)",
                 border: "1px solid rgba(255,70,70,0.2)",
@@ -319,7 +319,7 @@ export const ViewerAddBuildingModal: React.FC<ViewerAddBuildingModalProps> = ({
                 background: "rgba(255,255,255,0.04)",
                 color: "rgba(232,232,240,0.55)",
                 fontFamily: FONT_MONO,
-                fontSize: 10,
+                fontSize: 12,
                 cursor: "pointer",
               }}
             >
@@ -338,7 +338,7 @@ export const ViewerAddBuildingModal: React.FC<ViewerAddBuildingModalProps> = ({
                   : "rgba(59,130,246,0.22)",
                 color: saving ? "rgba(147,197,253,0.5)" : "#93c5fd",
                 fontFamily: FONT_MONO,
-                fontSize: 10,
+                fontSize: 12,
                 fontWeight: 700,
                 cursor: saving ? "default" : "pointer",
               }}
@@ -361,7 +361,7 @@ const fieldInputStyle: React.CSSProperties = {
   background: "rgba(255,255,255,0.04)",
   color: "#e8e8f0",
   fontFamily: FONT_MONO,
-  fontSize: 10,
+  fontSize: 12,
   outline: "none",
 };
 
@@ -377,7 +377,7 @@ function Field({
       <div
         style={{
           fontFamily: FONT_MONO,
-          fontSize: 9,
+          fontSize: 12,
           fontWeight: 600,
           color: "rgba(232,232,240,0.3)",
           textTransform: "uppercase",

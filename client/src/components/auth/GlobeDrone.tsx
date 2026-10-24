@@ -628,7 +628,7 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
         <span className="absolute left-1/2 top-1/2 h-px w-5 -translate-x-1/2 -translate-y-1/2 bg-brand-accent/70 dark:bg-white/60" />
         <span className="absolute left-1/2 top-1/2 h-5 w-px -translate-x-1/2 -translate-y-1/2 bg-brand-accent/70 dark:bg-white/60" />
         {/* Readout bar along the bottom — the drone hovers in the upper half. */}
-        <div className="absolute bottom-[10%] left-1/2 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-white/80 px-3 py-1 font-mono text-[10px] tabular-nums text-brand-ink/80 shadow-sm backdrop-blur-md dark:bg-black/50 dark:text-white/80">
+        <div className="absolute bottom-[10%] left-1/2 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-white/80 px-3 py-1 font-mono text-[12px] tabular-nums text-brand-ink/80 shadow-sm backdrop-blur-md dark:bg-black/50 dark:text-white/80">
           <span className="gd-dot h-1.5 w-1.5 rounded-full" data-state="rec" />
           <span className="font-medium text-brand-ink dark:text-white">
             REC <span ref={t.timecode}>00:00:00</span>
@@ -676,9 +676,9 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
               Capturing
             </span>
           </div>
-          <p ref={t.mission} className="mt-1.5 line-clamp-2 text-[12.5px] font-semibold leading-snug text-brand-ink dark:text-white" />
-          <p ref={t.place} className="mt-0.5 truncate text-[11px] text-brand-ink/70 dark:text-white/65" />
-          <p ref={t.coords} className="mt-0.5 truncate font-mono text-[10px] text-brand-ink/55 dark:text-brand-soft/65" />
+          <p ref={t.mission} className="mt-1.5 line-clamp-2 text-[13px] font-semibold leading-snug text-brand-ink dark:text-white" />
+          <p ref={t.place} className="mt-0.5 truncate text-[13px] text-brand-ink/70 dark:text-white/65" />
+          <p ref={t.coords} className="mt-0.5 truncate font-mono text-[12px] text-brand-ink/55 dark:text-brand-soft/65" />
           <div className="mt-2 grid grid-cols-3 gap-1.5 border-t border-brand-accent/10 pt-2 dark:border-white/10">
             <Stat label="AGL" valueRef={t.agl} />
             <Stat label="GSD" valueRef={t.gsd} />
@@ -688,7 +688,7 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
             <span className="relative h-1 flex-1 overflow-hidden rounded-full bg-brand-accent/10 dark:bg-white/10">
               <span ref={t.bar} className="gd-bar absolute inset-0 origin-left rounded-full" data-state="rec" style={{ transform: "scaleX(0)" }} />
             </span>
-            <span className="font-mono text-[10px] tabular-nums text-brand-ink/70 dark:text-white/70">
+            <span className="font-mono text-[12px] tabular-nums text-brand-ink/70 dark:text-white/70">
               <span ref={t.frames}>0/0</span> img
             </span>
           </div>

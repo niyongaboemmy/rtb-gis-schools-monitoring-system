@@ -93,7 +93,7 @@ export function LayersPanel({
                     </span>
                   )}
                 </span>
-                <span className={cn("w-full truncate text-center text-[11px]", on ? "text-primary" : MUTED)}>{b.label}</span>
+                <span className={cn("w-full truncate text-center text-[13px]", on ? "text-primary" : MUTED)}>{b.label}</span>
               </button>
             );
           })}

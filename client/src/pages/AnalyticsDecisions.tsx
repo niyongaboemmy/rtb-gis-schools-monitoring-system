@@ -159,8 +159,8 @@ export default function AnalyticsDecisions() {
             <Layers className="h-5 w-5" aria-hidden />
           </span>
           <div className="min-w-0">
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Priorities</h1>
-            <p className="text-[13px] text-slate-500 dark:text-white/55">Which schools need help first, ranked by School Condition Score.</p>
+            <h1 className="text-[1.625rem] sm:text-[1.875rem] font-semibold tracking-tight text-slate-900 dark:text-white">Priorities</h1>
+            <p className="text-[15px] text-slate-500 dark:text-white/55">Which schools need help first, ranked by School Condition Score.</p>
           </div>
         </div>
         <div className="flex w-full gap-2 sm:w-auto">
@@ -196,7 +196,7 @@ export default function AnalyticsDecisions() {
       {loadError && <DashboardError title="We couldn't load the list of schools" onRetry={fetchAll} retrying={loading} />}
 
       {/* ── Key figures (server overview = national dashboard) ─── */}
-      <dl className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <dl className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 xl:grid-cols-4">
         <FloatingStat
           index={0}
           compact
@@ -340,7 +340,7 @@ export default function AnalyticsDecisions() {
         {/* Column labels (desktop) */}
         <div
           aria-hidden
-          className="hidden grid-cols-[2rem_auto_minmax(0,1.6fr)_minmax(0,1fr)_7rem_6rem_auto] gap-x-3.5 border-y border-slate-900/6 px-4 py-2 text-[11px] font-medium text-slate-400 lg:grid dark:border-white/8 dark:text-white/40"
+          className="hidden grid-cols-[2rem_auto_minmax(0,1.6fr)_minmax(0,1fr)_7rem_6rem_auto] gap-x-3.5 border-y border-slate-900/6 px-4 py-2 text-[13px] font-medium text-slate-400 lg:grid dark:border-white/8 dark:text-white/40"
         >
           <span>#</span>
           <span className="w-[46px]">Score</span>

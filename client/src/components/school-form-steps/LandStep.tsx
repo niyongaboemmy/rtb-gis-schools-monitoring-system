@@ -119,7 +119,7 @@ export function LandStep({
                 m<sup>2</sup>
               </span>
             </div>
-            <p className="text-[10px] uppercase font-bold text-primary/50 tracking-tighter mt-1">
+            <p className="text-[12px] uppercase font-bold text-primary/50 tracking-tighter mt-1">
               Combined Institution Footprint
             </p>
           </div>

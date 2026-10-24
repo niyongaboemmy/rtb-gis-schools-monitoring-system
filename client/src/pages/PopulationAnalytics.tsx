@@ -127,7 +127,7 @@ function KpiCard({
           <Icon className="w-5 h-5" />
         </div>
         <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-1 flex items-center gap-1">
+          <p className="text-[13px] font-bold uppercase tracking-widest text-muted-foreground mb-1 flex items-center gap-1">
             {label}
             <MetricInfo id={metricId} size="xs" />
           </p>
@@ -135,7 +135,7 @@ function KpiCard({
             {value}
           </p>
           {sub && (
-            <p className="text-[11px] text-muted-foreground mt-1">{sub}</p>
+            <p className="text-[13px] text-muted-foreground mt-1">{sub}</p>
           )}
         </div>
       </CardContent>
@@ -153,7 +153,7 @@ interface BarTooltipProps {
 function BarTooltip({ active, payload, label }: BarTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-card border border-border/20 rounded-2xl p-3 shadow-xl text-[12px] min-w-40">
+    <div className="bg-card border border-border/20 rounded-2xl p-3 shadow-xl text-[14px] min-w-40">
       <p className="font-semibold text-foreground mb-2 truncate max-w-45">{label}</p>
       {payload.map((p) => (
         <div key={p.name} className="flex items-center justify-between gap-4">
@@ -203,7 +203,7 @@ function ProvinceRow({
             <Badge
               variant="outline"
               className={cn(
-                "text-[9px] font-black uppercase tracking-widest rounded-full px-2 py-0 border-transparent",
+                "text-[12px] font-black uppercase tracking-widest rounded-full px-2 py-0 border-transparent",
                 densityColor(avgDensity).replace("bg-", "bg-") + "/10",
                 densityTextColor(avgDensity),
               )}
@@ -211,7 +211,7 @@ function ProvinceRow({
               {densityLabel(avgDensity)}
             </Badge>
           </div>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
+          <p className="text-[13px] text-muted-foreground mt-0.5">
             {schools.length} school{schools.length !== 1 ? "s" : ""} ·{" "}
             {fmt(totalPop2km)} people within 2 km
           </p>
@@ -220,9 +220,9 @@ function ProvinceRow({
           <p className={cn("text-base font-semibold tabular-nums", densityTextColor(avgDensity))}>
             {fmt(avgDensity)}
           </p>
-          <p className="text-[10px] text-muted-foreground">people/km² (avg)</p>
+          <p className="text-[12px] text-muted-foreground">people/km² (avg)</p>
         </div>
-        <span className="text-muted-foreground text-[10px] font-black ml-2" aria-hidden="true">
+        <span className="text-muted-foreground text-[12px] font-black ml-2" aria-hidden="true">
           {expanded ? "▲" : "▼"}
         </span>
       </button>
@@ -249,7 +249,7 @@ function ProvinceRow({
                       className="flex items-center gap-3 p-3 rounded-xl bg-card/50 border border-border/10"
                     >
                       <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-medium text-foreground truncate">
+                        <p className="text-[14px] font-medium text-foreground truncate">
                           {r.school?.name ?? r.schoolId}
                         </p>
                         <div className="flex items-center gap-2 mt-1.5">
@@ -259,7 +259,7 @@ function ProvinceRow({
                               style={{ width: `${Math.min(100, (d / maxD) * 100)}%` }}
                             />
                           </div>
-                          <span className={cn("text-[10px] font-semibold tabular-nums shrink-0", densityTextColor(d))}>
+                          <span className={cn("text-[12px] font-semibold tabular-nums shrink-0", densityTextColor(d))}>
                             {fmt(d)} people/km²
                           </span>
                         </div>
@@ -394,7 +394,7 @@ export default function PopulationAnalytics() {
               <Button
                 onClick={handleSync}
                 disabled={syncing}
-                className="rounded-full h-10 px-5 font-black uppercase tracking-wider text-[10px] bg-linear-to-r from-primary to-primary/80 shadow-none hover:opacity-90 transition-all"
+                className="rounded-full h-10 px-5 font-black uppercase tracking-wider text-[12px] bg-linear-to-r from-primary to-primary/80 shadow-none hover:opacity-90 transition-all"
               >
                 <RefreshCw className={cn("mr-2 h-3.5 w-3.5", syncing && "animate-spin")} />
                 {syncing ? "Syncing…" : "Sync Population Data"}
@@ -412,7 +412,7 @@ export default function PopulationAnalytics() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             className={cn(
-              "flex items-center gap-3 px-5 py-3 rounded-2xl text-[13px] font-medium border",
+              "flex items-center gap-3 px-5 py-3 rounded-2xl text-[15px] font-medium border",
               syncResult.errors.length === 0
                 ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400"
                 : "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400",
@@ -428,7 +428,7 @@ export default function PopulationAnalytics() {
               {syncResult.errors.length > 0 && ` · ${syncResult.errors.length} error(s)`}
             </span>
             {syncResult.errors.length > 0 && (
-              <span className="text-[11px] opacity-70 ml-1">
+              <span className="text-[13px] opacity-70 ml-1">
                 ({syncResult.errors.slice(0, 2).join("; ")}
                 {syncResult.errors.length > 2 ? "…" : ""})
               </span>
@@ -509,7 +509,7 @@ export default function PopulationAnalytics() {
                   Population by distance — top {barData.length} schools
                   <MetricInfo id="population.buffers" size="xs" />
                 </CardTitle>
-                <p className="text-[12px] text-muted-foreground mt-1">
+                <p className="text-[14px] text-muted-foreground mt-1">
                   2 km figures come from ArcGIS. 1 km and 500 m are estimates (50% and 15% of 2 km), not measurements.
                 </p>
               </CardHeader>
@@ -529,7 +529,7 @@ export default function PopulationAnalytics() {
                     />
                     <XAxis
                       dataKey="name"
-                      tick={{ fontSize: 10, fontWeight: 600, fill: "hsl(var(--muted-foreground))" }}
+                      tick={{ fontSize: 12, fontWeight: 600, fill: "hsl(var(--muted-foreground))" }}
                       tickLine={false}
                       axisLine={false}
                       angle={-35}
@@ -538,7 +538,7 @@ export default function PopulationAnalytics() {
                       height={60}
                     />
                     <YAxis
-                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                      tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
                       tickLine={false}
                       axisLine={false}
                       tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
@@ -546,7 +546,7 @@ export default function PopulationAnalytics() {
                     />
                     <RechartsTooltip content={<BarTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
                     <Legend
-                      wrapperStyle={{ fontSize: 11, fontWeight: 700, paddingTop: 8 }}
+                      wrapperStyle={{ fontSize: 13, fontWeight: 700, paddingTop: 8 }}
                       formatter={(value) => (
                         <span style={{ color: "hsl(var(--muted-foreground))", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                           {value}
@@ -582,7 +582,7 @@ export default function PopulationAnalytics() {
                     ].map((item) => (
                       <div key={item.label} className="flex items-center gap-1.5">
                         <div className={cn("w-2.5 h-2.5 rounded-sm", item.cls)} />
-                        <span className="text-[10px] font-medium text-muted-foreground">{item.label}</span>
+                        <span className="text-[12px] font-medium text-muted-foreground">{item.label}</span>
                       </div>
                     ))}
                   </div>

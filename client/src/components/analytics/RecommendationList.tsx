@@ -103,7 +103,7 @@ export function RecommendationList({
       <h3 className="flex items-center gap-2 text-sm font-medium text-slate-900 dark:text-white">
         <Sparkles className="h-4 w-4 text-primary" aria-hidden />
         {title}
-        <span className="rounded-full bg-slate-900/5 px-1.5 text-[11px] font-medium tabular-nums text-slate-500 dark:bg-white/8 dark:text-white/55">
+        <span className="rounded-full bg-slate-900/5 px-1.5 text-[13px] font-medium tabular-nums text-slate-500 dark:bg-white/8 dark:text-white/55">
           {recommendations.length}
         </span>
       </h3>

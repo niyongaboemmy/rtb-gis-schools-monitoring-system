@@ -74,7 +74,7 @@ export function MediaViewer({ items, index, onIndexChange, onClose, openReports,
   };
 
   const shortcut =
-    "inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-2 text-[13px] text-white/85 backdrop-blur transition-colors hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60";
+    "inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-2 text-[15px] text-white/85 backdrop-blur transition-colors hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60";
 
   return createPortal(
     <motion.div
@@ -205,7 +205,7 @@ export function MediaViewer({ items, index, onIndexChange, onClose, openReports,
                   initial={reduce ? false : { scale: 0.4 }}
                   animate={{ scale: 1 }}
                   transition={{ type: "spring", stiffness: 500, damping: 22 }}
-                  className="min-w-5 rounded-full bg-primary px-1.5 text-center text-[11px] leading-5 tabular-nums text-white"
+                  className="min-w-5 rounded-full bg-primary px-1.5 text-center text-[13px] leading-5 tabular-nums text-white"
                 >
                   {reports}
                 </motion.span>

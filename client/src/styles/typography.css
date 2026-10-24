@@ -28,6 +28,19 @@
      (html, inputs, buttons, code) all resolve to these. */
   --font-sans: var(--font-family-primary);
   --font-mono: var(--font-family-mono);
+
+  /* Type scale — small end lifted. The UI is dense (sidebar, tables,
+     cards), so most copy is `text-xs` / `text-sm`; at Tailwind's stock
+     12px / 14px it read as a zoomed-out page. 14px is the floor for
+     secondary text, 16px for body/controls, 17px for base; lg and up are
+     stock. Hard-coded micro sizes (`text-[12px]` badges, eyebrows)
+     follow the same steps: 11px is the smallest UI text. */
+  --text-xs: 0.875rem; /* 14px */
+  --text-xs--line-height: calc(1.25 / 0.875); /* 20px */
+  --text-sm: 1rem; /* 16px */
+  --text-sm--line-height: calc(1.5 / 1); /* 24px */
+  --text-base: 1.0625rem; /* 17px */
+  --text-base--line-height: calc(1.625 / 1.0625); /* 26px */
 }
 
 @layer base {

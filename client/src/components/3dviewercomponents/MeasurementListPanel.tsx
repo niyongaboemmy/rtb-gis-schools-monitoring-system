@@ -115,7 +115,7 @@ export const MeasurementListPanel: React.FC<Props> = ({
       <header className="flex shrink-0 items-center gap-2 px-4 pb-2 pt-2 md:pt-4">
         <h2 className="flex min-w-0 flex-1 items-baseline gap-1.5 pl-1 text-[15px] font-medium text-slate-900 dark:text-white">
           Measurements
-          <span className="text-[13px] tabular-nums text-slate-500 dark:text-white/40">{rows.length}</span>
+          <span className="text-[15px] tabular-nums text-slate-500 dark:text-white/40">{rows.length}</span>
         </h2>
         <label className="flex items-center">
           <span className="sr-only">Units</span>
@@ -123,7 +123,7 @@ export const MeasurementListPanel: React.FC<Props> = ({
             value={unit}
             onChange={(e) => onUnitChange(e.target.value as DisplayUnit)}
             className={cn(
-              "h-9 cursor-pointer rounded-full bg-slate-900/[0.04] px-3 text-[13px] text-slate-700 transition-colors hover:bg-slate-900/[0.08] dark:bg-white/6 dark:text-white/80 dark:hover:bg-white/10 dark:[color-scheme:dark]",
+              "h-9 cursor-pointer rounded-full bg-slate-900/[0.04] px-3 text-[15px] text-slate-700 transition-colors hover:bg-slate-900/[0.08] dark:bg-white/6 dark:text-white/80 dark:hover:bg-white/10 dark:[color-scheme:dark]",
               focusRing,
             )}
           >
@@ -143,7 +143,7 @@ export const MeasurementListPanel: React.FC<Props> = ({
         {rows.length === 0 && (
           <li className="flex flex-col items-center gap-2 px-6 py-10 text-center">
             <Ruler className="h-6 w-6 text-slate-300 dark:text-white/25" aria-hidden />
-            <p className="text-[13px] text-slate-600 dark:text-white/60">
+            <p className="text-[15px] text-slate-600 dark:text-white/60">
               No measurements yet. Choose Distance, Area or Perimeter in the toolbar to start.
             </p>
           </li>
@@ -191,7 +191,7 @@ export const MeasurementListPanel: React.FC<Props> = ({
                           }}
                           aria-label="Measurement name"
                           className={cn(
-                            "h-9 w-full rounded-full bg-white/80 px-3 text-[13px] text-slate-900 dark:bg-white/8 dark:text-white",
+                            "h-9 w-full rounded-full bg-white/80 px-3 text-[15px] text-slate-900 dark:bg-white/8 dark:text-white",
                             focusRing,
                           )}
                         />
@@ -213,20 +213,20 @@ export const MeasurementListPanel: React.FC<Props> = ({
                         className={cn("block w-full rounded-xl text-left", focusRing)}
                         title="Fly to this measurement"
                       >
-                        <span className="block truncate text-[13px] font-medium text-slate-800 dark:text-white/90">{r.name}</span>
-                        <span className="block text-[14px] tabular-nums text-primary dark:text-blue-300">{r.value}</span>
+                        <span className="block truncate text-[15px] font-medium text-slate-800 dark:text-white/90">{r.name}</span>
+                        <span className="block text-[15px] tabular-nums text-primary dark:text-blue-300">{r.value}</span>
                         {r.secondary && (
-                          <span className="block text-[11px] tabular-nums text-slate-600 dark:text-white/55">{r.secondary}</span>
+                          <span className="block text-[13px] tabular-nums text-slate-600 dark:text-white/55">{r.secondary}</span>
                         )}
                       </button>
                     )}
                     {r.warning && (
-                      <p className="mt-1 flex items-start gap-1 text-[11px] text-primary dark:text-blue-300">
+                      <p className="mt-1 flex items-start gap-1 text-[13px] text-primary dark:text-blue-300">
                         <AlertTriangle className="mt-px h-3 w-3 shrink-0" aria-hidden />
                         {r.warning}
                       </p>
                     )}
-                    <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-slate-600 dark:text-white/50">
+                    <div className="mt-1 flex flex-wrap items-center gap-1 text-[13px] text-slate-600 dark:text-white/50">
                       <span className="rounded-full bg-slate-900/[0.05] px-2 py-0.5 dark:bg-white/8">{KIND_LABELS[r.kind]}</span>
                       <span
                         className={cn(
@@ -299,7 +299,7 @@ export const MeasurementListPanel: React.FC<Props> = ({
               }
             }}
             className={cn(
-              "flex h-9 items-center gap-1.5 rounded-full bg-slate-900/[0.04] px-3.5 text-[13px] text-slate-700 transition-colors hover:bg-slate-900/[0.08] disabled:opacity-50 dark:bg-white/6 dark:text-white/80 dark:hover:bg-white/10",
+              "flex h-9 items-center gap-1.5 rounded-full bg-slate-900/[0.04] px-3.5 text-[15px] text-slate-700 transition-colors hover:bg-slate-900/[0.08] disabled:opacity-50 dark:bg-white/6 dark:text-white/80 dark:hover:bg-white/10",
               focusRing,
             )}
           >
@@ -313,7 +313,7 @@ export const MeasurementListPanel: React.FC<Props> = ({
                 initial={reduce ? false : { opacity: 0, scale: 0.97 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.2, ease: EASE }}
-                className="ml-auto flex items-center gap-1 text-[13px] text-slate-700 dark:text-white/80"
+                className="ml-auto flex items-center gap-1 text-[15px] text-slate-700 dark:text-white/80"
                 role="alertdialog"
                 aria-label="Confirm clear all"
               >
@@ -344,7 +344,7 @@ export const MeasurementListPanel: React.FC<Props> = ({
                 animate={{ opacity: 1 }}
                 onClick={() => setConfirmClear(true)}
                 className={cn(
-                  "ml-auto flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[13px] text-destructive transition-colors hover:bg-destructive/10",
+                  "ml-auto flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[15px] text-destructive transition-colors hover:bg-destructive/10",
                   focusRing,
                 )}
               >
@@ -352,7 +352,7 @@ export const MeasurementListPanel: React.FC<Props> = ({
               </motion.button>
             )
         )}
-        {footnote && <p className="w-full text-[11px] text-slate-600 dark:text-white/45">{footnote}</p>}
+        {footnote && <p className="w-full text-[13px] text-slate-600 dark:text-white/45">{footnote}</p>}
       </footer>
     </motion.section>
   );

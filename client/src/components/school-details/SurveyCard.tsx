@@ -69,18 +69,18 @@ export function SurveyCard({ facilities, survey, complianceScore, onUpdateSurvey
       onAction={onUpdateSurvey}
     >
       {facilities.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-[13px] text-slate-500 dark:border-white/12 dark:text-white/50">
+        <p className="rounded-2xl border border-dashed border-slate-300 p-6 text-center text-[15px] text-slate-500 dark:border-white/12 dark:text-white/50">
           No survey checklist is set up yet.
         </p>
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-[12rem_minmax(0,1fr)] md:items-center">
             <div>
-              <p className="text-[11px] font-medium text-slate-500 dark:text-white/45">Checklist score</p>
+              <p className="text-[13px] font-medium text-slate-500 dark:text-white/45">Checklist score</p>
               <p className="mt-0.5 text-3xl font-semibold tabular-nums tracking-tight text-slate-900 dark:text-white">
                 {complianceScore == null ? "—" : formatPercent(complianceScore)}
               </p>
-              <p className="text-[11px] text-slate-500 dark:text-white/45">
+              <p className="text-[13px] text-slate-500 dark:text-white/45">
                 {formatNumber(items - totals.none)} of {formatNumber(items)} items checked
               </p>
             </div>
@@ -101,7 +101,7 @@ export function SurveyCard({ facilities, survey, complianceScore, onUpdateSurvey
                   ),
                 }))}
               />
-              <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 dark:text-white/50">
+              <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-slate-500 dark:text-white/50">
                 {COMPLIANCE.map((c) => (
                   <li key={c.key} className="inline-flex items-center gap-1.5">
                     <span className="h-1.5 w-1.5 rounded-full" style={{ background: c.color }} aria-hidden />
@@ -128,7 +128,7 @@ export function SurveyCard({ facilities, survey, complianceScore, onUpdateSurvey
                 >
                   <summary className="flex cursor-pointer list-none items-center gap-3 px-3.5 py-3 outline-none transition-colors hover:bg-slate-900/[0.03] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/60 dark:hover:bg-white/[0.04] [&::-webkit-details-marker]:hidden">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-semibold text-slate-900 dark:text-white">{f.title}</p>
+                      <p className="truncate text-[15px] font-semibold text-slate-900 dark:text-white">{f.title}</p>
                       <div className="mt-1.5 flex h-1.5 gap-[2px] overflow-hidden rounded-full bg-slate-900/6 dark:bg-white/8" aria-hidden>
                         {COMPLIANCE.map((c) =>
                           counts[c.key] ? (
@@ -137,7 +137,7 @@ export function SurveyCard({ facilities, survey, complianceScore, onUpdateSurvey
                         )}
                       </div>
                     </div>
-                    <span className="shrink-0 text-[11px] tabular-nums text-slate-500 dark:text-white/50">
+                    <span className="shrink-0 text-[13px] tabular-nums text-slate-500 dark:text-white/50">
                       <b className="font-semibold text-slate-800 dark:text-white/85">{ok}</b>/{rows.length} meet the standard
                     </span>
                     <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform group-open/fac:rotate-180" aria-hidden />
@@ -148,12 +148,12 @@ export function SurveyCard({ facilities, survey, complianceScore, onUpdateSurvey
                       return (
                         <li key={item.id} className="px-3.5 py-2.5">
                           <div className="flex items-start justify-between gap-3">
-                            <p className="min-w-0 text-[13px] leading-snug text-slate-800 dark:text-white/85">{item.label}</p>
+                            <p className="min-w-0 text-[15px] leading-snug text-slate-800 dark:text-white/85">{item.label}</p>
                             <StatusPill color={c.color}>{c.label}</StatusPill>
                           </div>
                           {record?.notes && <p className="mt-1 line-clamp-2 text-xs italic text-slate-500 dark:text-white/50">“{record.notes}”</p>}
                           {(record?.inspectedAt || record?.inspectedBy || (item.tags?.length ?? 0) > 0) && (
-                            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-400 dark:text-white/40">
+                            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px] text-slate-400 dark:text-white/40">
                               {record?.inspectedAt && (
                                 <span className="inline-flex items-center gap-1">
                                   <CalendarDays className="h-3 w-3" aria-hidden />
@@ -167,7 +167,7 @@ export function SurveyCard({ facilities, survey, complianceScore, onUpdateSurvey
                                 </span>
                               )}
                               {item.tags?.map((t) => (
-                                <span key={t} className="rounded bg-slate-900/5 px-1.5 py-px text-[10px] text-slate-500 dark:bg-white/6 dark:text-white/50">
+                                <span key={t} className="rounded bg-slate-900/5 px-1.5 py-px text-[12px] text-slate-500 dark:bg-white/6 dark:text-white/50">
                                   {t.toLowerCase()}
                                 </span>
                               ))}

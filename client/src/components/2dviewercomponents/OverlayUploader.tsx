@@ -107,7 +107,7 @@ export const OverlayUploader: React.FC<OverlayUploaderProps> = ({
       className="space-y-3 p-4"
     >
       <div className="flex items-center justify-between">
-        <h4 className="text-[13px] font-medium text-slate-800 dark:text-white">
+        <h4 className="text-[15px] font-medium text-slate-800 dark:text-white">
           New drone image
         </h4>
         <button
@@ -149,10 +149,10 @@ export const OverlayUploader: React.FC<OverlayUploaderProps> = ({
               >
                 <Upload className="h-[18px] w-[18px]" aria-hidden />
               </span>
-              <p className="text-[13px] font-medium text-slate-800 dark:text-white">
+              <p className="text-[15px] font-medium text-slate-800 dark:text-white">
                 {isDragActive ? "Drop the file here" : "Drag & drop KMZ or GeoTIFF"}
               </p>
-              <p className="mt-1 text-[12px] text-slate-600 dark:text-white/55">
+              <p className="mt-1 text-[14px] text-slate-600 dark:text-white/55">
                 or click to choose · up to 50 MB
               </p>
             </div>
@@ -171,10 +171,10 @@ export const OverlayUploader: React.FC<OverlayUploaderProps> = ({
                 <FileCheck className="h-4 w-4" aria-hidden />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-medium text-slate-800 dark:text-white">
+                <p className="truncate text-[15px] font-medium text-slate-800 dark:text-white">
                   {file.name}
                 </p>
-                <p className="text-[11px] tabular-nums text-slate-600 dark:text-white/55">
+                <p className="text-[13px] tabular-nums text-slate-600 dark:text-white/55">
                   {(file.size / (1024 * 1024)).toFixed(2)} MB
                 </p>
               </div>
@@ -192,7 +192,7 @@ export const OverlayUploader: React.FC<OverlayUploaderProps> = ({
 
             {busy && (
               <div className="space-y-2" role="status" aria-live="polite">
-                <div className="flex items-center justify-between text-[12px] text-slate-700 dark:text-white/75">
+                <div className="flex items-center justify-between text-[14px] text-slate-700 dark:text-white/75">
                   <span className="flex items-center gap-1.5">
                     {status === "processing" && (
                       <Loader2
@@ -225,7 +225,7 @@ export const OverlayUploader: React.FC<OverlayUploaderProps> = ({
                   />
                 </div>
                 {status === "processing" && (
-                  <p className="text-[11px] leading-snug text-slate-600 dark:text-white/55">
+                  <p className="text-[13px] leading-snug text-slate-600 dark:text-white/55">
                     Getting the image ready for the map. This can take a minute.
                   </p>
                 )}
@@ -235,7 +235,7 @@ export const OverlayUploader: React.FC<OverlayUploaderProps> = ({
             {status === "error" && (
               <div
                 role="alert"
-                className="flex items-start gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-[12px] leading-snug text-destructive"
+                className="flex items-start gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-[14px] leading-snug text-destructive"
               >
                 <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
                 <span>{error}</span>
@@ -245,7 +245,7 @@ export const OverlayUploader: React.FC<OverlayUploaderProps> = ({
             {status === "success" && (
               <div
                 role="status"
-                className="flex items-center justify-center gap-1.5 rounded-xl bg-primary/10 px-3 py-2 text-[12px] font-medium text-primary dark:text-blue-300"
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-primary/10 px-3 py-2 text-[14px] font-medium text-primary dark:text-blue-300"
               >
                 <Check className="h-3.5 w-3.5" aria-hidden />
                 Image ready
@@ -256,7 +256,7 @@ export const OverlayUploader: React.FC<OverlayUploaderProps> = ({
               <button
                 type="button"
                 onClick={handleUpload}
-                className="h-9 w-full rounded-full bg-primary text-[13px] font-medium text-white hover:bg-primary/90 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                className="h-9 w-full rounded-full bg-primary text-[15px] font-medium text-white hover:bg-primary/90 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
               >
                 {status === "error" ? "Try again" : "Upload"}
               </button>

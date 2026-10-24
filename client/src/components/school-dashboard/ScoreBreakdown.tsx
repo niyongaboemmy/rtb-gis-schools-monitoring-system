@@ -72,7 +72,7 @@ export function ScoreBreakdown({ metrics }: { metrics: SchoolMetrics | null }) {
       <DetailSection title="Where the points come from" aside="part score × weight = points">
         <div className="overflow-hidden rounded-2xl ring-1 ring-slate-900/6 dark:ring-white/8">
           <table className="w-full text-sm">
-            <thead className="bg-slate-900/[0.03] text-left text-[11px] font-medium text-slate-500 dark:bg-white/[0.03] dark:text-white/45">
+            <thead className="bg-slate-900/[0.03] text-left text-[13px] font-medium text-slate-500 dark:bg-white/[0.03] dark:text-white/45">
               <tr>
                 <th scope="col" className="px-4 py-2.5 font-medium">Part</th>
                 <th scope="col" className="hidden px-4 py-2.5 font-medium sm:table-cell">Score</th>
@@ -92,7 +92,7 @@ export function ScoreBreakdown({ metrics }: { metrics: SchoolMetrics | null }) {
                         <MetricInfo id={FACTOR[r.k].metric} size="xs" />
                       </span>
                       {/* Phones: the data flag sits under the name */}
-                      <span className={cn("mt-1 block pl-[18px] text-[11px] font-normal md:hidden", r.estimated ? "text-amber-700 dark:text-amber-300" : "text-slate-500 dark:text-white/45")}>
+                      <span className={cn("mt-1 block pl-[18px] text-[13px] font-normal md:hidden", r.estimated ? "text-amber-700 dark:text-amber-300" : "text-slate-500 dark:text-white/45")}>
                         {r.estimated ? "No data" : "Recorded"} · score {formatScore(r.score)}
                       </span>
                     </th>
@@ -113,7 +113,7 @@ export function ScoreBreakdown({ metrics }: { metrics: SchoolMetrics | null }) {
                     <td className="px-4 py-3">
                       <div className="flex items-baseline gap-1">
                         <span className="font-semibold tabular-nums text-slate-900 dark:text-white">{r.points == null ? "—" : formatNumber(r.points, 1)}</span>
-                        <span className="text-[11px] tabular-nums text-slate-400 dark:text-white/40">of {formatNumber(r.max)}</span>
+                        <span className="text-[13px] tabular-nums text-slate-400 dark:text-white/40">of {formatNumber(r.max)}</span>
                       </div>
                       {/* Track = the factor's weight, fill = points earned */}
                       <div className="mt-1.5 h-1 w-full max-w-[7rem] overflow-hidden rounded-full bg-slate-900/6 dark:bg-white/8" aria-hidden>
@@ -128,11 +128,11 @@ export function ScoreBreakdown({ metrics }: { metrics: SchoolMetrics | null }) {
                     </td>
                     <td className="hidden px-4 py-3 md:table-cell">
                       {r.estimated ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:text-amber-300">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[13px] font-medium text-amber-800 dark:text-amber-300">
                           <CircleDashed className="h-3 w-3" aria-hidden /> No data
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-800 dark:text-emerald-300">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[13px] font-medium text-emerald-800 dark:text-emerald-300">
                           <CheckCircle2 className="h-3 w-3" aria-hidden /> Recorded
                         </span>
                       )}
@@ -153,7 +153,7 @@ export function ScoreBreakdown({ metrics }: { metrics: SchoolMetrics | null }) {
                     <span className="text-lg font-semibold tabular-nums text-slate-900 dark:text-white">{formatScore(overall)}</span>
                   </span>
                 </td>
-                <td className="hidden px-4 py-3 text-[11px] text-slate-500 md:table-cell dark:text-white/50">Σ {formatNumber(sum, 1)} → rounded</td>
+                <td className="hidden px-4 py-3 text-[13px] text-slate-500 md:table-cell dark:text-white/50">Σ {formatNumber(sum, 1)} → rounded</td>
               </tr>
             </tfoot>
           </table>
@@ -179,7 +179,7 @@ export function ScoreBreakdown({ metrics }: { metrics: SchoolMetrics | null }) {
               animate={{ left: `${Math.max(0, Math.min(100, overall))}%` }}
               transition={{ duration: reduce ? 0 : 1.1, delay: 0.2, ease: EASE }}
             >
-              <span className="rounded-md bg-slate-900 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white dark:bg-white dark:text-slate-900">
+              <span className="rounded-md bg-slate-900 px-1.5 py-0.5 text-[13px] font-semibold tabular-nums text-white dark:bg-white dark:text-slate-900">
                 {formatScore(overall)}
               </span>
               <span className="mt-0.5 h-5 w-0.5 rounded-full bg-slate-900 dark:bg-white" />
@@ -191,7 +191,7 @@ export function ScoreBreakdown({ metrics }: { metrics: SchoolMetrics | null }) {
                 <p className={cn("truncate text-xs", b.key === band ? "font-semibold text-slate-900 dark:text-white" : "text-slate-500 dark:text-white/50")}>
                   {label("priority", b.key)}
                 </p>
-                <p className="text-[11px] tabular-nums text-slate-400 dark:text-white/40">
+                <p className="text-[13px] tabular-nums text-slate-400 dark:text-white/40">
                   {b.min}–{b.max}
                 </p>
               </div>

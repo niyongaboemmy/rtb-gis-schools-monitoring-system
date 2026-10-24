@@ -54,7 +54,7 @@ export interface PanelBodyProps {
 }
 
 const SELECT =
-  "h-10 w-full min-w-0 cursor-pointer appearance-none rounded-full bg-slate-900/[0.05] pl-4 pr-9 text-[13px] text-slate-900 outline-none transition-colors hover:bg-slate-900/[0.07] focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/[0.07] dark:text-white dark:hover:bg-white/[0.1] [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-white";
+  "h-10 w-full min-w-0 cursor-pointer appearance-none rounded-full bg-slate-900/[0.05] pl-4 pr-9 text-[15px] text-slate-900 outline-none transition-colors hover:bg-slate-900/[0.07] focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/[0.07] dark:text-white dark:hover:bg-white/[0.1] [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-white";
 
 function Select({
   label,
@@ -126,12 +126,12 @@ export function PanelBody(p: PanelBodyProps) {
           label={p.avgScore === null ? "Average score not available" : `Average condition score ${Math.round(p.avgScore)}`}
         />
         <div className="min-w-0 flex-1 leading-tight">
-          <p className={cn("text-[13px] tabular-nums", STRONG)}>
+          <p className={cn("text-[15px] tabular-nums", STRONG)}>
             {p.loading ? "Loading…" : formatNumber(p.filteredCount)}{" "}
             {!p.loading && (p.filteredCount === 1 ? "school" : "schools")}
             {!p.loading && p.filteredCount !== p.total && <span className={MUTED}> of {formatNumber(p.total)}</span>}
           </p>
-          <p className={cn("truncate text-[11px] tabular-nums", MUTED)}>
+          <p className={cn("truncate text-[13px] tabular-nums", MUTED)}>
             {p.avgScore !== null && `Avg ${Math.round(p.avgScore)} · `}
             {formatNumber(p.inViewCount)} in view · {formatNumber(p.scoredCount)} assessed
           </p>
@@ -155,7 +155,7 @@ export function PanelBody(p: PanelBodyProps) {
           <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
           Filters
           {p.activeFilters > 0 && (
-            <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] tabular-nums text-primary-foreground">
+            <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[12px] tabular-nums text-primary-foreground">
               {p.activeFilters}
             </span>
           )}
@@ -205,7 +205,7 @@ export function PanelBody(p: PanelBodyProps) {
           {pills.map((f) => (
             <span
               key={f.key}
-              className="inline-flex h-6 items-center gap-1 rounded-full bg-primary/10 pl-2.5 pr-1 text-[11px] text-slate-800 dark:bg-primary/20 dark:text-white/90"
+              className="inline-flex h-6 items-center gap-1 rounded-full bg-primary/10 pl-2.5 pr-1 text-[13px] text-slate-800 dark:bg-primary/20 dark:text-white/90"
             >
               {f.label}
               <button
@@ -218,7 +218,7 @@ export function PanelBody(p: PanelBodyProps) {
               </button>
             </span>
           ))}
-          <button type="button" onClick={p.onReset} className="ml-1 rounded-full px-1.5 text-[11px] text-primary hover:underline">
+          <button type="button" onClick={p.onReset} className="ml-1 rounded-full px-1.5 text-[13px] text-primary hover:underline">
             Clear all
           </button>
         </div>
@@ -314,7 +314,7 @@ export function PanelBody(p: PanelBodyProps) {
             <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-900/[0.05] dark:bg-white/[0.06]">
               <SearchX className={cn("h-5 w-5", MUTED)} aria-hidden />
             </span>
-            <p className={cn("text-[13px]", STRONG)}>
+            <p className={cn("text-[15px]", STRONG)}>
               {p.inViewOnly && p.filteredCount > 0 ? "No schools in this part of the map" : "No schools match these filters"}
             </p>
             <p className={cn("text-xs", MUTED)}>
@@ -368,8 +368,8 @@ export function PanelBody(p: PanelBodyProps) {
                 >
                   <ScoreRing score={pt.score} size={30} stroke={3} />
                   <span className="min-w-0 flex-1">
-                    <span className={cn("block truncate text-[13px]", STRONG)}>{s.name}</span>
-                    <span className={cn("flex items-center gap-1.5 truncate text-[11px]", MUTED)}>
+                    <span className={cn("block truncate text-[15px]", STRONG)}>{s.name}</span>
+                    <span className={cn("flex items-center gap-1.5 truncate text-[13px]", MUTED)}>
                       <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: m.color }} />
                       {m.label} · {s.district}
                     </span>
@@ -397,7 +397,7 @@ export function PanelBody(p: PanelBodyProps) {
 function FilterGroup({ label, children, onPointerLeave }: { label: string; children: ReactNode; onPointerLeave?: () => void }) {
   return (
     <div>
-      <p className={cn("pb-1.5 text-[11px]", MUTED)}>{label}</p>
+      <p className={cn("pb-1.5 text-[13px]", MUTED)}>{label}</p>
       <div className="flex flex-wrap gap-1" role="group" aria-label={label} onPointerLeave={onPointerLeave}>
         {children}
       </div>

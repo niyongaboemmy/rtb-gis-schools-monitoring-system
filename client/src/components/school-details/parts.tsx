@@ -14,8 +14,8 @@ export function Field({ label, value, className, mono }: { label: ReactNode; val
   const empty = value === null || value === undefined || value === "";
   return (
     <div className={cn("min-w-0", className)}>
-      <dt className="text-[11px] font-medium text-slate-500 dark:text-white/45">{label}</dt>
-      <dd className={cn("mt-0.5 break-words text-sm font-medium text-slate-900 dark:text-white/90", mono && "font-mono text-[13px] tabular-nums")}>
+      <dt className="text-[13px] font-medium text-slate-500 dark:text-white/45">{label}</dt>
+      <dd className={cn("mt-0.5 break-words text-sm font-medium text-slate-900 dark:text-white/90", mono && "font-mono text-[15px] tabular-nums")}>
         {empty ? <Missing /> : value}
       </dd>
     </div>
@@ -49,7 +49,7 @@ export function SplitBar({
           />
         ))}
       </div>
-      <div className="mt-1.5 flex justify-between gap-3 text-[11px] text-slate-500 dark:text-white/50">
+      <div className="mt-1.5 flex justify-between gap-3 text-[13px] text-slate-500 dark:text-white/50">
         {parts.map((p, i) => (
           <span key={p.label} className={cn("inline-flex items-center gap-1.5", i === 1 && "flex-row-reverse")}>
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: p.color }} aria-hidden />

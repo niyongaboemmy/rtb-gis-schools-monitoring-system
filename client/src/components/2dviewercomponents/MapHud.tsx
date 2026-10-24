@@ -106,7 +106,7 @@ function PointerCoords({ hud }: { hud: MapHudStore }) {
   const lat = useMapHud(hud, (s) => s.lat);
   const lng = useMapHud(hud, (s) => s.lng);
   return (
-    <div className="rounded-full bg-white/60 dark:bg-[hsl(224_40%_7%)]/60 backdrop-blur-xl backdrop-saturate-150 ring-1 ring-white/40 dark:ring-white/10 px-3 py-1.5 text-[10px] md:text-[11px] tabular-nums text-slate-500 dark:text-white/50 space-x-2 md:space-x-3">
+    <div className="rounded-full bg-white/60 dark:bg-[hsl(224_40%_7%)]/60 backdrop-blur-xl backdrop-saturate-150 ring-1 ring-white/40 dark:ring-white/10 px-3 py-1.5 text-[12px] md:text-[13px] tabular-nums text-slate-500 dark:text-white/50 space-x-2 md:space-x-3">
       <span>
         {lat >= 0 ? "N" : "S"} {formatNumber(Math.abs(lat), 6)}°
       </span>
@@ -161,7 +161,7 @@ function LoadingPill({ hud }: { hud: MapHudStore }) {
               <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeOpacity="0.2" strokeWidth="2" />
               <path d="M14 8a6 6 0 0 0-6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
-            <span className="whitespace-nowrap text-[11px] text-slate-600 dark:text-white/70">
+            <span className="whitespace-nowrap text-[13px] text-slate-600 dark:text-white/70">
               {decoding ? "Preparing imagery" : "Loading imagery"}
             </span>
           </motion.div>
@@ -179,7 +179,7 @@ function LoadingPill({ hud }: { hud: MapHudStore }) {
             className="flex items-center gap-2 rounded-full bg-white/70 px-3 py-1.5 ring-1 ring-white/40 backdrop-blur-xl backdrop-saturate-150 dark:bg-[hsl(224_40%_7%)]/70 dark:ring-white/10"
           >
             <ScanSearch className="h-3.5 w-3.5 text-primary" aria-hidden />
-            <span className="whitespace-nowrap text-[11px] text-slate-600 dark:text-white/70">Full detail · zooming further only enlarges</span>
+            <span className="whitespace-nowrap text-[13px] text-slate-600 dark:text-white/70">Full detail · zooming further only enlarges</span>
           </motion.div>
         )}
       </AnimatePresence>

@@ -134,7 +134,7 @@ export function SchoolLayer({
             }}
           >
             <Tooltip className="scm-tip" direction="top" offset={[0, -14]}>
-              <span className="text-[11px]">
+              <span className="text-[13px]">
                 {items.length} schools · click to zoom in
               </span>
             </Tooltip>
@@ -172,7 +172,7 @@ export function SchoolLayer({
                   style={{ background: m.color, boxShadow: `0 0 6px ${m.color}` }}
                 />
                 <span className="text-xs font-semibold">{p.school.name}</span>
-                <span className="text-[11px] tabular-nums opacity-60">{formatScore(p.score)}</span>
+                <span className="text-[13px] tabular-nums opacity-60">{formatScore(p.score)}</span>
               </span>
             </Tooltip>
           </Marker>

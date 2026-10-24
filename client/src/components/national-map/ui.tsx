@@ -110,7 +110,7 @@ export function MixRing({
               />
             ))}
       </svg>
-      {children && <span className="absolute text-[11px] tabular-nums text-slate-900 dark:text-white">{children}</span>}
+      {children && <span className="absolute text-[13px] tabular-nums text-slate-900 dark:text-white">{children}</span>}
     </span>
   );
 }
@@ -175,7 +175,7 @@ export function ToggleRow({
         </span>
       )}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] text-slate-900 dark:text-white">{label}</span>
+        <span className="block truncate text-[15px] text-slate-900 dark:text-white">{label}</span>
         {hint && <span className="block truncate text-xs text-slate-500 dark:text-white/45">{hint}</span>}
       </span>
       <span

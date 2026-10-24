@@ -79,7 +79,7 @@ export function PeriodFilter({ onRangeChange, className }: PeriodFilterProps) {
         onClick={() => setIsOpen(!isOpen)}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
-        className="rounded-2xl h-11 px-5 border-border/10 bg-card/50 backdrop-blur-md flex items-center gap-3 font-black uppercase text-[10px] tracking-widest transition-all hover:bg-primary/5 active:scale-95 shadow-none"
+        className="rounded-2xl h-11 px-5 border-border/10 bg-card/50 backdrop-blur-md flex items-center gap-3 font-black uppercase text-[12px] tracking-widest transition-all hover:bg-primary/5 active:scale-95 shadow-none"
       >
         <Calendar className="w-3.5 h-3.5 text-primary" />
         <span>{selectedRange.label}</span>
@@ -102,7 +102,7 @@ export function PeriodFilter({ onRangeChange, className }: PeriodFilterProps) {
                 aria-selected={selectedRange.key === range.key}
                 onClick={() => handleSelect(range)}
                 className={cn(
-                  "w-full flex items-center justify-between px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all",
+                  "w-full flex items-center justify-between px-4 py-3 rounded-2xl text-[12px] font-black uppercase tracking-widest transition-all",
                   selectedRange.key === range.key 
                     ? "bg-primary text-primary-foreground" 
                     : "text-muted-foreground hover:bg-primary/10 hover:text-primary"

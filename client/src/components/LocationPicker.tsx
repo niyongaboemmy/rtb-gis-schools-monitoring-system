@@ -756,7 +756,7 @@ export function LocationPicker({
               placeholder="e.g. schools/123/kmz_2d/ortho_optimized.kmz"
               className="rounded-xl border-border/30 bg-background/80 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all h-10 text-xs"
             />
-            <p className="text-[10px] text-muted-foreground italic px-1">
+            <p className="text-[12px] text-muted-foreground italic px-1">
               Optimized version for the 2D viewer (smaller file size).
             </p>
           </div>
@@ -772,7 +772,7 @@ export function LocationPicker({
               placeholder="e.g. schools/123/tif/large_ortho.tif"
               className="rounded-xl border-border/30 bg-background/80 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all h-10 text-xs"
             />
-            <p className="text-[10px] text-muted-foreground italic px-1">
+            <p className="text-[12px] text-muted-foreground italic px-1">
               Cloud Optimized GeoTIFF (COG) for lossless native-quality zoom.
             </p>
           </div>

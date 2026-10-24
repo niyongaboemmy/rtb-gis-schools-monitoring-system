@@ -399,7 +399,7 @@ export function BulkUploadModal({
                   <section aria-label="Rows with problems" className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <Eyebrow>Rows with problems</Eyebrow>
-                      <span className="text-[11px] font-normal text-destructive">
+                      <span className="text-[13px] font-normal text-destructive">
                         {formatNumber(uploadResult.errors.length)} {uploadResult.errors.length === 1 ? "issue" : "issues"}
                       </span>
                     </div>
@@ -407,7 +407,7 @@ export function BulkUploadModal({
                       {uploadResult.errors.map((err, idx) => (
                         <li key={idx} className="flex min-w-0 flex-col gap-0.5 px-3.5 py-2.5">
                           <div className="flex min-w-0 items-center gap-2 text-xs">
-                            <span className="shrink-0 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[11px] font-normal tabular-nums text-destructive">
+                            <span className="shrink-0 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[13px] font-normal tabular-nums text-destructive">
                               Row {err.row}
                             </span>
                             <span className="truncate font-normal text-foreground">{err.email}</span>

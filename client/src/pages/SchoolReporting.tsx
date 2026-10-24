@@ -789,18 +789,18 @@ export default function SchoolReporting({
           <ClipboardList className="w-24 h-24 text-primary" />
         </div>
         <div className="relative z-10">
-          <Badge className="bg-primary/20 text-primary border-none text-[11px] font-black uppercase rounded-full px-3 py-1 mb-4">
+          <Badge className="bg-primary/20 text-primary border-none text-[13px] font-black uppercase rounded-full px-3 py-1 mb-4">
             Review
           </Badge>
           <h3 className="text-3xl font-black uppercase tracking-tighter leading-none mb-2 flex items-center gap-4">
             Review & Confirm
             {selectedSchoolDetails?.tifFilePath && (
-              <Badge className="bg-blue-500/20 text-blue-500 border-blue-500/12 text-[11px] font-black uppercase rounded-full px-3 py-1">
+              <Badge className="bg-blue-500/20 text-blue-500 border-blue-500/12 text-[13px] font-black uppercase rounded-full px-3 py-1">
                 High-Res Mapping Active
               </Badge>
             )}
           </h3>
-          <p className="text-[13px] font-black text-muted-foreground uppercase tracking-widest opacity-80">
+          <p className="text-[15px] font-black text-muted-foreground uppercase tracking-widest opacity-80">
             Review all issues before submitting.
           </p>
         </div>
@@ -810,7 +810,7 @@ export default function SchoolReporting({
         <div className="lg:col-span-4 order-2 lg:order-1 space-y-4">
           <Card className="p-8 rounded-2xl border border-border/10 bg-card relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1.5 bg-linear-to-r from-primary/50 to-transparent"></div>
-            <h4 className="text-[13px] font-black uppercase tracking-[0.2em] text-primary mb-8 flex items-center gap-3">
+            <h4 className="text-[15px] font-black uppercase tracking-[0.2em] text-primary mb-8 flex items-center gap-3">
               <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
               Report Context
             </h4>
@@ -838,7 +838,7 @@ export default function SchoolReporting({
                     {item.icon}
                   </div>
                   <div className="space-y-1">
-                    <div className="text-[11px] font-black uppercase text-muted-foreground tracking-widest opacity-60 group-hover:opacity-100 transition-opacity">
+                    <div className="text-[13px] font-black uppercase text-muted-foreground tracking-widest opacity-60 group-hover:opacity-100 transition-opacity">
                       {item.label}
                     </div>
                     <div className="text-sm font-black truncate max-w-[200px] group-hover:translate-x-1 transition-transform">
@@ -852,7 +852,7 @@ export default function SchoolReporting({
             <Button
               variant="outline"
               onClick={() => setStep(2)}
-              className="w-full mt-8 rounded-full h-12 text-[9px] font-black uppercase tracking-widest border-2 border-border/10 hover:border-primary/40 hover:bg-primary/5 transition-all"
+              className="w-full mt-8 rounded-full h-12 text-[12px] font-black uppercase tracking-widest border-2 border-border/10 hover:border-primary/40 hover:bg-primary/5 transition-all"
             >
               Change Location
             </Button>
@@ -861,14 +861,14 @@ export default function SchoolReporting({
 
         <div className="lg:col-span-8 order-1 lg:order-2 space-y-6">
           <div className="flex items-center justify-between px-2">
-            <h4 className="text-[13px] font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-3">
+            <h4 className="text-[15px] font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-3">
               Issues ({issues.length})
             </h4>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setStep(5)}
-              className="text-[9px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-primary/10 hover:text-primary transition-all rounded-full h-8"
+              className="text-[12px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-primary/10 hover:text-primary transition-all rounded-full h-8"
             >
               <Plus className="w-3 h-3" /> Add Issue
             </Button>
@@ -893,7 +893,7 @@ export default function SchoolReporting({
                           {issue.category.map((cat) => (
                             <Badge
                               key={cat}
-                              className="bg-primary/10 text-primary border-none text-[11px] font-black uppercase rounded-full px-3"
+                              className="bg-primary/10 text-primary border-none text-[13px] font-black uppercase rounded-full px-3"
                             >
                               {cat}
                             </Badge>
@@ -903,7 +903,7 @@ export default function SchoolReporting({
                           {issue.files?.length > 0 && (
                             <Badge
                               variant="outline"
-                              className="rounded-full text-[11px] font-black border-primary/20 text-primary/80"
+                              className="rounded-full text-[13px] font-black border-primary/20 text-primary/80"
                             >
                               {issue.files.length} Signatures
                             </Badge>
@@ -932,7 +932,7 @@ export default function SchoolReporting({
           <div className="pt-4">
             <Button
               className={cn(
-                "w-max rounded-full py-3 text-[12px] font-black uppercase tracking-[0.3em] transition-all",
+                "w-max rounded-full py-3 text-[14px] font-black uppercase tracking-[0.3em] transition-all",
                 isSubmitting
                   ? "bg-muted"
                   : "bg-primary hover:scale-[1.01] active:scale-[0.98]",
@@ -951,7 +951,7 @@ export default function SchoolReporting({
                 </div>
               )}
             </Button>
-            <p className="text-center text-[11px] font-black uppercase tracking-widest text-muted-foreground mt-4 opacity-40">
+            <p className="text-center text-[13px] font-black uppercase tracking-widest text-muted-foreground mt-4 opacity-40">
               This report will be logged and reviewed by the central monitoring
               team.
             </p>
@@ -986,7 +986,7 @@ export default function SchoolReporting({
         <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
           <ImigongoPattern className="w-32 h-32" />
         </div>
-        <p className="text-[13px] font-black text-primary uppercase tracking-[0.2em] mb-4">
+        <p className="text-[15px] font-black text-primary uppercase tracking-[0.2em] mb-4">
           Current Status
         </p>
         <div className="flex items-center gap-4 mb-6">
@@ -1002,14 +1002,14 @@ export default function SchoolReporting({
       </Card>
       <div className="flex gap-4 pt-4">
         <Button
-          className="flex-1 rounded-full h-14 font-black uppercase text-[13px] tracking-widest bg-primary"
+          className="flex-1 rounded-full h-14 font-black uppercase text-[15px] tracking-widest bg-primary"
           onClick={resetForm}
         >
           New Report
         </Button>
         <Button
           variant="outline"
-          className="flex-1 rounded-full h-14 font-black uppercase text-[13px] tracking-widest border-2 border-border/10 hover:bg-primary/5 transition-all"
+          className="flex-1 rounded-full h-14 font-black uppercase text-[15px] tracking-widest border-2 border-border/10 hover:bg-primary/5 transition-all"
           onClick={() => setActiveTab("history")}
         >
           View History
@@ -1057,7 +1057,7 @@ export default function SchoolReporting({
                     scale: isActive ? 1.15 : 1,
                   }}
                   className={cn(
-                    "w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center text-[13px] md:text-xs font-black transition-all relative z-10",
+                    "w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center text-[15px] md:text-xs font-black transition-all relative z-10",
                     isActive
                       ? "bg-primary text-primary-foreground"
                       : isCompleted
@@ -1073,7 +1073,7 @@ export default function SchoolReporting({
                 </motion.div>
                 <span
                   className={cn(
-                    "text-[11px] md:text-[9px] font-black uppercase tracking-widest transition-colors hidden sm:block",
+                    "text-[13px] md:text-[12px] font-black uppercase tracking-widest transition-colors hidden sm:block",
                     isActive ? "text-primary" : "text-muted-foreground/50",
                   )}
                 >
@@ -1128,8 +1128,8 @@ export default function SchoolReporting({
               <ClipboardList className="h-5 w-5" aria-hidden />
             </span>
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">School reporting</h1>
-              <p className="text-[13px] text-slate-500 dark:text-white/55">
+              <h1 className="text-[1.625rem] sm:text-[1.875rem] font-semibold tracking-tight text-slate-900 dark:text-white">School reporting</h1>
+              <p className="text-[15px] text-slate-500 dark:text-white/55">
                 {activeTab === "overview" ? "Issue Reports across your schools: what's open and where to act first." : "Report a facility problem and follow it to resolution."}
               </p>
             </div>
@@ -1319,7 +1319,7 @@ export default function SchoolReporting({
                                 <Badge
                                   variant="outline"
                                   className={cn(
-                                    "rounded-full text-[9px] font-semibold px-2 border capitalize",
+                                    "rounded-full text-[12px] font-semibold px-2 border capitalize",
                                     s.status === "ACTIVE"
                                       ? "border-emerald-500/30 text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20"
                                       : s.status === "UNDER_RENOVATION"
@@ -1398,7 +1398,7 @@ export default function SchoolReporting({
                         variant="ghost"
                         size="sm"
                         onClick={() => setStep(1)}
-                        className="rounded-full h-10 w-10 p-0 font-black uppercase text-[9px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
+                        className="rounded-full h-10 w-10 p-0 font-black uppercase text-[12px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
                       >
                         <ArrowLeft className="w-4 h-4" aria-hidden />
                       </Button>
@@ -1406,7 +1406,7 @@ export default function SchoolReporting({
                         <h3 className="text-base font-bold uppercase tracking-tighter">
                           Select Building
                         </h3>
-                        <p className="text-[13px] text-muted-foreground font-bold uppercase opacity-60">
+                        <p className="text-[15px] text-muted-foreground font-bold uppercase opacity-60">
                           {selectedSchoolDetails?.name ||
                             "School Infrastructure"}{" "}
                           · Step 2 of 6
@@ -1418,7 +1418,7 @@ export default function SchoolReporting({
                             variant={step2Tab === "list" ? "default" : "ghost"}
                             size="sm"
                             onClick={() => setStep2Tab("list")}
-                            className="rounded-full h-8 px-4 text-[9px] font-black uppercase tracking-widest transition-all"
+                            className="rounded-full h-8 px-4 text-[12px] font-black uppercase tracking-widest transition-all"
                           >
                             <List className="w-3.5 h-3.5 mr-2" /> List
                           </Button>
@@ -1426,7 +1426,7 @@ export default function SchoolReporting({
                             variant={step2Tab === "map" ? "default" : "ghost"}
                             size="sm"
                             onClick={() => setStep2Tab("map")}
-                            className="rounded-full h-8 px-4 text-[9px] font-black uppercase tracking-widest transition-all"
+                            className="rounded-full h-8 px-4 text-[12px] font-black uppercase tracking-widest transition-all"
                           >
                             <MapIcon className="w-3.5 h-3.5 mr-2" /> Map
                           </Button>
@@ -1437,7 +1437,7 @@ export default function SchoolReporting({
                     {loading ? (
                       <div className="py-10 text-center space-y-4">
                         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto"></div>
-                        <p className="text-[13px] font-black uppercase tracking-widest text-muted-foreground">
+                        <p className="text-[15px] font-black uppercase tracking-widest text-muted-foreground">
                           Loading school data...
                         </p>
                       </div>
@@ -1457,7 +1457,7 @@ export default function SchoolReporting({
                         ) : (
                           <div className="h-full flex items-center justify-center">
                             <AlertCircle className="w-5 h-5 text-muted-foreground mr-2" />
-                            <span className="text-[13px] font-black uppercase tracking-widest opacity-50">
+                            <span className="text-[15px] font-black uppercase tracking-widest opacity-50">
                               GIS data unavailable
                             </span>
                           </div>
@@ -1477,7 +1477,7 @@ export default function SchoolReporting({
                           variant="ghost"
                           size="sm"
                           onClick={() => setStep(1)}
-                          className="rounded-full h-10 px-6 font-black uppercase text-[13px] transition-all hover:bg-primary/10"
+                          className="rounded-full h-10 px-6 font-black uppercase text-[15px] transition-all hover:bg-primary/10"
                         >
                           Go Back
                         </Button>
@@ -1503,7 +1503,7 @@ export default function SchoolReporting({
                                 <div className="font-black text-sm mb-1 uppercase tracking-tight line-clamp-2">
                                   {b.name}
                                 </div>
-                                <div className="text-[9px] font-black text-muted-foreground uppercase opacity-50 tracking-widest flex items-center gap-2">
+                                <div className="text-[12px] font-black text-muted-foreground uppercase opacity-50 tracking-widest flex items-center gap-2">
                                   <MapPin className="w-2.5 h-2.5" />{" "}
                                   {b.facilities?.length || 0} Facilities
                                 </div>
@@ -1532,7 +1532,7 @@ export default function SchoolReporting({
                         variant="ghost"
                         size="sm"
                         onClick={() => setStep(2)}
-                        className="rounded-full h-10 w-10 p-0 font-black uppercase text-[9px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
+                        className="rounded-full h-10 w-10 p-0 font-black uppercase text-[12px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
                       >
                         <ArrowLeft className="w-4 h-4" aria-hidden />
                       </Button>
@@ -1540,7 +1540,7 @@ export default function SchoolReporting({
                         <h3 className="text-base font-bold uppercase tracking-tighter">
                           Select Facility
                         </h3>
-                        <p className="text-[13px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
+                        <p className="text-[15px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
                           {selectedBuilding?.name} · Step 3 of 6
                         </p>
                       </div>
@@ -1557,10 +1557,10 @@ export default function SchoolReporting({
                             <Layers className="w-6 h-6" />
                           </div>
                           <div className="flex-1">
-                            <div className="font-black uppercase text-[13px] tracking-widest truncate">
+                            <div className="font-black uppercase text-[15px] tracking-widest truncate">
                               {f.facility_name}
                             </div>
-                            <div className="text-[11px] font-bold text-muted-foreground uppercase opacity-50">
+                            <div className="text-[13px] font-bold text-muted-foreground uppercase opacity-50">
                               Facility
                             </div>
                           </div>
@@ -1586,7 +1586,7 @@ export default function SchoolReporting({
                         variant="ghost"
                         size="sm"
                         onClick={() => setStep(3)}
-                        className="rounded-full h-10 w-10 p-0 font-black uppercase text-[9px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
+                        className="rounded-full h-10 w-10 p-0 font-black uppercase text-[12px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
                       >
                         <ArrowLeft className="w-4 h-4" aria-hidden />
                       </Button>
@@ -1594,7 +1594,7 @@ export default function SchoolReporting({
                         <h3 className="text-base font-bold uppercase tracking-tighter">
                           Select Item
                         </h3>
-                        <p className="text-[13px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
+                        <p className="text-[15px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
                           {(selectedFacility as any)?.facility_name ||
                             "Facility"}{" "}
                           · Step 4 of 6
@@ -1613,10 +1613,10 @@ export default function SchoolReporting({
                             <Check className="w-6 h-6" />
                           </div>
                           <div className="flex-1">
-                            <div className="font-black text-[13px]">
+                            <div className="font-black text-[15px]">
                               {item.label}
                             </div>
-                            <div className="text-[11px] text-muted-foreground opacity-50">
+                            <div className="text-[13px] text-muted-foreground opacity-50">
                               Component
                             </div>
                           </div>
@@ -1642,7 +1642,7 @@ export default function SchoolReporting({
                         variant="ghost"
                         size="sm"
                         onClick={() => setStep(4)}
-                        className="rounded-full h-10 w-10 p-0 font-black uppercase text-[9px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
+                        className="rounded-full h-10 w-10 p-0 font-black uppercase text-[12px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
                       >
                         <ArrowLeft className="w-4 h-4" aria-hidden />
                       </Button>
@@ -1652,7 +1652,7 @@ export default function SchoolReporting({
                             ? "Edit Issue Details"
                             : "Incident Details"}
                         </h3>
-                        <p className="text-[13px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
+                        <p className="text-[15px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
                           {selectedItem.label} ·{" "}
                           {isEditing ? "Editing" : "Final Step"}
                         </p>
@@ -1664,10 +1664,10 @@ export default function SchoolReporting({
                         <div className="flex items-center gap-3">
                           <AlertCircle className="w-5 h-5 text-amber-500" />
                           <div>
-                            <p className="text-[13px] font-black uppercase tracking-tighter text-amber-500">
+                            <p className="text-[15px] font-black uppercase tracking-tighter text-amber-500">
                               Editing Report
                             </p>
-                            <p className="text-[11px] font-bold uppercase text-amber-500/60">
+                            <p className="text-[13px] font-bold uppercase text-amber-500/60">
                               You are modifying a submitted report. Submit to
                               save changes.
                             </p>
@@ -1680,7 +1680,7 @@ export default function SchoolReporting({
                             setIsEditing(false);
                             resetForm();
                           }}
-                          className="rounded-full h-8 px-4 text-[9px] font-black uppercase tracking-widest text-amber-500 hover:bg-amber-500/10"
+                          className="rounded-full h-8 px-4 text-[12px] font-black uppercase tracking-widest text-amber-500 hover:bg-amber-500/10"
                         >
                           Cancel Edit
                         </Button>
@@ -1699,11 +1699,11 @@ export default function SchoolReporting({
                             <div className="space-y-2">
                               <div className="space-y-4">
                                 <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10">
-                                  <h4 className="text-[11px] font-black uppercase tracking-widest text-primary flex items-center gap-3 mb-2">
+                                  <h4 className="text-[13px] font-black uppercase tracking-widest text-primary flex items-center gap-3 mb-2">
                                     <AlertCircle className="w-4 h-4" /> Select
                                     Issue Type
                                   </h4>
-                                  <p className="text-[9px] font-bold text-muted-foreground opacity-80 uppercase leading-snug">
+                                  <p className="text-[12px] font-bold text-muted-foreground opacity-80 uppercase leading-snug">
                                     Select the type of issue to help route it to
                                     the right team.
                                   </p>
@@ -1728,7 +1728,7 @@ export default function SchoolReporting({
                                           });
                                         }}
                                         className={cn(
-                                          "px-5 py-2.5 rounded-full text-[13px] font-black uppercase tracking-widest transition-all border-2",
+                                          "px-5 py-2.5 rounded-full text-[15px] font-black uppercase tracking-widest transition-all border-2",
                                           currentIssue.category.includes(cat)
                                             ? "bg-primary border-primary text-white scale-[1.05]"
                                             : "bg-background border-border/50 text-muted-foreground hover:border-primary/40 hover:bg-primary/5",
@@ -1740,7 +1740,7 @@ export default function SchoolReporting({
                                   )}
                                 </div>
                                 {formErrors.category && (
-                                  <p className="text-[13px] font-semibold text-rose-500 flex items-center gap-1 mt-1">
+                                  <p className="text-[15px] font-semibold text-rose-500 flex items-center gap-1 mt-1">
                                     <AlertCircle className="w-3 h-3" />{" "}
                                     {formErrors.category}
                                   </p>
@@ -1749,7 +1749,7 @@ export default function SchoolReporting({
                             </div>
 
                             <Textarea
-                              className="min-h-[140px] text-[13px] rounded-2xl bg-background/30 border-2 border-border focus:border-primary/40"
+                              className="min-h-[140px] text-[15px] rounded-2xl bg-background/30 border-2 border-border focus:border-primary/40"
                               placeholder="Problem description... be as specific as possible"
                               value={currentIssue.description}
                               onChange={(e) =>
@@ -1761,7 +1761,7 @@ export default function SchoolReporting({
                             />
                             <div className="flex items-center justify-between px-1 mt-1">
                               {formErrors.description ? (
-                                <p className="text-[13px] font-semibold text-rose-500 flex items-center gap-1">
+                                <p className="text-[15px] font-semibold text-rose-500 flex items-center gap-1">
                                   <AlertCircle className="w-3 h-3" />{" "}
                                   {formErrors.description}
                                 </p>
@@ -1770,7 +1770,7 @@ export default function SchoolReporting({
                               )}
                               <span
                                 className={cn(
-                                  "text-[9px] font-semibold",
+                                  "text-[12px] font-semibold",
                                   currentIssue.description.length > 900
                                     ? "text-rose-500"
                                     : "text-muted-foreground/60",
@@ -1785,7 +1785,7 @@ export default function SchoolReporting({
 
                       <div className="space-y-4">
                         <Card className="bg-card p-6 rounded-2xl border border-border/10 space-y-3">
-                          <h4 className="text-[13px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
+                          <h4 className="text-[15px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
                             <Camera className="w-3.5 h-3.5" aria-hidden /> Visual Evidence
                           </h4>
                           <FileUploader
@@ -1799,7 +1799,7 @@ export default function SchoolReporting({
                         <div className="flex gap-3 pt-2">
                           <Button
                             variant="outline"
-                            className="flex-1 rounded-full h-12 text-[13px] font-black uppercase tracking-widest border-2 hover:bg-primary/5 transition-all"
+                            className="flex-1 rounded-full h-12 text-[15px] font-black uppercase tracking-widest border-2 hover:bg-primary/5 transition-all"
                             onClick={() => {
                               if (addIssue()) showToast("Issue added to the list", "success");
                             }}
@@ -1812,7 +1812,7 @@ export default function SchoolReporting({
                             Add To List
                           </Button>
                           <Button
-                            className="flex-1 rounded-full h-12 text-[13px] font-black uppercase tracking-widest bg-primary group"
+                            className="flex-1 rounded-full h-12 text-[15px] font-black uppercase tracking-widest bg-primary group"
                             onClick={() => {
                               const errors: {
                                 description?: string;
@@ -1938,7 +1938,7 @@ export default function SchoolReporting({
             {/* History Filter Bar */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end mb-4">
               <div className="md:col-span-4 space-y-2">
-                <label className="text-[13px] font-black uppercase text-primary tracking-widest pl-2 flex items-center gap-2">
+                <label className="text-[15px] font-black uppercase text-primary tracking-widest pl-2 flex items-center gap-2">
                   <Filter className="w-3 h-3" /> Filter by Status
                 </label>
                 <RichDropdown
@@ -1959,13 +1959,13 @@ export default function SchoolReporting({
               </div>
 
               <div className="md:col-span-4 space-y-2">
-                <label className="text-[13px] font-black uppercase text-primary tracking-widest pl-2 flex items-center gap-2">
+                <label className="text-[15px] font-black uppercase text-primary tracking-widest pl-2 flex items-center gap-2">
                   <Calendar className="w-3 h-3" /> Date Range
                 </label>
                 <div className="flex gap-2">
                   <Input
                     type="date"
-                    className="rounded-2xl h-11 text-[13px] font-bold"
+                    className="rounded-2xl h-11 text-[15px] font-bold"
                     onChange={(e) =>
                       setHistoryDateRange((prev) => ({
                         ...prev,
@@ -1975,7 +1975,7 @@ export default function SchoolReporting({
                   />
                   <Input
                     type="date"
-                    className="rounded-2xl h-11 text-[13px] font-bold"
+                    className="rounded-2xl h-11 text-[15px] font-bold"
                     onChange={(e) =>
                       setHistoryDateRange((prev) => ({
                         ...prev,
@@ -2010,7 +2010,7 @@ export default function SchoolReporting({
                   >
                     <ChevronLeft className="w-4 h-4" aria-hidden />
                   </Button>
-                  <span className="text-[13px] font-black px-4 uppercase tracking-widest">
+                  <span className="text-[15px] font-black px-4 uppercase tracking-widest">
                     Page {historyPage} of{" "}
                     {Math.ceil(historyTotal / historyLimit) || 1}
                   </span>
@@ -2091,22 +2091,22 @@ export default function SchoolReporting({
                           onClick={() => setSelectedReport(record)}
                         >
                           <TableCell>
-                            <div className="text-[13px] font-black text-muted-foreground opacity-50">
+                            <div className="text-[15px] font-black text-muted-foreground opacity-50">
                               {new Date(record.createdAt).toLocaleDateString()}
                             </div>
                           </TableCell>
                           <TableCell>
                             <div className="space-y-0.5">
-                              <div className="text-[11px] font-black uppercase tracking-tight truncate max-w-[150px]">
+                              <div className="text-[13px] font-black uppercase tracking-tight truncate max-w-[150px]">
                                 {record.facilityId}
                               </div>
-                              <div className="text-[9px] font-bold text-primary opacity-70">
+                              <div className="text-[12px] font-bold text-primary opacity-70">
                                 {record.itemId}
                               </div>
                             </div>
                           </TableCell>
                           <TableCell>
-                            <div className="text-[11px] font-semibold text-muted-foreground truncate max-w-[120px]">
+                            <div className="text-[13px] font-semibold text-muted-foreground truncate max-w-[120px]">
                               {record.building?.name || "—"}
                             </div>
                           </TableCell>
@@ -2117,7 +2117,7 @@ export default function SchoolReporting({
                                   <Badge
                                     key={cat}
                                     variant="outline"
-                                    className="text-[11px] font-black uppercase rounded-full px-2"
+                                    className="text-[13px] font-black uppercase rounded-full px-2"
                                   >
                                     {cat}
                                   </Badge>
@@ -2125,7 +2125,7 @@ export default function SchoolReporting({
                               ) : (
                                 <Badge
                                   variant="outline"
-                                  className="text-[11px] font-black uppercase rounded-full px-2"
+                                  className="text-[13px] font-black uppercase rounded-full px-2"
                                 >
                                   {record.issueCategory || "General"}
                                 </Badge>
@@ -2133,14 +2133,14 @@ export default function SchoolReporting({
                             </div>
                           </TableCell>
                           <TableCell>
-                            <p className="text-[11px] font-medium line-clamp-1 max-w-[200px] text-muted-foreground">
+                            <p className="text-[13px] font-medium line-clamp-1 max-w-[200px] text-muted-foreground">
                               {record.description}
                             </p>
                           </TableCell>
                           <TableCell>
                             <Badge
                               className={cn(
-                                "rounded-full font-black text-[11px] px-2.5 py-0.5 border capitalize",
+                                "rounded-full font-black text-[13px] px-2.5 py-0.5 border capitalize",
                                 getStatusColor(record.status),
                               )}
                             >
@@ -2215,7 +2215,7 @@ export default function SchoolReporting({
                             <ClipboardList className="w-4 h-4" />
                           </div>
                           <div>
-                            <div className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest">
+                            <div className="text-[12px] font-semibold text-muted-foreground uppercase tracking-widest">
                               #{record.id.split("-").pop()}
                             </div>
                             <div className="text-xs font-bold uppercase tracking-tight">
@@ -2227,7 +2227,7 @@ export default function SchoolReporting({
                         </div>
                         <Badge
                           className={cn(
-                            "rounded-full font-semibold text-[9px] px-2.5 py-0.5 border capitalize",
+                            "rounded-full font-semibold text-[12px] px-2.5 py-0.5 border capitalize",
                             getStatusColor(record.status),
                           )}
                         >
@@ -2249,7 +2249,7 @@ export default function SchoolReporting({
                               <Badge
                                 key={cat}
                                 variant="outline"
-                                className="rounded-full text-[11px] font-semibold uppercase px-2 border-primary/20 text-primary"
+                                className="rounded-full text-[13px] font-semibold uppercase px-2 border-primary/20 text-primary"
                               >
                                 {cat}
                               </Badge>
@@ -2257,7 +2257,7 @@ export default function SchoolReporting({
                           : record.issueCategory && (
                               <Badge
                                 variant="outline"
-                                className="rounded-full text-[11px] font-semibold uppercase px-2 border-primary/20 text-primary"
+                                className="rounded-full text-[13px] font-semibold uppercase px-2 border-primary/20 text-primary"
                               >
                                 {record.issueCategory}
                               </Badge>
@@ -2266,7 +2266,7 @@ export default function SchoolReporting({
 
                       {/* Footer actions */}
                       <div className="flex items-center justify-between pt-2 border-t border-border/10 pl-12">
-                        <div className="text-[9px] text-muted-foreground/50 font-semibold">
+                        <div className="text-[12px] text-muted-foreground/50 font-semibold">
                           {new Date(record.createdAt).toLocaleDateString()}
                         </div>
                         <div
@@ -2369,7 +2369,7 @@ export default function SchoolReporting({
                       }}
                     />
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Badge className="bg-white/20 backdrop-blur-md border-white/20 text-white font-black uppercase text-[13px]">
+                      <Badge className="bg-white/20 backdrop-blur-md border-white/20 text-white font-black uppercase text-[15px]">
                         Evidence #{idx + 1}
                       </Badge>
                     </div>
@@ -2377,7 +2377,7 @@ export default function SchoolReporting({
                 ))}
               </div>
               <div className="p-6 text-center">
-                <p className="text-[13px] font-black text-muted-foreground uppercase tracking-widest">
+                <p className="text-[15px] font-black text-muted-foreground uppercase tracking-widest">
                   End of Gallery
                 </p>
               </div>

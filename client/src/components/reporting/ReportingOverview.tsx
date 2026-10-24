@@ -83,7 +83,7 @@ export function ReportingOverview({ onOpenReport, refreshKey = 0 }: Props) {
           onChange={setPeriod}
           tabs={PERIODS.map((p) => ({ key: p, label: PERIOD_LABEL[p] }))}
         />
-        <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-white/50">
+        <div className="flex items-center gap-2 text-[13px] text-slate-500 dark:text-white/50">
           <span>Updated {loadedAt ? formatDateTime(loadedAt) : "—"}</span>
           <button
             type="button"
@@ -176,16 +176,16 @@ export function ReportingOverview({ onOpenReport, refreshKey = 0 }: Props) {
               />
               <ul className="mt-4 space-y-2.5">
                 {REPORT_STATUS.map((st) => (
-                  <li key={st.key} className="flex items-center gap-2 text-[13px]">
+                  <li key={st.key} className="flex items-center gap-2 text-[15px]">
                     <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: st.color }} aria-hidden />
                     <span className="flex-1 text-slate-600 dark:text-white/65">{st.label}</span>
                     <span className="font-semibold tabular-nums text-slate-900 dark:text-white">{formatNumber(counts[st.key])}</span>
-                    <span className="w-10 text-right text-[11px] tabular-nums text-slate-400 dark:text-white/40">{formatPercent((counts[st.key] / s.total) * 100)}</span>
+                    <span className="w-10 text-right text-[13px] tabular-nums text-slate-400 dark:text-white/40">{formatPercent((counts[st.key] / s.total) * 100)}</span>
                   </li>
                 ))}
               </ul>
               {s.oldestOpenDays != null && (
-                <p className="mt-auto pt-4 text-[11px] text-slate-500 dark:text-white/50">
+                <p className="mt-auto pt-4 text-[13px] text-slate-500 dark:text-white/50">
                   Oldest open report: <b className="font-semibold text-slate-800 dark:text-white/85">{formatNumber(s.oldestOpenDays)} days</b>
                 </p>
               )}
@@ -207,7 +207,7 @@ export function ReportingOverview({ onOpenReport, refreshKey = 0 }: Props) {
               data={data.trend.map((t) => ({ key: t.key, label: t.label, values: { created: t.created, resolved: t.resolved } }))}
             />
           )}
-          <p className="mt-2 text-[11px] text-slate-400 dark:text-white/40">
+          <p className="mt-2 text-[13px] text-slate-400 dark:text-white/40">
             {data.bucket === "day" ? "Per day" : data.bucket === "week" ? "Per week" : "Per month"}, Kigali time.
           </p>
         </GlassCard>
@@ -217,7 +217,7 @@ export function ReportingOverview({ onOpenReport, refreshKey = 0 }: Props) {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <GlassCard title="Needs action" icon={Siren} index={2}>
           {data.urgent.length === 0 ? (
-            <p className="flex items-center gap-2 rounded-2xl bg-emerald-500/8 p-3 text-[13px] text-emerald-800 dark:text-emerald-300">
+            <p className="flex items-center gap-2 rounded-2xl bg-emerald-500/8 p-3 text-[15px] text-emerald-800 dark:text-emerald-300">
               <CheckCircle2 className="h-4 w-4" aria-hidden />
               No urgent reports in this period.
             </p>
@@ -231,8 +231,8 @@ export function ReportingOverview({ onOpenReport, refreshKey = 0 }: Props) {
                     className="relative w-full overflow-hidden rounded-2xl bg-slate-900/[0.03] py-2.5 pl-4 pr-3 text-left ring-1 ring-slate-900/5 transition-colors hover:bg-slate-900/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 dark:bg-white/[0.04] dark:ring-white/8 dark:hover:bg-white/[0.07]"
                   >
                     <span className="absolute inset-y-2.5 left-0 w-[3px] rounded-r-full" style={{ background: REPORT_STATUS[0].color }} aria-hidden />
-                    <span className="line-clamp-2 text-[13px] font-medium leading-snug text-slate-900 dark:text-white/90">{u.description || "No description"}</span>
-                    <span className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500 dark:text-white/50">
+                    <span className="line-clamp-2 text-[15px] font-medium leading-snug text-slate-900 dark:text-white/90">{u.description || "No description"}</span>
+                    <span className="mt-1 flex items-center justify-between gap-2 text-[13px] text-slate-500 dark:text-white/50">
                       <span className="truncate">{u.schoolName}</span>
                       <span className="shrink-0">{formatDaysAgo(u.createdAt)}</span>
                     </span>
@@ -249,7 +249,7 @@ export function ReportingOverview({ onOpenReport, refreshKey = 0 }: Props) {
           ) : (
             <div className="-mx-1 overflow-x-auto">
               <table className="w-full min-w-[520px] text-sm">
-                <thead className="text-left text-[11px] font-medium text-slate-400 dark:text-white/40">
+                <thead className="text-left text-[13px] font-medium text-slate-400 dark:text-white/40">
                   <tr>
                     <th scope="col" className="w-[42%] px-2 py-2 font-medium">School</th>
                     <th scope="col" className="px-2 py-2 text-right font-medium">Open</th>
@@ -269,8 +269,8 @@ export function ReportingOverview({ onOpenReport, refreshKey = 0 }: Props) {
                       className="group transition-colors hover:bg-slate-900/[0.025] dark:hover:bg-white/[0.03]"
                     >
                       <th scope="row" className="max-w-0 px-2 py-2.5 text-left font-normal">
-                        <span className="block truncate text-[13px] font-medium text-slate-900 dark:text-white/90">{r.name}</span>
-                        <span className="block truncate text-[11px] text-slate-500 dark:text-white/45">{[r.district, r.province].filter(Boolean).join(", ") || "—"}</span>
+                        <span className="block truncate text-[15px] font-medium text-slate-900 dark:text-white/90">{r.name}</span>
+                        <span className="block truncate text-[13px] text-slate-500 dark:text-white/45">{[r.district, r.province].filter(Boolean).join(", ") || "—"}</span>
                       </th>
                       <td className="px-2 py-2.5 text-right font-semibold tabular-nums text-slate-900 dark:text-white">{formatNumber(r.open)}</td>
                       <td className="px-2 py-2.5 text-right tabular-nums">
@@ -308,7 +308,7 @@ export function ReportingOverview({ onOpenReport, refreshKey = 0 }: Props) {
                 </tbody>
               </table>
               {data.schools.length > 10 && (
-                <p className="px-2 pt-2 text-[11px] text-slate-500 dark:text-white/45">Top 10 of {formatNumber(data.schools.length)} schools with reports, most urgent first.</p>
+                <p className="px-2 pt-2 text-[13px] text-slate-500 dark:text-white/45">Top 10 of {formatNumber(data.schools.length)} schools with reports, most urgent first.</p>
               )}
             </div>
           )}

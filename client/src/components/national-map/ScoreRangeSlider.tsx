@@ -68,7 +68,7 @@ export function ScoreRangeSlider({ value, onCommit }: { value: ScoreRange; onCom
           style={{ zIndex: 1 }}
         />
       </div>
-      <div className={cn("relative mx-[9px] mt-1 h-3 text-[10px] tabular-nums", MUTED)} aria-hidden>
+      <div className={cn("relative mx-[9px] mt-1 h-3 text-[12px] tabular-nums", MUTED)} aria-hidden>
         {[0, 35, 55, 75, 100].map((t) => (
           <span key={t} className="absolute -translate-x-1/2" style={{ left: `${t}%` }}>
             {t}

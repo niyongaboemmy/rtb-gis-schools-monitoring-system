@@ -135,12 +135,12 @@ export function BuildingsDetail({ buildings, onBuildingClick }: Props) {
               <span className="min-w-0 flex-1">
                 <span className="flex items-start justify-between gap-2">
                   <span className="min-w-0">
-                    <span className="block truncate text-[13px] font-semibold text-slate-900 dark:text-white">{b.name || "Unnamed building"}</span>
-                    <span className="block truncate text-[11px] text-slate-500 dark:text-white/50">{b.function || "Use not recorded"}</span>
+                    <span className="block truncate text-[15px] font-semibold text-slate-900 dark:text-white">{b.name || "Unnamed building"}</span>
+                    <span className="block truncate text-[13px] text-slate-500 dark:text-white/50">{b.function || "Use not recorded"}</span>
                   </span>
                   <StatusPill color={c.color}>{c.label}</StatusPill>
                 </span>
-                <span className="mt-1.5 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px] text-slate-500 dark:text-white/50">
+                <span className="mt-1.5 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[13px] text-slate-500 dark:text-white/50">
                   {facts.map((f) => (
                     <span key={f}>{f}</span>
                   ))}
