@@ -1,0 +1,90 @@
+/*
+ * Typography — the single source for fonts, weights and text rhythm.
+ *
+ * Design target: the "AeroCircle" concept (clean, precise, geometric).
+ * AeroCircle font files are NOT in this project and no published AeroCircle
+ * family could be found, so the UI renders in Google Sans Flex (SIL OFL,
+ * self-hosted via @fontsource-variable/google-sans-flex, loaded in main.tsx),
+ * the closest open match to the concept's letterforms. This is a stand-in.
+ *
+ * To switch to genuine AeroCircle files later:
+ *   1. put the licensed .woff2 files in client/public/fonts/ and add
+ *      @font-face rules for the weights they really contain (example below);
+ *   2. put "AeroCircle" first in --font-family-primary;
+ *   3. drop the Google Sans Flex import in main.tsx and update FONT_SANS in
+ *      src/lib/fonts.ts (canvas text can't read CSS variables).
+ *
+ *   @font-face {
+ *     font-family: "AeroCircle";
+ *     src: url("/fonts/aerocircle-regular.woff2") format("woff2");
+ *     font-weight: 400;
+ *     font-style: normal;
+ *     font-display: swap;
+ *   }
+ */
+
+@theme {
+  /* Tailwind's `font-sans` / `font-mono` utilities and its preflight
+     (html, inputs, buttons, code) all resolve to these. */
+  --font-sans: var(--font-family-primary);
+  --font-mono: var(--font-family-mono);
+}
+
+@layer base {
+  :root {
+    --font-family-primary: "Google Sans Flex Variable", "Google Sans Flex", system-ui, -apple-system,
+      "Segoe UI", Roboto, sans-serif;
+    /* Coordinates, IDs and technical readouts. */
+    --font-family-mono: "Maple Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+    /* Weights the loaded files actually cover: Google Sans Flex 1–1000
+       (variable); Maple Mono 400 and 700 only. */
+    --font-weight-body: 400;
+    --font-weight-heading: 700;
+
+    --line-height-heading: 1.2;
+    --line-height-body: 1.5;
+    --letter-spacing-heading: -0.015em;
+  }
+
+  body {
+    font-family: var(--font-family-primary);
+    font-weight: var(--font-weight-body);
+    line-height: var(--line-height-body);
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-size-adjust: 100%;
+    /* Every figure the same height and width, so scores, counts and
+       percentages line up wherever they appear. */
+    font-variant-numeric: lining-nums tabular-nums;
+  }
+
+  /* Headings: bold, slightly tightened, balanced wrapping. Sizes come from
+     each component's own utilities; one that sets its own weight, leading
+     or tracking keeps it. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-weight: var(--font-weight-heading);
+    line-height: var(--line-height-heading);
+    letter-spacing: var(--letter-spacing-heading);
+    text-wrap: balance;
+    overflow-wrap: break-word;
+  }
+
+  /* Body copy: avoid one-word last lines where the browser supports it. */
+  p {
+    text-wrap: pretty;
+  }
+}
+
+/* Leaflet's stylesheet (loaded unlayered with each map) puts map labels,
+   tooltips, popups and attribution in Helvetica. Keep them in the app font;
+   its zoom "+/−" glyphs stay as they are. */
+:root .leaflet-container {
+  font-family: var(--font-family-primary);
+}

@@ -1,6 +1,7 @@
 import { useImperativeHandle, useRef, type Ref } from "react";
 import { geoDistance, geoInterpolate, type GeoPath, type GeoProjection } from "d3-geo";
 import { RWANDA_CENTER, RWANDA_SCHOOLS, ZOOM_RWANDA, ZOOM_SCHOOL, type LonLat } from "./globe-scope";
+import { FONT_SANS } from "../../lib/fonts";
 
 /**
  * A survey drone working the platform's scope: TVET schools in Rwanda.
@@ -234,7 +235,7 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
       const green = "152, 76%, 45%";
       const ink = f.dark ? "213, 94%, 82%" : "224, 76%, 40%";
       const halo = f.dark ? "224, 71%, 6%" : "0, 0%, 100%";
-      ctx.font = `600 ${11 * d}px Inter, system-ui, sans-serif`;
+      ctx.font = `600 ${11 * d}px ${FONT_SANS}`;
       ctx.textBaseline = "middle";
 
       // Draw the target last so its label wins any collision.

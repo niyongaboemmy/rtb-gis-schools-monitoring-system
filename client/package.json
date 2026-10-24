@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@devrw/rwanda-location": "^1.1.2",
+    "@fontsource-variable/google-sans-flex": "^5.3.2",
+    "@fontsource/maple-mono": "^5.3.0",
     "@radix-ui/react-progress": "^1.1.2",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tooltip": "^1.2.8",

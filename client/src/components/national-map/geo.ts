@@ -75,6 +75,9 @@ export interface MapView {
 }
 
 /** "-1.94030,29.87390,8.50" → view (null when malformed or off-planet). */
+/** Camera on first open and on "reset view": Kigali-centred, most of Rwanda in frame. */
+export const HOME_VIEW: MapView = { lat: -1.98465, lng: 30.05072, zoom: 9.5 };
+
 export function parseView(raw: string | null | undefined): MapView | null {
   if (!raw) return null;
   const [lat, lng, zoom] = raw.split(",").map(Number);

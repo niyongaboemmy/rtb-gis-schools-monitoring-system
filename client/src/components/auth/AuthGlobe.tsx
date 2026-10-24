@@ -6,6 +6,7 @@ import { cn } from "../../lib/utils";
 import type { FeatureCollection, Geometry } from "geojson";
 import { GlobeDrone, type DroneFrame, type GlobeDroneHandle } from "./GlobeDrone";
 import { ZOOM_RWANDA } from "./globe-scope";
+import { FONT_SANS } from "../../lib/fonts";
 
 /** Kigali — the globe settles here and the beacon pulses here. */
 const KIGALI: [number, number] = [30.06, -1.95];
@@ -335,7 +336,7 @@ export function AuthGlobe({ className }: { className?: string }) {
         // Neighbour names, quiet, letter-spaced.
         const labelAlpha = clamp01((zoom - ZOOM_RWANDA * 0.5) / (ZOOM_RWANDA * 0.3));
         if (labelAlpha > 0) {
-          ctx!.font = `600 ${10 * dpr}px Inter, system-ui, sans-serif`;
+          ctx!.font = `600 ${10 * dpr}px ${FONT_SANS}`;
           ctx!.letterSpacing = `${2 * dpr}px`;
           ctx!.textAlign = "center";
           ctx!.textBaseline = "middle";

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { label } from "../../lib/labels";
+import { FONT_MONO } from "../../lib/fonts";
 
 interface AddBuildingForm {
   name: string;
@@ -154,7 +155,7 @@ export const ViewerAddBuildingModal: React.FC<ViewerAddBuildingModalProps> = ({
               style={{
                 fontSize: 9,
                 color: "rgba(255,255,255,0.3)",
-                fontFamily: "'JetBrains Mono',monospace",
+                fontFamily: FONT_MONO,
                 letterSpacing: "0.8px",
                 textTransform: "uppercase",
                 marginTop: 1,
@@ -317,7 +318,7 @@ export const ViewerAddBuildingModal: React.FC<ViewerAddBuildingModalProps> = ({
                 border: "1px solid rgba(255,255,255,0.1)",
                 background: "rgba(255,255,255,0.04)",
                 color: "rgba(232,232,240,0.55)",
-                fontFamily: "'JetBrains Mono',monospace",
+                fontFamily: FONT_MONO,
                 fontSize: 10,
                 cursor: "pointer",
               }}
@@ -336,7 +337,7 @@ export const ViewerAddBuildingModal: React.FC<ViewerAddBuildingModalProps> = ({
                   ? "rgba(59,130,246,0.1)"
                   : "rgba(59,130,246,0.22)",
                 color: saving ? "rgba(147,197,253,0.5)" : "#93c5fd",
-                fontFamily: "'JetBrains Mono',monospace",
+                fontFamily: FONT_MONO,
                 fontSize: 10,
                 fontWeight: 700,
                 cursor: saving ? "default" : "pointer",
@@ -359,7 +360,7 @@ const fieldInputStyle: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,0.1)",
   background: "rgba(255,255,255,0.04)",
   color: "#e8e8f0",
-  fontFamily: "'JetBrains Mono',monospace",
+  fontFamily: FONT_MONO,
   fontSize: 10,
   outline: "none",
 };
@@ -375,7 +376,7 @@ function Field({
     <div>
       <div
         style={{
-          fontFamily: "'JetBrains Mono',monospace",
+          fontFamily: FONT_MONO,
           fontSize: 9,
           fontWeight: 600,
           color: "rgba(232,232,240,0.3)",
