@@ -10,7 +10,8 @@ const Table = React.forwardRef<
 >(({ className, wrapperClassName, striped = true, ...props }, ref) => (
   <div
     className={cn(
-      "relative w-full overflow-auto scrollbar-thin scrollbar-thumb-border/50",
+      // sb-visible: wide tables scroll sideways — keep a faint thumb at rest.
+      "relative w-full overflow-auto scrollbar-thin scrollbar-thumb-border/50 sb-visible",
       wrapperClassName,
     )}
   >

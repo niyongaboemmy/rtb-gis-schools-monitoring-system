@@ -526,7 +526,9 @@ export function RwandaBackdrop({ schools, anchor, onSchoolClick, provinces, onPr
         @keyframes rb-draw { to { stroke-dashoffset: 0; } }
         .rb-fill { animation: rb-fade 1.2s ease-out 900ms both; }
         @keyframes rb-fade { from { opacity: 0; } to { opacity: 1; } }
-        .rb-sweep { animation: rb-sweep 7s cubic-bezier(.45,0,.55,1) 2.6s infinite; opacity: 0; }
+        /* Ambient loops run ~45 s, then rest (forwards = on their invisible or
+           neutral end frame), so an idle dashboard stops repainting the map. */
+        .rb-sweep { animation: rb-sweep 7s cubic-bezier(.45,0,.55,1) 2.6s 6 forwards; opacity: 0; }
         @keyframes rb-sweep {
           0% { transform: translateX(0); opacity: 0; }
           8% { opacity: 1; }
@@ -534,13 +536,13 @@ export function RwandaBackdrop({ schools, anchor, onSchoolClick, provinces, onPr
           50%, 100% { transform: translateX(var(--rb-travel)); opacity: 0; }
         }
         .rb-badge { transform-box: fill-box; transform-origin: center; animation: rb-dot 600ms cubic-bezier(.34,1.56,.64,1) both; }
-        .rb-halo { transform-box: fill-box; transform-origin: center; animation: rb-breathe 3.2s ease-in-out infinite; }
+        .rb-halo { transform-box: fill-box; transform-origin: center; animation: rb-breathe 3.2s ease-in-out 14; }
         @keyframes rb-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.12); } }
         .rb-ring { stroke-dashoffset: var(--rb-ring); animation: rb-ring 1.3s cubic-bezier(.22,1,.36,1) both; }
         @keyframes rb-ring { to { stroke-dashoffset: 0; } }
         .rb-dot { transform-box: fill-box; transform-origin: center; animation: rb-dot 520ms cubic-bezier(.34,1.56,.64,1) both; }
         @keyframes rb-dot { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-        .rb-pulse { transform-box: fill-box; transform-origin: center; animation: rb-pulse 2.6s ease-out infinite; }
+        .rb-pulse { transform-box: fill-box; transform-origin: center; animation: rb-pulse 2.6s ease-out 17 forwards; }
         @keyframes rb-pulse { from { transform: scale(1); opacity: 0.7; } to { transform: scale(4.2); opacity: 0; } }
 
         @media (prefers-reduced-motion: reduce) {

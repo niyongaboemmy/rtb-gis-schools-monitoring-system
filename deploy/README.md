@@ -595,6 +595,37 @@ Verify:
 [local]$ curl -I https://rtb.aerovyntech.com     # HTTP/2 200, valid cert
 ```
 
+### 11.3 Client caching and pre-compressed assets
+
+`deploy.sh` writes a `.gz` next to every client file and keeps the last 14
+days of content-hashed chunks. The vhost has to serve them. Certbot has
+rewritten the live file, so don't copy the template over it; add these to the
+`:443` server block (and the `:80` one if it still serves pages):
+
+```nginx
+gzip_static on;
+gzip_vary on;
+
+location /assets/ {
+    add_header Cache-Control "public, max-age=31536000, immutable";
+    try_files $uri =404;
+}
+location = /index.html {
+    add_header Cache-Control "no-cache";
+}
+```
+
+Make sure the `listen 443 ssl` line also enables HTTP/2 (`listen 443 ssl http2;`
+or `http2 on;` on nginx ≥ 1.25.1), then `sudo nginx -t && sudo systemctl reload nginx`.
+
+Check after the next deploy:
+```
+[local]$ curl -sI -H 'Accept-Encoding: gzip' https://rtb.aerovyntech.com/assets/<any>.js \
+           | grep -iE 'cache-control|content-encoding'
+# cache-control: public, max-age=31536000, immutable
+# content-encoding: gzip
+```
+
 Open **https://rtb.aerovyntech.com** in a browser — the SPA loads, padlock is valid,
 you can log in with `admin@rtb.gov.rw` / `Admin@123`.
 

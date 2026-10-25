@@ -103,7 +103,9 @@ export function FloatingStat({
     >
       <motion.div
         animate={floating && !reduce ? { y: [0, -7, 0] } : undefined}
-        transition={floating ? { duration: 6 + (index % 3), repeat: Infinity, ease: "easeInOut", delay: index * 0.9 } : undefined}
+        // Drift for ~45 s, then rest at the start: each frame of drift also
+        // re-blurs the glass panel behind it.
+        transition={floating ? { duration: 6 + (index % 3), repeat: Math.round(45 / (6 + (index % 3))), ease: "easeInOut", delay: index * 0.9 } : undefined}
       >
         <motion.div
           onPointerMove={(e) => {

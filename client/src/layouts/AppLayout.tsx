@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { Suspense, useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import type { Socket } from "socket.io-client";
 import { connectSocket } from "../lib/socket";
 import {
@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { RouteFallback } from "../components/RouteFallback";
 import { GlobalSearch } from "../components/GlobalSearch";
 import type { PermissionType } from "../lib/permissions";
 import { Permission } from "../lib/permissions";
@@ -523,7 +524,9 @@ export function AppLayout() {
             }}
             className="container mx-auto p-4 sm:p-5 md:p-7 w-full h-full"
           >
-            <Outlet />
+            <Suspense fallback={<RouteFallback />}>
+              <Outlet />
+            </Suspense>
           </motion.div>
         </main>
       </div>

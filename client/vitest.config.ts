@@ -2,7 +2,7 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
-// Kept apart from vite.config.ts so unit tests never load the Cesium plugin.
+// Kept apart from vite.config.ts so unit tests skip the build-only options.
 export default defineConfig({
   plugins: [react()],
   resolve: { alias: { "@": path.resolve(__dirname, "./src") } },

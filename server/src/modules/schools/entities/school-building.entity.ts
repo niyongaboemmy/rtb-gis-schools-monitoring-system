@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { School } from './school.entity';
 
@@ -35,6 +36,7 @@ export class SchoolBuilding {
   @JoinColumn({ name: 'school_id' })
   school: School;
 
+  @Index('IDX_school_buildings_school_id')
   @Column({ name: 'school_id' })
   schoolId: string;
 

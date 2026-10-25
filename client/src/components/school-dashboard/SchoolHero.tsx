@@ -156,7 +156,9 @@ export function SchoolHero({ name, code, district, province, mapped, metrics, on
                 aria-hidden
                 className="absolute inset-0"
                 animate={reduce ? undefined : { rotate: 360 }}
-                transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
+                // One slow turn, then rest (360° = the start): an idle page
+                // shouldn't repaint forever.
+                transition={{ duration: 60, ease: "linear" }}
               >
                 {COMPONENT_ORDER.map((k, i) => {
                   const raw = metrics?.[FACTORS[k].field];

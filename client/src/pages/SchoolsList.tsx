@@ -46,7 +46,7 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { SchoolForm } from "../components/SchoolForm";
+import { LazySchoolForm as SchoolForm } from "../components/LazySchoolForm";
 import { useToast } from "../components/ui/toast";
 import {
   resolveDistrictName,

@@ -46,6 +46,7 @@ export class IssueReport {
   @JoinColumn({ name: 'school_id' })
   school: School;
 
+  @Index('IDX_issue_reports_school_id')
   @Column({ name: 'school_id' })
   schoolId: string;
 
@@ -73,6 +74,7 @@ export class IssueReport {
     enum: ReportStatus,
     default: ReportStatus.PENDING,
   })
+  @Index('IDX_issue_reports_status')
   status: ReportStatus;
 
   @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
@@ -119,6 +121,7 @@ export class IssueReport {
   @Column({ name: 'reviewed_by', type: 'uuid', nullable: true })
   reviewedById: string | null;
 
+  @Index('IDX_issue_reports_createdAt')
   @CreateDateColumn()
   createdAt: Date;
 

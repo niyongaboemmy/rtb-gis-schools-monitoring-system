@@ -1,8 +1,20 @@
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { viewerLink } from "../lib/viewer-tools";
-import School2DViewer from "./School2DViewer";
+import { lazyPage } from "../lib/lazy";
 import ViewerModeModal from "./ViewerModeModal";
+
+// The 2D viewer pulls in OpenLayers (and, on its 3D tab, three.js). Pages that
+// embed a map (school dashboard, reporting, report details) only download it
+// when the map is actually shown.
+const School2DViewer = lazyPage(() => import("./School2DViewer"));
+
+const spinner = (
+  <div className="flex items-center justify-center w-full h-full min-h-[200px]" role="status">
+    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
+    <span className="sr-only">Loading the map…</span>
+  </div>
+);
 
 interface SchoolMapProps {
   /** Raw school object from the API */
@@ -69,13 +81,13 @@ export default function SchoolMap({
         }}
       />
 
-      {viewerMode === null && (
-        <div className="flex items-center justify-center w-full h-full min-h-[200px]">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
-        </div>
-      )}
+      {viewerMode === null && spinner}
 
-      {viewerMode === "2D" && <School2DViewer {...sharedProps} />}
+      {viewerMode === "2D" && (
+        <Suspense fallback={spinner}>
+          <School2DViewer {...sharedProps} />
+        </Suspense>
+      )}
     </>
   );
 }

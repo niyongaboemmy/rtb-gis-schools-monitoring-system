@@ -59,7 +59,16 @@ VITE_FILE_SERVER_URL=/files
 VITE_GOOGLE_CLIENT_ID=913204130540-5hrfp5ridotig5ebd7ar424vhecq8bab.apps.googleusercontent.com
 CENV
 npm --prefix client run build
-rsync -a --delete client/dist/ "$CLIENT_WEBROOT/"
+node client/scripts/check-bundle-budget.mjs
+# Compress once here instead of on every request; nginx serves the .gz copies
+# (`gzip_static on`, see deploy/nginx). Harmless if nginx doesn't use them.
+find client/dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.svg' -o -name '*.html' -o -name '*.json' -o -name '*.wasm' \) \
+  -size +1k -exec gzip -k -9 -f {} +
+# Content-hashed chunks: keep the previous builds' files for 14 days so a tab
+# opened before this deploy can still lazy-load the pages it references.
+rsync -a --delete --exclude 'assets/' client/dist/ "$CLIENT_WEBROOT/"
+rsync -a client/dist/assets/ "$CLIENT_WEBROOT/assets/"
+find "$CLIENT_WEBROOT/assets" -type f -mtime +14 -delete
 
 # ── 6. Reload processes (zero-downtime) ───────────────────────────────────
 pm2 reload rtb-api          --update-env

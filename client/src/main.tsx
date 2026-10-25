@@ -9,7 +9,10 @@ import "@fontsource/maple-mono/400.css";
 import "@fontsource/maple-mono/700.css";
 import "./index.css";
 import App from "./App.tsx";
+import { installScrollbars } from "./lib/scrollbars";
 import { ThemeProvider } from "./components/ThemeProvider.tsx";
+
+installScrollbars();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

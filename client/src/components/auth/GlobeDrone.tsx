@@ -165,6 +165,10 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
     const setText = (el: HTMLElement | null, text: string) => {
       if (el && el.textContent !== text) el.textContent = text;
     };
+    // Telemetry card size, measured only after its text or the stage size
+    // changes. Reading offsetWidth every frame (right after the style writes
+    // above it) forced a synchronous layout ~60 times a second.
+    let cardSize: { w: number; h: number; wrap: number } | null = null;
 
     /** Next SCHOOLS_PER_RUN schools, cycling through all of them in shuffled order. */
     const planRun = () => {
@@ -216,10 +220,12 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
       setText(t.gsd.current, `${((m.agl / 100) * 2.74).toFixed(1)} cm/px`);
       setText(t.battery.current, `${st.battery}%`);
       st.lastFrames = -1;
+      cardSize = null;
     };
 
     const setStatus = (done: boolean) => {
       setText(t.status.current, done ? "Synced" : "Capturing");
+      cardSize = null;
       const dot = t.dot.current;
       if (dot) dot.dataset.state = done ? "done" : "rec";
       const bar = t.bar.current;
@@ -437,8 +443,9 @@ export function GlobeDrone({ ref }: { ref: Ref<GlobeDroneHandle> }) {
         const showCard = (st.phase === "scan" || st.phase === "done") && zp > 0.3;
         card.style.opacity = showCard ? op : "0";
         if (showCard) {
-          const w = card.offsetWidth;
-          const h = card.offsetHeight;
+          if (!cardSize || cardSize.wrap !== f.wrapWidth)
+            cardSize = { w: card.offsetWidth, h: card.offsetHeight, wrap: f.wrapWidth };
+          const { w, h } = cardSize;
           const gap = size * 0.6;
           const clamp = (b: Box): Box => ({
             ...b,

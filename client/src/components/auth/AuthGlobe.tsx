@@ -164,6 +164,10 @@ export function AuthGlobe({ className }: { className?: string }) {
       if (!frame) frame = requestAnimationFrame(tick);
     });
 
+    // Stage geometry, read once per resize. Reading offsetLeft/clientWidth
+    // inside draw() — after the label/drone style writes — forced a
+    // synchronous layout every frame (~200 layouts/s on the sign-in page).
+    const geom = { left: 0, top: 0, wrapW: 0, wrapH: 0, labelW: 0, labelH: 0 };
     const resize = () => {
       const rect = wrap.getBoundingClientRect();
       size = Math.max(120, Math.min(rect.width, rect.height));
@@ -172,11 +176,21 @@ export function AuthGlobe({ className }: { className?: string }) {
       canvas.height = Math.round(size * dpr);
       canvas.style.width = `${size}px`;
       canvas.style.height = `${size}px`;
+      geom.left = canvas.offsetLeft;
+      geom.top = canvas.offsetTop;
+      geom.wrapW = wrap.clientWidth;
+      geom.wrapH = wrap.clientHeight;
+      geom.labelW = label.offsetWidth;
+      geom.labelH = label.offsetHeight;
       if (!frame && !cancelled) frame = requestAnimationFrame(tick);
     };
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
+    // The label's width changes when the web font swaps in.
+    void document.fonts?.ready.then(() => {
+      if (!cancelled) resize();
+    });
 
     const io = new IntersectionObserver(([entry]) => {
       visible = entry.isIntersecting;
@@ -232,15 +246,15 @@ export function AuthGlobe({ className }: { className?: string }) {
         now,
         projection,
         centre,
-        offsetX: canvas!.offsetLeft,
-        offsetY: canvas!.offsetTop,
+        offsetX: geom.left,
+        offsetY: geom.top,
         dpr,
         radius: r / dpr,
         zoom,
         canvasSize: size,
         cx: cx / dpr,
-        wrapWidth: wrap!.clientWidth,
-        wrapHeight: wrap!.clientHeight,
+        wrapWidth: geom.wrapW,
+        wrapHeight: geom.wrapH,
         // A patrolling drone is pure decoration: off for reduced motion.
         active: introDone && !reduceMotion,
         dark: C === DARK,
@@ -390,12 +404,12 @@ export function AuthGlobe({ className }: { className?: string }) {
 
         ctx!.globalAlpha = 1;
         // Canvas is centred in a wider wrapper — offset into wrapper space.
-        const lx = canvas!.offsetLeft + bx / dpr + 16;
-        const ly = canvas!.offsetTop + by / dpr - 58;
+        const lx = geom.left + bx / dpr + 16;
+        const ly = geom.top + by / dpr - 58;
         label!.style.transform = `translate(${lx}px, ${ly}px)`;
         // Hidden during the intro and while the camera is zoomed in.
         if (introDone && zoom < 1.2)
-          droneFrame.avoid = { x: lx, y: ly, w: label!.offsetWidth, h: label!.offsetHeight };
+          droneFrame.avoid = { x: lx, y: ly, w: geom.labelW, h: geom.labelH };
         else label!.style.opacity = "0";
       } else {
         ctx!.globalAlpha = 1;

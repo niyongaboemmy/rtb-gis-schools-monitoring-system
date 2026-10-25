@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Repository, ILike, DeepPartial } from 'typeorm';
+import { Repository, ILike, DeepPartial, Brackets } from 'typeorm';
 import { School, PriorityLevel, SchoolStatus } from './entities/school.entity';
 import {
   SchoolBuilding,
@@ -21,6 +21,7 @@ import { FacilityEntity } from './entities/facility.entity';
 import { BuildingDto } from './dto/building.dto';
 import { CreateChangeRequestDto } from './dto/change-request.dto';
 import { filterSchoolUpdate } from './school-field-permissions';
+import { schoolListSelect } from './school-list-select';
 import { checkPoint, round7 } from './location/school-location.rules';
 import { programmeTotals } from '../analytics/school-metrics.helpers';
 import type { ChangeRequestPayload } from '../reports/entities/issue-report.entity';
@@ -154,11 +155,20 @@ export class SchoolsService {
       limit = 20,
     } = query || {};
 
-    const qb = this.schoolRepository.createQueryBuilder('school');
+    const qb = this.schoolRepository
+      .createQueryBuilder('school')
+      .select(schoolListSelect('school'));
 
     if (search) {
+      // Bracketed: without it `AND` binds tighter than `OR`, so a name or
+      // code match escaped every other filter — the access scope included.
       qb.where(
-        'school.name ILIKE :search OR school.code ILIKE :search OR school.district ILIKE :search',
+        new Brackets((w) =>
+          w
+            .where('school.name ILIKE :search')
+            .orWhere('school.code ILIKE :search')
+            .orWhere('school.district ILIKE :search'),
+        ),
         { search: `%${search}%` },
       );
     }
@@ -285,16 +295,33 @@ export class SchoolsService {
   private prepareLocation(
     school: School,
     data: { latitude?: unknown; longitude?: unknown },
-  ): Partial<Pick<School, 'latitude' | 'longitude' | 'locationSource' | 'locationUpdatedAt'>> {
+  ): Partial<
+    Pick<
+      School,
+      'latitude' | 'longitude' | 'locationSource' | 'locationUpdatedAt'
+    >
+  > {
     const { latitude, longitude } = data;
     // Applied below (or not at all) — never copied blindly from the DTO.
     delete data.latitude;
     delete data.longitude;
     if (latitude === undefined && longitude === undefined) return {};
-    const point = checkPoint(latitude ?? school.latitude, longitude ?? school.longitude);
+    const point = checkPoint(
+      latitude ?? school.latitude,
+      longitude ?? school.longitude,
+    );
     if ('error' in point) throw new BadRequestException(point.error);
-    if (round7(Number(school.latitude)) === point.lat && round7(Number(school.longitude)) === point.lng) return {};
-    return { latitude: point.lat, longitude: point.lng, locationSource: 'manual', locationUpdatedAt: new Date() };
+    if (
+      round7(Number(school.latitude)) === point.lat &&
+      round7(Number(school.longitude)) === point.lng
+    )
+      return {};
+    return {
+      latitude: point.lat,
+      longitude: point.lng,
+      locationSource: 'manual',
+      locationUpdatedAt: new Date(),
+    };
   }
 
   /**

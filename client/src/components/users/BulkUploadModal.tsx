@@ -3,7 +3,6 @@ import { Modal } from "../ui/modal";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { AlertCircle, AlertTriangle, CheckCircle2, UploadCloud, Download, FileSpreadsheet, Save } from "lucide-react";
-import * as XLSX from "xlsx";
 import { api, apiErrorMessage } from "../../lib/api";
 import { cn } from "../../lib/utils";
 import { formatNumber } from "../../lib/format";
@@ -73,9 +72,11 @@ export function BulkUploadModal({
   const readFile = (file: File) => {
     setLoading(true);
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = async (evt) => {
       try {
         const bstr = evt.target?.result;
+        // The Excel parser (~600 KB) loads only when a file is picked.
+        const XLSX = await import("xlsx");
         const wb = XLSX.read(bstr, { type: "binary" });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];

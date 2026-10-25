@@ -26,6 +26,85 @@ redesign.
 > API ignore every other filter, **including the user's access scope**.
 > See [S1](#s1-search-bypasses-filters-and-access-scope).
 
+## Implementation status (25 Oct 2026)
+
+Measured on the production build (`vite preview`) against the dev API, in
+headless Chrome. Start-up and blocking figures are at 4× CPU slowdown; idle
+figures are 5 s untouched, after the page settles.
+
+| Measure | Before | After |
+|---|---|---|
+| JavaScript before the login page (gzip) | 3,489 KB | **294 KB** (budget check: 241 KB entry + preloads) |
+| JavaScript for Schools / Analytics / Reports pages (gzip) | ~3,435 KB each | **264–284 KB** |
+| School page (map shell) JavaScript (gzip) | 3,435 KB | 901 KB |
+| Main-thread blocking, login page | 5.4 s | 2.8 s |
+| Login page forced layouts | ~200 / s | 60 / s (one per frame) |
+| Idle CPU, school page | 11.9% | **0.8%** |
+| Idle CPU, Dashboard | 1.9% | **0.4%** |
+| `GET /schools?limit=1000` (8 schools) | 1,090 KB | **15 KB** |
+| `GET /reports?limit=1000` | 1,020 KB | **6 KB** |
+| `GET /analytics/decisions` | 1,097 KB | **22 KB** |
+| `GET /analytics/overview` (Dashboard, every visit) | 1,100 KB | **24 KB** |
+| WebGL contexts alive after closing the 3D viewer | +1 per open | **0** (each open's context is released) |
+
+**Done**
+
+- **S1** search now brackets its `OR` group; filters and the access scope apply.
+  Unit test in `schools.service.spec.ts`.
+- **P1.1** Cesium removed (plugin, config, packages, wording). Also removed the
+  unused `@tanstack/react-query`, `dayjs`, `jszip`, `@types/jszip`,
+  `ol-pmtiles`, `three-stdlib` (client) and `passport-local`,
+  `@types/passport-local`, `@types/jszip` (server). `dompurify` was only
+  present through Cesium although `MapHud.tsx` imports it; it is now declared.
+- **P1.2** Every page except Login, ForgotPassword and the shell is a lazy
+  chunk (`lib/lazy.ts`, reloads once if a deploy removed an old chunk).
+  `SchoolMap` loads the 2D viewer on demand, the 2D viewer loads the 3D view,
+  details panel and survey form on demand, and `SchoolForm` (with the 4.6 MB
+  Rwanda location dataset) loads the first time it opens
+  (`LazySchoolForm.tsx`). `xlsx` is imported when a file is picked.
+- **P1.3** Stable chunks for three, OpenLayers, Leaflet, recharts, React,
+  motion, d3-geo and small shared helpers (`vite.config.ts`). React, motion,
+  geo and core carry a higher priority so the map/chart groups cannot capture
+  modules the entry needs.
+- **P1.4** `deploy.sh` pre-compresses the build and keeps 14 days of old
+  chunks. The nginx template has `gzip_static`, one-year `immutable` caching
+  for `/assets/` and `no-cache` for `index.html`. **The live vhost must be
+  updated by hand** — see deploy/README.md § 11.3.
+- **P1.5** `npm run check:bundle` (client) fails over 400 KB gzip or if Cesium
+  returns; it runs in CI and in `deploy.sh`.
+- **P3.1** The 3D viewer disposes geometries, BVH trees, materials, textures,
+  controls and the renderer, and force-loses its WebGL context on unmount.
+- **P2.2 (part)** `preserveDrawingBuffer` removed; screenshots render and copy
+  in the same task, verified.
+- **P4.2 (part)** Ambient loops on the school hero, dashboard backdrop, the
+  hero's orbiting dots and floating KPI cards run ~45 s, then rest on their
+  start frame. The login globe no longer forces a layout every frame.
+- **P5.1 (part)** The schools list, reports and decision queue leave out
+  `kmz2dManifest` (`schools/school-list-select.ts`); single-school reads and
+  the KMZ endpoints still return it.
+- **P5.4** Indexes on `issue_reports (school_id, status, createdAt)`,
+  `school_buildings (school_id)`, `schools (status, overallScore)` — entity
+  `@Index`es plus migration `1788510000000-AddListIndexes`.
+
+**Not done, by decision**
+
+- **P5.5** The Dashboard refetch on visit is deliberate (rankings must match
+  the overview), and the response is now 15 KB.
+- **P2.2** `powerPreference: "high-performance"` and the logarithmic depth
+  buffer stay: changing them trades 3D quality or risks z-fighting.
+
+**Still open**
+
+- The school page initialises OpenLayers even on its Dashboard tab
+  (`School2DViewer` mounts the map under every tab); deferring it needs the
+  map hooks restructured.
+- The login globe redraws every country each frame (~38% of one core at idle).
+  Its motion is per-frame, not time-based, so capping the frame rate would
+  slow it; it needs a time-based rewrite first.
+- P2.1 (render-on-demand 3D loop), P2.3 (quality tiers), P2.4, P3.2, P3.3,
+  P4.1 (lite effects mode), P5.2 stats endpoint / `limit` caps, P5.3, P6.x,
+  and the functional defects F1–F12.
+
 ## How we measured
 
 - **Build:** the production client, served locally against the dev API and
