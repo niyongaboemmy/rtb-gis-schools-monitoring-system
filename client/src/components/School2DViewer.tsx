@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { Suspense, useEffect, useRef, useState, useCallback, useMemo } from "react";
 import "ol/ol.css";
 import Overlay from "ol/Overlay";
 import VectorSource from "ol/source/Vector";
@@ -26,12 +26,21 @@ import { Modal } from "./ui/modal";
 import { Button } from "./ui/button";
 
 import { BlockInspector } from "./BlockInspector";
-import { SchoolDetailsPanel } from "./2dviewercomponents/SchoolDetailsPanel";
 import SchoolDecisionDashboard from "../pages/SchoolDecisionDashboard";
-import { SchoolForm } from "./SchoolForm";
-import { FacilitySurveyForm } from "./FacilitySurveyForm";
+import { LazySchoolForm as SchoolForm } from "./LazySchoolForm";
+const FacilitySurveyForm = lazyPage(() =>
+  import("./FacilitySurveyForm").then((m) => ({ default: m.FacilitySurveyForm })),
+);
 import { BuildingFormDrawer } from "./school-form-steps/BuildingFormDrawer";
-import School3DView from "./School3DView";
+import { lazyPage } from "../lib/lazy";
+import { RouteFallback } from "./RouteFallback";
+
+// three.js only downloads when the 3D tab is opened; the details panel (with
+// the full Rwanda location dataset) when the Details tab is.
+const School3DView = lazyPage(() => import("./School3DView"));
+const SchoolDetailsPanel = lazyPage(() =>
+  import("./2dviewercomponents/SchoolDetailsPanel").then((m) => ({ default: m.SchoolDetailsPanel })),
+);
 import type { BuildingData } from "./school-form-steps/BuildingsStep";
 import { api, apiErrorMessage, FILE_SERVER_URL } from "../lib/api";
 import { DeleteConfirmationModal } from "./ui/delete-confirmation-modal";
@@ -1449,6 +1458,7 @@ export default function School2DViewer({
       {/* ── 3D View Panel ─────────────────────────────────────────────────── */}
       {activeTab === "3d" && (
         <div className="absolute inset-0 z-40 bg-slate-50/95 dark:bg-gray-950/90 backdrop-blur-sm pointer-events-auto overflow-hidden">
+          <Suspense fallback={<RouteFallback />}>
           <School3DView
             key={focus3d ?? "school"}
             schoolId={school.id}
@@ -1459,17 +1469,20 @@ export default function School2DViewer({
               buildingId ? focusBuilding(buildingId, "media") : setActiveTab("map")
             }
           />
+          </Suspense>
         </div>
       )}
 
       {/* ── Details Panel ─────────────────────────────────────────────────── */}
       {activeTab === "details" && (
         <div className="absolute inset-0 z-40 bg-slate-50/95 dark:bg-gray-950/90 backdrop-blur-sm pointer-events-auto overflow-y-auto overflow-x-hidden custom-scrollbar">
+          <Suspense fallback={<RouteFallback />}>
           <SchoolDetailsPanel
             school={school}
             onEditProfile={() => setIsEditModalOpen(true)}
             onUpdateSurvey={() => setIsSurveyModalOpen(true)}
           />
+          </Suspense>
         </div>
       )}
 
@@ -2019,12 +2032,14 @@ export default function School2DViewer({
       />
 
       {isSurveyModalOpen && (
-        <FacilitySurveyForm
-          schoolId={school.id}
-          schoolName={school.name || ""}
-          isOpen={isSurveyModalOpen}
-          onClose={() => setIsSurveyModalOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <FacilitySurveyForm
+            schoolId={school.id}
+            schoolName={school.name || ""}
+            isOpen={isSurveyModalOpen}
+            onClose={() => setIsSurveyModalOpen(false)}
+          />
+        </Suspense>
       )}
 
       {/* ── Missing Map Data Prompt ─────────────────────────────────────── */}

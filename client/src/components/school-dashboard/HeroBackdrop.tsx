@@ -100,6 +100,14 @@ const PARTICLES = Array.from({ length: 14 }, (_, i) => ({
 }));
 
 /**
+ * Ambient loops play for about this long, then come to rest on their first
+ * keyframe (every loop here starts and ends on the same values). An idle
+ * school page used to repaint these blurred layers forever (~12% CPU).
+ */
+const SETTLE_S = 45;
+const loops = (duration: number) => Math.max(1, Math.round(SETTLE_S / duration));
+
+/**
  * Decorative hero scene — sits behind the content (−z-10) and stays soft, but
  * carries real depth: a translucent isometric campus that rises and floats,
  * pulsing hexagon map tiles, a satellite on an orbit around the score, a
@@ -125,19 +133,19 @@ export function HeroBackdrop({ color, mx, my }: Props) {
         style={{ background: color }}
         initial={{ opacity: 0.16 }}
         animate={reduce ? undefined : { opacity: [0.14, 0.24, 0.14], x: [0, -30, 0], y: [0, 20, 0] }}
-        transition={{ duration: 16, repeat: Infinity, ease: "easeInOut" }}
+        transition={{ duration: 16, repeat: loops(16), ease: "easeInOut" }}
       />
       <motion.div
         className="absolute -left-32 top-10 h-96 w-120 rounded-full bg-primary blur-[130px]"
         initial={{ opacity: 0.08 }}
         animate={reduce ? undefined : { opacity: [0.07, 0.13, 0.07], x: [0, 40, 0] }}
-        transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
+        transition={{ duration: 20, repeat: loops(20), ease: "easeInOut" }}
       />
       <motion.div
         className="absolute bottom-0 left-1/2 h-72 w-96 rounded-full bg-primary blur-[120px]"
         initial={{ opacity: 0.05 }}
         animate={reduce ? undefined : { opacity: [0.04, 0.09, 0.04], x: [0, -40, 0] }}
-        transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+        transition={{ duration: 18, repeat: loops(18), ease: "easeInOut" }}
       />
 
       {/* Dot matrix */}
@@ -175,7 +183,7 @@ export function HeroBackdrop({ color, mx, my }: Props) {
               animate={reduce ? undefined : { pathLength: 1, scale: [1, 1.025, 1] }}
               transition={{
                 pathLength: { duration: 2.4, delay: 0.1 + i * 0.12, ease: EASE },
-                scale: { duration: 7 + i, repeat: Infinity, ease: "easeInOut", delay: i * 0.4 },
+                scale: { duration: 7 + i, repeat: loops(7 + i), ease: "easeInOut", delay: i * 0.4 },
               }}
             />
           ))}
@@ -186,12 +194,12 @@ export function HeroBackdrop({ color, mx, my }: Props) {
         {!reduce && (
           <g>
             <circle r="9" fill="currentColor" opacity="0.12">
-              <animateMotion dur="22s" repeatCount="indefinite" rotate="auto">
+              <animateMotion dur="22s" repeatCount="2" fill="freeze" rotate="auto">
                 <mpath href={`#${gid}orbit`} />
               </animateMotion>
             </circle>
             <g>
-              <animateMotion dur="22s" repeatCount="indefinite" rotate="auto">
+              <animateMotion dur="22s" repeatCount="2" fill="freeze" rotate="auto">
                 <mpath href={`#${gid}orbit`} />
               </animateMotion>
               {/* tiny satellite: body + panels */}
@@ -216,7 +224,7 @@ export function HeroBackdrop({ color, mx, my }: Props) {
         ))}
         {!reduce && (
           <circle r="3.5" fill={color} opacity="0.85">
-            <animateMotion dur="9s" repeatCount="indefinite">
+            <animateMotion dur="9s" repeatCount="5" fill="freeze">
               <mpath href={`#${gid}route`} />
             </animateMotion>
           </circle>
@@ -237,7 +245,7 @@ export function HeroBackdrop({ color, mx, my }: Props) {
             strokeWidth="0.8"
             initial={{ fillOpacity: 0.04, strokeOpacity: 0.25 }}
             animate={reduce ? undefined : { fillOpacity: [0.04, 0.22, 0.04] }}
-            transition={{ duration: 4, delay: i * 0.5, repeat: Infinity, ease: "easeInOut" }}
+            transition={{ duration: 4, delay: i * 0.5, repeat: loops(4), ease: "easeInOut" }}
           />
         ))}
       </motion.svg>
@@ -280,7 +288,7 @@ export function HeroBackdrop({ color, mx, my }: Props) {
             >
               <motion.g
                 animate={reduce ? undefined : { y: [0, -3 - (i % 2) * 2, 0] }}
-                transition={{ duration: 6 + i, repeat: Infinity, ease: "easeInOut", delay: 1.6 + i * 0.3 }}
+                transition={{ duration: 6 + i, repeat: loops(6 + i), ease: "easeInOut", delay: 1.6 + i * 0.3 }}
               >
                 {/* Solid backing in the hero's own colour: blocks hide the lines
                     and the buildings behind them, like real buildings would. */}
@@ -314,7 +322,7 @@ export function HeroBackdrop({ color, mx, my }: Props) {
           fillOpacity="0.3"
           initial={{ opacity: 0 }}
           animate={reduce ? { opacity: 1 } : { opacity: 1, skewY: [0, 6, 0] }}
-          transition={{ opacity: { delay: 2.2 }, skewY: { duration: 2.4, repeat: Infinity, ease: "easeInOut" } }}
+          transition={{ opacity: { delay: 2.2 }, skewY: { duration: 2.4, repeat: loops(2.4), ease: "easeInOut" } }}
         />
       </motion.svg>
 
@@ -326,7 +334,7 @@ export function HeroBackdrop({ color, mx, my }: Props) {
             className="absolute rounded-full bg-primary/50 dark:bg-white/40"
             style={{ left: p.left, top: p.top, width: p.size, height: p.size }}
             animate={{ y: [0, -20, 0], opacity: [0, 0.7, 0] }}
-            transition={{ duration: p.duration, delay: p.delay, repeat: Infinity, ease: "easeInOut" }}
+            transition={{ duration: p.duration, delay: p.delay, repeat: loops(p.duration), ease: "easeInOut" }}
           />
         ))}
 

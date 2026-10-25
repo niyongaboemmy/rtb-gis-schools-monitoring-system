@@ -24,6 +24,7 @@ import {
   applySchoolScope,
   schoolMatchesScope,
 } from '../../common/scope/access-scope';
+import { schoolListSelect } from '../schools/school-list-select';
 
 @Injectable()
 export class ReportsService {
@@ -163,7 +164,8 @@ export class ReportsService {
 
     const qb = this.reportRepository
       .createQueryBuilder('report')
-      .leftJoinAndSelect('report.school', 'school')
+      .leftJoin('report.school', 'school')
+      .addSelect(schoolListSelect('school'))
       .leftJoinAndSelect('report.building', 'building')
       .leftJoinAndSelect('report.reporter', 'reporter')
       .leftJoin('report.reviewer', 'reviewer')

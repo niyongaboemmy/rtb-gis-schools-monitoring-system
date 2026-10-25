@@ -1,0 +1,115 @@
+/*
+ * Scrollbars — overlay-style, brand blue, animated.
+ *
+ * Behaviour (driven by lib/scrollbars.ts, which animates --sb-a):
+ *   at rest          invisible (the gutter stays, so nothing reflows)
+ *   pointer over it  faint     (--sb-a ≈ 0.45) — "this area scrolls"
+ *   while scrolling  visible   (--sb-a = 1), fades out ~1 s after it stops
+ *   thumb hover/drag strong, wider pill
+ * `.sb-visible` keeps a faint thumb at rest, for areas whose overflow is easy
+ * to miss (wide data tables scroll sideways).
+ *
+ * Existing per-component scrollbar configs are left exactly as they are and
+ * excluded here: .no-scrollbar, .custom-scrollbar, .mp-list (3D viewer), and
+ * Tailwind arbitrary `[scrollbar-width:none]` / `[&::-webkit-scrollbar]:…`.
+ *
+ * Chromium (121+) ignores ::-webkit-scrollbar once scrollbar-width/-color is
+ * set on an element, so the standard properties are only used where the
+ * pseudo-elements don't exist (Firefox).
+ */
+
+/* Visibility, 0–1. Registered so it can be animated (WAAPI) and interpolates
+   inside the colours below; inherited so the scrollbar parts can read it. */
+@property --sb-a {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+@layer base {
+  :root {
+    /* Thumb colour: the brand primary; a touch lighter on dark surfaces. */
+    --sb-hue: var(--primary);
+    --sb-size: 10px; /* gutter; the visible pill is narrower (see border) */
+    --sb-k: 1; /* contrast: translucent blue reads darker on near-black */
+  }
+  :root.dark {
+    --sb-hue: var(--ring);
+    --sb-k: 1.3;
+  }
+
+  /* Every element starts invisible; JS raises it on the scroller itself, and
+     this resets nested scrollers so they don't light up with their parent. */
+  * {
+    --sb-a: 0;
+  }
+  .sb-visible {
+    --sb-a: 0.38;
+  }
+}
+
+/* Elements that keep their own (existing) scrollbar configuration. */
+@layer base {
+  @supports selector(::-webkit-scrollbar) {
+    :where(html, body, *):not(.no-scrollbar, .custom-scrollbar, .mp-list, [class*="scrollbar-width:none"], [class*="::-webkit-scrollbar"])::-webkit-scrollbar {
+      width: var(--sb-size);
+      height: var(--sb-size);
+      background: transparent;
+    }
+    :where(html, body, *):not(.no-scrollbar, .custom-scrollbar, .mp-list, [class*="scrollbar-width:none"], [class*="::-webkit-scrollbar"])::-webkit-scrollbar-track {
+      background: transparent;
+      border-radius: 999px;
+    }
+    /* Grabbing the bar shows a soft lane behind the thumb. */
+    :where(html, body, *):not(.no-scrollbar, .custom-scrollbar, .mp-list, [class*="scrollbar-width:none"], [class*="::-webkit-scrollbar"])::-webkit-scrollbar-track:hover {
+      background: hsl(var(--sb-hue) / calc(0.07 * var(--sb-a)));
+    }
+    /* A soft, glassy pill: a gradient (not a flat fill) inset by a
+       transparent border, so it floats in the gutter. */
+    :where(html, body, *):not(.no-scrollbar, .custom-scrollbar, .mp-list, [class*="scrollbar-width:none"], [class*="::-webkit-scrollbar"])::-webkit-scrollbar-thumb {
+      border: 3px solid transparent;
+      border-radius: 999px;
+      background-clip: padding-box;
+      background-image: linear-gradient(
+        180deg,
+        hsl(var(--sb-hue) / calc(0.62 * var(--sb-k) * var(--sb-a))),
+        hsl(var(--sb-hue) / calc(0.4 * var(--sb-k) * var(--sb-a)))
+      );
+      min-height: 36px;
+      min-width: 36px;
+    }
+    :where(html, body, *):not(.no-scrollbar, .custom-scrollbar, .mp-list, [class*="scrollbar-width:none"], [class*="::-webkit-scrollbar"])::-webkit-scrollbar-thumb:horizontal {
+      background-image: linear-gradient(
+        90deg,
+        hsl(var(--sb-hue) / calc(0.62 * var(--sb-k) * var(--sb-a))),
+        hsl(var(--sb-hue) / calc(0.4 * var(--sb-k) * var(--sb-a)))
+      );
+    }
+    :where(html, body, *):not(.no-scrollbar, .custom-scrollbar, .mp-list, [class*="scrollbar-width:none"], [class*="::-webkit-scrollbar"])::-webkit-scrollbar-thumb:hover {
+      border-width: 2px;
+      background-image: linear-gradient(180deg, hsl(var(--sb-hue) / 0.78), hsl(var(--sb-hue) / 0.58));
+    }
+    :where(html, body, *):not(.no-scrollbar, .custom-scrollbar, .mp-list, [class*="scrollbar-width:none"], [class*="::-webkit-scrollbar"])::-webkit-scrollbar-thumb:active {
+      border-width: 2px;
+      background-image: linear-gradient(180deg, hsl(var(--sb-hue) / 0.92), hsl(var(--sb-hue) / 0.72));
+    }
+    :where(html, body, *):not(.no-scrollbar, .custom-scrollbar, .mp-list, [class*="scrollbar-width:none"], [class*="::-webkit-scrollbar"])::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+  }
+
+  /* Firefox: the standard properties (no pseudo-elements, no gradients). */
+  @supports not selector(::-webkit-scrollbar) {
+    :where(html, body, *):not(.no-scrollbar, .custom-scrollbar, .mp-list, [class*="scrollbar-width:none"]) {
+      scrollbar-width: thin;
+      scrollbar-color: hsl(var(--sb-hue) / calc(0.6 * var(--sb-k) * var(--sb-a))) transparent;
+    }
+  }
+}
+
+/* High-contrast / forced colours: hand the scrollbar back to the system. */
+@media (forced-colors: active) {
+  * {
+    scrollbar-color: auto;
+  }
+}

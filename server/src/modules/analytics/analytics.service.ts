@@ -65,6 +65,7 @@ import {
   summariseIssueReports,
 } from './report-stats';
 import { EventsGateway } from '../events/events.gateway';
+import { schoolListSelect } from '../schools/school-list-select';
 
 const DAY_MS = 86_400_000;
 
@@ -255,6 +256,7 @@ export class AnalyticsService implements OnApplicationBootstrap {
       activeInScope(
         this.schoolRepository
           .createQueryBuilder('s')
+          .select(schoolListSelect('s'))
           .innerJoin(
             DecisionAssessment,
             'da',
@@ -278,7 +280,10 @@ export class AnalyticsService implements OnApplicationBootstrap {
             'School',
             's',
             'CAST(s.id AS text) = da.schoolId',
-          ),
+          )
+          // The school minus its 2D tile index (~1 MB per imaged school).
+          .select('da')
+          .addSelect(schoolListSelect('s')),
         'da.schoolId',
       )
         .orderBy('da.updatedAt', 'DESC')
@@ -886,6 +891,9 @@ export class AnalyticsService implements OnApplicationBootstrap {
         's',
         'CAST(s.id AS text) = da.schoolId',
       )
+      // The whole assessment, plus the school minus its 2D tile index.
+      .select('da')
+      .addSelect(schoolListSelect('s'))
       // Intervention queue → most urgent (lowest score) first.
       .orderBy('da.overallScore', 'ASC')
       .addOrderBy('da.urgencyMonths', 'ASC');

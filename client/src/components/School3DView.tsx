@@ -172,6 +172,33 @@ THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
+/** Releases the GPU buffers, BVH trees, materials and textures under `root`. */
+function disposeObject3D(root: THREE.Object3D | null) {
+  if (!root) return;
+  const textures = new Set<THREE.Texture>();
+  const materials = new Set<THREE.Material>();
+  root.traverse((obj) => {
+    const node = obj as THREE.Mesh;
+    const geometry = node.geometry as THREE.BufferGeometry | undefined;
+    if (geometry) {
+      geometry.disposeBoundsTree?.();
+      geometry.dispose();
+    }
+    const mats = node.material;
+    if (!mats) return;
+    for (const m of Array.isArray(mats) ? mats : [mats]) {
+      materials.add(m);
+      for (const v of Object.values(m)) if (v instanceof THREE.Texture) textures.add(v);
+    }
+  });
+  if (root instanceof THREE.Scene) {
+    if (root.environment) textures.add(root.environment);
+    if (root.background instanceof THREE.Texture) textures.add(root.background);
+  }
+  for (const t of textures) t.dispose();
+  for (const m of materials) m.dispose();
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface LoadStats { fileName: string; fileSize: number; loadTime: number; triangles: number; meshes: number; textures: number; }
@@ -1532,7 +1559,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     if (!mountRef.current) return;
     const w = mountRef.current.clientWidth, h = mountRef.current.clientHeight;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, precision: "highp", powerPreference: "high-performance", preserveDrawingBuffer: true, logarithmicDepthBuffer: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, precision: "highp", powerPreference: "high-performance", logarithmicDepthBuffer: true });
     renderer.setSize(w, h); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     
@@ -1703,6 +1730,25 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
     threeResizeCleanupRef.current?.();
     cancelAnimationFrame(animFrameRef.current);
     if (keyLoopWatchdogRef.current) clearInterval(keyLoopWatchdogRef.current);
+    restartLoopRef.current = null;
+    // Free the GPU. Without this every open of the viewer leaked a WebGL
+    // context (browsers allow ~16 per page) plus the model's buffers, BVH
+    // trees and textures. Nothing caches models across mounts.
+    disposeObject3D(sceneRef.current);
+    controlsRef.current?.dispose();
+    const renderer = rendererRef.current;
+    if (renderer) {
+      renderer.renderLists.dispose();
+      renderer.dispose();
+      renderer.forceContextLoss();
+      renderer.domElement.remove();
+    }
+    rendererRef.current = null;
+    sceneRef.current = null;
+    controlsRef.current = null;
+    modelRef.current = null;
+    // A remount (React dev StrictMode) must initialise a fresh renderer.
+    threeStartedRef.current = false;
   }, []);
 
   // Keyboard fly-navigation (WASD / arrows to move, Q·E to drop/rise, Shift to

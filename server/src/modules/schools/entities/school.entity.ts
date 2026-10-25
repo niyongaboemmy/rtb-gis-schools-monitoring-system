@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
+  Index,
 } from 'typeorm';
 import { SchoolBuilding } from './school-building.entity';
 import { SchoolBoundary } from './school-boundary.entity';
@@ -113,6 +114,7 @@ export class School {
   @Column({ type: 'enum', enum: SchoolType, default: SchoolType.TSS })
   type: SchoolType;
 
+  @Index('IDX_schools_status')
   @Column({ type: 'enum', enum: SchoolStatus, default: SchoolStatus.ACTIVE })
   status: SchoolStatus;
 
@@ -234,6 +236,7 @@ export class School {
   @Column({ type: 'enum', enum: PriorityLevel, nullable: true })
   priorityLevel: PriorityLevel;
 
+  @Index('IDX_schools_overallScore')
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
   overallScore: number;
 

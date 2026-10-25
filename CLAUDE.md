@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-TVET 3D GIS — a geospatial platform for Rwanda's TVET Board to monitor and manage technical/vocational training schools. Core capabilities: school data management, KMZ/KML geospatial processing, 3D visualization (CesiumJS), facility surveys, population analytics, and decision-support scoring.
+TVET 3D GIS — a geospatial platform for Rwanda's TVET Board to monitor and manage technical/vocational training schools. Core capabilities: school data management, KMZ/KML geospatial processing, 3D visualization (three.js), facility surveys, population analytics, and decision-support scoring.
 
 ## Development Commands
 
@@ -38,6 +38,9 @@ E2E suites (`server/test/`) boot the real `AppModule` through the shared
 `configureApp()` (`src/app.setup.ts`) — the same middleware, body limits and
 pipes as `main.ts`. Run them against a throwaway database, never the dev one:
 `DB_NAME=rtb_gis_test SEED_ON_STARTUP=true SCOPE_ENFORCEMENT=true npm run test:e2e`.
+The suites share that one database, so `test:e2e` runs them serially
+(`--runInBand`); in parallel they race (one deletes schools/users while the
+permission matrix is probing them) and fail intermittently.
 `permission-matrix.e2e-spec.ts` discovers every permission-protected route and
 asserts 200/403 for each seeded role, plus geographic scope. Throttling is
 skipped only when `NODE_ENV=test` (Jest sets it).

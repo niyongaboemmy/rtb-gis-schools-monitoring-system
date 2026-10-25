@@ -16,6 +16,7 @@ import { StorageService } from '../storage/storage.service';
 import { AuditService } from '../audit/audit.service';
 import { BuildingDto } from './dto/building.dto';
 import { resolveAccessScope } from '../../common/scope/access-scope';
+import { Brackets } from 'typeorm';
 
 // ---------------------------------------------------------------------------
 // Test-data factories
@@ -284,7 +285,14 @@ describe('SchoolsService.create – unique code', () => {
     schoolRepo.findOne.mockResolvedValueOnce(null);
     schoolRepo.findOne.mockResolvedValueOnce(fullSchool);
 
-    await service.create({ name, code, province, district, latitude, longitude } as any);
+    await service.create({
+      name,
+      code,
+      province,
+      district,
+      latitude,
+      longitude,
+    } as any);
 
     expect(buildingRepo.create).not.toHaveBeenCalled();
   });
@@ -829,6 +837,49 @@ describe('SchoolsService.findAll – access scope', () => {
       'school.province = :scopeProvince',
       { scopeProvince: 'Northern Province' },
     );
+  });
+  it('keeps the scope when searching (the OR group is bracketed)', async () => {
+    process.env.SCOPE_ENFORCEMENT = 'true';
+    const qb = makeQb();
+    const { service } = await makeService({
+      schoolRepo: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+    });
+    const scope = resolveAccessScope({
+      role: { name: 'officer', accessLevel: { slug: 'province', rank: 20 } },
+      location: { province: 'Northern Province' },
+    });
+
+    await service.findAll({ search: 'a', status: 'inactive' } as any, scope);
+
+    // The three OR'd search predicates travel as one bracketed group …
+    expect(qb.where).toHaveBeenCalledWith(expect.any(Brackets), {
+      search: '%a%',
+    });
+    // … so the other filters and the scope still apply with AND.
+    expect(qb.andWhere).toHaveBeenCalledWith('school.status = :status', {
+      status: 'inactive',
+    });
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'school.province = :scopeProvince',
+      { scopeProvince: 'Northern Province' },
+    );
+  });
+});
+
+describe('SchoolsService.findAll – list payload', () => {
+  it('selects every school column except the 2D tile index', async () => {
+    const qb = makeQb();
+    const { service } = await makeService({
+      schoolRepo: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+    });
+
+    await service.findAll({});
+
+    const selected: string[] = qb.select.mock.calls[0][0];
+    expect(selected).toContain('school.id');
+    expect(selected).toContain('school.name');
+    expect(selected).toContain('school.overallScore');
+    expect(selected).not.toContain('school.kmz2dManifest');
   });
 });
 

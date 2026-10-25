@@ -6,33 +6,39 @@ import {
   useParams,
   useLocation,
 } from "react-router-dom";
+import { Suspense } from "react";
 import { ProtectedRoute, AppLayout } from "./layouts/AppLayout";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
-import Dashboard from "./pages/Dashboard";
-import NationalMap from "./pages/NationalMap";
-import SchoolsList from "./pages/SchoolsList";
-import AnalyticsDecisions from "./pages/AnalyticsDecisions";
-import KmzUpload from "./pages/KmzUpload";
-import PlacesOverlayUpload from "./pages/PlacesOverlayUpload";
-import PopulationAnalytics from "./pages/PopulationAnalytics";
-import Reports from "./pages/Reports";
-import ReportValidation from "./pages/ReportValidation";
-import Settings from "./pages/Settings";
-import Welcome from "./pages/Welcome";
 import { Permission } from "./lib/permissions";
+import { lazyPage } from "./lib/lazy";
 import { useAuthStore } from "./store/authStore";
 import { homePathFor } from "./hooks/useScope";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { ToastProvider } from "./components/ui/toast";
 import { GlobalTooltips } from "./components/ui/GlobalTooltips";
-import Profile from "./pages/Profile";
-import SchoolDecisionDashboard from "./pages/SchoolDecisionDashboard";
-import School3DViewPage from "./pages/School3DViewPage";
-import SchoolLevelDashboard from "./pages/SchoolLevelDashboard";
-import SchoolReporting from "./pages/SchoolReporting";
-import School3DView from "./components/School3DView";
-import { AuthGate } from "./components/auth/AuthGate";
+import { AuthGate, SessionSplash } from "./components/auth/AuthGate";
+
+// Every page is its own chunk: sign-in only pays for sign-in, and the 3D
+// (three.js) / 2D (OpenLayers) / charts code loads with the pages that use it.
+// AppLayout wraps its <Outlet> in a <Suspense>, so the shell stays put.
+const Dashboard = lazyPage(() => import("./pages/Dashboard"));
+const NationalMap = lazyPage(() => import("./pages/NationalMap"));
+const SchoolsList = lazyPage(() => import("./pages/SchoolsList"));
+const AnalyticsDecisions = lazyPage(() => import("./pages/AnalyticsDecisions"));
+const KmzUpload = lazyPage(() => import("./pages/KmzUpload"));
+const PlacesOverlayUpload = lazyPage(() => import("./pages/PlacesOverlayUpload"));
+const PopulationAnalytics = lazyPage(() => import("./pages/PopulationAnalytics"));
+const Reports = lazyPage(() => import("./pages/Reports"));
+const ReportValidation = lazyPage(() => import("./pages/ReportValidation"));
+const Settings = lazyPage(() => import("./pages/Settings"));
+const Welcome = lazyPage(() => import("./pages/Welcome"));
+const Profile = lazyPage(() => import("./pages/Profile"));
+const SchoolDecisionDashboard = lazyPage(() => import("./pages/SchoolDecisionDashboard"));
+const School3DViewPage = lazyPage(() => import("./pages/School3DViewPage"));
+const SchoolLevelDashboard = lazyPage(() => import("./pages/SchoolLevelDashboard"));
+const SchoolReporting = lazyPage(() => import("./pages/SchoolReporting"));
+const School3DView = lazyPage(() => import("./components/School3DView"));
 
 function HomeRoute() {
   const user = useAuthStore((st) => st.user);
@@ -52,6 +58,8 @@ export default function App() {
     <TooltipProvider>
       <ToastProvider>
       <BrowserRouter>
+        {/* Stand-alone routes (3D explorer); in-layout pages use AppLayout's own Suspense. */}
+        <Suspense fallback={<SessionSplash />}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -254,6 +262,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
+        </Suspense>
       </BrowserRouter>
         <GlobalTooltips />
       </ToastProvider>

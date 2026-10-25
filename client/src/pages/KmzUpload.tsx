@@ -209,7 +209,7 @@ export default function KmzUpload() {
     <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <PageHeader
         title="Upload Maps"
-        description="Upload map files for 3D Cesium rendering or 2D OpenLayers display."
+        description="Upload map files for the 3D viewer or the 2D site map."
         icon={Layers}
         backButton={
           <Button
@@ -231,7 +231,7 @@ export default function KmzUpload() {
           {
             mode: "3d" as const,
             label: "3D Viewer",
-            desc: "Cesium — GLB format with 3D building models & terrain",
+            desc: "3D viewer — GLB format with 3D building models & terrain",
             icon: Box,
             fileLabel: existingFile3d ? existingFile3d.split("/").pop() : null,
           },
