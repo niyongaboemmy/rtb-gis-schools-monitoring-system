@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { homePathFor } from "../hooks/useScope";
 import { useAuthStore, type User } from "../store/authStore";
 import { api, apiErrorMessage } from "../lib/api";
-import { ArrowLeft, ChevronRight, Lock, Mail, Smartphone } from "lucide-react";
+import { ArrowLeft, ChevronRight, KeyRound, Loader2, Lock, Mail, Smartphone } from "lucide-react";
 import { AuthInput } from "../components/auth/AuthInput";
 import { PasswordInput } from "../components/ui/password-input";
 import { Button } from "../components/ui/button";
@@ -22,6 +22,8 @@ import { MfaEnrollment, type EnrolmentStart } from "../components/auth/MfaEnroll
 import { ForcePasswordChange } from "../components/auth/ForcePasswordChange";
 import { PrivacyAcceptancePrompt } from "../components/auth/PrivacyNotice";
 import { needsPrivacyAcceptance } from "../components/auth/privacy";
+import { useAuthProviders } from "../hooks/useAuthProviders";
+import { ssoErrorMessage, tdmpStartUrl } from "../lib/tdmp";
 
 /** A completed sign-in. The refresh token arrives as an httpOnly cookie. */
 interface SessionPayload {
@@ -72,9 +74,15 @@ const DEV_EMAIL = import.meta.env.DEV ? "admin@rtb.gov.rw" : "";
 const DEV_PASSWORD = import.meta.env.DEV ? "Admin@123" : "";
 
 export default function Login() {
+  const [params] = useSearchParams();
+  const providers = useAuthProviders();
+  // TDMP mode with an emergency allowlist: the password form opens on request.
+  const [adminFormOpen, setAdminFormOpen] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
   const [email, setEmail] = useState(DEV_EMAIL);
   const [password, setPassword] = useState(DEV_PASSWORD);
-  const [error, setErrorText] = useState("");
+  // A failed TDMP sign-in comes back here as ?sso_error=<code>.
+  const [error, setErrorText] = useState(() => ssoErrorMessage(params.get("sso_error")) ?? "");
   // Bumped per error so the alert shakes again on a repeated failure.
   const [errorCount, setErrorCount] = useState(0);
   const setError = (message: string) => {
@@ -265,15 +273,56 @@ export default function Login() {
     );
   }
 
+  /** Full page load: the server redirects on to TDMP and back. */
+  const startTdmp = () => {
+    setRedirecting(true);
+    window.location.assign(tdmpStartUrl());
+  };
+
+  const showPasswordForm = !!providers && (providers.password || (providers.breakGlass && adminFormOpen));
+
   return (
     <AuthShell
       stepKey={step}
       art="signin"
-      busy={isLoading}
+      busy={isLoading || redirecting}
       title="Sign in"
     >
       {error && <AuthAlert key={errorCount}>{error}</AuthAlert>}
 
+      {!providers && (
+        <div className="flex h-11 items-center justify-center" role="status">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden />
+          <span className="sr-only">Loading sign-in options…</span>
+        </div>
+      )}
+
+      {providers?.tdmp && (
+        <div className="space-y-2">
+          <Button type="button" onClick={startTdmp} isLoading={redirecting} className={authPrimaryButtonClass}>
+            {redirecting ? "Opening TDMP…" : "Sign in with TDMP"}
+          </Button>
+          <p className={`text-center text-xs ${authMutedClass}`}>Use the account you use for the TVET Data Management Platform.</p>
+        </div>
+      )}
+
+      {providers?.breakGlass && !providers.password && !adminFormOpen && (
+        <div className="flex justify-center">
+          <button type="button" onClick={() => setAdminFormOpen(true)} className={authSubtleLinkClass}>
+            <KeyRound className="h-4 w-4" aria-hidden /> Administrator sign-in
+          </button>
+        </div>
+      )}
+
+      {showPasswordForm && providers?.tdmp && (
+        <div className="flex items-center gap-3">
+          <div className="h-px flex-1 bg-gray-200 dark:bg-white/10" />
+          <span className="text-xs text-muted-foreground dark:text-white/60">or</span>
+          <div className="h-px flex-1 bg-gray-200 dark:bg-white/10" />
+        </div>
+      )}
+
+      {showPasswordForm && (
       <form onSubmit={handleLogin} className="space-y-4">
         <div className="space-y-1.5">
           <label htmlFor="login-email" className={authLabelClass}>
@@ -300,9 +349,11 @@ export default function Login() {
             <label htmlFor="login-password" className={authLabelClass}>
               Password
             </label>
-            <Link to="/forgot-password" className={authLinkClass}>
-              Forgot password?
-            </Link>
+            {providers?.password && (
+              <Link to="/forgot-password" className={authLinkClass}>
+                Forgot password?
+              </Link>
+            )}
           </div>
           <PasswordInput
             id="login-password"
@@ -316,18 +367,26 @@ export default function Login() {
           />
         </div>
 
-        <Button type="submit" isLoading={isLoading} className={`${authPrimaryButtonClass} mt-2`}>
+        <Button
+          type="submit"
+          variant={providers?.tdmp ? "outline" : undefined}
+          isLoading={isLoading}
+          className={`${authPrimaryButtonClass} mt-2`}
+        >
           {isLoading ? "Signing in…" : "Sign in"}
         </Button>
       </form>
+      )}
 
-      <GoogleSignInButton
-        onCredential={(credential) => void handleGoogleCredential(credential)}
-        onError={setError}
-        disabled={isLoading}
-        busy={isLoading}
-        divider
-      />
+      {providers?.google && (
+        <GoogleSignInButton
+          onCredential={(credential) => void handleGoogleCredential(credential)}
+          onError={setError}
+          disabled={isLoading || redirecting}
+          busy={isLoading}
+          divider
+        />
+      )}
     </AuthShell>
   );
 }

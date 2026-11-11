@@ -32,6 +32,15 @@ import { useToast } from "./ui/toast";
 import { RequestChangeDialog } from "./school-form-steps/RequestChangeDialog";
 import { STEP_FIELDS } from "./school-form-steps/change-request-fields";
 import { Lock, MessageSquarePlus } from "lucide-react";
+import { useAuthProviders } from "../hooks/useAuthProviders";
+import {
+  isTdmpLinked,
+  TDMP_OWNED_SCHOOL_FIELDS,
+  type TdmpLinkFields,
+} from "../lib/tdmp";
+
+const NO_LOCKS: ReadonlySet<string> = new Set();
+const TDMP_LOCKS: ReadonlySet<string> = new Set(TDMP_OWNED_SCHOOL_FIELDS);
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -99,17 +108,23 @@ function normalizeInitialData(
  * problems for the given step id; an empty array means the step is valid.
  * Step ids match the `steps` array above.
  */
-function validateStep(stepId: number, data: SchoolFormData): string[] {
+function validateStep(
+  stepId: number,
+  data: SchoolFormData,
+  locked: ReadonlySet<string> = NO_LOCKS,
+): string[] {
   const errors: string[] = [];
   const currentYear = new Date().getFullYear();
+  // Fields that come from TDMP are not the user's to fix here.
+  const check = (field: keyof SchoolFormData) => !locked.has(field);
 
   switch (stepId) {
     case 1: // Basic Info
-      if (!data.code.trim()) errors.push("School code is required");
-      if (!data.name.trim()) errors.push("School name is required");
-      if (!data.type) errors.push("School type is required");
-      if (!data.status) errors.push("Status is required");
-      if (data.establishedYear) {
+      if (check("code") && !data.code.trim()) errors.push("School code is required");
+      if (check("name") && !data.name.trim()) errors.push("School name is required");
+      if (check("type") && !data.type) errors.push("School type is required");
+      if (check("status") && !data.status) errors.push("Status is required");
+      if (check("establishedYear") && data.establishedYear) {
         const year = Number(data.establishedYear);
         if (!Number.isInteger(year) || year < 1900 || year > currentYear)
           errors.push(
@@ -126,9 +141,9 @@ function validateStep(stepId: number, data: SchoolFormData): string[] {
         const problem = checkPoint(data.latitude, data.longitude);
         if (problem) errors.push(problem);
       }
-      if (!data.province.trim()) errors.push("Province is required");
-      if (!data.district.trim()) errors.push("District is required");
-      if (!data.sector.trim()) errors.push("Sector is required");
+      if (check("province") && !data.province.trim()) errors.push("Province is required");
+      if (check("district") && !data.district.trim()) errors.push("District is required");
+      if (check("sector") && !data.sector.trim()) errors.push("Sector is required");
       break;
 
     case 3: // Contact
@@ -383,6 +398,12 @@ export function SchoolForm({
   const canRequestChange =
     mode === "edit" && !!schoolId && isAuthorized(Permission.CREATE_REPORT);
   const [changeFor, setChangeFor] = useState<string[] | null>(null);
+  // A school linked to TDMP takes its name, status, location names and
+  // enrolment from TDMP; GPS and GIS data stay editable here.
+  const tdmpLinked = mode === "edit" && isTdmpLinked(initialData as TdmpLinkFields | undefined);
+  const tdmpCode = tdmpLinked ? (initialData as TdmpLinkFields).tdmpSchoolCode : null;
+  const locked = tdmpLinked ? TDMP_LOCKS : NO_LOCKS;
+  const tdmpOn = !!useAuthProviders()?.tdmp;
   // Buildings are only sent when the user edited that step: the server makes
   // the school's buildings match the list (updating in place by id), so a
   // stale list would delete buildings added elsewhere since the form opened.
@@ -423,6 +444,19 @@ export function SchoolForm({
         </ul>
       </div>
     ) : null;
+
+  const tdmpPanel = tdmpLinked ? (
+    <div className="rounded-xl border border-primary/25 bg-primary/5 p-3 space-y-1">
+      <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+        <Lock className="h-3.5 w-3.5 text-primary" aria-hidden="true" /> From TDMP
+        {tdmpCode && <span className="font-mono font-normal text-muted-foreground">· {tdmpCode}</span>}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Name, status, location names, enrolment and head teacher are managed in TDMP — change them there. GPS
+        and GIS data stay editable here.
+      </p>
+    </div>
+  ) : null;
 
   const [formData, setFormData] = useState<SchoolFormData>(() => ({
     ...defaultFormData,
@@ -496,6 +530,7 @@ export function SchoolForm({
   const [submitLoading, setSubmitLoading] = useState(false);
 
   const handleInputChange = (field: string, value: string) => {
+    if (locked.has(field)) return; // from TDMP
     setFormData((prev: SchoolFormData) => ({
       ...prev,
       [field as keyof SchoolFormData]: value,
@@ -505,7 +540,7 @@ export function SchoolForm({
   /** Validate every visible step; returns the first step id that has errors. */
   const validateAllSteps = (): { firstBadStep: number | null; errors: string[] } => {
     for (const step of visibleSteps) {
-      const stepErrors = validateStep(step.id, formData);
+      const stepErrors = validateStep(step.id, formData, locked);
       if (stepErrors.length > 0) {
         return {
           firstBadStep: step.id,
@@ -517,7 +552,7 @@ export function SchoolForm({
   };
 
   const nextStep = () => {
-    const stepErrors = validateStep(currentStep, formData);
+    const stepErrors = validateStep(currentStep, formData, locked);
     if (stepErrors.length > 0) {
       toast.warning(stepErrors.join("\n"), {
         title: "Please complete this step",
@@ -674,6 +709,8 @@ export function SchoolForm({
           }
         }
         if (!buildingsDirty) delete payload.buildings;
+        // TDMP-owned fields are never sent: TDMP is their source of truth.
+        for (const key of locked) delete payload[key];
         await api.patch(`/schools/${schoolId}`, payload);
       } else {
         await api.post("/schools", payload);
@@ -694,9 +731,15 @@ export function SchoolForm({
       // Surface the server's reason — validation errors arrive as a string[]
       // and used to be swallowed behind a generic "check console" alert.
       const axiosError = err as {
-        response?: { data?: { message?: string | string[] } };
+        response?: {
+          data?: { message?: string | string[]; code?: string; lockedFields?: string[] };
+        };
       };
-      const message = axiosError.response?.data?.message;
+      const data = axiosError.response?.data;
+      const message =
+        data?.code === "TDMP_OWNED"
+          ? `These details are managed in TDMP — change them there: ${(data.lockedFields ?? []).join(", ")}`
+          : data?.message;
       toast.error(
         Array.isArray(message)
           ? message.join("\n")
@@ -735,6 +778,8 @@ export function SchoolForm({
             establishedYear={formData.establishedYear}
             website={formData.website}
             mode={mode}
+            locked={locked}
+            codeHint={tdmpOn ? "Use the school's TDMP code; its details are filled in from TDMP." : undefined}
             onChange={handleInputChange}
           />
         );
@@ -760,6 +805,7 @@ export function SchoolForm({
             kmz2dFilePath={formData.kmz2dFilePath}
             tifFilePath={formData.tifFilePath}
             onGisChange={handleInputChange}
+            adminLocked={tdmpLinked}
           />
         );
       case 3:
@@ -768,6 +814,7 @@ export function SchoolForm({
             phone={formData.phone}
             email={formData.email}
             headTeacher={formData.headTeacher}
+            headTeacherLocked={locked.has("headTeacher")}
             onChange={handleInputChange}
           />
         );
@@ -792,6 +839,7 @@ export function SchoolForm({
             maleSupportStaff={formData.maleSupportStaff}
             femaleSupportStaff={formData.femaleSupportStaff}
             totalStudents={formData.totalStudents}
+            locked={locked}
             onChange={handleInputChange}
           />
         );
@@ -867,6 +915,7 @@ export function SchoolForm({
               </button>
             ))}
           </div>
+          {tdmpPanel && <div className="px-4 pb-3">{tdmpPanel}</div>}
           {lockedPanel && <div className="px-4 pb-3">{lockedPanel}</div>}
         </div>
 
@@ -910,6 +959,7 @@ export function SchoolForm({
               </button>
             ))}
           </div>
+          {tdmpPanel && <div className="px-6 pb-3">{tdmpPanel}</div>}
           {lockedPanel && <div className="px-6 pb-3">{lockedPanel}</div>}
           <div className="px-6 py-4 border-t border-border/50">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">

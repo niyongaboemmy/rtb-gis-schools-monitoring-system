@@ -185,3 +185,62 @@ describe('scopeLabel', () => {
     });
   });
 });
+
+describe('resolveAccessScope – TDMP placement (location.tier)', () => {
+  it('narrows a national role to the TDMP district', () => {
+    withFlag(true, () => {
+      const s = resolveAccessScope(
+        user('national', 10, {
+          tier: 'district',
+          province: 'Northern',
+          district: 'Musanze',
+        }),
+      );
+      expect(s.isNational).toBe(false);
+      expect(s.slug).toBe('district');
+      expect(s.district).toBe('Musanze');
+    });
+  });
+
+  it('narrows a role with no access level too', () => {
+    withFlag(true, () => {
+      const s = resolveAccessScope(
+        user(null, 100, { tier: 'school', schoolId: 'school-1' }),
+      );
+      expect(s.slug).toBe('school');
+      expect(s.schoolId).toBe('school-1');
+    });
+  });
+
+  it('never widens a narrower role', () => {
+    withFlag(true, () => {
+      const s = resolveAccessScope(
+        user('district', 30, {
+          tier: 'national',
+          province: 'Northern',
+          district: 'Musanze',
+        }),
+      );
+      expect(s.slug).toBe('district');
+      expect(s.isNational).toBe(false);
+    });
+  });
+
+  it('narrows even super_admin', () => {
+    withFlag(true, () => {
+      const su = user('national', 10, { tier: 'province', province: 'East' });
+      su.role.name = 'super_admin';
+      const s = resolveAccessScope(su);
+      expect(s.slug).toBe('province');
+      expect(s.isNational).toBe(false);
+    });
+  });
+
+  it('ignores an unknown tier', () => {
+    withFlag(true, () => {
+      expect(
+        resolveAccessScope(user('national', 10, { tier: 'galaxy' })).isNational,
+      ).toBe(true);
+    });
+  });
+});

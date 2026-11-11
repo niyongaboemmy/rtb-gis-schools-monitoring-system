@@ -30,6 +30,7 @@ function makeService() {
     auth as never,
     sessions as never,
     passwords as never,
+    { passwordLoginOpen: true } as never,
   );
   return { service, userRepo, audit, auth, sessions, passwords };
 }

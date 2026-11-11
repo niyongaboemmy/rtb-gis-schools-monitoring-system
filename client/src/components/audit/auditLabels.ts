@@ -89,6 +89,14 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "auth.mfa_recovery_regenerated": "Regenerated recovery codes",
   "auth.session_revoked": "Signed out a session",
   "auth.privacy_accepted": "Accepted privacy notice",
+  "auth.tdmp_login": "Signed in with TDMP",
+  "auth.tdmp_login_failed": "TDMP sign-in failed",
+  "auth.tdmp_session_ended": "Session ended by TDMP",
+
+  // TDMP integration
+  "tdmp.sync": "Ran TDMP school sync",
+  "tdmp.school_link": "Linked school to TDMP",
+  "tdmp.school_refresh": "Refreshed school from TDMP",
 
   // Audit trail
   "audit.view": "Viewed audit trail",

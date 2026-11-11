@@ -76,7 +76,8 @@ npm test                      # node --test (JWT upload auth, content-type check
 - Seeding is opt-in (`SEED_ON_STARTUP=true` or `npm run seed`; admin@rtb.gov.rw / Admin@123 in dev). Re-seeding only *adds* new code permissions to built-in roles (`roles.seededPermissions`) and never overwrites admin edits
 
 **Key modules:**
-- `AuthModule` — JWT + Passport, sessions, MFA (`mfa.service.ts`), Google sign-in (`GOOGLE_ALLOWED_DOMAINS`, `GOOGLE_ALLOW_SELF_REGISTER`), privacy-notice acceptance
+- `AuthModule` — JWT + Passport, sessions, MFA (`mfa.service.ts`), Google sign-in (`GOOGLE_ALLOWED_DOMAINS`, `GOOGLE_ALLOW_SELF_REGISTER`), privacy-notice acceptance, "Sign in with TDMP" (`auth/tdmp/`, see below)
+- **TDMP integration** — TDMP (https://tdmp.rtb.gov.rw/api/v1, spec at `/docs/api.json`) is the source of truth for users and school information; RTB GIS owns GPS and everything GIS. `modules/tdmp/` = connection (`TdmpConfig`, API-key client, OAuth client, school reader) + `TdmpSyncModule` (nightly 01:00 Kigali / "Sync now" school sync, links, live staff list). Sign-in: `AUTH_MODE` local | both | tdmp; `/auth/tdmp/start` → TDMP (code + PKCE) → `/auth/tdmp/callback` creates/updates the local user (`authSource='tdmp'`, `tdmpUserId`), maps TDMP role names via `roles.tdmpRoleNames`, sets `location` from TDMP's access scope (`location.tier` can only narrow the role's tier — `access-scope.ts`), then issues our normal session; the encrypted TDMP refresh token on `user_sessions` re-checks the account every `TDMP_RECHECK_MINUTES` on refresh. Linked schools (`tdmpSchoolCode` set) reject edits to `TDMP_OWNED_SCHOOL_FIELDS` (`tdmp-school.mapper.ts`, mirrored in `client/src/lib/tdmp.ts`); TDMP GPS only places a school new to RTB GIS (`locationSource='tdmp'`). In `AUTH_MODE=tdmp` passwords/Google/user creation are off except `LOCAL_LOGIN_ALLOWLIST`
 - `UsersModule` + `RolesModule` — RBAC with permission arrays on roles
 - `SchoolsModule` — core domain; `School` entity has ~50+ fields covering location, classification, facilities, utilities, staff, GIS data, and program data
 - `KmzModule` — KMZ/KML file processing (~37KB service); extracts building geometries and boundary polygons, stores as GeoJSON on the School entity
@@ -122,6 +123,8 @@ Built-in roles (`DefaultRolePermissions`, National level): `super_admin`, `admin
 | Env validation | `server/src/config/env.validation.ts` |
 | Audit action registry | `server/src/common/audit/action-registry.ts` |
 | Plan / compliance docs | `docs/RTB_MEETING_IMPLEMENTATION_PLAN.md`, `docs/COMPLIANCE_CHECKLIST.md`, `docs/UX_REVIEW.md` |
+| TDMP sign-in | `server/src/modules/auth/tdmp/` (controller, identity mapping, session re-check) |
+| TDMP school sync | `server/src/modules/tdmp/tdmp-sync.service.ts`, `tdmp-school.mapper.ts`, client `components/settings/TdmpTab.tsx` |
 | Seed data | `server/src/modules/seed/seed.service.ts` |
 | Client router | `client/src/App.tsx` |
 | Axios + JWT interceptors | `client/src/lib/api.ts` |

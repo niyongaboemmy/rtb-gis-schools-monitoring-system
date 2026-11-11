@@ -46,6 +46,8 @@ describe('MFA token purpose isolation', () => {
     {} as never,
     { isRequiredFor: () => false } as never,
     {} as never,
+    { mayUsePassword: () => true, localLoginAllowlist: [] } as never,
+    {} as never,
   );
 
   it('is not verifiable with the access-token secret', async () => {

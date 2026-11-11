@@ -11,6 +11,7 @@ import "leaflet/dist/leaflet.css";
 import { Input } from "./ui/input";
 import { useToast } from "./ui/toast";
 import { RichDropdown } from "./ui/rich-dropdown";
+import { TdmpFieldBadge } from "./school-form-steps/TdmpFieldBadge";
 import type { DropdownOption } from "./ui/rich-dropdown";
 import {
   MapPin,
@@ -149,6 +150,31 @@ interface LocationPickerProps {
   kmz2dFilePath?: string;
   tifFilePath?: string;
   onGisChange?: (field: string, value: string) => void;
+  /** Province … village come from TDMP: shown read-only, GPS stays editable. */
+  adminLocked?: boolean;
+}
+
+/** Read-only administrative names for a TDMP-linked school. */
+function LockedAdminFields({ values }: { values: [string, string][] }) {
+  return (
+    <>
+      {values.map(([name, value]) => (
+        <div key={name} className="space-y-2">
+          <label className="text-sm font-semibold text-foreground flex items-center gap-2">
+            {name}
+            <TdmpFieldBadge />
+          </label>
+          <Input
+            value={value || "—"}
+            readOnly
+            disabled
+            aria-label={`${name} (from TDMP)`}
+            className="rounded-xl border-border/30 bg-background/80 h-11"
+          />
+        </div>
+      ))}
+    </>
+  );
 }
 
 function MapClickHandler({
@@ -195,6 +221,7 @@ export function LocationPicker({
   kmz2dFilePath = "",
   tifFilePath = "",
   onGisChange,
+  adminLocked = false,
 }: LocationPickerProps) {
   const toast = useToast();
   // Map view state
@@ -517,6 +544,18 @@ export function LocationPicker({
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {adminLocked ? (
+          <LockedAdminFields
+            values={[
+              ["Province", province],
+              ["District", district],
+              ["Sector", sector],
+              ["Cell", cell],
+              ["Village", village],
+            ]}
+          />
+        ) : (
+          <>
         <div className="space-y-2">
           <label className="text-sm font-semibold text-foreground">
             Province <span className="text-destructive">*</span>
@@ -584,6 +623,8 @@ export function LocationPicker({
             disabled={!selectedCellCode}
           />
         </div>
+          </>
+        )}
         <div className="space-y-2">
           <label className="text-sm font-semibold text-foreground">
             Address

@@ -17,10 +17,16 @@ import { CsrfHeaderGuard } from './guards/csrf-header.guard';
 import { MailModule } from '../mail/mail.module';
 import { AuditModule } from '../audit/audit.module';
 import { requireSecret } from '../../config/env.validation';
+import { School } from '../schools/entities/school.entity';
+import { TdmpModule } from '../tdmp/tdmp.module';
+import { TdmpAuthController } from './tdmp/tdmp-auth.controller';
+import { TdmpIdentityService } from './tdmp/tdmp-identity.service';
+import { TdmpSessionService } from './tdmp/tdmp-session.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Role, UserSession]),
+    TypeOrmModule.forFeature([User, Role, UserSession, School]),
+    TdmpModule,
     MailModule,
     AuditModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
@@ -41,7 +47,7 @@ import { requireSecret } from '../../config/env.validation';
       inject: [ConfigService],
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, TdmpAuthController],
   providers: [
     AuthService,
     SessionsService,
@@ -50,6 +56,8 @@ import { requireSecret } from '../../config/env.validation';
     JwtStrategy,
     JwtAuthGuard,
     CsrfHeaderGuard,
+    TdmpIdentityService,
+    TdmpSessionService,
   ],
   exports: [
     AuthService,

@@ -340,6 +340,18 @@ interface AuthUser {
       };
 }
 
+/**
+ * Any of these opens Settings; each tab checks its own permission
+ * (MANAGE_SCHOOLS is for the TDMP sync tab).
+ */
+export const SETTINGS_ANY_PERMISSIONS: PermissionType[] = [
+  Permission.MANAGE_USERS,
+  Permission.VIEW_USERS,
+  Permission.MANAGE_ROLES,
+  Permission.VIEW_AUDIT_LOGS,
+  Permission.MANAGE_SCHOOLS,
+];
+
 /** Checks if a user has a specific permission. */
 export function hasPermission(
   user: AuthUser | null,

@@ -1,7 +1,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { LEGACY_REFRESH_KEY, useAuthStore, type User } from "../store/authStore";
 
-const API_BASE = import.meta.env.VITE_API_URL || "/api/v1";
+export const API_BASE = import.meta.env.VITE_API_URL || "/api/v1";
 
 export const api = axios.create({
   baseURL: API_BASE,
@@ -97,7 +97,7 @@ export function restoreSession(): Promise<void> {
 }
 
 /** Routes that must never trigger the refresh-and-retry logic. */
-const NO_REFRESH = /\/auth\/(login|refresh|logout|google$|2fa\/(verify|email|enroll)|forgot-password|verify-otp|reset-password)/;
+const NO_REFRESH = /\/auth\/(login|refresh|logout|providers|google$|2fa\/(verify|email|enroll)|forgot-password|verify-otp|reset-password)/;
 
 api.interceptors.request.use(
   async (config) => {

@@ -8,6 +8,7 @@ import {
   BeforeUpdate,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { Role } from '../../roles/entities/role.entity';
@@ -40,6 +41,11 @@ export class User {
     sector?: string;
     schoolId?: string;
     schoolName?: string;
+    /**
+     * Widest tier this user may see, set from their TDMP access scope. It can
+     * only narrow what the role's access level allows (see access-scope.ts).
+     */
+    tier?: 'national' | 'province' | 'district' | 'sector' | 'school';
   };
 
   @Column({ default: true })
@@ -139,6 +145,17 @@ export class User {
   /** Set when the user unlinks Google; blocks auto re-linking by email. */
   @Column({ type: 'timestamp', nullable: true })
   googleUnlinkedAt: Date | null;
+
+  // ── TDMP sign-in ──────────────────────────────────────────────────────────
+
+  /** Where the account is managed: here ('local') or in TDMP ('tdmp'). */
+  @Column({ type: 'varchar', length: 16, default: 'local' })
+  authSource: 'local' | 'tdmp';
+
+  /** TDMP user id (OIDC `sub`), set when the account first signs in via TDMP. */
+  @Index('IDX_users_tdmpUserId', { unique: true })
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  tdmpUserId: string | null;
 
   // ── Privacy notice (WS8.7) ────────────────────────────────────────────────
 

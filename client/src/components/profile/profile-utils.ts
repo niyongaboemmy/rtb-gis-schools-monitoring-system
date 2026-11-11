@@ -103,12 +103,17 @@ export function setupChecklist(user: User | null | undefined): ChecklistItem[] {
       done: !!user?.department?.trim(),
       action: "department",
     },
-    {
-      id: "mfa",
-      label: "Two-factor authentication",
-      hint: user?.mfaRequired ? "Required for your role" : "Protects your account if your password leaks",
-      done: !!user?.totpEnabled,
-      action: "security",
-    },
+    // TDMP accounts set up 2FA in TDMP, not here.
+    ...(user?.authSource === "tdmp"
+      ? []
+      : [
+          {
+            id: "mfa",
+            label: "Two-factor authentication",
+            hint: user?.mfaRequired ? "Required for your role" : "Protects your account if your password leaks",
+            done: !!user?.totpEnabled,
+            action: "security" as const,
+          },
+        ]),
   ];
 }

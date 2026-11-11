@@ -1,10 +1,13 @@
 import { Input } from "../ui/input";
 import { Phone, Mail, User } from "lucide-react";
+import { TdmpFieldBadge } from "./TdmpFieldBadge";
 
 interface ContactStepProps {
   phone: string;
   email: string;
   headTeacher: string;
+  /** Head teacher comes from TDMP (read-only). */
+  headTeacherLocked?: boolean;
   onChange: (field: string, value: string) => void;
 }
 
@@ -12,6 +15,7 @@ export function ContactStep({
   phone,
   email,
   headTeacher,
+  headTeacherLocked = false,
   onChange,
 }: ContactStepProps) {
   return (
@@ -57,11 +61,13 @@ export function ContactStep({
             <label className="text-sm font-semibold text-foreground flex items-center gap-2">
               <User className="w-4 h-4 text-muted-foreground" />
               Head Teacher / Director
+              {headTeacherLocked && <TdmpFieldBadge />}
             </label>
             <Input
               name="headTeacher"
               placeholder="Full name of head teacher"
               value={headTeacher}
+              disabled={headTeacherLocked}
               onChange={(e) => onChange("headTeacher", e.target.value)}
               icon={<User className="w-4 h-4" />}
             />

@@ -1,5 +1,8 @@
 import { Input } from "../ui/input";
 import { UserPlus } from "lucide-react";
+import { TdmpFieldBadge } from "./TdmpFieldBadge";
+
+const NO_LOCKS: ReadonlySet<string> = new Set();
 
 interface StaffStepProps {
   maleTeachers: string;
@@ -11,6 +14,8 @@ interface StaffStepProps {
   maleSupportStaff: string;
   femaleSupportStaff: string;
   totalStudents: string;
+  /** Fields that come from TDMP (read-only). */
+  locked?: ReadonlySet<string>;
   onChange: (field: string, value: string) => void;
 }
 
@@ -24,6 +29,7 @@ export function StaffStep({
   maleSupportStaff,
   femaleSupportStaff,
   totalStudents,
+  locked = NO_LOCKS,
   onChange,
 }: StaffStepProps) {
   const getValue = (key: string) => {
@@ -62,6 +68,7 @@ export function StaffStep({
     femaleKey: string;
     color: string;
   }) => {
+    const lockedCard = locked.has(maleKey) || locked.has(femaleKey);
     const maleVal = parseInt(getValue(maleKey)) || 0;
     const femaleVal = parseInt(getValue(femaleKey)) || 0;
     const total = maleVal + femaleVal;
@@ -76,6 +83,7 @@ export function StaffStep({
               <Icon className={`w-4 h-4 text-primary`} />
             </div>
             <h3 className="text-sm font-bold text-foreground/80">{title}</h3>
+            {lockedCard && <TdmpFieldBadge />}
           </div>
           <div className="flex flex-col items-end">
             <span className="text-[12px] font-bold uppercase tracking-tighter text-muted-foreground/60">
@@ -100,6 +108,7 @@ export function StaffStep({
               min="0"
               placeholder="0"
               value={getValue(maleKey)}
+              disabled={locked.has(maleKey)}
               onChange={(e) => onChange(maleKey, e.target.value)}
               className="h-11 text-sm font-bold bg-background/50 border-border/20 focus:border-blue-500/35"
             />
@@ -116,6 +125,7 @@ export function StaffStep({
               min="0"
               placeholder="0"
               value={getValue(femaleKey)}
+              disabled={locked.has(femaleKey)}
               onChange={(e) => onChange(femaleKey, e.target.value)}
               className="h-11 text-sm font-bold bg-background/50 border-border/20 focus:border-pink-500/50"
             />

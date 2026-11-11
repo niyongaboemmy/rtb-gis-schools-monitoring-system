@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { History, Layers, Settings2, Shield, Users as UsersIcon } from "lucide-react";
+import { History, Layers, RefreshCw, Settings2, Shield, Users as UsersIcon } from "lucide-react";
 import { cn } from "../lib/utils";
 import { EASE_OUT, GLASS } from "../components/ui/surfaces";
 import { TabsBar, type TabItem } from "../components/ui/tabs-bar";
@@ -11,17 +11,19 @@ import { UsersTab } from "../components/settings/UsersTab";
 import { RolesTab } from "../components/settings/RolesTab";
 import { AccessLevelsTab } from "../components/settings/AccessLevelsTab";
 import { AuditTrailTab } from "../components/settings/AuditTrailTab";
+import { TdmpTab } from "../components/settings/TdmpTab";
 import { useAuthStore } from "../store/authStore";
-import { hasPermission, Permission } from "../lib/permissions";
+import { hasAnyPermission, Permission, type PermissionType } from "../lib/permissions";
 
-type SettingsTab = "users" | "roles" | "access-levels" | "audit";
+type SettingsTab = "users" | "roles" | "access-levels" | "audit" | "tdmp";
 
-/** `short` labels fit all four tabs on a phone. */
-const ALL_TABS: TabItem<SettingsTab>[] = [
-  { id: "users", label: "Users", short: "Users", icon: UsersIcon },
-  { id: "roles", label: "Roles & permissions", short: "Roles", icon: Shield },
-  { id: "access-levels", label: "Access levels", short: "Levels", icon: Layers },
-  { id: "audit", label: "Audit trail", short: "Audit", icon: History },
+/** `short` labels fit the tabs on a phone. Each tab needs one of `needs`. */
+const ALL_TABS: (TabItem<SettingsTab> & { needs: PermissionType[] })[] = [
+  { id: "users", label: "Users", short: "Users", icon: UsersIcon, needs: [Permission.VIEW_USERS, Permission.MANAGE_USERS] },
+  { id: "roles", label: "Roles & permissions", short: "Roles", icon: Shield, needs: [Permission.MANAGE_ROLES] },
+  { id: "access-levels", label: "Access levels", short: "Levels", icon: Layers, needs: [Permission.MANAGE_ROLES] },
+  { id: "audit", label: "Audit trail", short: "Audit", icon: History, needs: [Permission.VIEW_AUDIT_LOGS] },
+  { id: "tdmp", label: "TDMP", short: "TDMP", icon: RefreshCw, needs: [Permission.MANAGE_SCHOOLS] },
 ];
 
 /** Plain, single-colour title that fades up once. */
@@ -42,15 +44,16 @@ function HeroTitle() {
 export default function Settings() {
   const reduce = useReducedMotion();
   const user = useAuthStore((s) => s.user);
-  const canViewAudit = hasPermission(user, Permission.VIEW_AUDIT_LOGS);
-  const tabs = ALL_TABS.filter((t) => t.id !== "audit" || canViewAudit);
+  const tabs = ALL_TABS.filter((t) => hasAnyPermission(user, t.needs));
+  const has = (id: SettingsTab) => tabs.some((t) => t.id === id);
   const scope = useScope();
 
   // The tab lives in the URL, so each tab can be linked to and survives reloads.
   const [params, setParams] = useSearchParams();
   const requested = params.get("tab") as SettingsTab | null;
-  const active: SettingsTab = tabs.some((t) => t.id === requested) ? (requested as SettingsTab) : "users";
-  const select = (id: SettingsTab) => setParams(id === "users" ? {} : { tab: id }, { replace: true });
+  const firstTab: SettingsTab = tabs[0]?.id ?? "users";
+  const active: SettingsTab = tabs.some((t) => t.id === requested) ? (requested as SettingsTab) : firstTab;
+  const select = (id: SettingsTab) => setParams(id === firstTab ? {} : { tab: id }, { replace: true });
 
   // The active tab can portal its summary (stat tiles) into the hero.
   const [heroSlot, setHeroSlot] = useState<HTMLElement | null>(null);
@@ -81,7 +84,7 @@ export default function Settings() {
             </span>
             <div className="min-w-0">
               <HeroTitle />
-              <p className="mt-0.5 truncate text-xs text-muted-foreground/70">Users, roles and access</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground/70">Users, roles, access and TDMP</p>
             </div>
           </div>
           {/* The area this account administers */}
@@ -121,10 +124,11 @@ export default function Settings() {
           exit={reduce ? undefined : { opacity: 0, y: -8, filter: "blur(4px)" }}
           transition={{ duration: 0.35, ease: EASE_OUT }}
         >
-          {active === "users" && <UsersTab />}
-          {active === "roles" && <RolesTab />}
-          {active === "access-levels" && <AccessLevelsTab />}
-          {active === "audit" && canViewAudit && <AuditTrailTab />}
+          {active === "users" && has("users") && <UsersTab />}
+          {active === "roles" && has("roles") && <RolesTab />}
+          {active === "access-levels" && has("access-levels") && <AccessLevelsTab />}
+          {active === "audit" && has("audit") && <AuditTrailTab />}
+          {active === "tdmp" && has("tdmp") && <TdmpTab />}
         </motion.div>
       </AnimatePresence>
       </HeroSlotContext.Provider>

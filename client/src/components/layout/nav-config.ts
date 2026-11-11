@@ -13,7 +13,7 @@ import {
   Settings,
   type LucideIcon,
 } from "lucide-react";
-import { Permission, type PermissionType } from "../../lib/permissions";
+import { Permission, SETTINGS_ANY_PERMISSIONS, type PermissionType } from "../../lib/permissions";
 
 /** The nav item that shows the waiting-for-review badge. */
 export const REVIEW_PATH = "/reports/validate";
@@ -95,12 +95,7 @@ export const FOOTER_NAV: NavEntry[] = [
     name: "Settings",
     path: "/settings",
     icon: Settings,
-    requiredAnyPermission: [
-      Permission.MANAGE_USERS,
-      Permission.VIEW_USERS,
-      Permission.MANAGE_ROLES,
-      Permission.VIEW_AUDIT_LOGS,
-    ] as PermissionType[],
+    requiredAnyPermission: SETTINGS_ANY_PERMISSIONS,
   },
 ];
 

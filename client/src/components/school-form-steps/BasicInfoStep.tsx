@@ -2,6 +2,9 @@ import { Input } from "../ui/input";
 import { RichDropdown } from "../ui/rich-dropdown";
 import type { DropdownOption } from "../ui/rich-dropdown";
 import { Building2, Hash, FileText, Calendar, Globe } from "lucide-react";
+import { TdmpFieldBadge } from "./TdmpFieldBadge";
+
+const NO_LOCKS: ReadonlySet<string> = new Set();
 
 interface BasicInfoStepProps {
   code: string;
@@ -12,6 +15,10 @@ interface BasicInfoStepProps {
   establishedYear: string;
   website: string;
   mode?: "create" | "edit";
+  /** Fields that come from TDMP (read-only). */
+  locked?: ReadonlySet<string>;
+  /** Shown under the code field when creating (e.g. "Use the TDMP school code"). */
+  codeHint?: string;
   onChange: (field: string, value: string) => void;
 }
 
@@ -36,6 +43,8 @@ export function BasicInfoStep({
   establishedYear,
   website,
   mode = "create",
+  locked = NO_LOCKS,
+  codeHint,
   onChange,
 }: BasicInfoStepProps) {
   return (
@@ -53,47 +62,55 @@ export function BasicInfoStep({
             <label className="text-sm font-semibold text-foreground flex items-center gap-2">
               <Hash className="w-4 h-4 text-muted-foreground" />
               Institution Code <span className="text-destructive">*</span>
+              {locked.has("code") && <TdmpFieldBadge />}
             </label>
             <Input
               placeholder="e.g. TSS-001"
               required
               value={code}
               onChange={(e) => onChange("code", e.target.value)}
-              disabled={mode === "edit"}
+              disabled={mode === "edit" || locked.has("code")}
               icon={<Hash className="w-4 h-4" />}
             />
+            {mode === "create" && codeHint && <p className="text-xs text-muted-foreground">{codeHint}</p>}
           </div>
           <div className="space-y-3">
             <label className="text-sm font-semibold text-foreground flex items-center gap-2">
               <Building2 className="w-4 h-4 text-muted-foreground" />
               Institution Name <span className="text-destructive">*</span>
+              {locked.has("name") && <TdmpFieldBadge />}
             </label>
             <Input
               placeholder="Full institution name"
               required
               value={name}
+              disabled={locked.has("name")}
               onChange={(e) => onChange("name", e.target.value)}
               icon={<Building2 className="w-4 h-4" />}
             />
           </div>
           <div className="space-y-3">
-            <label className="text-sm font-semibold text-foreground">
+            <label className="text-sm font-semibold text-foreground flex items-center gap-2">
               Type
+              {locked.has("type") && <TdmpFieldBadge />}
             </label>
             <RichDropdown
               options={schoolTypeOptions}
               value={type}
+              disabled={locked.has("type")}
               onChange={(val) => onChange("type", val)}
               placeholder="Select type..."
             />
           </div>
           <div className="space-y-3">
-            <label className="text-sm font-semibold text-foreground">
+            <label className="text-sm font-semibold text-foreground flex items-center gap-2">
               Status
+              {locked.has("status") && <TdmpFieldBadge />}
             </label>
             <RichDropdown
               options={schoolStatusOptions}
               value={status}
+              disabled={locked.has("status")}
               onChange={(val) => onChange("status", val)}
               placeholder="Select status..."
             />
@@ -102,6 +119,7 @@ export function BasicInfoStep({
             <label className="text-sm font-semibold text-foreground flex items-center gap-2">
               <Calendar className="w-4 h-4 text-muted-foreground" />
               Year of Establishment
+              {locked.has("establishedYear") && <TdmpFieldBadge />}
             </label>
             <Input
               type="number"
@@ -109,6 +127,7 @@ export function BasicInfoStep({
               max="2099"
               placeholder="e.g. 1984"
               value={establishedYear}
+              disabled={locked.has("establishedYear")}
               onChange={(e) => onChange("establishedYear", e.target.value)}
               icon={<Calendar className="w-4 h-4" />}
             />

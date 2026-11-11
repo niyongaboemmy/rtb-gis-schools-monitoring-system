@@ -108,6 +108,23 @@ export function resolveAccessScope(user: any): AccessScope {
 
   const loc = (user && user.location) || {};
 
+  // A TDMP user's own reach (location.tier) can narrow the role's tier but
+  // never widen it: a district officer mapped to a national role still only
+  // sees their district.
+  const userTier =
+    typeof loc.tier === 'string' && loc.tier in RANK_BY_SLUG
+      ? (loc.tier as AccessTierSlug)
+      : null;
+  const roleReach =
+    slug === null || slug === 'national' || rank <= NATIONAL_RANK
+      ? NATIONAL_RANK
+      : rank;
+  if (userTier && RANK_BY_SLUG[userTier] > roleReach) {
+    slug = userTier;
+    rank = RANK_BY_SLUG[userTier];
+    levelName = userTier.charAt(0).toUpperCase() + userTier.slice(1);
+  }
+
   // No enforcement, an explicit national tier, or an unconfigured level all
   // mean "see everything" — the safe, non-breaking default.
   const isNational =

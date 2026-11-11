@@ -119,6 +119,17 @@ const TONES = {
 } as const;
 
 function statusTiles(user: User): StatusTile[] {
+  if (user.authSource === "tdmp") {
+    return [
+      {
+        label: "Sign-in",
+        value: "TDMP",
+        caption: "Password and 2FA managed in TDMP",
+        icon: ShieldCheck,
+        tone: "good",
+      },
+    ];
+  }
   const mfa = user.totpEnabled;
   return [
     {

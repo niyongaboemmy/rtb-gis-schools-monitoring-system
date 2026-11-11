@@ -34,6 +34,7 @@ import { ChangePasswordForm } from "./ChangePasswordForm";
 import { MfaEnrollment, type EnrolmentStart } from "./MfaEnrollment";
 import { describeUserAgent } from "./user-agent";
 import { Pagination } from "../report-review/Pagination";
+import { isTdmpUser } from "../../lib/tdmp";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -702,8 +703,36 @@ function GoogleSection({ index, className }: { index: number; className?: string
   );
 }
 
+/** TDMP accounts: password and 2FA live in TDMP, not here. */
+function TdmpSignInSection({ index, className }: { index: number; className?: string }) {
+  return (
+    <SecurityCard
+      index={index}
+      className={className}
+      icon={KeyRound}
+      title="Sign-in"
+      subtitle="Password and two-factor authentication"
+      status={<StatusPill tone="primary">TDMP</StatusPill>}
+    >
+      <p className="text-sm text-muted-foreground">
+        Your sign-in is managed by TDMP. Change your password or two-factor settings in TDMP; they apply here the
+        next time you sign in.
+      </p>
+    </SecurityCard>
+  );
+}
+
 /** Profile "Security & Privacy" tab (WS9.11, WS10.2, WS10.5, WS10.9). */
 export function SecuritySettings() {
+  const tdmp = isTdmpUser(useAuthStore((s) => s.user));
+  if (tdmp) {
+    return (
+      <div className="grid items-start gap-6 xl:grid-cols-2">
+        <TdmpSignInSection index={0} />
+        <SessionsSection index={1} />
+      </div>
+    );
+  }
   // Two independent columns (not grid rows), so a short card never leaves a
   // hole beside a tall one. Below xl the wrappers dissolve (`contents`) and
   // `order` keeps the reading order: password, 2FA, Google, devices.

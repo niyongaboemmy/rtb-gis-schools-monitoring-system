@@ -38,6 +38,36 @@ export enum KmzProcessingStatus {
   FAILED = 'failed',
 }
 
+/**
+ * What TDMP says about a school beyond the mapped columns (ownership, trades,
+ * counts, infrastructure, staff summary). Refreshed by every sync.
+ */
+export interface TdmpSchoolData {
+  ownership?: string | null;
+  institutionType?: string | null;
+  schoolCategory?: string | null;
+  schoolStatus?: string | null;
+  isActive?: string | null;
+  tmisSchoolCode?: string | null;
+  trades?: string[];
+  counts?: Record<string, number>;
+  /** Facility counts by group (buildings, ict, sanitation, …). */
+  infrastructure?: Record<
+    string,
+    Record<string, number | boolean | string | string[] | null>
+  > | null;
+  staff?: {
+    maleTeachers?: number;
+    femaleTeachers?: number;
+    headTeacher?: string | null;
+  };
+  academicYear?: string | null;
+  /** TDMP's own "last materialised" time for the record. */
+  sourceUpdatedAt?: string | null;
+  /** Set when a full sync no longer finds the school in TDMP. */
+  missingFromTdmp?: boolean;
+}
+
 /** Detail measurement of a school's 3D model (see glb-tools/quality.mjs). */
 /** Extra builds of the served model, picked by the viewer per device. */
 export interface ModelVariants {
@@ -111,6 +141,24 @@ export class School {
   @Column()
   name: string;
 
+  // ── TDMP link (TDMP is the source of truth for school information) ───────
+
+  /** TDMP canonical school id. */
+  @Index('IDX_schools_tdmpSchoolId', { unique: true })
+  @Column({ type: 'int', nullable: true })
+  tdmpSchoolId: number | null;
+
+  /** TDMP (SDMS) school code. Set = the TDMP-owned fields are read-only here. */
+  @Index('IDX_schools_tdmpSchoolCode', { unique: true })
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  tdmpSchoolCode: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  tdmpSyncedAt: Date | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  tdmpData: TdmpSchoolData | null;
+
   @Column({ type: 'enum', enum: SchoolType, default: SchoolType.TSS })
   type: SchoolType;
 
@@ -144,7 +192,7 @@ export class School {
 
   /** Where latitude / longitude came from (see school-location.rules.ts). */
   @Column({ type: 'varchar', length: 16, nullable: true })
-  locationSource: 'manual' | 'kmz' | 'glb' | 'seed' | null;
+  locationSource: 'manual' | 'kmz' | 'glb' | 'seed' | 'tdmp' | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   locationUpdatedAt: Date | null;

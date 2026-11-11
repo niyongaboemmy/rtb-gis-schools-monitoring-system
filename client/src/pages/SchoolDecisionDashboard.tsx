@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   Building2,
   ClipboardCheck,
+  CloudDownload,
   FileText,
   Gauge,
   GraduationCap,
@@ -21,7 +22,8 @@ import {
 import { api, apiErrorMessage } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { formatNumber, formatPercent, formatScore } from "../lib/format";
-import { hasPermission } from "../lib/permissions";
+import { hasPermission, Permission } from "../lib/permissions";
+import { isTdmpLinked, type TdmpLinkFields } from "../lib/tdmp";
 import { cn } from "../lib/utils";
 import { label } from "../lib/labels";
 import { useToast } from "../components/ui/toast";
@@ -55,9 +57,10 @@ import {
   type RecommendationActionRow,
 } from "../components/school-dashboard/recommendation-utils";
 import SchoolMap from "../components/SchoolMap";
+import { TdmpCard, TdmpDetail, TdmpSummary } from "../components/school-dashboard/TdmpSection";
 
 /** The school record as returned by GET /schools/:id (only fields used here are typed). */
-interface SchoolRecord {
+interface SchoolRecord extends TdmpLinkFields {
   id: string;
   name?: string;
   code?: string;
@@ -113,6 +116,9 @@ export default function SchoolDecisionDashboard({
   /** Bumped by the Issue Reports dialog's Refresh to reload its report list. */
   const [reportsRefreshKey, setReportsRefreshKey] = useState(0);
   const [actions, setActions] = useState<RecommendationActionRow[]>([]);
+  /** "From TDMP" dialog and the manual refresh. */
+  const [tdmpOpen, setTdmpOpen] = useState(false);
+  const [tdmpRefreshing, setTdmpRefreshing] = useState(false);
 
   const lastFetchedId = useRef<string | null>(null);
   const heroRef = useRef<HTMLDivElement>(null);
@@ -374,6 +380,23 @@ export default function SchoolDecisionDashboard({
   }
 
   const canManageActions = hasPermission(user, "MANAGE_DECISIONS");
+  const tdmpLinked = isTdmpLinked(schoolData);
+  const canRefreshTdmp = tdmpLinked && hasPermission(user, Permission.MANAGE_SCHOOLS);
+
+  /** Pulls this school's record from TDMP now (instead of waiting for the nightly sync). */
+  const refreshFromTdmp = async () => {
+    setTdmpRefreshing(true);
+    try {
+      const { data } = await api.post<SchoolRecord>(`/tdmp/schools/${id}/refresh`);
+      handleUpdateSchool(data);
+      void fetchMetrics();
+      toast.success("School details refreshed from TDMP");
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not refresh this school from TDMP."));
+    } finally {
+      setTdmpRefreshing(false);
+    }
+  };
   const schoolName = schoolData.name || "School";
   const m = metrics;
   const recommendations = m?.recommendations ?? [];
@@ -494,6 +517,16 @@ export default function SchoolDecisionDashboard({
           <RiskCard risk={m?.riskAssessment} onOpen={() => setView("risk")} index={4} />
           <DataQualityCard metrics={m} index={5} />
         </div>
+
+        {tdmpLinked && (
+          <TdmpCard
+            school={schoolData}
+            onOpen={() => setTdmpOpen(true)}
+            onRefresh={canRefreshTdmp ? () => void refreshFromTdmp() : undefined}
+            refreshing={tdmpRefreshing}
+            index={6}
+          />
+        )}
       </div>
 
       {/* ── Detail dialogs ─────────────────────────────────────────────── */}
@@ -589,6 +622,21 @@ export default function SchoolDecisionDashboard({
       >
         <ProfileDetail metrics={m} />
       </DetailModal>
+
+      {tdmpLinked && (
+        <DetailModal
+          isOpen={tdmpOpen}
+          onClose={() => setTdmpOpen(false)}
+          icon={CloudDownload}
+          eyebrow={schoolName}
+          title="From TDMP"
+          description="School details as recorded in TDMP, the source of truth for school information."
+          summary={<TdmpSummary school={schoolData} />}
+          maxWidth="max-w-5xl"
+        >
+          <TdmpDetail schoolId={id} school={schoolData} />
+        </DetailModal>
+      )}
 
       <DetailModal
         isOpen={view === "actions"}

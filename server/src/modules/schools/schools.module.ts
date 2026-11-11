@@ -10,6 +10,7 @@ import { SchoolFacilitySurvey } from './entities/school-facility-survey.entity';
 import { StorageModule } from '../storage/storage.module';
 import { AuditModule } from '../audit/audit.module';
 import { ReportsModule } from '../reports/reports.module';
+import { TdmpSyncModule } from '../tdmp/tdmp-sync.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { ReportsModule } from '../reports/reports.module';
     StorageModule,
     AuditModule,
     ReportsModule,
+    TdmpSyncModule,
   ],
   controllers: [SchoolsController],
   providers: [SchoolsService],

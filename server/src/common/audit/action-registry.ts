@@ -295,6 +295,11 @@ export const AUDIT_ACTION_REGISTRY: Record<string, AuditSpec> = {
     target: 'audit_log',
     auditReads: true,
   },
+
+  // ── TDMP integration ───────────────────────────────────────────────────
+  'TdmpController.startSync': { action: 'tdmp.sync', target: 'school' },
+  'TdmpController.link': { action: 'tdmp.school_link', ...SCHOOL },
+  'TdmpController.refresh': { action: 'tdmp.school_refresh', ...SCHOOL },
 };
 
 /**
@@ -309,6 +314,9 @@ export const AUDIT_SKIP_HANDLERS = new Set<string>([
   'AuthController.forgotPassword',
   'AuthController.verifyOtp',
   'AuthController.resetPassword',
+  // TDMP sign-in records auth.tdmp_login / auth.tdmp_login_failed itself.
+  'TdmpAuthController.start',
+  'TdmpAuthController.callback',
 ]);
 
 /** Any AuthController handler matching this is skipped too (2FA verify etc.). */
