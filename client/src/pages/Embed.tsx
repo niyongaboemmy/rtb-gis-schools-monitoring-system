@@ -1,12 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
-import { ArrowLeft, ExternalLink, Lock, RefreshCw, ShieldAlert } from "lucide-react";
+import { ArrowLeft, ExternalLink, Lock, RefreshCw, ShieldAlert, ShieldCheck } from "lucide-react";
 import { API_BASE, api } from "../lib/api";
 import { EMBED_EXPIRED_EVENT, EMBED_LINK_TOKEN } from "../lib/embed";
 import { EmbedViewContext, type EmbedView } from "../lib/embed-view";
 import { hasPermission, Permission, type PermissionType } from "../lib/permissions";
 import { useAuthStore, type User } from "../store/authStore";
+import { useScope } from "../hooks/useScope";
 import SchoolDecisionDashboard from "./SchoolDecisionDashboard";
 import NationalMap from "./NationalMap";
 import Dashboard from "./Dashboard";
@@ -143,12 +144,29 @@ export function EmbedGate({ view, need, children }: { view: EmbedView; need: Per
   return (
     <EmbedViewContext.Provider value={view}>
       {children}
+      <ScopeChip view={view} />
       {expired && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background/85 backdrop-blur-sm" role="alertdialog" aria-label="View expired">
           <Notice icon={RefreshCw} title="This view has expired" hint="Reload the page to continue." />
         </div>
       )}
     </EmbedViewContext.Provider>
+  );
+}
+
+/** Which area the view is limited to, so viewers can see the access level at work. */
+function ScopeChip({ view }: { view: EmbedView }) {
+  const scope = useScope();
+  const loc = useAuthStore((s) => s.user?.location);
+  const label = view.startsWith("school-") ? (loc?.schoolName ?? scope.label) : scope.isNational ? "All of Rwanda" : scope.label;
+  return (
+    <span
+      className="fixed bottom-3 left-3 z-[60] inline-flex max-w-[60vw] items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-[11px] font-medium text-white backdrop-blur-md"
+      data-tooltip="This view only shows data inside this area (the access level of the link)"
+      aria-label={`Showing: ${label}`}
+    >
+      <ShieldCheck className="h-3 w-3 shrink-0" aria-hidden /> <span className="truncate">Showing: {label}</span>
+    </span>
   );
 }
 

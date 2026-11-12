@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   BookOpen,
@@ -12,6 +12,7 @@ import {
   MapPin,
   Play,
   ShieldCheck,
+  ShieldAlert,
   TriangleAlert,
 } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -314,12 +315,140 @@ function TryIt({ endpoint, apiKey }: { endpoint: Endpoint; apiKey: string }) {
 }
 
 /** Builds an iframe for a view, live, with the key typed on this page. */
-function EmbedBuilder({ apiKey }: { apiKey: string }) {
-  const [view, setView] = useState("school-dashboard");
+// ── Key access level (GET /partner/ping) ─────────────────────────────────────
+
+type ViewId = "school-dashboard" | "school-map-2d" | "school-map-3d" | "national-map" | "national-dashboard";
+const VIEW_OPTIONS: { id: ViewId; label: string }[] = [
+  { id: "school-dashboard", label: "School dashboard" },
+  { id: "school-map-2d", label: "School map (2D)" },
+  { id: "school-map-3d", label: "School model (3D)" },
+  { id: "national-map", label: "National map" },
+  { id: "national-dashboard", label: "National dashboard" },
+];
+const isAreaView = (v: string) => v === "national-map" || v === "national-dashboard";
+const PROVINCES = ["Kigali City", "Eastern Province", "Northern Province", "Southern Province", "Western Province"];
+
+interface KeyAccess {
+  tier: "national" | "province" | "district" | "schools";
+  province?: string | null;
+  district?: string | null;
+  schoolCodes?: string[] | null;
+  views: ViewId[];
+  summary: string;
+}
+type KeyCheck =
+  | { state: "none" }
+  | { state: "checking" }
+  | { state: "invalid"; message: string }
+  | { state: "ok"; partner: string; keyName: string; scopes: string[]; access: KeyAccess };
+
+/** Checks the key the reader typed, so the page can show and apply its access level. */
+function useKeyCheck(apiKey: string): KeyCheck {
+  // The answer is kept with the key it is for; a different key reads as "checking".
+  const [checked, setChecked] = useState<{ key: string; check: KeyCheck } | null>(null);
+  useEffect(() => {
+    if (!apiKey) return;
+    let cancelled = false;
+    const done = (check: KeyCheck) => !cancelled && setChecked({ key: apiKey, check });
+    const t = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`${BASE}/partner/ping`, { headers: { Authorization: `ApiKey ${apiKey}` } });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) done({ state: "invalid", message: data?.message ?? `HTTP ${res.status}` });
+        else done({ state: "ok", partner: data.partner, keyName: data.keyName, scopes: data.scopes ?? [], access: data.access });
+      } catch {
+        done({ state: "invalid", message: "RTB GIS could not be reached" });
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [apiKey]);
+  if (!apiKey) return { state: "none" };
+  return checked?.key === apiKey ? checked.check : { state: "checking" };
+}
+
+function KeyBadge({ check }: { check: KeyCheck }) {
+  if (check.state === "none") return null;
+  if (check.state === "checking") return <span className="text-xs text-muted-foreground">Checking key…</span>;
+  if (check.state === "invalid")
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive" data-tooltip={check.message}>
+        <ShieldAlert className="h-3.5 w-3.5" aria-hidden /> Key not accepted
+      </span>
+    );
+  return (
+    <a
+      href="#embed"
+      className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300"
+      data-tooltip={`${check.partner} · ${check.keyName}: ${check.access.views.length} view(s) allowed`}
+    >
+      <ShieldCheck className="h-3.5 w-3.5" aria-hidden /> {check.access.summary}
+    </a>
+  );
+}
+
+/** What a view covers for a key at this access level, in one sentence. */
+function coverage(access: KeyAccess, view: string): string {
+  if (!access.views.includes(view as ViewId)) return "This key may not open this view: RTB GIS answers 403 PARTNER_ACCESS_DENIED.";
+  if (isAreaView(view)) {
+    switch (access.tier) {
+      case "national":
+        return "The whole country by default. You may narrow the link to one province or one district.";
+      case "province":
+        return `Only ${access.province}. You may narrow it to one of its districts; any other area answers 403.`;
+      case "district":
+        return `Only ${access.district} district, whatever you ask for. A wider area answers 403.`;
+      case "schools":
+        return "This key covers specific schools only, so national views answer 403. Use a school view.";
+    }
+  }
+  switch (access.tier) {
+    case "national":
+      return "Any school in RTB GIS.";
+    case "province":
+      return `Any school in ${access.province}. A school elsewhere answers 404, as if it did not exist.`;
+    case "district":
+      return `Any school in ${access.district} district. A school elsewhere answers 404.`;
+    case "schools":
+      return `Only the key's ${access.schoolCodes?.length ?? 0} school(s). Any other code answers 404.`;
+  }
+}
+
+type LinkScope = { tier: string; province?: string; district?: string; schoolName?: string } | null;
+const scopeText = (s: LinkScope) =>
+  !s ? "—" : s.tier === "national" ? "All of Rwanda" : s.tier === "province" ? `${s.province}` : s.tier === "district" ? `${s.district} district` : (s.schoolName ?? "One school");
+
+function EmbedBuilder({ apiKey, check }: { apiKey: string; check: KeyCheck }) {
+  const access = check.state === "ok" ? check.access : null;
+  const [view, setView] = useState<ViewId>("school-dashboard");
   const [code, setCode] = useState("280705");
-  const [url, setUrl] = useState<string | null>(null);
+  const [province, setProvince] = useState("");
+  const [district, setDistrict] = useState("");
+  const [result, setResult] = useState<{ url: string; scope: LinkScope; expiresAt: string; school?: { name: string } | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const school = view !== "national-map" && view !== "national-dashboard";
+  const school = !isAreaView(view);
+  const allowed = (v: ViewId) => !access || access.views.includes(v);
+
+  // Fields the key fixes are filled in and locked.
+  const lockProvince = access?.tier === "province" || access?.tier === "district";
+  const lockDistrict = access?.tier === "district";
+  const shownProvince = lockProvince ? (access?.province ?? "") : province;
+  const shownDistrict = lockDistrict ? (access?.district ?? "") : district;
+
+  useEffect(() => {
+    if (access && !access.views.includes(view)) setView(access.views[0] ?? "school-dashboard");
+    if (access?.tier === "schools" && access.schoolCodes?.length) setCode(access.schoolCodes[0]);
+    setResult(null);
+    setError(null);
+    // Reset only when the key changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [access]);
+
+  const body = school
+    ? { view, schoolCode: code }
+    : { view, ...(shownProvince ? { province: shownProvince } : {}), ...(shownDistrict ? { district: shownDistrict } : {}) };
   const snippet = `<iframe
   src="{url from POST /partner/embed-links}"
   title="RTB 3D GIS — ${view}"
@@ -329,49 +458,105 @@ function EmbedBuilder({ apiKey }: { apiKey: string }) {
 ></iframe>`;
   const preview = async () => {
     setError(null);
-    setUrl(null);
+    setResult(null);
     const res = await fetch(`${BASE}/partner/embed-links`, {
       method: "POST",
       headers: { Authorization: `ApiKey ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(school ? { view, schoolCode: code } : { view }),
+      body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) setError(data?.message ?? `HTTP ${res.status}`);
-    else setUrl(data.url);
+    if (!res.ok) setError(`${res.status}${data?.code ? ` ${data.code}` : ""}: ${data?.message ?? "Request refused"}`);
+    else setResult({ url: data.url, scope: data.scope ?? null, expiresAt: data.expiresAt, school: data.school });
   };
+  const field = "block h-9 rounded-lg border border-border bg-background px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-70";
   return (
     <div className="space-y-3">
+      <div className={cn("rounded-2xl p-3 ring-1 ring-inset", access ? "bg-emerald-500/[0.06] ring-emerald-500/20" : "bg-slate-900/[0.03] ring-slate-900/5 dark:bg-white/[0.035] dark:ring-white/8")}>
+        <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
+          <ShieldCheck className="h-4 w-4 text-primary" aria-hidden />
+          {access ? <>Your key: {access.summary}</> : check.state === "invalid" ? <>Key not accepted: {check.message}</> : <>Enter your partner key at the top to see its access level here</>}
+        </p>
+        {access && (
+          <>
+            <p className="mt-1 text-xs text-muted-foreground">
+              <strong className="text-foreground">{VIEW_OPTIONS.find((o) => o.id === view)?.label}:</strong> {coverage(access, view)}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Views this key may open">
+              {VIEW_OPTIONS.map((o) => (
+                <span key={o.id} className={cn("rounded-md px-2 py-0.5 font-mono text-[11px]", allowed(o.id) ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-slate-500/10 text-muted-foreground line-through")}>
+                  {o.id}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
       <div className="flex flex-wrap items-end gap-2">
         <label className="space-y-1 text-xs text-muted-foreground">
           View
-          <select value={view} onChange={(e) => setView(e.target.value)} className="block h-9 rounded-lg border border-border bg-background px-2 text-sm text-foreground">
-            <option value="school-dashboard">School dashboard</option>
-            <option value="school-map-2d">School map (2D)</option>
-            <option value="school-map-3d">School model (3D)</option>
-            <option value="national-map">National map</option>
-            <option value="national-dashboard">National dashboard</option>
+          <select value={view} onChange={(e) => { setView(e.target.value as ViewId); setResult(null); setError(null); }} className={field}>
+            {VIEW_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id} disabled={!allowed(o.id)}>
+                {o.label}{allowed(o.id) ? "" : " (not allowed for this key)"}
+              </option>
+            ))}
           </select>
         </label>
-        {school && (
+        {school ? (
           <label className="space-y-1 text-xs text-muted-foreground">
             School code
-            <input value={code} onChange={(e) => setCode(e.target.value)} className="block h-9 w-32 rounded-lg border border-border bg-background px-2 font-mono text-sm text-foreground" />
+            {access?.tier === "schools" && access.schoolCodes?.length ? (
+              <select value={code} onChange={(e) => setCode(e.target.value)} className={cn(field, "w-36 font-mono")}>
+                {access.schoolCodes.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            ) : (
+              <input value={code} onChange={(e) => setCode(e.target.value)} className={cn(field, "w-32 font-mono")} />
+            )}
           </label>
+        ) : (
+          <>
+            <label className="space-y-1 text-xs text-muted-foreground" data-tooltip={lockProvince ? "Fixed by your key's access level" : "Optional: limit the view to one province"}>
+              Province
+              <select value={shownProvince} disabled={lockProvince} onChange={(e) => { setProvince(e.target.value); setDistrict(""); }} className={cn(field, "w-44")}>
+                <option value="">Whole country</option>
+                {(lockProvince && shownProvince && !PROVINCES.includes(shownProvince) ? [shownProvince, ...PROVINCES] : PROVINCES).map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1 text-xs text-muted-foreground" data-tooltip={lockDistrict ? "Fixed by your key's access level" : "Optional: limit the view to one district"}>
+              District
+              <input value={shownDistrict} disabled={lockDistrict} onChange={(e) => setDistrict(e.target.value)} placeholder="Any" className={cn(field, "w-36")} />
+            </label>
+          </>
         )}
         <button
           type="button"
           onClick={() => void preview()}
-          disabled={!apiKey}
+          disabled={!apiKey || !allowed(view)}
           className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground disabled:opacity-50"
-          data-tooltip={apiKey ? "Mint a real link and show the view below" : "Enter your partner key at the top of the page first"}
+          data-tooltip={!apiKey ? "Enter your partner key at the top of the page first" : allowed(view) ? "Mint a real link and show the view below" : "Your key may not open this view"}
         >
           <Play className="h-4 w-4" aria-hidden /> Preview
         </button>
       </div>
-      <Code code={snippet} label="HTML" />
-      {error && <p className="text-sm text-destructive">{error}</p>}
-      {url && (
-        <iframe src={url} title={`Preview: ${view}`} className="h-[560px] w-full rounded-2xl border-0 ring-1 ring-border" allow="fullscreen" referrerPolicy="no-referrer" />
+      <div className="grid gap-3 lg:grid-cols-2">
+        <Code code={`POST /api/v1/partner/embed-links\nAuthorization: ApiKey rtbgis_pk_…\nContent-Type: application/json\n\n${JSON.stringify(body, null, 2)}`} label="Your server" />
+        <Code code={snippet} label="Your page" />
+      </div>
+      {error && (
+        <p className="flex items-start gap-2 rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden /> {error}
+        </p>
+      )}
+      {result && (
+        <>
+          <p className="flex flex-wrap items-center gap-2 rounded-xl bg-emerald-500/[0.08] px-3 py-2 text-sm text-foreground" aria-live="polite">
+            <ShieldCheck className="h-4 w-4 text-emerald-600" aria-hidden />
+            This link covers <strong>{result.school?.name ?? scopeText(result.scope)}</strong>
+            <span className="text-xs text-muted-foreground">· set by RTB GIS from your key, expires {new Date(result.expiresAt).toLocaleTimeString()}</span>
+          </p>
+          <iframe src={result.url} title={`Preview: ${view}`} className="h-[560px] w-full rounded-2xl border-0 ring-1 ring-border" allow="fullscreen" referrerPolicy="no-referrer" />
+        </>
       )}
     </div>
   );
@@ -380,6 +565,7 @@ function EmbedBuilder({ apiKey }: { apiKey: string }) {
 /** /developers — the RTB 3D GIS partner API guide (for TDMP and other platforms). */
 export default function Developers() {
   const [apiKey, setApiKey] = useState("");
+  const keyCheck = useKeyCheck(apiKey);
   const [active, setActive] = useState<string>("overview");
   const flow = useMemo(
     () => [
@@ -414,6 +600,7 @@ export default function Developers() {
               autoComplete="off"
               className="h-9 w-full rounded-full border border-border bg-background px-3 text-sm sm:w-80"
             />
+            <KeyBadge check={keyCheck} />
           </label>
         </div>
       </header>
@@ -489,7 +676,7 @@ export default function Developers() {
             <h3 className="pt-2 font-medium text-foreground">Access level</h3>
             <P>
               Each key also has an <strong className="text-foreground">access level</strong> set by RTB GIS. Every endpoint applies it, so a key never
-              sees more than it was given. <C>GET /partner/ping</C> shows yours.
+              sees more than it was given. <C>GET /partner/ping</C> shows yours, and so does the badge next to the key field once you enter it.
             </P>
             <div className="overflow-x-auto rounded-2xl ring-1 ring-border">
               <table className="w-full text-sm">
@@ -501,10 +688,10 @@ export default function Developers() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60 text-muted-foreground">
-                  <tr><td className="px-3 py-2"><C>national</C></td><td className="px-3 py-2">All schools</td><td className="px-3 py-2">Any school; national map of any area</td></tr>
-                  <tr><td className="px-3 py-2"><C>province</C></td><td className="px-3 py-2">Schools in the province</td><td className="px-3 py-2">Schools in the province; national map of the province or one of its districts</td></tr>
-                  <tr><td className="px-3 py-2"><C>district</C></td><td className="px-3 py-2">Schools in the district</td><td className="px-3 py-2">Schools in the district; national map of the district</td></tr>
-                  <tr><td className="px-3 py-2"><C>schools</C></td><td className="px-3 py-2">Only the listed schools</td><td className="px-3 py-2">Only the listed schools; no national map</td></tr>
+                  <tr><td className="px-3 py-2"><C>national</C></td><td className="px-3 py-2">All schools</td><td className="px-3 py-2">Any school; national map and dashboard of the country, a province or a district</td></tr>
+                  <tr><td className="px-3 py-2"><C>province</C></td><td className="px-3 py-2">Schools in the province</td><td className="px-3 py-2">Schools in the province; national map and dashboard of the province or one of its districts</td></tr>
+                  <tr><td className="px-3 py-2"><C>district</C></td><td className="px-3 py-2">Schools in the district</td><td className="px-3 py-2">Schools in the district; national map and dashboard of the district only</td></tr>
+                  <tr><td className="px-3 py-2"><C>schools</C></td><td className="px-3 py-2">Only the listed schools</td><td className="px-3 py-2">Only the listed schools; no national map or dashboard</td></tr>
                 </tbody>
               </table>
             </div>
@@ -584,7 +771,12 @@ export default function Developers() {
               session behind it can reach no other view&apos;s data (RTB GIS refuses it with <C>403 EMBED_VIEW_DENIED</C>), always within your key&apos;s
               access level.
             </P>
-            <EmbedBuilder apiKey={apiKey} />
+            <P>
+              <strong className="text-foreground">The area comes from your key, not from the request.</strong> For the national map and
+              dashboard you may <em>narrow</em> the area with <C>province</C> / <C>district</C>, never widen it. The response&apos;s{" "}
+              <C>scope</C> says what the link really covers, and the view shows it in its corner (&ldquo;Showing: Muhanga District&rdquo;).
+            </P>
+            <EmbedBuilder apiKey={apiKey} check={keyCheck} />
             <P>
               People who already have an RTB GIS account can also open <C>/embed/schools/&#123;id&#125;/dashboard</C> (and the map views)
               directly: they then see it with their own role and area.

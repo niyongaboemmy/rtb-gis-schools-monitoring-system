@@ -30,6 +30,7 @@ import {
   schoolLocation,
   type EmbedClaims,
   type EmbedLinkPayload,
+  type EmbedLocation,
   type EmbedView,
 } from './partner-embed';
 import {
@@ -428,24 +429,51 @@ export class PartnerKeysService {
     };
   }
 
-  /** The national-map area for a request, never wider than the key. */
-  private async mapArea(access: PartnerAccess, req: EmbedLinkRequest) {
+  /**
+   * The national-map / dashboard area for a request, never wider than the key.
+   * Province and district are resolved against the school data, so the link
+   * carries the stored spelling and a district always has its province (the
+   * session's scope filter matches both exactly).
+   */
+  private async mapArea(
+    access: PartnerAccess,
+    req: EmbedLinkRequest,
+  ): Promise<EmbedLocation> {
     const clamped = clampMapArea(access, req);
-    if (clamped.ok === true) return clamped.loc;
     if (clamped.ok === false) throw denied(clamped.reason);
-    const n = await this.schools
+    const loc: EmbedLocation =
+      clamped.ok === true
+        ? clamped.loc
+        : {
+            tier: 'district',
+            province: clamped.province,
+            district: clamped.district,
+          };
+    if (loc.tier === 'national') return loc;
+    const qb = this.schools
       .createQueryBuilder('s')
-      .where(
-        'LOWER(s.district) = LOWER(:d) AND LOWER(s.province) = LOWER(:p)',
-        { d: clamped.district, p: clamped.province },
-      )
-      .getCount();
-    if (!n) throw denied(`${clamped.district} is not in ${clamped.province}.`);
-    return {
-      tier: 'district' as const,
-      province: clamped.province,
-      district: clamped.district,
-    };
+      .select('s.province', 'province')
+      .addSelect('s.district', 'district');
+    if (loc.tier === 'district')
+      qb.andWhere('LOWER(s.district) = LOWER(:d)', { d: loc.district ?? '' });
+    if (loc.province)
+      qb.andWhere('LOWER(s.province) = LOWER(:p)', { p: loc.province });
+    const row = await qb
+      .limit(1)
+      .getRawOne<{ province: string; district: string }>();
+    if (!row) {
+      // A district outside the key's province is an access question.
+      if (clamped.ok === 'check')
+        throw denied(`${clamped.district} is not in ${clamped.province}.`);
+      throw new BadRequestException(
+        loc.tier === 'district'
+          ? `No school in RTB GIS is in district "${loc.district}"${loc.province ? ` (${loc.province})` : ''}.`
+          : `No school in RTB GIS is in province "${loc.province}".`,
+      );
+    }
+    return loc.tier === 'district'
+      ? { tier: 'district', province: row.province, district: row.district }
+      : { tier: 'province', province: row.province };
   }
 
   /** Whether a link's scope still fits the key's current access. */

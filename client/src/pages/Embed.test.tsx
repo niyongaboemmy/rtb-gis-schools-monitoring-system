@@ -102,4 +102,11 @@ describe("EmbedGate keeps the iframe on its one view", () => {
     render(<EmbedGate view="school-map-2d" need={Permission.SCHOOL_VIEW_2D3D_MAP}><Probe /></EmbedGate>);
     expect(await screen.findByText("view: school-map-2d")).toBeInTheDocument();
   });
+  it("shows which area the view is limited to", async () => {
+    axiosPost.mockResolvedValue({
+      data: { accessToken: "t", user: { ...partnerUser, role: { ...partnerUser.role, permissions: [Permission.VIEW_MAP] }, location: { tier: "district", province: "Southern Province", district: "Muhanga" } }, expiresIn: 7200 },
+    });
+    render(<EmbedGate view="national-map" need={Permission.VIEW_MAP}><div>the view</div></EmbedGate>);
+    expect(await screen.findByText("Showing: Muhanga District")).toBeInTheDocument();
+  });
 });
