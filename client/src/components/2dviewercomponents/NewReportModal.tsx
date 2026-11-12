@@ -36,7 +36,7 @@ export function NewReportModal({ open, schoolId, buildingId, buildingName, onClo
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.98 }}
             transition={{ duration: 0.3, ease: EASE }}
-            className="relative flex h-[94dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-[1.75rem] bg-white ring-1 ring-slate-900/5 sm:h-[90vh] sm:rounded-[1.75rem] dark:bg-[hsl(224_40%_7%)] dark:ring-white/8"
+            className="relative flex h-[94dvh] w-full max-w-6xl flex-col overflow-hidden rounded-t-[1.75rem] bg-white ring-1 ring-slate-900/5 sm:h-[90vh] sm:rounded-[1.75rem] dark:bg-[hsl(224_40%_7%)] dark:ring-white/8"
           >
             <header className="flex items-center gap-3 px-5 py-4 sm:px-6">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary" aria-hidden>
