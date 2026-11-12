@@ -19,7 +19,8 @@ describe("Developers guide", () => {
     render(<Developers />);
     for (const p of ["/partner/ping", "/partner/schools/coordinates", "/partner/schools", "/partner/schools/{schoolCode}", "/partner/embed-links"])
       expect(screen.getAllByText(p).length).toBeGreaterThan(0);
-    expect(screen.getByRole("heading", { name: /Coordinates guide/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Coordinates feed/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Recipes/ })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /Embedding views/ })).toBeInTheDocument();
     expect(screen.getAllByText(/updatedSince/).length).toBeGreaterThan(0);
   });
@@ -67,10 +68,50 @@ describe("Developers guide", () => {
     expect(province.value).toBe("Southern Province");
     fireEvent.change(screen.getByLabelText("District"), { target: { value: "Muhanga" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /Preview/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith("/partner/embed-links"))).toBe(true));
     const [, init] = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/partner/embed-links"))! as unknown as [string, RequestInit];
     expect(JSON.parse(String(init.body))).toEqual({ view: "national-map", province: "Southern Province", district: "Muhanga" });
     expect(await screen.findByText("Muhanga district")).toBeInTheDocument();
+  });
+
+  it("ticks the quickstart off as the reader uses the page", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => "{}", json: async () => ({}) }));
+    render(<Developers />);
+    expect(screen.getByText("0 of 3 done")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Partner key for trying requests"), { target: { value: "k" } });
+    fireEvent.click(within(document.getElementById("ep-ping")!).getByRole("button", { name: /Send/ }));
+    expect(await screen.findByText(/of 3 done/)).not.toHaveTextContent("0 of 3");
+  });
+
+  it("one language choice drives every example, and is remembered", () => {
+    localStorage.clear();
+    render(<Developers />);
+    const tabs = () => screen.getAllByRole("tab", { name: "Python" });
+    fireEvent.click(tabs()[0]);
+    for (const t of tabs()) expect(t).toHaveAttribute("aria-selected", "true");
+    expect(localStorage.getItem("rtbgis.developers.lang")).toBe("Python");
+  });
+
+  it("parameter chips fill the request and the examples follow it", () => {
+    render(<Developers />);
+    const card = document.getElementById("ep-schools")!;
+    fireEvent.click(within(card).getByRole("button", { name: /\+ district=Muhanga/ }));
+    expect((within(card).getByLabelText("Query string") as HTMLInputElement).value).toBe("limit=3&district=Muhanga");
+    fireEvent.click(within(card).getAllByRole("tab", { name: "curl" })[0]);
+    expect(card.textContent).toContain("/partner/schools?limit=3&district=Muhanga");
+  });
+
+  it("⌘K opens search and jumps to the picked endpoint", async () => {
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    render(<Developers />);
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    const box = await screen.findByRole("dialog", { name: /Search the developer guide/ });
+    fireEvent.change(within(box).getByLabelText("Search"), { target: { value: "embed link" } });
+    expect(within(box).getByText("Signed embed link")).toBeInTheDocument();
+    fireEvent.keyDown(within(box).getByLabelText("Search"), { key: "Enter" });
+    expect(scrolled).toHaveBeenCalled();
+    expect(window.location.hash).toBe("#ep-embed-links");
   });
 });
