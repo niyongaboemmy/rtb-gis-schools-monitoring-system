@@ -12,6 +12,7 @@ import { requireSecret } from '../../../config/env.validation';
 import {
   applyEmbedClaims,
   EMBED_READ_METHODS,
+  embedRouteAllowed,
   type EmbedClaims,
 } from '../../partner/partner-embed';
 
@@ -71,6 +72,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           statusCode: 403,
           code: 'EMBED_READ_ONLY',
           message: 'Embedded views are read-only.',
+        });
+      // Exactly one view: only the API routes that view needs.
+      if (
+        !embedRouteAllowed(
+          payload.emb.view,
+          payload.emb.sid,
+          method,
+          req.originalUrl ?? req.url ?? '',
+        )
+      )
+        throw new ForbiddenException({
+          statusCode: 403,
+          code: 'EMBED_VIEW_DENIED',
+          message: 'Not part of this embedded view.',
         });
       const viewer = applyEmbedClaims(user, payload.emb);
       if (!viewer) throw new UnauthorizedException();

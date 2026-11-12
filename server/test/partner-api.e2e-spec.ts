@@ -331,11 +331,12 @@ describe('Embedded views', () => {
     await http().get(`${PREFIX}/schools/${home.id}`).set(auth).expect(200);
     const blocked = await http().get(`${PREFIX}/schools/${other.id}`).set(auth);
     expect([403, 404]).toContain(blocked.status);
-    const list = await http()
+    // A dashboard session is only the dashboard: no school list, no map data.
+    const listRes = await http()
       .get(`${PREFIX}/schools?limit=100`)
       .set(auth)
-      .expect(200);
-    expect(list.body.data.map((x: { id: string }) => x.id)).toEqual([home.id]);
+      .expect(403);
+    expect(listRes.body.code).toBe('EMBED_VIEW_DENIED');
 
     const write = await http()
       .patch(`${PREFIX}/schools/${home.id}`)
@@ -343,6 +344,73 @@ describe('Embedded views', () => {
       .send({ phone: '0788000000' })
       .expect(403);
     expect(write.body.code).toBe('EMBED_READ_ONLY');
+  });
+
+  it('each embedded view reaches only its own API routes', async () => {
+    const code = home.tdmpSchoolCode ?? home.code;
+    const as = async (view: string) => {
+      const { s } = await openSession(
+        view.startsWith('national') ? { view } : { view, schoolCode: code },
+      );
+      return { Authorization: `Bearer ${s.accessToken}` };
+    };
+    const dash = await as('school-dashboard');
+    await http()
+      .get(`${PREFIX}/analytics/schools/${home.id}/metrics`)
+      .set(dash)
+      .expect(200);
+    expect(
+      (
+        await http()
+          .get(`${PREFIX}/schools/${home.id}/buildings`)
+          .set(dash)
+          .expect(403)
+      ).body.code,
+    ).toBe('EMBED_VIEW_DENIED');
+    await http()
+      .get(`${PREFIX}/schools/${home.id}/viewer-state`)
+      .set(dash)
+      .expect(403);
+
+    const map2d = await as('school-map-2d');
+    await http()
+      .get(`${PREFIX}/schools/${home.id}/buildings`)
+      .set(map2d)
+      .expect(200);
+    await http()
+      .get(`${PREFIX}/analytics/schools/${home.id}/metrics`)
+      .set(map2d)
+      .expect(403);
+    await http()
+      .get(`${PREFIX}/schools/${home.id}/viewer-state`)
+      .set(map2d)
+      .expect(403);
+
+    const map3d = await as('school-map-3d');
+    await http()
+      .get(`${PREFIX}/schools/${home.id}/viewer-state`)
+      .set(map3d)
+      .expect(200);
+    await http()
+      .get(`${PREFIX}/schools/${home.id}/kmz/2d/manifest`)
+      .set(map3d)
+      .expect(403);
+    await http()
+      .get(`${PREFIX}/analytics/schools/${home.id}/metrics`)
+      .set(map3d)
+      .expect(403);
+
+    const natMap = await as('national-map');
+    await http().get(`${PREFIX}/analytics/overview`).set(natMap).expect(200);
+    await http().get(`${PREFIX}/schools/${home.id}`).set(natMap).expect(403);
+
+    const natDash = await as('national-dashboard');
+    await http().get(`${PREFIX}/analytics/overview`).set(natDash).expect(200);
+    await http().get(`${PREFIX}/analytics/hierarchy`).set(natDash).expect(200);
+    await http()
+      .get(`${PREFIX}/analytics/schools/${home.id}/metrics`)
+      .set(natDash)
+      .expect(403);
   });
 
   it('the national map link can be limited to one district', async () => {

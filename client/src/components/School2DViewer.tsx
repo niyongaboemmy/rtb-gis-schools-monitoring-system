@@ -129,6 +129,7 @@ const MODE_TOOL_2D = {
 // Utils
 import type { School2DViewerProps } from "./2dviewercomponents/MapUtils";
 import { buildingPayloadFields } from "../lib/buildingPayload";
+import { useEmbedView } from "../lib/embed-view";
 
 export default function School2DViewer({
   school,
@@ -277,10 +278,14 @@ export default function School2DViewer({
 
   // Picker mode: selected building before confirming
   const [pickerSelected, setPickerSelected] = useState<any>(null);
+  // Embedded 2D view (partner iframe): the map only, no other tabs.
+  const mapOnly = useEmbedView() === "school-map-2d";
   const [activeTab, setActiveTab] = useState<
     "dashboard" | "map" | "3d" | "details"
   >(() =>
-    deepLink.view === "3d"
+    mapOnly
+      ? "map"
+      : deepLink.view === "3d"
       ? "3d"
       : deepLink.view === "map" || deepLink.buildingId || initialBuildingId
         ? "map"
@@ -935,11 +940,12 @@ export default function School2DViewer({
 
   /** Open the 3D tab (same browser tab) with the selected building highlighted. */
   const handle3DView = useCallback(() => {
+    if (mapOnly) return;
     setFocus3d(activeBlock?.id ? String(activeBlock.id) : null);
     // The 3D view has its own building panel.
     setIsBlockInspectorOpen(false);
     setActiveTab("3d");
-  }, [activeBlock]);
+  }, [activeBlock, mapOnly]);
 
   const handleSaveBuilding = async (data: BuildingData) => {
     try {
@@ -1394,7 +1400,7 @@ export default function School2DViewer({
       )}
 
       {/* ── Floating pill tabs (top-center, hidden in picker mode) ────────── */}
-      {!pickerMode && (
+      {!pickerMode && !mapOnly && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
           <div className="flex items-center gap-0.5 bg-white/60 dark:bg-[hsl(224_40%_7%)]/60 backdrop-blur-2xl backdrop-saturate-150 ring-1 ring-white/40 dark:ring-white/10 rounded-full px-1 py-1">
             {(

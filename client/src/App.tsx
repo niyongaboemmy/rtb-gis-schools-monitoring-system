@@ -39,6 +39,7 @@ const EmbedSchoolDashboard = lazyPage(() => import("./pages/Embed").then((m) => 
 const EmbedSchoolMap2D = lazyPage(() => import("./pages/Embed").then((m) => ({ default: m.EmbedSchoolMap2D })));
 const EmbedSchoolMap3D = lazyPage(() => import("./pages/Embed").then((m) => ({ default: m.EmbedSchoolMap3D })));
 const EmbedNationalMap = lazyPage(() => import("./pages/Embed").then((m) => ({ default: m.EmbedNationalMap })));
+const EmbedNationalDashboard = lazyPage(() => import("./pages/Embed").then((m) => ({ default: m.EmbedNationalDashboard })));
 const Welcome = lazyPage(() => import("./pages/Welcome"));
 const Profile = lazyPage(() => import("./pages/Profile"));
 const SchoolDecisionDashboard = lazyPage(() => import("./pages/SchoolDecisionDashboard"));
@@ -79,6 +80,7 @@ export default function App() {
           <Route path="/embed/schools/:id/map-2d" element={<EmbedSchoolMap2D />} />
           <Route path="/embed/schools/:id/map-3d" element={<EmbedSchoolMap3D />} />
           <Route path="/embed/map" element={<EmbedNationalMap />} />
+          <Route path="/embed/dashboard" element={<EmbedNationalDashboard />} />
           {/* Partner API guide (public: no secrets on it) */}
           <Route path="/developers" element={<Developers />} />
 

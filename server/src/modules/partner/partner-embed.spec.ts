@@ -1,5 +1,7 @@
 import {
+  apiPath,
   applyEmbedClaims,
+  embedRouteAllowed,
   areaLocation,
   clamp,
   EMBED_LINK_TTL,
@@ -123,5 +125,103 @@ describe('partner helpers', () => {
     expect(coordinateQuality('tdmp')).toBe('tdmp');
     expect(coordinateQuality('seed')).toBe('unverified');
     expect(coordinateQuality(null)).toBe('unverified');
+  });
+});
+
+describe('embedRouteAllowed: one view, nothing else', () => {
+  const S = '0b5c1d2e-1111-4222-8333-444455556666';
+  const OTHER = '9f9f9f9f-1111-4222-8333-444455556666';
+  const ok = (
+    view: Parameters<typeof embedRouteAllowed>[0],
+    url: string,
+    method = 'GET',
+    sid: string | undefined = S,
+  ) => embedRouteAllowed(view, sid, method, url);
+
+  it('school dashboard: dashboard figures only', () => {
+    expect(ok('school-dashboard', `/api/v1/schools/${S}`)).toBe(true);
+    expect(
+      ok('school-dashboard', `/api/v1/analytics/schools/${S}/metrics`),
+    ).toBe(true);
+    expect(ok('school-dashboard', '/api/v1/reports?schoolId=x')).toBe(true);
+    expect(ok('school-dashboard', `/api/v1/schools/${S}/kmz/2d/manifest`)).toBe(
+      false,
+    );
+    expect(ok('school-dashboard', `/api/v1/schools/${S}/viewer-state`)).toBe(
+      false,
+    );
+    expect(ok('school-dashboard', '/api/v1/schools')).toBe(false);
+    expect(ok('school-dashboard', '/api/v1/analytics/overview')).toBe(false);
+  });
+
+  it('2D map: map data only', () => {
+    expect(ok('school-map-2d', `/api/v1/schools/${S}/kmz/2d/manifest`)).toBe(
+      true,
+    );
+    expect(ok('school-map-2d', `/api/v1/schools/${S}/buildings/`)).toBe(true);
+    expect(ok('school-map-2d', `/api/v1/analytics/schools/${S}/metrics`)).toBe(
+      false,
+    );
+    expect(ok('school-map-2d', `/api/v1/schools/${S}/viewer-state`)).toBe(
+      false,
+    );
+    expect(
+      ok('school-map-2d', `/api/v1/schools/${S}/site-features/export.csv`),
+    ).toBe(false);
+  });
+
+  it('3D model: model data only', () => {
+    expect(ok('school-map-3d', `/api/v1/schools/${S}/viewer-state`)).toBe(true);
+    expect(ok('school-map-3d', `/api/v1/schools/${S}/kmz/status`)).toBe(true);
+    expect(ok('school-map-3d', `/api/v1/schools/${S}/kmz/2d/manifest`)).toBe(
+      false,
+    );
+    expect(ok('school-map-3d', '/api/v1/reports')).toBe(false);
+  });
+
+  it('a school view never reaches another school, even on an allowed route', () => {
+    expect(ok('school-map-2d', `/api/v1/schools/${OTHER}/buildings`)).toBe(
+      false,
+    );
+    expect(
+      ok('school-dashboard', `/api/v1/analytics/schools/${OTHER}/metrics`),
+    ).toBe(false);
+    expect(
+      embedRouteAllowed(
+        'school-dashboard',
+        undefined,
+        'GET',
+        `/api/v1/schools/${S}`,
+      ),
+    ).toBe(false);
+  });
+
+  it('national map and national dashboard: overview, hierarchy and the school list', () => {
+    for (const v of ['national-map', 'national-dashboard'] as const) {
+      expect(ok(v, '/api/v1/schools?page=1&limit=1000', 'GET', undefined)).toBe(
+        true,
+      );
+      expect(ok(v, '/api/v1/analytics/overview', 'GET', undefined)).toBe(true);
+      expect(ok(v, `/api/v1/schools/${S}`, 'GET', undefined)).toBe(false);
+      expect(ok(v, '/api/v1/analytics/export', 'GET', undefined)).toBe(false);
+    }
+  });
+
+  it('never a write', () => {
+    expect(ok('school-dashboard', `/api/v1/schools/${S}`, 'PATCH')).toBe(false);
+    expect(ok('national-map', '/api/v1/schools', 'POST', undefined)).toBe(
+      false,
+    );
+  });
+
+  it('normalises the path', () => {
+    expect(apiPath('/api/v1/schools/x/?a=1#h')).toBe('/schools/x');
+    expect(apiPath('/api/v1')).toBe('/');
+    expect(apiPath('/api/v10/schools')).toBe('/api/v10/schools');
+  });
+
+  it('knows the national dashboard view', () => {
+    expect(embedPath('national-dashboard')).toBe('/embed/dashboard');
+    expect(isSchoolView('national-dashboard')).toBe(false);
   });
 });

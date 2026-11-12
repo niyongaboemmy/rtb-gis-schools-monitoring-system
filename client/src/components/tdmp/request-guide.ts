@@ -252,7 +252,7 @@ Authorization: ApiKey rtbgis_pk_…
     ask: [
       "On the TDMP server, call POST /partner/embed-links for each page view (never from the browser).",
       "Put the returned url in an iframe on the school page.",
-      "Pick the view: school-dashboard, school-map-2d, school-map-3d or national-map.",
+      "Pick the view: school-dashboard, school-map-2d, school-map-3d, national-map or national-dashboard. Each link opens that one view only.",
       "Try it live, with the key, at /developers#embed.",
     ],
     example: {

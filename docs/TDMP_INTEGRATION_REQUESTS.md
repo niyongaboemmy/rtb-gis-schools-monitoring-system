@@ -37,13 +37,14 @@ Everything below is live and documented, with copy-ready code and a "try it" con
 | **Partner key** | Issued by an RTB GIS administrator (TDMP integration page ▸ Shared with TDMP); shown once | Send as `Authorization: ApiKey rtbgis_pk_…` (or `X-API-Key`). Stored hashed on our side, revocable at any time |
 | **School coordinates** | `GET /api/v1/partner/schools/coordinates` (JSON or `format=geojson`) | WGS84 points with their source and quality (`surveyed`, `manual`, `tdmp`, `unverified`); `updatedSince` for incremental pulls |
 | **School list / one school** | `GET /api/v1/partner/schools`, `GET /api/v1/partner/schools/{schoolCode}` | Location quality, condition score, priority, which views have imagery / a 3D model, campus boundary (GeoJSON) |
-| **Embedded views** | `POST /api/v1/partner/embed-links` → put the returned `url` in an iframe | `school-dashboard`, `school-map-2d`, `school-map-3d`, `national-map` (optionally one province / district) |
+| **Embedded views** | `POST /api/v1/partner/embed-links` → put the returned `url` in an iframe | `school-dashboard`, `school-map-2d`, `school-map-3d`, `national-map`, `national-dashboard` (national views optionally one province / district). **One link opens one view only** |
 | **Key check** | `GET /api/v1/partner/ping` | Returns the partner and scopes |
 
 How access is controlled:
 - **Scopes per key:** `coordinates:read`, `schools:read`, `embed:create`.
 - **Access level per key**, set by RTB GIS: **national**, one **province**, one **district**, or a **list of schools**, plus which embedded views it may open. Every endpoint applies it: lists only contain schools within it, a school outside it answers 404, and embed links can never cover more (a wider area or a view not allowed answers `403 PARTNER_ACCESS_DENIED`). Narrowing a key ends the views opened under the old access. `GET /partner/ping` shows the key's level. TDMP's production key is national with all views.
 - **Embedded views are read-only and scoped.** A link covers one school (or one area for the national map). It expires in minutes (60–3600 s), and the view it opens lasts the session length you choose (5–480 min). The token travels in the URL fragment, so it is never sent to servers or in Referer headers.
+- **One link, one view:** a dashboard link shows only the dashboard, a 2D link only the 2D map, a 3D link only the model, a national-map link only the national map, a national-dashboard link only the national dashboard. The session cannot reach any other view's data (`403 EMBED_VIEW_DENIED`).
 - **Revocation is immediate:** revoking a key ends every embedded view opened with it.
 - **Everything is audited.** Each embedded view opened is recorded with partner, view and scope.
 - **Framing is restricted** to the sites registered with the key (R16).
@@ -196,7 +197,7 @@ Content-Type: application/json
         allow="fullscreen" referrerpolicy="no-referrer"></iframe>
 ```
 
-Views: `school-dashboard`, `school-map-2d`, `school-map-3d`, `national-map` (add `province` / `district` to limit it). Try a live preview with your key at https://rtb.aerovyntech.com/developers#embed.
+Views: `school-dashboard`, `school-map-2d`, `school-map-3d`, `national-map`, `national-dashboard` (add `province` / `district` to limit a national view). Each link opens that one view only. Try a live preview with your key at https://rtb.aerovyntech.com/developers#embed.
 
 #### R16 (P2, new): TDMP sites allowed to show embedded views
 
