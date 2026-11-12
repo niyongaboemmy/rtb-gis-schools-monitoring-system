@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  areaCoverage,
+  overallCoverage,
+  TDMP_COVERAGE,
   schoolSource,
   fieldsLabel,
   progressLabel,
@@ -119,5 +122,29 @@ describe("schoolSource", () => {
     expect(schoolSource({ tdmpSchoolCode: "270501" })).toBe("tdmp");
     expect(schoolSource({ tdmpSchoolCode: "270501", tdmpData: { missingFromTdmp: true } })).toBe("missing");
     expect(schoolSource({ tdmpSchoolCode: null })).toBe("local");
+  });
+});
+
+describe("data coverage", () => {
+  const waiting = [
+    { id: "R1", state: "waiting" as const },
+    { id: "R6", state: "partial" as const },
+  ];
+  it("counts fields live with today's access, and those a met request unlocks", () => {
+    const profile = TDMP_COVERAGE.find((a) => a.id === "profile")!;
+    expect(areaCoverage(profile, waiting)).toMatchObject({ live: 6, total: 6 });
+    const enrolment = TDMP_COVERAGE.find((a) => a.id === "enrolment")!;
+    expect(areaCoverage(enrolment, waiting)).toMatchObject({ live: 2, total: 6 });
+    expect(areaCoverage(enrolment, [{ id: "R1", state: "done" }])).toMatchObject({ live: 5 });
+  });
+  it("treats a partly met sign-in request as live where allowed", () => {
+    const identity = TDMP_COVERAGE.find((a) => a.id === "identity")!;
+    expect(areaCoverage(identity, waiting).fields[0]).toMatchObject({ label: "Sign-in client", live: true });
+  });
+  it("gives an overall percentage", () => {
+    const pct = overallCoverage(waiting);
+    expect(pct).toBeGreaterThan(0);
+    expect(pct).toBeLessThan(100);
+    expect(overallCoverage(["R1", "R2", "R3", "R6", "R7", "R8", "R9", "R11"].map((id) => ({ id, state: "done" as const })))).toBe(100);
   });
 });
