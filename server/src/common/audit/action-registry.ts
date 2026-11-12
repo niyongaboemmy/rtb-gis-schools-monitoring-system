@@ -306,6 +306,10 @@ export const AUDIT_ACTION_REGISTRY: Record<string, AuditSpec> = {
     action: 'partner.key_revoke',
     target: 'user',
   },
+  'PartnerKeysController.updateAccess': {
+    action: 'partner.key_access_update',
+    target: 'user',
+  },
   'PartnerApiController.embedLink': {
     action: 'partner.embed_link',
     target: 'school',

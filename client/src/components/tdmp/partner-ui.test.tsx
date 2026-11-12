@@ -5,8 +5,9 @@ import type { ConnectionReport } from "../../lib/tdmp";
 
 const get = vi.fn();
 const post = vi.fn();
+const patch = vi.fn();
 vi.mock("../../lib/api", () => ({
-  api: { get: (...a: unknown[]) => get(...a), post: (...a: unknown[]) => post(...a) },
+  api: { get: (...a: unknown[]) => get(...a), post: (...a: unknown[]) => post(...a), patch: (...a: unknown[]) => patch(...a) },
   apiErrorMessage: (_e: unknown, f: string) => f,
 }));
 
@@ -92,6 +93,7 @@ describe("PartnerAccess", () => {
       expect(post).toHaveBeenCalledWith("/partner-keys", {
         name: "TDMP production", partner: "TDMP",
         scopes: ["coordinates:read", "schools:read", "embed:create"], allowedOrigins: ["https://tdmp.rtb.gov.rw"],
+        accessTier: "national", allowedViews: ["school-dashboard", "school-map-2d", "school-map-3d", "national-map"],
       }),
     );
     expect(await screen.findByText(/it will not be shown again/)).toBeInTheDocument();
@@ -109,5 +111,70 @@ describe("PartnerAccess", () => {
     expect(screen.getByText(/Ends all its views now/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/partner-keys/k1/revoke"));
+  });
+});
+
+describe("PartnerAccess — access levels", () => {
+  beforeEach(() => {
+    get.mockReset();
+    post.mockReset();
+    patch.mockReset();
+  });
+  const wrap = () => render(<ToastProvider><PartnerAccess /></ToastProvider>);
+  const DISTRICT_KEY = {
+    id: "k2", name: "Muhanga pilot", partner: "TDMP", keyPrefix: "rtbgis_pk_aa11bb",
+    scopes: ["coordinates:read", "embed:create"], allowedOrigins: [], accessTier: "district",
+    accessProvince: "Southern Province", accessDistrict: "Muhanga", accessSchoolCodes: null, allowedViews: ["school-dashboard"],
+    createdBy: null, createdAt: new Date().toISOString(), lastUsedAt: null, revokedAt: null,
+  };
+
+  it("creates a district key; Create stays off until the district is chosen", async () => {
+    get.mockResolvedValue({ data: [] });
+    post.mockResolvedValue({ data: { ...DISTRICT_KEY, apiKey: "rtbgis_pk_" + "b".repeat(64) } });
+    wrap();
+    fireEvent.click(await screen.findByRole("button", { name: /New key/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /District/ }));
+    const create = screen.getByRole("button", { name: /Create key/ });
+    expect(create).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Province"), { target: { value: "Southern Province" } });
+    fireEvent.change(screen.getByLabelText("District"), { target: { value: "Muhanga" } });
+    fireEvent.click(screen.getByRole("button", { name: "3D model" })); // turn one view off
+    expect(create).not.toBeDisabled();
+    fireEvent.click(create);
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/partner-keys", expect.objectContaining({
+        accessTier: "district", accessProvince: "Southern Province", accessDistrict: "Muhanga",
+        allowedViews: ["school-dashboard", "school-map-2d", "national-map"],
+      })),
+    );
+  });
+
+  it("shows each key's reach and edits it", async () => {
+    get.mockResolvedValue({ data: [DISTRICT_KEY] });
+    patch.mockResolvedValue({ data: {} });
+    wrap();
+    expect(await screen.findByText("Muhanga district (Southern Province)")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Edit access/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Specific schools/ }));
+    fireEvent.change(screen.getByLabelText(/School codes/), { target: { value: "270501, 280705" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save access" }));
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith("/partner-keys/k2/access", {
+        accessTier: "schools", accessSchoolCodes: ["270501", "280705"], allowedViews: ["school-dashboard"],
+      }),
+    );
+  });
+});
+
+describe("partner access model", () => {
+  it("knows when an access level is complete and how to send it", async () => {
+    const m = await import("./partner-access-model");
+    const base = { accessTier: "district" as const, accessProvince: "Southern Province", accessDistrict: "", accessSchoolCodes: "", allowedViews: ["school-map-2d"] };
+    expect(m.accessReady(base)).toBe(false);
+    expect(m.accessReady({ ...base, accessDistrict: "Huye" })).toBe(true);
+    expect(m.accessReady({ ...base, accessDistrict: "Huye", allowedViews: [] })).toBe(false);
+    expect(m.toPayload({ ...base, accessTier: "national" })).toEqual({ accessTier: "national", allowedViews: ["school-map-2d"] });
+    expect(m.accessSummary({ accessTier: "schools", accessSchoolCodes: ["1", "2", "3", "4", "5"] })).toBe("5 school(s): 1, 2, 3, 4…");
+    expect(m.accessSummary({})).toBe("All schools (national)");
   });
 });

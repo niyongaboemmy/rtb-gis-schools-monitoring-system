@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -21,7 +22,6 @@ import {
   type PartnerScope,
 } from './entities/partner-api-key.entity';
 import {
-  areaLocation,
   clamp,
   EMBED_LINK_TTL,
   EMBED_SESSION_MINUTES,
@@ -32,6 +32,32 @@ import {
   type EmbedLinkPayload,
   type EmbedView,
 } from './partner-embed';
+import {
+  accessOf,
+  clampMapArea,
+  MAX_ACCESS_SCHOOLS,
+  PARTNER_ACCESS_TIERS,
+  schoolInAccess,
+  type PartnerAccess,
+  type PartnerAccessTier,
+} from './partner-access';
+import { EMBED_VIEWS } from './partner-embed';
+
+/** An access level as an admin sends it (create / edit a key). */
+export interface AccessInput {
+  accessTier?: string;
+  accessProvince?: string | null;
+  accessDistrict?: string | null;
+  accessSchoolCodes?: string[] | null;
+  allowedViews?: string[] | null;
+}
+
+const denied = (message: string) =>
+  new ForbiddenException({
+    statusCode: 403,
+    code: 'PARTNER_ACCESS_DENIED',
+    message,
+  });
 
 /** Read-only role every partner embed account has (national; narrowed per link). */
 export const PARTNER_VIEWER_ROLE = 'partner_viewer';
@@ -108,9 +134,10 @@ export class PartnerKeysService {
       partner: string;
       scopes?: string[];
       allowedOrigins?: string[];
-    },
+    } & AccessInput,
     by: string | null,
   ): Promise<{ key: PartnerApiKey; rawKey: string }> {
+    const access = await this.validateAccess(input);
     const scopes = (
       input.scopes?.length ? input.scopes : [...PARTNER_SCOPES]
     ) as PartnerScope[];
@@ -139,6 +166,7 @@ export class PartnerKeysService {
         keyHash: hashKey(rawKey),
         scopes,
         allowedOrigins: origins,
+        ...access,
         serviceUserId: serviceUser.id,
         createdBy: by,
         lastUsedAt: null,
@@ -160,6 +188,114 @@ export class PartnerKeysService {
       await this.users.update(key.serviceUserId, { isActive: false });
     }
     return key;
+  }
+
+  /**
+   * Changes a key's access level. The key moves to a fresh partner account
+   * and the old one is deactivated, so views opened under the old access end
+   * at once (and links signed before the change no longer open, see
+   * openEmbedSession).
+   */
+  async updateAccess(id: string, input: AccessInput): Promise<PartnerApiKey> {
+    const key = await this.keys.findOne({ where: { id } });
+    if (!key) throw new NotFoundException('Partner key not found');
+    if (key.revokedAt) throw new BadRequestException('This key is revoked.');
+    const access = await this.validateAccess(input);
+    const fresh = await this.createServiceUser(
+      key.partner,
+      `${key.keyPrefix.slice(0, KEY_PREFIX.length)}${randomBytes(3).toString('hex')}`,
+    );
+    await this.users.update(key.serviceUserId, { isActive: false });
+    Object.assign(key, access, { serviceUserId: fresh.id });
+    return this.keys.save(key);
+  }
+
+  /** Checks an access level against the school data and normalises it. */
+  private async validateAccess(input: AccessInput) {
+    const tier = (input.accessTier ?? 'national') as PartnerAccessTier;
+    if (!(PARTNER_ACCESS_TIERS as readonly string[]).includes(tier))
+      throw new BadRequestException(
+        `accessTier must be one of ${PARTNER_ACCESS_TIERS.join(', ')}`,
+      );
+    const views = (input.allowedViews ?? [])
+      .map((v) => v.trim())
+      .filter(Boolean);
+    const badViews = views.filter(
+      (v) => !(EMBED_VIEWS as readonly string[]).includes(v),
+    );
+    if (badViews.length)
+      throw new BadRequestException(`Unknown view(s): ${badViews.join(', ')}`);
+    const province = input.accessProvince?.trim() || null;
+    const district = input.accessDistrict?.trim() || null;
+    const codes = [
+      ...new Set(
+        (input.accessSchoolCodes ?? []).map((c) => c.trim()).filter(Boolean),
+      ),
+    ];
+    const count = (where: string, params: Record<string, unknown>) =>
+      this.schools.createQueryBuilder('s').where(where, params).getCount();
+
+    if (tier === 'province') {
+      if (!province)
+        throw new BadRequestException(
+          'A province is required for a province key.',
+        );
+      if (!(await count('LOWER(s.province) = LOWER(:p)', { p: province })))
+        throw new BadRequestException(
+          `No school in RTB GIS is in province "${province}".`,
+        );
+    }
+    if (tier === 'district') {
+      if (!district)
+        throw new BadRequestException(
+          'A district is required for a district key.',
+        );
+      const n = await count(
+        province
+          ? 'LOWER(s.district) = LOWER(:d) AND LOWER(s.province) = LOWER(:p)'
+          : 'LOWER(s.district) = LOWER(:d)',
+        { d: district, p: province },
+      );
+      if (!n)
+        throw new BadRequestException(
+          `No school in RTB GIS is in district "${district}"${province ? ` (${province})` : ''}.`,
+        );
+    }
+    if (tier === 'schools') {
+      if (!codes.length)
+        throw new BadRequestException('List at least one school code.');
+      if (codes.length > MAX_ACCESS_SCHOOLS)
+        throw new BadRequestException(
+          `At most ${MAX_ACCESS_SCHOOLS} schools per key.`,
+        );
+      const found = await this.schools
+        .createQueryBuilder('s')
+        .select(['s.code', 's.tdmpSchoolCode'])
+        .where('s."tdmpSchoolCode" IN (:...c) OR s.code IN (:...c)', {
+          c: codes,
+        })
+        .getMany();
+      const known = new Set(
+        found.flatMap((s) =>
+          [s.code, s.tdmpSchoolCode]
+            .filter(Boolean)
+            .map((c) => String(c).toLowerCase()),
+        ),
+      );
+      const unknown = codes.filter((c) => !known.has(c.toLowerCase()));
+      if (unknown.length)
+        throw new BadRequestException(
+          `Unknown school code(s): ${unknown.join(', ')}`,
+        );
+    }
+    return {
+      accessTier: tier,
+      accessProvince:
+        tier === 'province' || tier === 'district' ? province : null,
+      accessDistrict: tier === 'district' ? district : null,
+      accessSchoolCodes: tier === 'schools' ? codes : null,
+      allowedViews: views.length === EMBED_VIEWS.length ? [] : views,
+    };
   }
 
   /** The active key for a raw value, or null. Touches lastUsedAt (≤ once a minute). */
@@ -224,6 +360,9 @@ export class PartnerKeysService {
 
   /** A signed, short-lived link to one view, for the partner's server to put in an iframe. */
   async createEmbedLink(key: PartnerApiKey, req: EmbedLinkRequest) {
+    const access = accessOf(key);
+    if (!access.views.includes(req.view))
+      throw denied(`This key may not open the ${req.view} view.`);
     let claims: EmbedClaims;
     let schoolSummary: { id: string; code: string; name: string } | null = null;
     if (isSchoolView(req.view)) {
@@ -244,7 +383,8 @@ export class PartnerKeysService {
           'tdmpSchoolCode',
         ],
       });
-      if (!school)
+      // Outside the key's access: the school does not exist for this key.
+      if (!school || !schoolInAccess(access, school))
         throw new NotFoundException(`No school with code ${code} in RTB GIS`);
       claims = {
         pk: key.id,
@@ -258,7 +398,11 @@ export class PartnerKeysService {
         name: school.name,
       };
     } else {
-      claims = { pk: key.id, view: req.view, loc: areaLocation(req) };
+      claims = {
+        pk: key.id,
+        view: req.view,
+        loc: await this.mapArea(access, req),
+      };
     }
     const ttl = clamp(req.ttlSeconds, EMBED_LINK_TTL);
     const smin = clamp(req.sessionMinutes, EMBED_SESSION_MINUTES);
@@ -282,6 +426,50 @@ export class PartnerKeysService {
       scope: claims.loc,
       school: schoolSummary,
     };
+  }
+
+  /** The national-map area for a request, never wider than the key. */
+  private async mapArea(access: PartnerAccess, req: EmbedLinkRequest) {
+    const clamped = clampMapArea(access, req);
+    if (clamped.ok === true) return clamped.loc;
+    if (clamped.ok === false) throw denied(clamped.reason);
+    const n = await this.schools
+      .createQueryBuilder('s')
+      .where(
+        'LOWER(s.district) = LOWER(:d) AND LOWER(s.province) = LOWER(:p)',
+        { d: clamped.district, p: clamped.province },
+      )
+      .getCount();
+    if (!n) throw denied(`${clamped.district} is not in ${clamped.province}.`);
+    return {
+      tier: 'district' as const,
+      province: clamped.province,
+      district: clamped.district,
+    };
+  }
+
+  /** Whether a link's scope still fits the key's current access. */
+  private async linkWithinAccess(
+    access: PartnerAccess,
+    link: EmbedClaims,
+  ): Promise<boolean> {
+    if (!access.views.includes(link.view)) return false;
+    if (access.tier === 'national') return true;
+    if (link.sid) {
+      const school = await this.schools.findOne({
+        where: { id: link.sid },
+        select: ['id', 'code', 'tdmpSchoolCode', 'province', 'district'],
+      });
+      return !!school && schoolInAccess(access, school);
+    }
+    const loc = link.loc;
+    const same = (a?: string | null, b?: string | null) =>
+      (a ?? '').toLowerCase() === (b ?? '').toLowerCase();
+    if (access.tier === 'province')
+      return loc.tier !== 'national' && same(loc.province, access.province);
+    if (access.tier === 'district')
+      return loc.tier === 'district' && same(loc.district, access.district);
+    return false;
   }
 
   /**
@@ -312,6 +500,12 @@ export class PartnerKeysService {
       throw new UnauthorizedException({
         code: 'EMBED_LINK_REVOKED',
         message: 'The partner key behind this link was revoked.',
+      });
+    // A link signed before the key's access was narrowed no longer opens.
+    if (!(await this.linkWithinAccess(accessOf(key), link)))
+      throw new UnauthorizedException({
+        code: 'EMBED_LINK_REVOKED',
+        message: "This view is no longer within the partner key's access.",
       });
     const user = await this.users.findOne({
       where: { id: key.serviceUserId, isActive: true },

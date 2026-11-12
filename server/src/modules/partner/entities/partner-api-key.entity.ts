@@ -55,6 +55,26 @@ export class PartnerApiKey {
   @Column({ type: 'text', array: true, default: () => "'{}'" })
   allowedOrigins: string[];
 
+  // ── Access level (partner-access.ts) ──────────────────────────────────────
+
+  /** national · province · district · schools: the most this key reaches. */
+  @Column({ type: 'varchar', length: 16, default: 'national' })
+  accessTier: string;
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  accessProvince: string | null;
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  accessDistrict: string | null;
+
+  /** TDMP / SDMS codes for the 'schools' tier. */
+  @Column({ type: 'text', array: true, nullable: true })
+  accessSchoolCodes: string[] | null;
+
+  /** Embedded views the key may open (empty = all). */
+  @Column({ type: 'text', array: true, default: () => "'{}'" })
+  allowedViews: string[];
+
   @Column({ type: 'uuid' })
   serviceUserId: string;
 

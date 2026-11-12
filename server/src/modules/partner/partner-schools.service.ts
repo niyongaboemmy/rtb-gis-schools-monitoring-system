@@ -7,6 +7,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, type SelectQueryBuilder } from 'typeorm';
 import { School } from '../schools/entities/school.entity';
 import { SchoolBoundary } from '../schools/entities/school-boundary.entity';
+import {
+  applyAccess,
+  schoolInAccess,
+  type PartnerAccess,
+} from './partner-access';
 
 /**
  * How trustworthy a school's point is, from where it came:
@@ -48,8 +53,9 @@ export class PartnerSchoolsService {
   private filtered(
     q: ListQuery,
     changedColumn: 'locationUpdatedAt' | 'updatedAt',
+    access: PartnerAccess,
   ): SelectQueryBuilder<School> {
-    const qb = this.schools.createQueryBuilder('s');
+    const qb = applyAccess(this.schools.createQueryBuilder('s'), access);
     if (q.updatedSince) {
       const since = new Date(q.updatedSince);
       if (Number.isNaN(since.getTime()))
@@ -71,9 +77,9 @@ export class PartnerSchoolsService {
   }
 
   /** Every school with its point: the feed TDMP updates its own GPS from. */
-  async coordinates(q: ListQuery) {
+  async coordinates(q: ListQuery, access: PartnerAccess) {
     const { limit, page, skip } = this.page(q);
-    const [rows, total] = await this.filtered(q, 'locationUpdatedAt')
+    const [rows, total] = await this.filtered(q, 'locationUpdatedAt', access)
       .select([
         's.id',
         's.code',
@@ -115,8 +121,8 @@ export class PartnerSchoolsService {
   }
 
   /** The same feed as a GeoJSON FeatureCollection (points, WGS84). */
-  async coordinatesGeoJson(q: ListQuery) {
-    const res = await this.coordinates(q);
+  async coordinatesGeoJson(q: ListQuery, access: PartnerAccess) {
+    const res = await this.coordinates(q, access);
     return {
       type: 'FeatureCollection' as const,
       features: res.data
@@ -135,9 +141,9 @@ export class PartnerSchoolsService {
   }
 
   /** The school list with what can be embedded for each school. */
-  async list(q: ListQuery) {
+  async list(q: ListQuery, access: PartnerAccess) {
     const { limit, page, skip } = this.page(q);
-    const [rows, total] = await this.filtered(q, 'updatedAt')
+    const [rows, total] = await this.filtered(q, 'updatedAt', access)
       .select([
         's.id',
         's.code',
@@ -199,11 +205,11 @@ export class PartnerSchoolsService {
   }
 
   /** One school by TDMP / SDMS code, with its campus boundary. */
-  async detail(code: string) {
+  async detail(code: string, access: PartnerAccess) {
     const s = await this.schools.findOne({
       where: [{ tdmpSchoolCode: code }, { code }],
     });
-    if (!s)
+    if (!s || !schoolInAccess(access, s))
       throw new NotFoundException(`No school with code ${code} in RTB GIS`);
     const boundaries = await this.boundaries.find({
       where: { schoolId: s.id },

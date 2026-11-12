@@ -434,3 +434,193 @@ describe('Embedded views', () => {
     await users.delete(u.id);
   });
 });
+
+describe('Access levels', () => {
+  const createKey = async (body: object) => {
+    const res = await http()
+      .post(`${PREFIX}/partner-keys`)
+      .set(asAdmin)
+      .send({
+        name: `lvl ${Math.random().toString(36).slice(2, 7)}`,
+        partner: 'TDMP',
+        ...body,
+      });
+    return res;
+  };
+  const codeOf = (s: School) => s.tdmpSchoolCode ?? s.code;
+  const linkFor = (apiKey: string, body: object) =>
+    http()
+      .post(`${PREFIX}/partner/embed-links`)
+      .set(withKey(apiKey))
+      .send(body);
+  const sessionFrom = async (url: string) => {
+    const token = new URL(url).hash.replace('#token=', '');
+    return http().post(`${PREFIX}/embed/session`).send({ token });
+  };
+
+  it('rejects invalid access levels', async () => {
+    expect((await createKey({ accessTier: 'province' })).status).toBe(400);
+    expect(
+      (await createKey({ accessTier: 'district', accessDistrict: 'Nowhere' }))
+        .status,
+    ).toBe(400);
+    expect(
+      (
+        await createKey({
+          accessTier: 'schools',
+          accessSchoolCodes: ['NOPE-1'],
+        })
+      ).status,
+    ).toBe(400);
+    expect((await createKey({ allowedViews: ['admin-panel'] })).status).toBe(
+      400,
+    );
+    expect((await createKey({ accessTier: 'galaxy' })).status).toBe(400);
+  });
+
+  it('a district key only reaches its district', async () => {
+    const res = await createKey({
+      accessTier: 'district',
+      accessProvince: home.province,
+      accessDistrict: home.district,
+    });
+    expect(res.status).toBe(201);
+    const key = res.body.apiKey as string;
+
+    const ping = await http()
+      .get(`${PREFIX}/partner/ping`)
+      .set(withKey(key))
+      .expect(200);
+    expect(ping.body.access).toMatchObject({
+      tier: 'district',
+      district: home.district,
+    });
+
+    const feed = await http()
+      .get(`${PREFIX}/partner/schools/coordinates?limit=1000`)
+      .set(withKey(key))
+      .expect(200);
+    expect(feed.body.data.length).toBeGreaterThan(0);
+    expect(
+      feed.body.data.every(
+        (d: { district: string }) => d.district === home.district,
+      ),
+    ).toBe(true);
+    const list = await http()
+      .get(`${PREFIX}/partner/schools?limit=1000`)
+      .set(withKey(key))
+      .expect(200);
+    expect(
+      list.body.data.every(
+        (d: { district: string }) => d.district === home.district,
+      ),
+    ).toBe(true);
+
+    await http()
+      .get(`${PREFIX}/partner/schools/${codeOf(other)}`)
+      .set(withKey(key))
+      .expect(404);
+    await http()
+      .get(`${PREFIX}/partner/schools/${codeOf(home)}`)
+      .set(withKey(key))
+      .expect(200);
+    await linkFor(key, {
+      view: 'school-dashboard',
+      schoolCode: codeOf(other),
+    }).expect(404);
+
+    const wider = await linkFor(key, {
+      view: 'national-map',
+      district: other.district,
+    });
+    expect(wider.status).toBe(403);
+    expect(wider.body.code).toBe('PARTNER_ACCESS_DENIED');
+
+    const map = await linkFor(key, { view: 'national-map' }).expect(201);
+    expect(map.body.scope).toMatchObject({
+      tier: 'district',
+      district: home.district,
+    });
+    const s = await sessionFrom(map.body.url);
+    expect(s.status).toBe(200);
+    const seen = await http()
+      .get(`${PREFIX}/schools?limit=500`)
+      .set({ Authorization: `Bearer ${s.body.accessToken}` })
+      .expect(200);
+    expect(
+      seen.body.data.every(
+        (x: { district: string }) => x.district === home.district,
+      ),
+    ).toBe(true);
+  });
+
+  it('a school-list key sees only its schools and only its allowed views', async () => {
+    const res = await createKey({
+      accessTier: 'schools',
+      accessSchoolCodes: [codeOf(home)],
+      allowedViews: ['school-dashboard'],
+    });
+    expect(res.status).toBe(201);
+    const key = res.body.apiKey as string;
+    const feed = await http()
+      .get(`${PREFIX}/partner/schools/coordinates`)
+      .set(withKey(key))
+      .expect(200);
+    expect(feed.body.data.map((d: { rtbGisId: string }) => d.rtbGisId)).toEqual(
+      [home.id],
+    );
+
+    await linkFor(key, {
+      view: 'school-dashboard',
+      schoolCode: codeOf(home),
+    }).expect(201);
+    const map2d = await linkFor(key, {
+      view: 'school-map-2d',
+      schoolCode: codeOf(home),
+    });
+    expect(map2d.status).toBe(403);
+    expect(map2d.body.code).toBe('PARTNER_ACCESS_DENIED');
+    expect((await linkFor(key, { view: 'national-map' })).status).toBe(403);
+  });
+
+  it('narrowing a key ends open views and invalidates links signed before', async () => {
+    const res = await createKey({});
+    const key = res.body.apiKey as string;
+    const before = await linkFor(key, {
+      view: 'school-dashboard',
+      schoolCode: codeOf(other),
+    }).expect(201);
+    const pending = await linkFor(key, {
+      view: 'school-dashboard',
+      schoolCode: codeOf(other),
+    }).expect(201);
+    const open = await sessionFrom(before.body.url);
+    expect(open.status).toBe(200);
+    const auth = { Authorization: `Bearer ${open.body.accessToken}` };
+    await http().get(`${PREFIX}/schools/${other.id}`).set(auth).expect(200);
+
+    const upd = await http()
+      .patch(`${PREFIX}/partner-keys/${res.body.id}/access`)
+      .set(asAdmin)
+      .send({
+        accessTier: 'district',
+        accessProvince: home.province,
+        accessDistrict: home.district,
+      })
+      .expect(200);
+    expect(upd.body).toMatchObject({
+      accessTier: 'district',
+      accessDistrict: home.district,
+    });
+
+    await http().get(`${PREFIX}/schools/${other.id}`).set(auth).expect(401);
+    const stale = await sessionFrom(pending.body.url);
+    expect(stale.status).toBe(401);
+    expect(stale.body.code).toBe('EMBED_LINK_REVOKED');
+    const ping = await http()
+      .get(`${PREFIX}/partner/ping`)
+      .set(withKey(key))
+      .expect(200);
+    expect(ping.body.access.summary).toBe(`${home.district} district`);
+  });
+});
