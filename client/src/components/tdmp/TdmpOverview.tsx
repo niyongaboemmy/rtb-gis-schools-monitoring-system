@@ -7,7 +7,6 @@ import {
   ChevronRight,
   GraduationCap,
   KeyRound,
-  Trophy,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -188,7 +187,6 @@ const AREA_ICON: Record<CoverageArea["id"], LucideIcon> = {
   enrolment: GraduationCap,
   staffing: Users,
   identity: KeyRound,
-  outcomes: Trophy,
 };
 
 /** One tile per data area with a mini progress bar of live fields. */

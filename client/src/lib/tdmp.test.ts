@@ -145,6 +145,6 @@ describe("data coverage", () => {
     const pct = overallCoverage(waiting);
     expect(pct).toBeGreaterThan(0);
     expect(pct).toBeLessThan(100);
-    expect(overallCoverage(["R1", "R2", "R3", "R6", "R7", "R8", "R9", "R11"].map((id) => ({ id, state: "done" as const })))).toBe(100);
+    expect(overallCoverage(["R1", "R2", "R3", "R6", "R7", "R8", "R9"].map((id) => ({ id, state: "done" as const })))).toBe(100);
   });
 });

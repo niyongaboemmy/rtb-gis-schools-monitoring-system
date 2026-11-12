@@ -1,30 +1,31 @@
 # RTB 3D GIS ↔ TDMP: Integration Requests
 
 **From:** RTB 3D GIS backend team · **To:** TDMP technical team · **First sent:** 2026-11-12 · **Updated:** 2026-11-12 (after go-live)
-**Context:** RTB 3D GIS uses TDMP as the source of truth for school profile, enrolment, staffing and (soon) user sign-in. The school sync has been **live in production since 2026-11-12**. The exchange now goes both ways: RTB 3D GIS also **provides** TDMP with school coordinates and embeddable dashboards and maps (see "What RTB GIS provides to TDMP"). This document gives the status and lists what we still need from you.
+**Context:** RTB 3D GIS monitors TVET school infrastructure. It uses TDMP as the source of truth for school profile, enrolment, teacher totals and (soon) user sign-in. The school sync has been **live in production since 2026-11-12**. The exchange now goes both ways: RTB 3D GIS also **provides** TDMP with school coordinates and embeddable dashboards and maps (see "What RTB GIS provides to TDMP"). This document gives the status and lists what we still need from you.
 
 Both directions are **read-only**: we never write to TDMP, and TDMP's key cannot change RTB GIS data.
+
+**We only ask for data that plans school infrastructure:** how many learners each site serves, in which programmes, against how many seats, so classrooms, workshops, sanitation and dormitories can be sized. We do not ask for learner or teacher records, staff details, contacts or results.
 
 ## Status at a glance
 
 | # | Request | Priority | Status |
 |---|---|---|---|
-| R1 | Read access to aggregate reports (learners, staff, programmes, units) | P2 | ⏳ Waiting: all 5 endpoints return 403 |
+| R1 | Read access to 3 aggregate reports (learners per programme, programme names, administrative units) | P2 | ⏳ Waiting: all 3 return 403 |
 | R2 | Seat capacity per programme | P1 | ⏳ Waiting: not in the API |
 | R3 | Extra fields on `/schools` list rows | P2 | ⏳ Waiting |
-| R4 | Data quality on `/schools` | P2 | ⏳ Waiting: details below, now with one possible duplicate |
+| R4 | Data quality on `/schools` | P2 | ⏳ Waiting: details below, including one possible duplicate |
 | R5 | Change feed (`updatedSince` / webhook) | P3 | Optional: our freshness check covers it |
 | R6 | OAuth client for RTB 3D GIS | P1 | ⏳ Waiting: blocks single sign-on |
 | R7 | Role catalogue | P1 | ⏳ Waiting: blocks single sign-on |
 | R8 | Province / district / school in the access scope | P1 | ⏳ Waiting: blocks single sign-on for area-level users |
 | R9 | `amr` claim | P3 | ⏳ Waiting |
 | R10 | Staging and test accounts | P2 | ⏳ Waiting |
-| R11 | Outcome data | P3 | ⏳ Waiting |
 | R12 | Rotate the API key; separate keys per environment | P1 | ⏳ Waiting: production key now installed, please rotate |
 | R13 | GPS for 16 TVET schools | P2 | ⏳ Waiting |
-| **R14** | **Take school coordinates from RTB GIS** | **P2** | **New: ready on our side** |
-| **R15** | **Embed RTB GIS dashboards and maps in TDMP** | **P2** | **New: ready on our side** |
-| **R16** | **TDMP sites allowed to show embedded views** | **P2** | **New** |
+| **R14** | **Take school coordinates from RTB GIS** | **P2** | **Ready on our side: partner key issued to TDMP** |
+| **R15** | **Embed RTB GIS dashboards and maps in TDMP** | **P2** | **Ready on our side: partner key issued to TDMP** |
+| **R16** | **TDMP sites allowed to show embedded views** | **P2** | **⏳ Waiting: list of TDMP origins** |
 
 Our admin page re-checks these automatically: when you grant an endpoint, it appears as met on our side without any change from us. R14 and R15 tick themselves off when TDMP first uses our partner key and opens an embedded view.
 
@@ -50,17 +51,16 @@ How access is controlled:
 - **Framing is restricted** to the sites registered with the key (R16).
 - **No personal data:** coordinates and school figures only.
 
-RTB GIS users with an account can also open the same views directly (`/embed/schools/{id}/dashboard`, `/map-2d`, `/map-3d`, `/embed/map`). They see them with their own role and area.
+RTB GIS users with an account can also open the same views directly (`/embed/schools/{id}/dashboard`, `/map-2d`, `/map-3d`, `/embed/map`, `/embed/dashboard`). They see them with their own role and area.
 
 ## Data we take from TDMP
 
 | Data area | Information needed | Priority / purpose |
 |---|---|---|
-| School profile | Official school code and name, school type and status, location and administrative codes, year established | P1: identify schools consistently and support geographic analysis |
-| Enrolment and programmes | Learner totals, programmes offered, learners per programme, available seat capacity | P1: understand programme utilisation and capacity |
-| Staffing summaries | Teacher counts by gender; broader staff totals where available | P1/P2: support staffing and learner-to-teacher indicators |
+| School profile | Official school code and name, school type and status, location and administrative codes | P1: identify each school site and place it on the map |
+| Enrolment and programmes | Learner totals, programmes offered, learners per programme (with gender split), approved seat capacity | P1: compare the learners each site serves with its classrooms, workshops, sanitation and dormitories |
+| Teachers | Teacher totals | P1: staff rooms and staff housing needs |
 | User identity and access | Verified user identity, role, account status and authorised geographic or school scope, for single sign-on | P1: enable secure access through TDMP identity services |
-| Future outcome indicators | Assessment pass rates, graduate employment and labour-market demand, where available | P3: possible future dashboards; not part of the current school-condition score |
 
 ## What is live (production, 2026-11-12)
 
@@ -79,24 +79,21 @@ Thank you. This covers the school profile in full.
 
 Priority: **P1** blocks a phase we are about to start · **P2** needed for complete data · **P3** future.
 
-### Enrolment, programmes and staffing
+### Enrolment and programmes
 
-#### R1 (P2): Grant our partner key read access to these aggregate reports
+#### R1 (P2): Grant our partner key read access to three aggregate reports
 
 Our key's service account (`accessScope: unrestricted, source: service_account`) gets **403 Insufficient permissions** on endpoints the docs list for `external_api_consumer`. We only need **school-level aggregates**:
 
 | Endpoint | Used for | Today |
 |---|---|---|
-| `GET /reports/trades/students?schoolId=` | Learners per programme, with gender split | 403 |
-| `GET /reports/students/summary` with a per-school filter | Male / female learner totals per school | 403 |
-| `GET /reports/teachers/summary` with a per-school filter | Teachers by gender; admin and support staff totals | 403 |
+| `GET /reports/trades/students?schoolId=` | Learners per programme, with gender split: sizes workshops, sanitation and dormitories | 403 |
 | `GET /trades` | Programme names for the codes in `tradeNames` | 403 |
 | `GET /locations/provinces … /villages` | Administrative unit names and codes | 403 |
 
-We do **not** need `/students` or `/teachers` (no learner or teacher records). If the teacher report cannot filter by school, a small per-school summary would do instead:
-`GET /schools/{code}/staff-summary` → `{ teachers: {male, female}, admin: {male, female}, support: {male, female} }`.
+We do **not** need `/students`, `/teachers` or the student and teacher summary reports. Teacher totals from `counts.teachers` are enough.
 
-Until R1 is granted, learner and teacher gender splits and programme names stay editable in RTB GIS.
+Until R1 is granted, learners per programme and programme names stay editable in RTB GIS.
 
 #### R2 (P1): Available seat capacity per programme
 
@@ -106,14 +103,11 @@ We could not find seat capacity anywhere in the API. Does TDMP (or SDMS) hold th
 
 #### R3 (P2): Add a few fields to the `/schools` list rows
 
-To avoid one detail call per school:
 
 | Field | Why |
 |---|---|
 | `categoryBand` (TSS / VTC / …) | Today it is only a filter. **64 of the 375 schools we sync** are in neither TSS nor VTC; please tell us what they are (integrated? short courses?). Until then they keep the type set in RTB GIS |
-| `establishmentDate` | Year established, without a detail call |
-| `updatedAt` | Change detection |
-| `headTeacherName` (optional) | School contact card |
+| `updatedAt` | Change detection, so we fetch a school's details only when it changed |
 
 #### R4 (P2): Data quality on `/schools`
 
@@ -269,23 +263,13 @@ If TDMP performed multi-factor authentication, include `amr` (e.g. `["pwd","otp"
 
 A staging TDMP (or test tenant) with one test user per role in R7.
 
-### Future outcome indicators
-
-#### R11 (P3): Outcome data
-
-| Indicator | What we found | Request |
-|---|---|---|
-| Assessment pass rates per school / trade | `GET /performance/summary`, `/reports/performance/nesa` (403 for our key) | Read access when we start this phase |
-| Graduate employment | Not in the API | Is tracer-study data planned? |
-| Labour-market demand by trade and district | Not in the API | Is it planned, and from which source? |
-
 ### Access key
 
 #### R12 (P1): Key handling
 
 1. Our production key was shared in plain text and is now installed on our server. Please **rotate it** and deliver the new key over a secure channel.
 2. Please issue **separate keys** for development/staging and production.
-3. Are there **rate limits**? Our load today: one small freshness request at the interval our administrators choose (currently every 6 hours; never more than every 15 minutes), plus about 10 requests per daily full run. Once R1 is granted, a weekly run adds 1–2 requests per school.
+3. Are there **rate limits**? Our load today: one small freshness request at the interval our administrators choose (currently every 6 hours; never more than every 15 minutes), plus about 10 requests per daily full run. Once R1 is granted, a weekly run adds 1 request per school.
 
 ## What we do on our side
 

@@ -10,15 +10,14 @@ TDMP (`https://tdmp.rtb.gov.rw`) is the parent platform. After this work:
 1. **Scheduled sync.** A scheduled job keeps RTB GIS school data in line with TDMP. Fields TDMP owns are read-only here.
 2. **Single sign-on.** Anyone signed in to TDMP opens RTB GIS without signing in again. Their role and geographic scope come from TDMP.
 
-The data taken from TDMP covers exactly these five areas:
+The data taken from TDMP covers exactly these four areas. We ask only for what plans school infrastructure: how many learners and teachers each site serves, in which programmes, against how many seats:
 
 | # | Data area | Information | Priority |
 |---|---|---|---|
 | A | School profile | Official code and name, type and status, location and administrative codes, year established | P1 |
 | B | Enrolment and programmes | Learner totals, programmes offered, learners per programme, available seat capacity | P1 |
-| C | Staffing summaries | Teacher counts by gender; broader staff totals where available | P1/P2 |
+| C | Staffing | Teacher totals | P1 |
 | D | User identity and access | Verified identity, role, account status, authorised geographic or school scope | P1 |
-| E | Future outcome indicators | Assessment pass rates, graduate employment, labour-market demand | P3 (not part of the school condition score) |
 
 Coordinates and all map data stay owned by RTB GIS. TDMP GPS only gives a starting point for a school new to RTB GIS.
 
@@ -33,16 +32,12 @@ The spec is `GET /api/v1/docs/api.json` (OpenAPI 3.1, 262 operations, rendered a
 | A | `GET /schools?categoryBand=TSS\|VTC` | ✅ | 228 TSS + 94 VTC. **69 TVET schools are in neither**. The band is a filter only and isn't returned on the row |
 | B | `counts.students`, `tradeNames` (on `/schools`) | ✅ | Learner total and programme codes |
 | B | `GET /reports/trades/students?schoolId=` | ❌ 403 | Learners per programme with gender split |
-| B | `GET /reports/students/summary` | ❌ 403 | Learners by gender, level, trade |
 | B | `GET /trades` | ❌ 403 | Programme names |
 | B | Seat capacity | — | **Not exposed anywhere in the API** |
 | C | `counts.teachers` (on `/schools`) | ✅ | Teacher total |
-| C | `GET /reports/teachers/summary` | ❌ 403 | Teachers by gender / category |
 | D | `/oauth/.well-known/openid-configuration` | ✅ public | Issuer `https://tdmp.rtb.gov.rw/api/v1`; code + PKCE (S256), `refresh_token`; RS256 id_token. Claims: `sub email email_verified name preferred_username` (**no role, scope or `amr`**) |
 | D | `GET /auth/me/access-scope` (user token) | ✅ | `roleNames`, `anchorSchool`, `accessScope.kind` (unrestricted / province / district / school / deny) |
-| E | `GET /performance/summary`, `/reports/performance/nesa` | ❌ 403 | NESA pass rates per school / trade |
-| E | Graduate employment, labour-market demand | — | **Not in the API** |
-| — | `GET /locations/*`, `GET /integrations` | ❌ 403 | Administrative unit lists; TDMP pipeline health |
+| — | `GET /locations/*` | ❌ 403 | Administrative unit lists |
 
 **Freshness:** TDMP re-materialises schools daily, at about **06:00 Africa/Kigali** (`lastMaterialisedAt` = `…T06:00:34+02:00`).
 
@@ -81,25 +76,15 @@ Once a school is linked (`tdmpSchoolCode` set), the fields below are overwritten
 | `maleStudents`, `femaleStudents`, `educationPrograms[].totalStudents` | `/reports/trades/students?schoolId=` | 2 (R1) |
 | `educationPrograms[].capacity` | per-programme seat capacity (requested, R2). Until then it stays editable in RTB GIS | 2 (R2) |
 
-### C. Staffing summaries
+### C. Staffing
 
 | RTB GIS field | TDMP source | Phase |
 |---|---|---|
 | `totalTeachers` | `counts.teachers` | 1 |
-| `maleTeachers`, `femaleTeachers` | per-school teacher summary (R1) | 2 |
-| `adminStaff`, `supportStaff` (+ gender) | per-school staff summary (R1), where TDMP has it | 2 |
-| `headTeacher` | head-teacher name on the school record (R3) | 3 |
+
+Teacher gender splits, admin / support staff and the head teacher are not requested from TDMP; they stay editable in RTB GIS.
 
 ### D. User identity and access: see §6.
-
-### E. Outcome indicators (P3)
-
-These are stored in a separate `school_outcomes` table (school, academic year, trade, indicator, value, source). They're shown on dashboards and **never fed into the school condition score**.
-
-| Indicator | TDMP source |
-|---|---|
-| Assessment pass rate per school / trade | `/performance/summary` (R11) |
-| Graduate employment, labour-market demand | not in TDMP today (asked in R11) |
 
 ## 4. Review of the existing `intergration` work
 
@@ -111,7 +96,7 @@ It was written against the published spec, not the live API. These fixes are nee
 |---|---|---|---|
 | F1 | `tdmp/tdmp-school.mapper.ts` `mapSchoolType` | Looks for "TSS"/"VTC" in `schoolCategory`, but live data is always `"TVET"`, so every new school becomes TSS | Classify from the `categoryBand` sweeps (§5.1); unknown keeps the current value, and new schools get a `typeUnverified` flag |
 | F2 | `tdmp-school.mapper.ts` `mapStatus` | `ACTIVE` overwrites our `under_renovation` | Keep `under_renovation` while TDMP says ACTIVE; INACTIVE always wins |
-| F3 | `tdmp-school.source.ts` `bundle()`, `tdmp-school.mapper.ts`, `tdmp.types.ts`, client `TdmpSection.tsx` | Fetches and stores data outside the five areas (`/school-infrastructure` → `tdmpData.infrastructure`) | Remove that fetch, the `infrastructureOf` mapper, its type and its UI card. Only areas A–E are read |
+| F3 | `tdmp-school.source.ts` `bundle()`, `tdmp-school.mapper.ts`, `tdmp.types.ts`, client `TdmpSection.tsx` | Fetches and stores data outside the agreed areas (`/school-infrastructure` → `tdmpData.infrastructure`) | Remove that fetch, the `infrastructureOf` mapper, its type and its UI card. Only areas A–D are read |
 | F4 | `tdmp-school.source.ts` `bundle()` | Five or more calls per school, about 2,000 per run, most of them 403 | List-first sync (§5.1): about 8 calls per run. Detail only for new schools and a rolling weekly refresh |
 | F5 | `tdmp/tdmp.config.ts` `pageSize` | Caps at 500; TDMP rejects anything above 100 | Cap at 100 |
 | F6 | `tdmp/tdmp-sync.service.ts` `@Cron('0 1 * * *')` | Runs at 01:00, five hours before TDMP refreshes, so data is up to 29 h old | Hourly freshness probe + daily 07:15 run (§5.2) |
@@ -176,7 +161,6 @@ ALTER TABLE schools ADD COLUMN "provinceId" integer, ADD COLUMN "districtId" int
                     ADD COLUMN "villageId"  integer;
 CREATE INDEX "IDX_schools_districtId" ON schools ("districtId");
 -- tdmpData jsonb: + hash, detailFetchedAt, typeUnverified; − infrastructure
--- Phase 3: CREATE TABLE school_outcomes (...)   -- area E
 ```
 
 `locationSource` gains `'tdmp'`, ranked lowest in `school-location.rules.ts`, so a TDMP sync never moves a school whose location RTB GIS has set.
@@ -255,8 +239,7 @@ TDMP_DEFAULT_ROLE=
 | **1b. First link** | Dry run on prod data, review unmatched with RTB, link, enable schedules, verify dashboards | A | Phase 1 | 1–2 d |
 | **2. SSO pilot** | F10, `prompt=none` retry, audit actions, role mapping; `AUTH_MODE=both` on prod | D | TDMP: R6, R7, R8 | 2 d + TDMP turnaround |
 | **3. SSO only** | `AUTH_MODE=tdmp` after 2 clean weeks; break-glass accounts tested | D | Phase 2 | 0.5 d |
-| **4. Aggregates** | Gender splits, learners per programme, programme names, seat capacity, staff summary; weekly job | B, C | TDMP: R1, R2 | 2 d |
-| **5. Outcomes** | `school_outcomes` table, pass rates on dashboards | E | TDMP: R11 | 2 d |
+| **4. Aggregates** | Learners per programme (with gender split), programme names, seat capacity; weekly job | B | TDMP: R1, R2 | 2 d |
 
 Phases 0–1b need nothing from TDMP; the current key covers them.
 
@@ -315,7 +298,6 @@ Phases 0–1b need nothing from TDMP; the current key covers them.
 | `prompt=none` | Code ready, **off** | `TDMP_OAUTH_SILENT=false` until TDMP confirms (R6) |
 | Phase 2 SSO pilot | Waiting | needs R6 (OAuth client), R7 (roles), R8 (scope fields) |
 | Phase 4 aggregates | Waiting | needs R1, R2; the admin page shows when TDMP grants them |
-| Phase 5 outcomes | Waiting | needs R11 |
 
 Deviations from the plan:
 - `educationPrograms` is not filled from `tradeNames` yet: codes alone have no names, learners or capacity, and empty programme rows would change how enrolment and capacity are computed (`school-metrics.helpers.ts`). Trade codes are kept in `tdmpData.trades` until R1.

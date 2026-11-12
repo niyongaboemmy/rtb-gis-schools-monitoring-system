@@ -65,18 +65,6 @@ const ENDPOINTS: Array<
     request: 'R1',
   },
   {
-    key: 'studentsSummary',
-    label: 'Learner totals by gender',
-    path: '/reports/students/summary',
-    request: 'R1',
-  },
-  {
-    key: 'teachersSummary',
-    label: 'Staff summary',
-    path: '/reports/teachers/summary',
-    request: 'R1',
-  },
-  {
     key: 'trades',
     label: 'Programme names',
     path: '/trades',
@@ -88,12 +76,6 @@ const ENDPOINTS: Array<
     label: 'Administrative units',
     path: '/locations/provinces',
     request: 'R1',
-  },
-  {
-    key: 'performance',
-    label: 'Assessment pass rates',
-    path: '/performance/summary',
-    request: 'R11',
   },
   {
     key: 'discovery',
@@ -224,20 +206,10 @@ export class TdmpConnectionService {
       ? (discovery.prompt_values_supported as string[])
       : [];
 
-    const r1 = [
-      'tradesStudents',
-      'studentsSummary',
-      'teachersSummary',
-      'trades',
-      'locations',
-    ];
+    const r1 = ['tradesStudents', 'trades', 'locations'];
     const r1ok = r1.filter(ok).length;
 
-    const r3fields = [
-      'categoryBand',
-      'establishmentDate',
-      'updatedAt',
-    ] as const;
+    const r3fields = ['categoryBand', 'updatedAt'] as const;
     const r3have = r3fields.filter((f) => rows.some((r) => f in (r ?? {})));
 
     const unfetched = quality.unfetched;
@@ -281,7 +253,8 @@ export class TdmpConnectionService {
     return [
       {
         id: 'R1',
-        title: 'Aggregate reports (learners, staff, programmes, units)',
+        title:
+          'Aggregate reports (learners per programme, programme names, units)',
         priority: 'P2',
         state: state(r1ok === r1.length, r1ok > 0),
         evidence: `${r1ok} of ${r1.length} endpoints readable with our key`,
@@ -303,7 +276,7 @@ export class TdmpConnectionService {
         evidence: rows.length
           ? r3have.length
             ? `Present: ${r3have.join(', ')}`
-            : 'categoryBand, establishmentDate, updatedAt not on list rows'
+            : 'categoryBand, updatedAt not on list rows'
           : 'School list not readable',
       },
       {
@@ -379,15 +352,6 @@ export class TdmpConnectionService {
         priority: 'P2',
         state: 'manual',
         evidence: 'Confirm with TDMP',
-      },
-      {
-        id: 'R11',
-        title: 'Outcome indicators',
-        priority: 'P3',
-        state: state(ok('performance')),
-        evidence: ok('performance')
-          ? 'Pass rates readable'
-          : 'Pass rates: 403; employment and labour-market data not in the API',
       },
       {
         id: 'R13',
