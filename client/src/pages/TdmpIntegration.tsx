@@ -264,7 +264,9 @@ function ScheduleForm({ settings, onSaved }: { settings: TdmpSyncSettings; onSav
           </span>
           <span className="block text-xs text-muted-foreground">{autoSync ? `Checks ${every(interval)} · full run daily at ${daily}` : "Paused: only “Sync now” changes schools"}</span>
         </span>
-        <Switch checked={autoSync} onCheckedChange={setAutoSync} disabled={saving} className="shrink-0" />
+        <span data-tooltip={autoSync ? "Turn off to pause automatic runs. Nothing is deleted" : "Turn on so RTB GIS keeps school details current by itself"}>
+          <Switch checked={autoSync} onCheckedChange={setAutoSync} disabled={saving} className="shrink-0" />
+        </span>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
@@ -311,7 +313,13 @@ function ScheduleForm({ settings, onSaved }: { settings: TdmpSyncSettings; onSav
         <p className="min-w-0 truncate text-xs text-muted-foreground">
           {settings.updatedBy ? `Changed by ${settings.updatedBy}${settings.updatedAt ? ` · ${formatRelative(settings.updatedAt)}` : ""}` : ""}
         </p>
-        <Button className={PILL_BUTTON.small} onClick={() => void save()} disabled={!dirty || saving} isLoading={saving}>
+        <Button
+          className={PILL_BUTTON.small}
+          onClick={() => void save()}
+          disabled={!dirty || saving}
+          isLoading={saving}
+          data-tooltip={dirty ? "Save the new schedule" : "Change a setting first"}
+        >
           Save
         </Button>
       </div>
@@ -336,7 +344,7 @@ function ConnectionDetails({ report, checking, onCheck }: { report: ConnectionRe
             {report.tvetSchools != null ? `${formatNumber(report.tvetSchools)} TVET schools · ` : ""}checked {formatRelative(report.checkedAt)}
           </span>
         </span>
-        <Button variant="outline" className={PILL_BUTTON.small} onClick={onCheck} isLoading={checking} disabled={checking}>
+        <Button variant="outline" className={PILL_BUTTON.small} onClick={onCheck} isLoading={checking} disabled={checking} data-tooltip="Ask TDMP again now: key, endpoints and request status">
           <PlugZap className="h-3.5 w-3.5" aria-hidden /> Test again
         </Button>
       </div>
@@ -655,10 +663,10 @@ export default function TdmpIntegration() {
   const total = (status?.linkedSchools ?? 0) + (status?.unlinkedSchools ?? 0);
 
   const attention: AttentionItem[] = [
-    { id: "loc", icon: MapPinOff, label: "Schools without a map location", count: waitingForLocation.length, tone: "warn", onOpen: () => setModal({ kind: "locations" }) },
-    { id: "unl", icon: Link2Off, label: "Schools not linked to TDMP", count: unlinked.length, tone: "warn", onOpen: () => setModal({ kind: "unlinked" }) },
-    { id: "mis", icon: AlertTriangle, label: "Missing from TDMP's list", count: missing.length, tone: "danger", onOpen: () => setModal({ kind: "missing" }) },
-    { id: "fail", icon: AlertTriangle, label: "Schools that failed last run", count: last?.totals.failed ?? 0, tone: "danger", onOpen: () => last && setModal({ kind: "run", run: last }) },
+    { id: "loc", icon: MapPinOff, label: "Schools without a map location", count: waitingForLocation.length, tone: "warn", tip: "In TDMP but without GPS: give each a location to put it on the map", onOpen: () => setModal({ kind: "locations" }) },
+    { id: "unl", icon: Link2Off, label: "Schools not linked to TDMP", count: unlinked.length, tone: "warn", tip: "Match each to its TDMP code so its details come from TDMP and it is not counted twice", onOpen: () => setModal({ kind: "unlinked" }) },
+    { id: "mis", icon: AlertTriangle, label: "Missing from TDMP's list", count: missing.length, tone: "danger", tip: "Linked schools TDMP no longer lists. Kept as they are until TDMP confirms", onOpen: () => setModal({ kind: "missing" }) },
+    { id: "fail", icon: AlertTriangle, label: "Schools that failed last run", count: last?.totals.failed ?? 0, tone: "danger", tip: "Schools the last run could not update. Click to see why", onOpen: () => last && setModal({ kind: "run", run: last }) },
   ];
 
   const modalTitle = (m: ModalKey): string => {
@@ -712,13 +720,14 @@ export default function TdmpIntegration() {
           </div>
           {status?.enabled.sync && isNational && (
             <div className="flex w-full flex-wrap gap-2 min-[560px]:w-auto">
-              <Button variant="outline" className={cn(PILL_BUTTON.secondary, "flex-1 min-[560px]:flex-none")} onClick={() => setModal({ kind: "how" })}>
+              <Button variant="outline" className={cn(PILL_BUTTON.secondary, "flex-1 min-[560px]:flex-none")} onClick={() => setModal({ kind: "how" })} data-tooltip="See, step by step, what a sync does and which data comes from TDMP">
                 <Compass className="h-4 w-4" aria-hidden /> How it works
               </Button>
               <Button
                 variant="outline"
                 className={cn(PILL_BUTTON.secondary, "flex-1 min-[560px]:flex-none")}
                 onClick={() => void start(true)}
+                data-tooltip="Preview only: reads TDMP and shows what a sync would add, link or change. Nothing is saved"
                 isLoading={starting === "dry"}
                 disabled={running || starting !== null}
               >
@@ -727,6 +736,7 @@ export default function TdmpIntegration() {
               <Button
                 className={cn(PILL_BUTTON.primary, "flex-1 min-[560px]:flex-none")}
                 onClick={() => void start(false)}
+                data-tooltip={running ? "A sync is running: progress shows below" : "Apply TDMP's latest school data now, without waiting for the schedule. Map locations are never moved"}
                 isLoading={starting === "sync"}
                 disabled={running || starting !== null}
               >
@@ -761,6 +771,7 @@ export default function TdmpIntegration() {
               label="Setup"
               caption={stepsDone === steps.length ? "Complete" : `Next: ${steps.find((s) => !s.done)?.short ?? ""}`}
               tone={stepsDone === steps.length ? "good" : "primary"}
+              tip="The one-time steps to set up the integration. Click for the checklist"
               onClick={() => setModal({ kind: "setup" })}
             />
             <ProgressRing
@@ -769,6 +780,7 @@ export default function TdmpIntegration() {
               label="Data coverage"
               caption={connection ? `${requestsDone} of ${connection.requests.length} requests met` : "Checking…"}
               tone={coveragePct >= 80 ? "good" : "warn"}
+              tip="Share of the school data we need from TDMP that is live today. The rest waits on TDMP requests"
               onClick={() => setModal({ kind: "coverage" })}
             />
             <StatTile
@@ -777,6 +789,7 @@ export default function TdmpIntegration() {
               value={`${formatNumber(status.linkedSchools)} / ${formatNumber(total)}`}
               hint={status.unlinkedSchools ? `${formatNumber(status.unlinkedSchools)} not linked` : "All linked"}
               tone={status.unlinkedSchools ? "warn" : "good"}
+              tip="Schools matched to their TDMP code. Click to link any that are not"
               onClick={() => setModal({ kind: "unlinked" })}
             />
             <StatTile
@@ -785,6 +798,7 @@ export default function TdmpIntegration() {
               value={last ? formatRelative(last.startedAt) : "Never"}
               hint={last ? (last.status === "failed" ? "Failed" : totalsSummary(last.totals, last.dryRun)) : "Run one now"}
               tone={last?.status === "failed" ? "danger" : "good"}
+              tip="When TDMP data was last applied, and what changed. Click for the full report"
               onClick={() => (last ? setModal({ kind: "run", run: last }) : setModal({ kind: "history" }))}
             />
             <StatTile
@@ -793,6 +807,7 @@ export default function TdmpIntegration() {
               value={status.settings.autoSync ? "On" : "Paused"}
               hint={status.settings.autoSync ? `${every(status.settings.probeIntervalMinutes)} · daily ${status.settings.dailyRunAt}` : "Manual runs only"}
               tone={status.settings.autoSync ? "good" : "warn"}
+              tip="When RTB GIS checks TDMP on its own. Click to pause or change the schedule"
               onClick={() => setModal({ kind: "schedule" })}
             />
           </div>
@@ -842,7 +857,7 @@ export default function TdmpIntegration() {
             title="Setup progress"
             icon={ListChecks}
             action={
-              <button type="button" className={LINK_BUTTON} onClick={() => setModal({ kind: "setup" })}>
+              <button type="button" className={LINK_BUTTON} onClick={() => setModal({ kind: "setup" })} data-tooltip="Every setup step with its explanation and action">
                 All steps
               </button>
             }
@@ -855,7 +870,7 @@ export default function TdmpIntegration() {
             title="Data from TDMP"
             icon={Sparkles}
             action={
-              <button type="button" className={LINK_BUTTON} onClick={() => setModal({ kind: "connection" })}>
+              <button type="button" className={LINK_BUTTON} onClick={() => setModal({ kind: "connection" })} data-tooltip="What our TDMP key can read, and where each request to the TDMP team stands">
                 Requests {requestsDone}/{connection?.requests.length ?? 12}
               </button>
             }
@@ -872,7 +887,7 @@ export default function TdmpIntegration() {
               title="Recent activity"
               icon={Activity}
               action={
-                <button type="button" className={LINK_BUTTON} onClick={() => setModal({ kind: "history" })}>
+                <button type="button" className={LINK_BUTTON} onClick={() => setModal({ kind: "history" })} data-tooltip="Every sync and dry run, newest first">
                   All runs
                 </button>
               }
@@ -894,6 +909,7 @@ export default function TdmpIntegration() {
             ) : modal.step.action ? (
               <Button
                 className={PILL_BUTTON.primary}
+                data-tooltip={modal.step.explain}
                 onClick={() => {
                   const a = modal.step.action!;
                   close();
@@ -980,6 +996,7 @@ export default function TdmpIntegration() {
                         type="button"
                         onClick={() => void link(school, school.suggestion!.schoolCode)}
                         disabled={linking !== null}
+                        data-tooltip="Suggested from a similar name in the same district. Linking copies TDMP's details; map, buildings and reports stay"
                         className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/15 disabled:opacity-50"
                       >
                         <Sparkles className="h-3 w-3" aria-hidden /> Link to {school.suggestion.schoolCode} · {school.suggestion.schoolName}
@@ -1010,6 +1027,7 @@ export default function TdmpIntegration() {
                         className={PILL_BUTTON.small}
                         isLoading={linking === school.id}
                         disabled={!(codes[school.id] ?? "").trim() || linking !== null}
+                        data-tooltip="Match this school to the TDMP code you typed"
                       >
                         <Link2 className="h-3.5 w-3.5" aria-hidden /> Link
                       </Button>
