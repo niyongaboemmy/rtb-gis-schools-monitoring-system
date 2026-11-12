@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Role } from '../roles/entities/role.entity';
-import { TdmpSyncRun } from './entities/tdmp-sync-run.entity';
 import { TdmpConfig } from './tdmp.config';
 import { TdmpApiClient, type TdmpEndpointCheck } from './tdmp-api.client';
 import type { TdmpListMeta, TdmpSchool } from './tdmp.types';
@@ -93,8 +92,6 @@ export class TdmpConnectionService {
     private readonly config: TdmpConfig,
     private readonly api: TdmpApiClient,
     @InjectRepository(Role) private readonly roles: Repository<Role>,
-    @InjectRepository(TdmpSyncRun)
-    private readonly runs: Repository<TdmpSyncRun>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -225,21 +222,10 @@ export class TdmpConnectionService {
       .getCount()
       .catch(() => 0);
 
-    // R13: schools TDMP has no GPS for, as the latest real sync saw them.
-    const lastSync = await this.runs
-      .findOne({
-        where: { status: 'completed', dryRun: false },
-        order: { startedAt: 'DESC' },
-      })
-      .catch(() => null);
-    const noGps = lastSync?.report?.needsLocation?.length ?? null;
-
-    // R14–R16: TDMP using what RTB GIS offers (partner keys, embed views).
+    // R15–R16: TDMP using the embedded views RTB GIS offers.
     const partner = await this.dataSource
       .query(
         `SELECT
-           count(*) FILTER (WHERE "revokedAt" IS NULL AND 'coordinates:read' = ANY(scopes))::int AS coord_keys,
-           count(*) FILTER (WHERE "revokedAt" IS NULL AND 'coordinates:read' = ANY(scopes) AND "lastUsedAt" IS NOT NULL)::int AS coord_used,
            count(*) FILTER (WHERE "revokedAt" IS NULL AND 'embed:create' = ANY(scopes))::int AS embed_keys,
            (SELECT count(*)::int FROM audit_logs WHERE action = 'partner.embed_session') AS embed_sessions
          FROM partner_api_keys`,
@@ -352,33 +338,6 @@ export class TdmpConnectionService {
         priority: 'P2',
         state: 'manual',
         evidence: 'Confirm with TDMP',
-      },
-      {
-        id: 'R13',
-        title: 'GPS for TVET schools that have none in TDMP',
-        priority: 'P2',
-        state: noGps === null ? 'waiting' : state(noGps === 0),
-        evidence:
-          noGps === null
-            ? 'Run a sync to check'
-            : noGps === 0
-              ? 'Every TDMP school had usable GPS in the last sync'
-              : `${noGps} schools had no GPS inside Rwanda in the last sync`,
-      },
-      {
-        id: 'R14',
-        title: 'TDMP reads school coordinates from RTB GIS',
-        priority: 'P2',
-        state: !partner
-          ? 'waiting'
-          : state(partner.coord_used > 0, partner.coord_keys > 0),
-        evidence: !partner
-          ? 'Partner keys not available'
-          : partner.coord_used > 0
-            ? 'TDMP has used its partner key'
-            : partner.coord_keys > 0
-              ? 'Key issued; not used yet'
-              : 'No partner key with coordinates access yet (Shared with TDMP ▸ Manage keys)',
       },
       {
         id: 'R15',

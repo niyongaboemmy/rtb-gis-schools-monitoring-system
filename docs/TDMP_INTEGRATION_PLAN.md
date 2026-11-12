@@ -323,6 +323,6 @@ TDMP also takes data from us. Built 2026-11-12 (`server/src/modules/partner/`); 
 | Access level | Per key (`partner-access.ts`, migration `1788550000000-PartnerKeyAccess`): national / province / district / list of schools + allowed views. Data endpoints filter by it (outside → 404); embed links must fit inside it (national map clamped; wider → 403 `PARTNER_ACCESS_DENIED`); a link is re-checked against the key's current access when exchanged. Changing a key's access moves it to a fresh partner account, ending open views |
 | Client | `/embed/schools/:id/{dashboard,map-2d,map-3d}`, `/embed/map` (no app chrome) behind `EmbedGate`. Link mode keeps auth in memory only (never the shared localStorage of an RTB GIS tab), never tries the refresh cookie or `/login`, and shows "expired" instead. Opened without a link, the pages use the normal session and role |
 | Framing | nginx sets `frame-ancestors` from the ORIGINAL URI (the SPA fallback rewrites to /index.html): `/embed/*` → `'self'` + TDMP origins; everything else → `'self'` + `X-Frame-Options: SAMEORIGIN`. **Apply by hand** on the server (certbot owns the live file) |
-| Tracking | Requests R14 (coordinates used), R15 (first embed session, from the audit trail), R16 (origins) on the TDMP page |
+| Tracking | Requests R15 (first embed session, from the audit trail), R16 (origins) on the TDMP page |
 
 Tests: `partner-embed.spec.ts`, `test/partner-api.e2e-spec.ts` (keys, scopes, feed, embed scope / read-only / revoke), client `Embed.test.tsx`, `embed.test.ts`, `Developers.test.tsx`, `partner-ui.test.tsx`.

@@ -201,30 +201,6 @@ test.school@…    (Head teacher, ACEJ KARAMA)`,
     unlocks: ["Safe sign-in testing"],
     check: "To confirm with TDMP.",
   },
-  R14: {
-    summary: "Take school coordinates from RTB GIS to update TDMP's GPS.",
-    why: "RTB GIS places schools from drone surveys and GIS staff work. Reading our points keeps TDMP's gpsLat / gpsLong accurate without anyone re-typing them.",
-    ask: [
-      "Store the partner key we issue on the TDMP server (never in a browser).",
-      "Run a daily job: GET /partner/schools/coordinates, first in full, then with updatedSince.",
-      "Update gpsLat / gpsLong when quality is surveyed or manual, and the point is inside Rwanda.",
-      "Full guide with ready code: /developers#coordinates.",
-    ],
-    example: {
-      label: "Daily incremental pull",
-      lang: "http",
-      code: `GET /api/v1/partner/schools/coordinates?updatedSince=2026-11-12T11:00:00Z&limit=1000
-Authorization: ApiKey rtbgis_pk_…
-
-200 OK
-{ "data": [ { "schoolCode": "280705", "latitude": -1.8835, "longitude": 29.9379,
-              "quality": "surveyed", "updatedAt": "2026-11-12T10:40:00Z" } ],
-  "page": { "current": 1, "limit": 1000, "total": 1 },
-  "generatedAt": "2026-11-13T07:30:00Z" }`,
-    },
-    unlocks: ["Accurate GPS in TDMP", "One source of truth for location"],
-    check: "Partly done once a key with coordinates access exists; done once TDMP has used it.",
-  },
   R15: {
     summary: "Show RTB GIS dashboards and 2D / 3D maps inside TDMP.",
     why: "TDMP users see a school's condition, site map and 3D model next to its TDMP record, without a second login. Views are read-only and limited to that school.",
@@ -279,21 +255,5 @@ Authorization: ApiKey rtbgis_pk_…
     },
     unlocks: ["Clean key history"],
     check: "To confirm after the new key is installed.",
-  },
-  R13: {
-    summary: "GPS for the TVET schools that have none in TDMP.",
-    why: "These schools are in TDMP but cannot be placed on the national map. Our admins can place them by hand, but fixing GPS at the source helps every system.",
-    ask: [
-      "Add gpsLat / gpsLong (WGS84, inside Rwanda) for the schools listed in the requests document.",
-      "Or take the points we set from our partner API: GET /api/v1/partner/schools/coordinates.",
-    ],
-    example: {
-      label: "GET /api/v1/schools/310517 on TDMP, once fixed (placeholder coordinates)",
-      lang: "json",
-      code: `{ "schoolCode": "310517", "schoolName": "MUBUGA TSS",
-  "gpsLat": -2.xxxxxx, "gpsLong": 29.xxxxxx }`,
-    },
-    unlocks: ["Every school on the map"],
-    check: "Counted from our latest sync: schools whose TDMP point is missing or outside Rwanda.",
   },
 };
