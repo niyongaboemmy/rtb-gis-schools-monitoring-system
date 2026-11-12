@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useAuthStore } from "../store/authStore";
 import { useSchoolsStore } from "../store/schoolsStore";
 import { api, apiErrorMessage, fileApi } from "../lib/api";
@@ -16,11 +16,8 @@ import {
   School as SchoolIcon,
   Layers,
   Check,
-  ArrowLeft,
   Camera,
   MapPin,
-  List,
-  Map as MapIcon,
   Filter,
   Calendar,
   ChevronLeft,
@@ -60,6 +57,15 @@ import { errorMessage } from "../components/ui/error-message";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { viewerLink } from "../lib/viewer-tools";
 import { label } from "../lib/labels";
+import { PILL_BUTTON, TONE_PILL, TONE_TILE } from "../components/ui/surfaces";
+import {
+  ChoiceCard,
+  ChoiceGrid,
+  StepHeader,
+  StepPanel,
+  WizardSection,
+  WizardStepper,
+} from "../components/reporting/wizard-ui";
 
 interface Facility {
   facilityId: string;
@@ -783,178 +789,122 @@ export default function SchoolReporting({
   };
 
   const renderSubmissionReview = () => (
-    <div className="space-y-6">
-      <div className="bg-primary/5 p-8 rounded-2xl border border-primary/10 relative overflow-hidden group">
-        <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
-          <ClipboardList className="w-24 h-24 text-primary" />
-        </div>
-        <div className="relative z-10">
-          <Badge className="bg-primary/20 text-primary border-none text-[13px] font-black uppercase rounded-full px-3 py-1 mb-4">
-            Review
-          </Badge>
-          <h3 className="text-3xl font-black uppercase tracking-tighter leading-none mb-2 flex items-center gap-4">
-            Review & Confirm
-            {selectedSchoolDetails?.tifFilePath && (
-              <Badge className="bg-blue-500/20 text-blue-500 border-blue-500/12 text-[13px] font-black uppercase rounded-full px-3 py-1">
-                High-Res Mapping Active
-              </Badge>
-            )}
-          </h3>
-          <p className="text-[15px] font-black text-muted-foreground uppercase tracking-widest opacity-80">
-            Review all issues before submitting.
-          </p>
-        </div>
-      </div>
+    <div className="space-y-5">
+      <StepHeader
+        title="Review and send"
+        subtitle={`${issues.length} issue${issues.length === 1 ? "" : "s"} · check the details before you send`}
+        onBack={() => setStep(5)}
+        backLabel="Back to issue details"
+        actions={
+          selectedSchoolDetails?.tifFilePath ? (
+            <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium", TONE_PILL.primary.box)}>
+              <span className={cn("h-1.5 w-1.5 rounded-full", TONE_PILL.primary.dot)} aria-hidden />
+              High-res map
+            </span>
+          ) : undefined
+        }
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
-        <div className="lg:col-span-4 order-2 lg:order-1 space-y-4">
-          <Card className="p-8 rounded-2xl border border-border/10 bg-card relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1.5 bg-linear-to-r from-primary/50 to-transparent"></div>
-            <h4 className="text-[15px] font-black uppercase tracking-[0.2em] text-primary mb-8 flex items-center gap-3">
-              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              Report Context
-            </h4>
-
-            <div className="space-y-6">
-              {[
-                {
-                  label: "School",
-                  value: schools.find((s) => s.id === selectedSchoolId)?.name,
-                  icon: <SchoolIcon className="w-4 h-4" />,
-                },
-                {
-                  label: "Building / Block",
-                  value: selectedBuilding?.name,
-                  icon: <Building2 className="w-4 h-4" />,
-                },
-                {
-                  label: "Facility & Item",
-                  value: `${selectedFacility?.title || "N/A"} • ${selectedItem?.label || "General"}`,
-                  icon: <Layers className="w-4 h-4" />,
-                },
-              ].map((item, i) => (
-                <div key={i} className="flex gap-4 group">
-                  <div className="w-10 h-10 rounded-2xl bg-muted/50 flex items-center justify-center shrink-0 border border-border/5 group-hover:bg-primary group-hover:text-primary transition-all">
-                    {item.icon}
-                  </div>
-                  <div className="space-y-1">
-                    <div className="text-[13px] font-black uppercase text-muted-foreground tracking-widest opacity-60 group-hover:opacity-100 transition-opacity">
-                      {item.label}
-                    </div>
-                    <div className="text-sm font-black truncate max-w-[200px] group-hover:translate-x-1 transition-transform">
-                      {item.value || "Incomplete Reference"}
-                    </div>
-                  </div>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+        <WizardSection
+          title="Where"
+          icon={MapPin}
+          className="order-2 lg:order-1 lg:col-span-4"
+        >
+          <dl className="space-y-3">
+            {[
+              { label: "School", value: schools.find((s) => s.id === selectedSchoolId)?.name ?? selectedSchoolDetails?.name, icon: SchoolIcon },
+              { label: "Building", value: selectedBuilding?.name, icon: Building2 },
+              { label: "Facility and item", value: `${selectedFacility?.title || "—"} · ${selectedItem?.label || "General"}`, icon: Layers },
+            ].map(({ label: l, value, icon: Icon }) => (
+              <div key={l} className="flex items-start gap-3">
+                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-white/40" aria-hidden />
+                <div className="min-w-0">
+                  <dt className="text-xs text-slate-500 dark:text-white/50">{l}</dt>
+                  <dd className="truncate text-sm font-medium text-slate-900 dark:text-white">{value || "Not set"}</dd>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
+          </dl>
+          <Button variant="outline" onClick={() => setStep(2)} className={cn(PILL_BUTTON.small, "mt-4 w-full")}>
+            Change location
+          </Button>
+        </WizardSection>
 
-            <Button
-              variant="outline"
-              onClick={() => setStep(2)}
-              className="w-full mt-8 rounded-full h-12 text-[12px] font-black uppercase tracking-widest border-2 border-border/10 hover:border-primary/40 hover:bg-primary/5 transition-all"
-            >
-              Change Location
-            </Button>
-          </Card>
-        </div>
-
-        <div className="lg:col-span-8 order-1 lg:order-2 space-y-6">
-          <div className="flex items-center justify-between px-2">
-            <h4 className="text-[15px] font-black uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-3">
-              Issues ({issues.length})
+        <div className="order-1 space-y-3 lg:order-2 lg:col-span-8">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+              Issues <span className="font-normal text-slate-500 dark:text-white/50">({issues.length})</span>
             </h4>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setStep(5)}
-              className="text-[12px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-primary/10 hover:text-primary transition-all rounded-full h-8"
-            >
-              <Plus className="w-3 h-3" /> Add Issue
+            <Button variant="ghost" onClick={() => setStep(5)} className={cn(PILL_BUTTON.small, "text-primary hover:bg-primary/10")}>
+              <Plus className="h-3.5 w-3.5" aria-hidden /> Add issue
             </Button>
           </div>
 
-          <div className="space-y-4 max-h-[500px] overflow-y-auto no-scrollbar pr-2 pb-4">
-            <AnimatePresence mode="popLayout">
+          <ul className="max-h-110 space-y-2.5 overflow-y-auto pr-1 custom-scrollbar">
+            <AnimatePresence initial={false}>
               {issues.map((issue, idx) => (
-                <motion.div
+                <motion.li
                   key={idx}
-                  initial={{ opacity: 0, y: 10 }}
+                  layout
+                  initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.18 }}
+                  className="group flex gap-3.5 rounded-2xl bg-white/70 p-4 ring-1 ring-slate-900/8 dark:bg-white/3 dark:ring-white/8"
                 >
-                  <Card className="p-6 rounded-2xl border border-border/10 bg-card hover:border-primary/30 transition-all flex gap-5 group relative overflow-hidden">
-                    <div className="w-12 h-12 rounded-2xl bg-background/50 border border-border/5 flex items-center justify-center shrink-0 text-xs font-black text-muted-foreground group-hover:bg-primary group-hover:text-white group-hover:border-primary transition-all">
-                      {idx + 1}
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900/5 text-xs font-semibold text-slate-600 dark:bg-white/6 dark:text-white/70">
+                    {idx + 1}
+                  </span>
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {issue.category.map((cat) => (
+                        <span key={cat} className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", TONE_PILL.primary.box)}>
+                          {cat}
+                        </span>
+                      ))}
+                      {issue.files?.length > 0 && (
+                        <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium", TONE_PILL.neutral.box)}>
+                          <Camera className="h-3 w-3" aria-hidden />
+                          {issue.files.length} photo{issue.files.length === 1 ? "" : "s"}
+                        </span>
+                      )}
                     </div>
-                    <div className="flex-1 space-y-3">
-                      <div className="flex justify-between items-center">
-                        <div className="flex flex-wrap gap-1">
-                          {issue.category.map((cat) => (
-                            <Badge
-                              key={cat}
-                              className="bg-primary/10 text-primary border-none text-[13px] font-black uppercase rounded-full px-3"
-                            >
-                              {cat}
-                            </Badge>
-                          ))}
-                        </div>
-                        <div className="flex items-center gap-3">
-                          {issue.files?.length > 0 && (
-                            <Badge
-                              variant="outline"
-                              className="rounded-full text-[13px] font-black border-primary/20 text-primary/80"
-                            >
-                              {issue.files.length} Signatures
-                            </Badge>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 rounded-full text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100"
-                            onClick={() => removeIssue(idx)}
-                            aria-label={`Remove issue ${idx + 1}`}
-                          >
-                            <Trash2 className="w-4 h-4" aria-hidden />
-                          </Button>
-                        </div>
-                      </div>
-                      <p className="text-xs font-bold leading-relaxed opacity-80 group-hover:opacity-100 transition-opacity">
-                        {issue.description}
-                      </p>
-                    </div>
-                  </Card>
-                </motion.div>
+                    <p className="text-sm leading-relaxed text-slate-700 dark:text-white/75">{issue.description}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeIssue(idx)}
+                    aria-label={`Remove issue ${idx + 1}`}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden />
+                  </button>
+                </motion.li>
               ))}
             </AnimatePresence>
-          </div>
+          </ul>
 
-          <div className="pt-4">
+          <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500 dark:text-white/50">
+              The monitoring team reviews every report and updates its status.
+            </p>
             <Button
-              className={cn(
-                "w-max rounded-full py-3 text-[14px] font-black uppercase tracking-[0.3em] transition-all",
-                isSubmitting
-                  ? "bg-muted"
-                  : "bg-primary hover:scale-[1.01] active:scale-[0.98]",
-              )}
+              className={PILL_BUTTON.primary}
               onClick={handleSubmit}
               disabled={isSubmitting || issues.length === 0}
             >
               {isSubmitting ? (
-                <div className="flex items-center gap-4">
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  Submitting...
-                </div>
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" aria-hidden />
+                  Sending…
+                </>
               ) : (
-                <div className="flex items-center gap-3">
-                  <CheckCircle2 className="w-5 h-5" /> Submit Report
-                </div>
+                <>
+                  <CheckCircle2 className="h-4 w-4" aria-hidden /> Send report
+                </>
               )}
             </Button>
-            <p className="text-center text-[13px] font-black uppercase tracking-widest text-muted-foreground mt-4 opacity-40">
-              This report will be logged and reviewed by the central monitoring
-              team.
-            </p>
           </div>
         </div>
       </div>
@@ -962,60 +912,32 @@ export default function SchoolReporting({
   );
 
   const renderSuccessView = () => (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="max-w-xl mx-auto py-20 text-center space-y-8"
-    >
-      <div className="w-24 h-24 bg-green-500/10 rounded-2xl flex items-center justify-center mx-auto border border-green-500/20 relative">
-        <div className="absolute inset-0 bg-green-500/20 rounded-2xl animate-ping opacity-20" />
-        <CheckCircle2 className="w-12 h-12 text-green-500" />
-      </div>
-      <div className="space-y-3">
-        <h3 className="text-4xl font-black uppercase tracking-tighter">
-          Report Submitted
-        </h3>
-        <p className="text-sm font-black text-muted-foreground uppercase tracking-widest opacity-60">
-          Report Reference:{" "}
-          <span className="text-primary">
-            {submittedReportId?.slice(0, 8) || "Processing"}
-          </span>
+    <div className="mx-auto max-w-md py-12 text-center">
+      <span className={cn("mx-auto flex h-14 w-14 items-center justify-center rounded-2xl ring-1 ring-inset", TONE_TILE.good)}>
+        <CheckCircle2 className="h-7 w-7" aria-hidden />
+      </span>
+      <h3 className="mt-5 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Report sent</h3>
+      <p className="mt-1 text-sm text-slate-500 dark:text-white/55">
+        Reference <span className="font-mono text-slate-900 dark:text-white">{submittedReportId?.slice(0, 8) || "pending"}</span>
+      </p>
+      <div className="mt-6 rounded-2xl bg-white/70 p-4 text-left ring-1 ring-slate-900/8 dark:bg-white/3 dark:ring-white/8">
+        <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium", TONE_PILL.warn.box)}>
+          <span className={cn("h-1.5 w-1.5 rounded-full", TONE_PILL.warn.dot)} aria-hidden />
+          Pending review
+        </span>
+        <p className="mt-2 text-sm text-slate-600 dark:text-white/65">
+          The monitoring team will review it and update the status. You can follow it under History.
         </p>
       </div>
-      <Card className="bg-card p-8 rounded-2xl border border-border/10 overflow-hidden relative group text-left">
-        <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-          <ImigongoPattern className="w-32 h-32" />
-        </div>
-        <p className="text-[15px] font-black text-primary uppercase tracking-[0.2em] mb-4">
-          Current Status
-        </p>
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-          <p className="text-sm font-black uppercase tracking-tight">
-            Pending Review
-          </p>
-        </div>
-        <p className="text-xs font-bold text-muted-foreground opacity-80 leading-relaxed">
-          Your report has been successfully submitted. The monitoring team will
-          review it and update the status accordingly.
-        </p>
-      </Card>
-      <div className="flex gap-4 pt-4">
-        <Button
-          className="flex-1 rounded-full h-14 font-black uppercase text-[15px] tracking-widest bg-primary"
-          onClick={resetForm}
-        >
-          New Report
+      <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+        <Button className={PILL_BUTTON.primary} onClick={resetForm}>
+          <Plus className="h-4 w-4" aria-hidden /> New report
         </Button>
-        <Button
-          variant="outline"
-          className="flex-1 rounded-full h-14 font-black uppercase text-[15px] tracking-widest border-2 border-border/10 hover:bg-primary/5 transition-all"
-          onClick={() => setActiveTab("history")}
-        >
-          View History
+        <Button variant="outline" className={PILL_BUTTON.secondary} onClick={() => setActiveTab("history")}>
+          View history
         </Button>
       </div>
-    </motion.div>
+    </div>
   );
 
   const getStatusColor = (status: string) => {
@@ -1034,70 +956,12 @@ export default function SchoolReporting({
   };
 
   const renderStepIndicator = () => {
-    const steps = [
-      { id: 1, label: "School" },
-      { id: 2, label: "Location" },
-      { id: 3, label: "Facility" },
-      { id: 4, label: "Target" },
-      { id: 5, label: "Details" },
-      { id: 6, label: "Review" },
-    ];
-
-    return (
-      <div className="flex items-center justify-between max-w-2xl mx-auto px-2 md:px-4">
-        {steps.map((s, idx) => {
-          const isCompleted = step > s.id;
-          const isActive = step === s.id;
-          return (
-            <Fragment key={s.id}>
-              <div className="flex flex-col items-center gap-1.5 md:gap-2 group shrink-0">
-                <motion.div
-                  initial={false}
-                  animate={{
-                    scale: isActive ? 1.15 : 1,
-                  }}
-                  className={cn(
-                    "w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center text-[15px] md:text-xs font-black transition-all relative z-10",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : isCompleted
-                        ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 border border-emerald-500/50"
-                        : "bg-muted dark:bg-muted/50 text-muted-foreground",
-                  )}
-                >
-                  {isCompleted ? (
-                    <Check className="w-4 h-4 md:w-5 md:h-5 text-emerald-600" />
-                  ) : (
-                    s.id
-                  )}
-                </motion.div>
-                <span
-                  className={cn(
-                    "text-[13px] md:text-[12px] font-black uppercase tracking-widest transition-colors hidden sm:block",
-                    isActive ? "text-primary" : "text-muted-foreground/50",
-                  )}
-                >
-                  {s.label}
-                </span>
-                {isActive && (
-                  <span className="text-[7px] font-black uppercase tracking-widest text-primary block sm:hidden">
-                    Step {s.id}
-                  </span>
-                )}
-              </div>
-              {idx < steps.length - 1 && (
-                <div
-                  className={cn(
-                    "flex-1 h-[2px] mb-4 md:mb-6 mx-1 md:mx-2 rounded-full transition-colors",
-                    isCompleted ? "bg-emerald-500" : "bg-muted/30",
-                  )}
-                />
-              )}
-            </Fragment>
-          );
-        })}
-      </div>
-    );
+    // A school-scoped user, or the modal opened on a school, never picks a school.
+    const skipSchool = !!(user?.location?.schoolId || propSchoolId);
+    const labels = ["School", "Building", "Facility", "Item", "Details", "Review"];
+    const steps = skipSchool ? labels.slice(1) : labels;
+    const current = Math.min(step, 6) - (skipSchool ? 1 : 0);
+    return <WizardStepper steps={steps} current={Math.max(1, current)} />;
   };
 
   return (
@@ -1169,36 +1033,25 @@ export default function SchoolReporting({
         )}
 
         {mode === "modal" || activeTab === "report" ? (
-          <div className="">
-            {step < 7 && <div className="mb-5">{renderStepIndicator()}</div>}
+          <div className={cn(mode === "modal" && "px-5 pb-6 sm:px-6")}>
+            {step < 7 && <div className="mb-6">{renderStepIndicator()}</div>}
 
-            <AnimatePresence mode="wait">
-              {/* STEP 1: School Selection */}
+            <AnimatePresence mode="wait" initial={false}>
+              {/* STEP 1: School */}
               {step === 1 && !user?.location?.schoolId && (
-                <motion.div
-                  key="step1"
-                  initial={{ x: 30, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: -30, opacity: 0 }}
-                  className="space-y-4"
-                >
-                  {/* Header + Search */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-base font-bold tracking-tight">
-                        Select Your School
-                      </h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {schoolsTotal} school{schoolsTotal !== 1 ? "s" : ""}{" "}
-                        available
-                      </p>
-                    </div>
-                    <div className="relative w-full sm:w-72">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50" />
-                      <input
-                        type="text"
-                        className="w-full pl-9 pr-4 py-2 text-sm rounded-xl border border-border/40 bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 transition-all"
-                        placeholder="Search schools..."
+                <StepPanel key="step1" id="step1" className="space-y-4">
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+                    <StepHeader
+                      title="Choose a school"
+                      subtitle={`${schoolsTotal} school${schoolsTotal !== 1 ? "s" : ""} available`}
+                    />
+                    <div className="relative mb-5 w-full sm:w-72">
+                      <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
+                      <Input
+                        type="search"
+                        aria-label="Search schools"
+                        className="h-10 rounded-full pl-10"
+                        placeholder="Search schools…"
                         value={schoolsSearch}
                         onChange={(e) => {
                           const val = e.target.value;
@@ -1210,29 +1063,16 @@ export default function SchoolReporting({
                     </div>
                   </div>
 
-                  {/* Table */}
-                  <div className="rounded-3xl border border-border/30 overflow-hidden bg-card">
+                  <div className="overflow-hidden rounded-2xl bg-white/70 ring-1 ring-slate-900/8 dark:bg-white/3 dark:ring-white/8">
                     <Table>
                       <TableHeader>
-                        <TableRow className="hover:bg-transparent border-b border-border/20 bg-muted/30 dark:bg-muted/20 dark:border-gray-100">
-                          <TableHead className="text-xs font-semibold text-muted-foreground">
-                            School Name
-                          </TableHead>
-                          <TableHead className="text-xs font-semibold text-muted-foreground hidden sm:table-cell">
-                            Code
-                          </TableHead>
-                          <TableHead className="text-xs font-semibold text-muted-foreground hidden md:table-cell">
-                            Type
-                          </TableHead>
-                          <TableHead className="text-xs font-semibold text-muted-foreground hidden lg:table-cell">
-                            District
-                          </TableHead>
-                          <TableHead className="text-xs font-semibold text-muted-foreground hidden lg:table-cell">
-                            Province
-                          </TableHead>
-                          <TableHead className="text-xs font-semibold text-muted-foreground">
-                            Status
-                          </TableHead>
+                        <TableRow className="border-b border-slate-900/6 hover:bg-transparent dark:border-white/6">
+                          <TableHead className="text-xs font-medium text-slate-500">School</TableHead>
+                          <TableHead className="hidden text-xs font-medium text-slate-500 sm:table-cell">Code</TableHead>
+                          <TableHead className="hidden text-xs font-medium text-slate-500 md:table-cell">Type</TableHead>
+                          <TableHead className="hidden text-xs font-medium text-slate-500 lg:table-cell">District</TableHead>
+                          <TableHead className="hidden text-xs font-medium text-slate-500 lg:table-cell">Province</TableHead>
+                          <TableHead className="text-xs font-medium text-slate-500">Status</TableHead>
                           <TableHead />
                         </TableRow>
                       </TableHeader>
@@ -1242,37 +1082,22 @@ export default function SchoolReporting({
                             <TableRow key={i} className="pointer-events-none">
                               <TableCell>
                                 <div className="flex items-center gap-3">
-                                  <Skeleton className="w-8 h-8 rounded-lg shrink-0" />
+                                  <Skeleton className="h-8 w-8 shrink-0 rounded-lg" />
                                   <Skeleton className="h-4 w-40 rounded" />
                                 </div>
                               </TableCell>
-                              <TableCell className="hidden sm:table-cell">
-                                <Skeleton className="h-4 w-16 rounded" />
-                              </TableCell>
-                              <TableCell className="hidden md:table-cell">
-                                <Skeleton className="h-4 w-16 rounded" />
-                              </TableCell>
-                              <TableCell className="hidden lg:table-cell">
-                                <Skeleton className="h-4 w-20 rounded" />
-                              </TableCell>
-                              <TableCell className="hidden lg:table-cell">
-                                <Skeleton className="h-4 w-20 rounded" />
-                              </TableCell>
-                              <TableCell>
-                                <Skeleton className="h-5 w-14 rounded-full" />
-                              </TableCell>
+                              <TableCell className="hidden sm:table-cell"><Skeleton className="h-4 w-16 rounded" /></TableCell>
+                              <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-16 rounded" /></TableCell>
+                              <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20 rounded" /></TableCell>
+                              <TableCell className="hidden lg:table-cell"><Skeleton className="h-4 w-20 rounded" /></TableCell>
+                              <TableCell><Skeleton className="h-5 w-14 rounded-full" /></TableCell>
                               <TableCell />
                             </TableRow>
                           ))
                         ) : schools.length === 0 ? (
                           <TableRow>
-                            <td
-                              colSpan={7}
-                              className="py-12 text-center text-sm text-muted-foreground"
-                            >
-                              {schoolsSearch
-                                ? `No schools match "${schoolsSearch}"`
-                                : "No schools found"}
+                            <td colSpan={7} className="py-12 text-center text-sm text-slate-500">
+                              {schoolsSearch ? `No schools match "${schoolsSearch}"` : "No schools found"}
                             </td>
                           </TableRow>
                         ) : (
@@ -1281,57 +1106,43 @@ export default function SchoolReporting({
                               key={s.id}
                               onClick={() => handleSchoolSelect(s.id)}
                               className={cn(
-                                "cursor-pointer transition-colors hover:bg-primary/5 border-border/10",
-                                selectedSchoolId === s.id && "bg-primary/5",
+                                "cursor-pointer border-slate-900/5 transition-colors hover:bg-primary/4 dark:border-white/5",
+                                selectedSchoolId === s.id && "bg-primary/6",
                               )}
                             >
                               <TableCell>
                                 <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                                    <SchoolIcon className="w-4 h-4 text-muted-foreground" />
-                                  </div>
-                                  <span className="font-semibold text-sm">
-                                    {s.name}
+                                  <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset", TONE_TILE.neutral)}>
+                                    <SchoolIcon className="h-4 w-4" aria-hidden />
                                   </span>
+                                  <span className="text-sm font-medium text-slate-900 dark:text-white">{s.name}</span>
                                 </div>
                               </TableCell>
                               <TableCell className="hidden sm:table-cell">
-                                <span className="text-xs font-mono text-muted-foreground">
-                                  {s.code || "—"}
-                                </span>
+                                <span className="font-mono text-xs text-slate-500">{s.code || "—"}</span>
                               </TableCell>
                               <TableCell className="hidden md:table-cell">
-                                <span className="text-xs text-muted-foreground capitalize">
-                                  {s.type?.toLowerCase() || "—"}
-                                </span>
+                                <span className="text-xs text-slate-500">{s.type ? label("schoolType", s.type) : "—"}</span>
                               </TableCell>
                               <TableCell className="hidden lg:table-cell">
-                                <span className="text-xs text-muted-foreground">
-                                  {s.district || "—"}
-                                </span>
+                                <span className="text-xs text-slate-500">{s.district || "—"}</span>
                               </TableCell>
                               <TableCell className="hidden lg:table-cell">
-                                <span className="text-xs text-muted-foreground">
-                                  {s.province || "—"}
-                                </span>
+                                <span className="text-xs text-slate-500">{s.province || "—"}</span>
                               </TableCell>
                               <TableCell>
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "rounded-full text-[12px] font-semibold px-2 border capitalize",
-                                    s.status === "ACTIVE"
-                                      ? "border-emerald-500/30 text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20"
-                                      : s.status === "UNDER_RENOVATION"
-                                        ? "border-amber-500/30 text-amber-600 bg-amber-50 dark:bg-amber-900/20"
-                                        : "border-border/30 text-muted-foreground",
-                                  )}
-                                >
-                                  {label("schoolStatus", s.status)}
-                                </Badge>
+                                {(() => {
+                                  const tone = s.status === "ACTIVE" ? "good" : s.status === "UNDER_RENOVATION" ? "warn" : "neutral";
+                                  return (
+                                    <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium", TONE_PILL[tone].box)}>
+                                      <span className={cn("h-1.5 w-1.5 rounded-full", TONE_PILL[tone].dot)} aria-hidden />
+                                      {label("schoolStatus", s.status)}
+                                    </span>
+                                  );
+                                })()}
                               </TableCell>
-                              <TableCell className="text-right pr-4">
-                                <ChevronRight className="w-4 h-4 text-muted-foreground/50 inline-block" />
+                              <TableCell className="pr-4 text-right">
+                                <ChevronRight className="inline-block h-4 w-4 text-slate-400" aria-hidden />
                               </TableCell>
                             </TableRow>
                           ))
@@ -1340,12 +1151,10 @@ export default function SchoolReporting({
                     </Table>
                   </div>
 
-                  {/* Pagination */}
                   {schoolsTotal > schoolsLimit && (
                     <div className="flex items-center justify-between pt-1">
-                      <span className="text-xs text-muted-foreground">
-                        Page {schoolsPage} of{" "}
-                        {Math.ceil(schoolsTotal / schoolsLimit)}
+                      <span className="text-xs text-slate-500">
+                        Page {schoolsPage} of {Math.ceil(schoolsTotal / schoolsLimit)}
                       </span>
                       <div className="flex items-center gap-1">
                         <Button
@@ -1353,554 +1162,369 @@ export default function SchoolReporting({
                           variant="outline"
                           size="sm"
                           disabled={schoolsPage <= 1}
-                          onClick={() => {
-                            const p = Math.max(1, schoolsPage - 1);
-                            fetchSchoolsLocal(p, schoolsSearch);
-                          }}
-                          className="h-8 w-8 p-0 rounded-lg"
+                          onClick={() => fetchSchoolsLocal(Math.max(1, schoolsPage - 1), schoolsSearch)}
+                          className="h-8 w-8 rounded-full p-0"
                         >
-                          <ChevronLeft className="w-4 h-4" aria-hidden />
+                          <ChevronLeft className="h-4 w-4" aria-hidden />
                         </Button>
                         <Button
                           aria-label="Next page of schools"
                           variant="outline"
                           size="sm"
-                          disabled={
-                            schoolsPage >=
-                            Math.ceil(schoolsTotal / schoolsLimit)
-                          }
-                          onClick={() => {
-                            const p = schoolsPage + 1;
-                            fetchSchoolsLocal(p, schoolsSearch);
-                          }}
-                          className="h-8 w-8 p-0 rounded-lg"
+                          disabled={schoolsPage >= Math.ceil(schoolsTotal / schoolsLimit)}
+                          onClick={() => fetchSchoolsLocal(schoolsPage + 1, schoolsSearch)}
+                          className="h-8 w-8 rounded-full p-0"
                         >
-                          <ChevronRight className="w-4 h-4" aria-hidden />
+                          <ChevronRight className="h-4 w-4" aria-hidden />
                         </Button>
                       </div>
                     </div>
                   )}
-                </motion.div>
+                </StepPanel>
               )}
-              <div className="max-w-6xl mx-auto">
-                {/* STEP 2: Building Selection */}
-                {step === 2 && (
-                  <motion.div
-                    key="step2"
-                    initial={{ x: 30, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    exit={{ x: -30, opacity: 0 }}
-                    className="space-y-6"
-                  >
-                    <div className="flex flex-col md:flex-row md:items-center gap-6 mb-6">
-                      <Button
-                        aria-label="Back to school selection"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setStep(1)}
-                        className="rounded-full h-10 w-10 p-0 font-black uppercase text-[12px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
-                      >
-                        <ArrowLeft className="w-4 h-4" aria-hidden />
-                      </Button>
-                      <div className="flex-1">
-                        <h3 className="text-base font-bold uppercase tracking-tighter">
-                          Select Building
-                        </h3>
-                        <p className="text-[15px] text-muted-foreground font-bold uppercase opacity-60">
-                          {selectedSchoolDetails?.name ||
-                            "School Infrastructure"}{" "}
-                          · Step 2 of 6
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="bg-muted/50 p-1 rounded-full flex gap-1 border border-border/10">
-                          <Button
-                            variant={step2Tab === "list" ? "default" : "ghost"}
-                            size="sm"
-                            onClick={() => setStep2Tab("list")}
-                            className="rounded-full h-8 px-4 text-[12px] font-black uppercase tracking-widest transition-all"
-                          >
-                            <List className="w-3.5 h-3.5 mr-2" /> List
-                          </Button>
-                          <Button
-                            variant={step2Tab === "map" ? "default" : "ghost"}
-                            size="sm"
-                            onClick={() => setStep2Tab("map")}
-                            className="rounded-full h-8 px-4 text-[12px] font-black uppercase tracking-widest transition-all"
-                          >
-                            <MapIcon className="w-3.5 h-3.5 mr-2" /> Map
-                          </Button>
+
+              {/* STEP 2: Building */}
+              {step === 2 && (
+                <StepPanel key="step2" id="step2" className="mx-auto max-w-6xl">
+                  <StepHeader
+                    title="Choose a building"
+                    subtitle={selectedSchoolDetails?.name || "School buildings"}
+                    onBack={user?.location?.schoolId ? undefined : () => setStep(1)}
+                    backLabel="Back to school selection"
+                    actions={
+                      <SegmentedTabs<"list" | "map">
+                        idPrefix="report-buildings"
+                        ariaLabel="Show buildings as"
+                        value={step2Tab}
+                        onChange={setStep2Tab}
+                        tabs={[
+                          { key: "list", label: "List" },
+                          { key: "map", label: "Map" },
+                        ]}
+                      />
+                    }
+                  />
+
+                  {loading ? (
+                    <ChoiceGrid>
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <Skeleton key={i} className="h-19 rounded-2xl" />
+                      ))}
+                    </ChoiceGrid>
+                  ) : step2Tab === "map" ? (
+                    <div className="relative h-130 overflow-hidden rounded-2xl ring-1 ring-slate-900/8 dark:ring-white/8">
+                      {selectedSchoolDetails ? (
+                        <SchoolMap
+                          school={selectedSchoolDetails}
+                          buildings={buildings}
+                          isEmbed
+                          onSelectBuilding={(b) => handleBuildingSelect(b)}
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
+                          <AlertCircle className="h-4 w-4" aria-hidden /> Map data isn't available for this school.
                         </div>
-                      </div>
+                      )}
                     </div>
+                  ) : buildings.length === 0 ? (
+                    <EmptyState
+                      icon={Building2}
+                      title="No buildings yet"
+                      description="This school has no buildings on record. Ask the GIS team to add them, then report the problem."
+                      action={user?.location?.schoolId ? undefined : { label: "Choose another school", onClick: () => setStep(1) }}
+                    />
+                  ) : (
+                    <ChoiceGrid>
+                      {buildings.map((b) => (
+                        <ChoiceCard
+                          key={b.id}
+                          icon={Building2}
+                          title={b.name}
+                          meta={`${b.facilities?.length || 0} facilit${b.facilities?.length === 1 ? "y" : "ies"}`}
+                          selected={selectedBuilding?.id === b.id}
+                          onClick={() => handleBuildingSelect(b)}
+                        />
+                      ))}
+                    </ChoiceGrid>
+                  )}
+                </StepPanel>
+              )}
 
-                    {loading ? (
-                      <div className="py-10 text-center space-y-4">
-                        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto"></div>
-                        <p className="text-[15px] font-black uppercase tracking-widest text-muted-foreground">
-                          Loading school data...
-                        </p>
-                      </div>
-                    ) : step2Tab === "map" ? (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.98 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="rounded-2xl overflow-hidden border-2 border-border/10 h-[600px] relative bg-card/20 backdrop-blur-md"
-                      >
-                        {selectedSchoolDetails ? (
-                          <SchoolMap
-                            school={selectedSchoolDetails}
-                            buildings={buildings}
-                            isEmbed
-                            onSelectBuilding={(b) => handleBuildingSelect(b)}
-                          />
-                        ) : (
-                          <div className="h-full flex items-center justify-center">
-                            <AlertCircle className="w-5 h-5 text-muted-foreground mr-2" />
-                            <span className="text-[15px] font-black uppercase tracking-widest opacity-50">
-                              GIS data unavailable
-                            </span>
-                          </div>
-                        )}
-                      </motion.div>
-                    ) : buildings.length === 0 ? (
-                      <Card className="bg-card p-10 rounded-2xl text-center border-dashed border-2 border-border/20">
-                        <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-4" />
-                        <h4 className="text-lg font-black mb-2 uppercase">
-                          No Infrastructure Data
-                        </h4>
-                        <p className="text-muted-foreground text-xs max-w-sm mx-auto mb-6">
-                          No buildings found for this school. Please check back
-                          later or contact your administrator.
-                        </p>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setStep(1)}
-                          className="rounded-full h-10 px-6 font-black uppercase text-[15px] transition-all hover:bg-primary/10"
-                        >
-                          Go Back
-                        </Button>
-                      </Card>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {buildings.map((b) => (
-                          <Card
-                            key={b.id}
-                            onClick={() => handleBuildingSelect(b)}
-                            className={cn(
-                              "group cursor-pointer p-5 rounded-2xl border-2 transition-all active:scale-95 flex items-center justify-between",
-                              selectedBuilding?.id === b.id
-                                ? "bg-primary/5 border-primary"
-                                : "bg-card border-border/20 hover:border-primary/20 hover:bg-primary/5",
-                            )}
-                          >
-                            <div className="flex items-center gap-4">
-                              <div className="w-14 h-14 bg-muted/50 text-gray-400 dark:text-gray-500 rounded-2xl flex items-center justify-center shrink-0 group-hover:bg-primary group-hover:text-white transition-all">
-                                <Building2 className="w-7 h-7" />
-                              </div>
-                              <div className="text-left">
-                                <div className="font-black text-sm mb-1 uppercase tracking-tight line-clamp-2">
-                                  {b.name}
-                                </div>
-                                <div className="text-[12px] font-black text-muted-foreground uppercase opacity-50 tracking-widest flex items-center gap-2">
-                                  <MapPin className="w-2.5 h-2.5" />{" "}
-                                  {b.facilities?.length || 0} Facilities
-                                </div>
-                              </div>
-                            </div>
-                            <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-all" />
-                          </Card>
-                        ))}
-                      </div>
-                    )}
-                  </motion.div>
-                )}
-
-                {/* STEP 3: Facility Selection */}
-                {step === 3 && selectedBuilding && (
-                  <motion.div
-                    key="step3"
-                    initial={{ x: 30, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    exit={{ x: -30, opacity: 0 }}
-                    className="space-y-6"
-                  >
-                    <div className="flex items-center gap-4 mb-6">
-                      <Button
-                        aria-label="Back to building selection"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setStep(2)}
-                        className="rounded-full h-10 w-10 p-0 font-black uppercase text-[12px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
-                      >
-                        <ArrowLeft className="w-4 h-4" aria-hidden />
-                      </Button>
-                      <div>
-                        <h3 className="text-base font-bold uppercase tracking-tighter">
-                          Select Facility
-                        </h3>
-                        <p className="text-[15px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
-                          {selectedBuilding?.name} · Step 3 of 6
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {selectedBuilding.facilities?.map((f: any) => (
-                        <Card
+              {/* STEP 3: Facility */}
+              {step === 3 && selectedBuilding && (
+                <StepPanel key="step3" id="step3" className="mx-auto max-w-6xl">
+                  <StepHeader
+                    title="Which facility?"
+                    subtitle={selectedBuilding.name}
+                    onBack={() => setStep(2)}
+                    backLabel="Back to building selection"
+                  />
+                  {selectedBuilding.facilities?.length ? (
+                    <ChoiceGrid>
+                      {selectedBuilding.facilities.map((f: any) => (
+                        <ChoiceCard
                           key={f.facility_id}
-                          className="cursor-pointer group bg-card rounded-3xl border-2 border-border/10 hover:border-primary/40 transition-all p-5 flex items-center gap-4 active:scale-[0.98]"
+                          icon={Layers}
+                          title={f.facility_name}
+                          meta={(() => {
+                            const n = facilitiesDefinitions.find((x) => x.facilityId === f.facility_id)?.items.length;
+                            return n ? `${n} item${n === 1 ? "" : "s"} to check` : "Facility";
+                          })()}
                           onClick={() => handleFacilitySelect(f)}
-                        >
-                          <div className="w-12 h-12 rounded-2xl bg-primary/5 text-primary flex items-center justify-center shrink-0 group-hover:bg-primary group-hover:text-white transition-all">
-                            <Layers className="w-6 h-6" />
-                          </div>
-                          <div className="flex-1">
-                            <div className="font-black uppercase text-[15px] tracking-widest truncate">
-                              {f.facility_name}
-                            </div>
-                            <div className="text-[13px] font-bold text-muted-foreground uppercase opacity-50">
-                              Facility
-                            </div>
-                          </div>
-                          <ChevronRight className="w-4 h-4 text-muted-foreground opacity-40 group-hover:opacity-100 transition-all" />
-                        </Card>
+                        />
                       ))}
-                    </div>
-                  </motion.div>
-                )}
+                    </ChoiceGrid>
+                  ) : (
+                    <EmptyState
+                      icon={Layers}
+                      title="No facilities listed"
+                      description="This building has no facilities recorded yet."
+                      action={{ label: "Choose another building", onClick: () => setStep(2) }}
+                    />
+                  )}
+                </StepPanel>
+              )}
 
-                {/* STEP 4: Item/Target Selection */}
-                {step === 4 && selectedFacility && (
-                  <motion.div
-                    key="step4"
-                    initial={{ x: 30, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    exit={{ x: -30, opacity: 0 }}
-                    className="space-y-6"
-                  >
-                    <div className="flex items-center gap-4 mb-6">
+              {/* STEP 4: Item */}
+              {step === 4 && selectedFacility && (
+                <StepPanel key="step4" id="step4" className="mx-auto max-w-6xl">
+                  <StepHeader
+                    title="What has the problem?"
+                    subtitle={`${selectedBuilding?.name ?? ""}${selectedBuilding ? " · " : ""}${(selectedFacility as any)?.facility_name || selectedFacility.title || "Facility"}`}
+                    onBack={() => setStep(3)}
+                    backLabel="Back to facility selection"
+                  />
+                  <ChoiceGrid>
+                    {selectedFacility.items.map((item) => (
+                      <ChoiceCard
+                        key={item.id}
+                        icon={ClipboardList}
+                        tone="neutral"
+                        title={item.label}
+                        meta={item.issueCategories?.length ? `${item.issueCategories.length} common issues` : undefined}
+                        onClick={() => handleItemSelect(item)}
+                      />
+                    ))}
+                  </ChoiceGrid>
+                </StepPanel>
+              )}
+
+              {/* STEP 5: Details */}
+              {step === 5 && selectedItem && (
+                <StepPanel key="step5" id="step5" className="mx-auto max-w-6xl">
+                  <StepHeader
+                    title={isEditing ? "Edit the issue" : "Describe the problem"}
+                    subtitle={selectedItem.label}
+                    onBack={() => setStep(4)}
+                    backLabel="Back to item selection"
+                  />
+
+                  {isEditing && (
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-warning/10 px-4 py-3 ring-1 ring-inset ring-warning/25">
+                      <p className="flex items-center gap-2 text-sm text-slate-800 dark:text-white/85">
+                        <AlertCircle className="h-4 w-4 shrink-0 text-warning" aria-hidden />
+                        You're editing a sent report. Send it again to save your changes.
+                      </p>
                       <Button
-                        aria-label="Back to facility selection"
                         variant="ghost"
-                        size="sm"
-                        onClick={() => setStep(3)}
-                        className="rounded-full h-10 w-10 p-0 font-black uppercase text-[12px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
+                        onClick={() => {
+                          setIsEditing(false);
+                          resetForm();
+                        }}
+                        className={cn(PILL_BUTTON.small, "text-warning hover:bg-warning/10")}
                       >
-                        <ArrowLeft className="w-4 h-4" aria-hidden />
+                        Cancel edit
                       </Button>
-                      <div>
-                        <h3 className="text-base font-bold uppercase tracking-tighter">
-                          Select Item
-                        </h3>
-                        <p className="text-[15px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
-                          {(selectedFacility as any)?.facility_name ||
-                            "Facility"}{" "}
-                          · Step 4 of 6
-                        </p>
-                      </div>
                     </div>
+                  )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {selectedFacility.items.map((item) => (
-                        <Card
-                          key={item.id}
-                          className="cursor-pointer group bg-card rounded-3xl border-2 border-border/10 hover:border-primary/40 transition-all p-5 flex items-center gap-4 active:scale-[0.98]"
-                          onClick={() => handleItemSelect(item)}
-                        >
-                          <div className="w-12 h-12 rounded-2xl bg-primary/5 text-primary flex items-center justify-center shrink-0 group-hover:bg-primary group-hover:text-white transition-all">
-                            <Check className="w-6 h-6" />
-                          </div>
-                          <div className="flex-1">
-                            <div className="font-black text-[15px]">
-                              {item.label}
-                            </div>
-                            <div className="text-[13px] text-muted-foreground opacity-50">
-                              Component
-                            </div>
-                          </div>
-                          <ChevronRight className="w-4 h-4 text-muted-foreground opacity-40 group-hover:opacity-100 transition-all" />
-                        </Card>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* STEP 5: Details/Evidence */}
-                {step === 5 && selectedItem && (
-                  <motion.div
-                    key="step5"
-                    initial={{ x: 30, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    exit={{ x: -30, opacity: 0 }}
-                    className="space-y-6"
-                  >
-                    <div className="flex items-center gap-4 mb-6">
-                      <Button
-                        aria-label="Back to item selection"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setStep(4)}
-                        className="rounded-full h-10 w-10 p-0 font-black uppercase text-[12px] bg-muted hover:bg-primary hover:text-white shrink-0 border border-border/10"
-                      >
-                        <ArrowLeft className="w-4 h-4" aria-hidden />
-                      </Button>
-                      <div>
-                        <h3 className="text-base font-bold uppercase tracking-tighter">
-                          {isEditing
-                            ? "Edit Issue Details"
-                            : "Incident Details"}
-                        </h3>
-                        <p className="text-[15px] font-black uppercase tracking-widest text-muted-foreground opacity-60">
-                          {selectedItem.label} ·{" "}
-                          {isEditing ? "Editing" : "Final Step"}
-                        </p>
-                      </div>
-                    </div>
-
-                    {isEditing && (
-                      <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl mb-6 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <AlertCircle className="w-5 h-5 text-amber-500" />
-                          <div>
-                            <p className="text-[15px] font-black uppercase tracking-tighter text-amber-500">
-                              Editing Report
-                            </p>
-                            <p className="text-[13px] font-bold uppercase text-amber-500/60">
-                              You are modifying a submitted report. Submit to
-                              save changes.
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setIsEditing(false);
-                            resetForm();
-                          }}
-                          className="rounded-full h-8 px-4 text-[12px] font-black uppercase tracking-widest text-amber-500 hover:bg-amber-500/10"
-                        >
-                          Cancel Edit
-                        </Button>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-                      <div className="space-y-6">
-                        <Card className="bg-card p-6 rounded-2xl border border-border/10 relative overflow-hidden group">
-                          <ImigongoPattern
-                            className="absolute inset-0 text-primary pointer-events-none"
-                            opacity={0.03}
-                          />
-
-                          <div className="space-y-4 relative z-10">
-                            <div className="space-y-2">
-                              <div className="space-y-4">
-                                <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10">
-                                  <h4 className="text-[13px] font-black uppercase tracking-widest text-primary flex items-center gap-3 mb-2">
-                                    <AlertCircle className="w-4 h-4" /> Select
-                                    Issue Type
-                                  </h4>
-                                  <p className="text-[12px] font-bold text-muted-foreground opacity-80 uppercase leading-snug">
-                                    Select the type of issue to help route it to
-                                    the right team.
-                                  </p>
-                                </div>
-
-                                <div className="flex flex-wrap gap-2.5 pt-2">
-                                  {selectedItem.issueCategories?.map(
-                                    (cat: string) => (
-                                      <button
-                                        key={cat}
-                                        type="button"
-                                        onClick={() => {
-                                          const isSelected =
-                                            currentIssue.category.includes(cat);
-                                          setCurrentIssue({
-                                            ...currentIssue,
-                                            category: isSelected
-                                              ? currentIssue.category.filter(
-                                                  (c) => c !== cat,
-                                                )
-                                              : [...currentIssue.category, cat],
-                                          });
-                                        }}
-                                        className={cn(
-                                          "px-5 py-2.5 rounded-full text-[15px] font-black uppercase tracking-widest transition-all border-2",
-                                          currentIssue.category.includes(cat)
-                                            ? "bg-primary border-primary text-white scale-[1.05]"
-                                            : "bg-background border-border/50 text-muted-foreground hover:border-primary/40 hover:bg-primary/5",
-                                        )}
-                                      >
-                                        {cat}
-                                      </button>
-                                    ),
-                                  )}
-                                </div>
-                                {formErrors.category && (
-                                  <p className="text-[15px] font-semibold text-rose-500 flex items-center gap-1 mt-1">
-                                    <AlertCircle className="w-3 h-3" />{" "}
-                                    {formErrors.category}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-
-                            <Textarea
-                              className="min-h-[140px] text-[15px] rounded-2xl bg-background/30 border-2 border-border focus:border-primary/40"
-                              placeholder="Problem description... be as specific as possible"
-                              value={currentIssue.description}
-                              onChange={(e) =>
+                  <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-5">
+                    <WizardSection
+                      className="lg:col-span-3"
+                      icon={AlertCircle}
+                      title="Type of issue"
+                      hint="Pick one or more; it routes the report to the right team."
+                    >
+                      <div className="flex flex-wrap gap-2" role="group" aria-label="Issue type">
+                        {selectedItem.issueCategories?.map((cat: string) => {
+                          const on = currentIssue.category.includes(cat);
+                          return (
+                            <button
+                              key={cat}
+                              type="button"
+                              aria-pressed={on}
+                              onClick={() =>
                                 setCurrentIssue({
                                   ...currentIssue,
-                                  description: e.target.value,
+                                  category: on
+                                    ? currentIssue.category.filter((c) => c !== cat)
+                                    : [...currentIssue.category, cat],
                                 })
                               }
-                            />
-                            <div className="flex items-center justify-between px-1 mt-1">
-                              {formErrors.description ? (
-                                <p className="text-[15px] font-semibold text-rose-500 flex items-center gap-1">
-                                  <AlertCircle className="w-3 h-3" />{" "}
-                                  {formErrors.description}
-                                </p>
-                              ) : (
-                                <span />
+                              className={cn(
+                                "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium ring-1 transition-colors duration-150",
+                                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                                on
+                                  ? "bg-primary text-primary-foreground ring-primary"
+                                  : "bg-white/70 text-slate-700 ring-slate-900/10 hover:bg-primary/6 hover:ring-primary/30 dark:bg-white/3 dark:text-white/75 dark:ring-white/10",
                               )}
-                              <span
-                                className={cn(
-                                  "text-[12px] font-semibold",
-                                  currentIssue.description.length > 900
-                                    ? "text-rose-500"
-                                    : "text-muted-foreground/60",
-                                )}
-                              >
-                                {currentIssue.description.length}/1000
-                              </span>
-                            </div>
-                          </div>
-                        </Card>
+                            >
+                              {on && <Check className="h-3.5 w-3.5" aria-hidden />}
+                              {cat}
+                            </button>
+                          );
+                        })}
                       </div>
+                      {formErrors.category && (
+                        <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-destructive">
+                          <AlertCircle className="h-3.5 w-3.5" aria-hidden /> {formErrors.category}
+                        </p>
+                      )}
 
-                      <div className="space-y-4">
-                        <Card className="bg-card p-6 rounded-2xl border border-border/10 space-y-3">
-                          <h4 className="text-[15px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
-                            <Camera className="w-3.5 h-3.5" aria-hidden /> Visual Evidence
-                          </h4>
-                          <FileUploader
-                            maxFiles={3}
-                            onFilesSelected={(files) =>
-                              setCurrentIssue({ ...currentIssue, files })
+                      <label htmlFor="report-description" className="mb-1.5 mt-5 block text-sm font-medium text-slate-900 dark:text-white">
+                        What's wrong?
+                      </label>
+                      <Textarea
+                        id="report-description"
+                        className="min-h-35"
+                        placeholder="Describe the problem: where it is, how bad, since when…"
+                        value={currentIssue.description}
+                        aria-invalid={!!formErrors.description || undefined}
+                        onChange={(e) =>
+                          setCurrentIssue({
+                            ...currentIssue,
+                            description: e.target.value,
+                          })
+                        }
+                      />
+                      <div className="mt-1.5 flex items-center justify-between gap-3">
+                        {formErrors.description ? (
+                          <p className="flex items-center gap-1.5 text-xs font-medium text-destructive">
+                            <AlertCircle className="h-3.5 w-3.5" aria-hidden /> {formErrors.description}
+                          </p>
+                        ) : (
+                          <span className="text-xs text-slate-500 dark:text-white/45">At least 20 characters.</span>
+                        )}
+                        <span
+                          className={cn(
+                            "text-xs tabular-nums",
+                            currentIssue.description.length > 900 ? "text-destructive" : "text-slate-400 dark:text-white/40",
+                          )}
+                        >
+                          {currentIssue.description.length}/1000
+                        </span>
+                      </div>
+                    </WizardSection>
+
+                    <div className="space-y-4 lg:col-span-2">
+                      <WizardSection icon={Camera} title="Photos" hint="Optional, up to 3. A photo helps the team act faster.">
+                        <FileUploader
+                          maxFiles={3}
+                          onFilesSelected={(files) =>
+                            setCurrentIssue({ ...currentIssue, files })
+                          }
+                        />
+                      </WizardSection>
+
+                      {issues.length > 0 && (
+                        <p className="px-1 text-xs text-slate-500 dark:text-white/50">
+                          {issues.length} issue{issues.length === 1 ? "" : "s"} already on this report.
+                        </p>
+                      )}
+
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Button
+                          variant="outline"
+                          className={cn(PILL_BUTTON.secondary, "flex-1")}
+                          onClick={() => {
+                            if (addIssue()) showToast("Issue added to the list", "success");
+                          }}
+                          disabled={
+                            !currentIssue.description ||
+                            currentIssue.category.length === 0
+                          }
+                        >
+                          <Plus className="h-4 w-4" aria-hidden /> Add another
+                        </Button>
+                        <Button
+                          className={cn(PILL_BUTTON.primary, "flex-1")}
+                          onClick={() => {
+                            const errors: {
+                              description?: string;
+                              category?: string;
+                            } = {};
+                            if (
+                              currentIssue.description &&
+                              currentIssue.description.trim().length < 20
+                            ) {
+                              errors.description =
+                                "Description must be at least 20 characters.";
                             }
-                          />
-                        </Card>
-
-                        <div className="flex gap-3 pt-2">
-                          <Button
-                            variant="outline"
-                            className="flex-1 rounded-full h-12 text-[15px] font-black uppercase tracking-widest border-2 hover:bg-primary/5 transition-all"
-                            onClick={() => {
-                              if (addIssue()) showToast("Issue added to the list", "success");
-                            }}
-                            disabled={
-                              !currentIssue.description ||
+                            if (
+                              currentIssue.description &&
+                              currentIssue.description.trim().length > 1000
+                            ) {
+                              errors.description =
+                                "Description cannot exceed 1000 characters.";
+                            }
+                            if (
+                              currentIssue.description &&
                               currentIssue.category.length === 0
+                            ) {
+                              errors.category =
+                                "Please select at least one issue category.";
                             }
-                          >
-                            <Plus className="mr-2 w-3.5 h-3.5 text-primary" />{" "}
-                            Add To List
-                          </Button>
-                          <Button
-                            className="flex-1 rounded-full h-12 text-[15px] font-black uppercase tracking-widest bg-primary group"
-                            onClick={() => {
-                              const errors: {
-                                description?: string;
-                                category?: string;
-                              } = {};
-                              if (
-                                currentIssue.description &&
-                                currentIssue.description.trim().length < 20
-                              ) {
-                                errors.description =
-                                  "Description must be at least 20 characters.";
-                              }
-                              if (
-                                currentIssue.description &&
-                                currentIssue.description.trim().length > 1000
-                              ) {
-                                errors.description =
-                                  "Description cannot exceed 1000 characters.";
-                              }
-                              if (
-                                currentIssue.description &&
-                                currentIssue.category.length === 0
-                              ) {
-                                errors.category =
-                                  "Please select at least one issue category.";
-                              }
-                              if (Object.keys(errors).length > 0) {
-                                setFormErrors(errors);
-                                return;
-                              }
-                              setFormErrors({});
-                              if (
-                                currentIssue.description &&
-                                currentIssue.category.length > 0
-                              )
-                                addIssue();
-                              if (
-                                issues.length === 0 &&
-                                !currentIssue.description
-                              ) {
-                                showToast(
-                                  "Please add at least one issue before reviewing.",
-                                  "warning",
-                                );
-                                return;
-                              }
-                              setStep(6);
-                            }}
-                            disabled={
-                              isSubmitting ||
-                              (issues.length === 0 &&
-                                (!currentIssue.description ||
-                                  !currentIssue.category))
+                            if (Object.keys(errors).length > 0) {
+                              setFormErrors(errors);
+                              return;
                             }
-                          >
-                            Review & Submit
-                          </Button>
-                        </div>
+                            setFormErrors({});
+                            if (
+                              currentIssue.description &&
+                              currentIssue.category.length > 0
+                            )
+                              addIssue();
+                            if (
+                              issues.length === 0 &&
+                              !currentIssue.description
+                            ) {
+                              showToast(
+                                "Please add at least one issue before reviewing.",
+                                "warning",
+                              );
+                              return;
+                            }
+                            setStep(6);
+                          }}
+                          disabled={
+                            isSubmitting ||
+                            (issues.length === 0 &&
+                              (!currentIssue.description ||
+                                !currentIssue.category))
+                          }
+                        >
+                          Review
+                          <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden />
+                        </Button>
                       </div>
                     </div>
-                  </motion.div>
-                )}
+                  </div>
+                </StepPanel>
+              )}
 
-                {/* STEP 6: Review & Approve */}
-                {step === 6 && (
-                  <motion.div
-                    key="step6"
-                    initial={{ x: 30, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    exit={{ x: -30, opacity: 0 }}
-                    className="space-y-6"
-                  >
-                    {renderSubmissionReview()}
-                  </motion.div>
-                )}
+              {/* STEP 6: Review */}
+              {step === 6 && (
+                <StepPanel key="step6" id="step6" className="mx-auto max-w-6xl">
+                  {renderSubmissionReview()}
+                </StepPanel>
+              )}
 
-                {/* STEP 7: Success View */}
-                {step === 7 && (
-                  <motion.div
-                    key="step7"
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0 }}
-                  >
-                    {renderSuccessView()}
-                  </motion.div>
-                )}
-              </div>
+              {/* STEP 7: Sent */}
+              {step === 7 && (
+                <StepPanel key="step7" id="step7" className="mx-auto max-w-6xl">
+                  {renderSuccessView()}
+                </StepPanel>
+              )}
             </AnimatePresence>
           </div>
         ) : activeTab === "history" ? (
