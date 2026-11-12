@@ -4,8 +4,11 @@
  * goes through SchoolLocationService, which applies these.
  */
 
-/** Where the current location came from. */
-export type LocationSource = 'manual' | 'kmz' | 'glb' | 'seed';
+/**
+ * Where the current location came from. `tdmp` is TDMP's GPS, used only to
+ * place a school that is new to RTB GIS — RTB GIS owns location after that.
+ */
+export type LocationSource = 'manual' | 'kmz' | 'glb' | 'seed' | 'tdmp';
 
 /** Rwanda with a small margin (border schools). */
 export const RWANDA_BOUNDS = {
@@ -54,8 +57,9 @@ export function checkPoint(
  * Whether a derived location may replace the current one:
  * - a person's edit (manual) always applies;
  * - a KMZ upload always applies — the site map is the reference;
- * - a 3D model only fills a missing location or one that came from a model
- *   or the seed data — it never overrides a person or a KMZ;
+ * - a 3D model only fills a missing location or one that came from a model,
+ *   the seed data or TDMP — it never overrides a person or a KMZ;
+ * - TDMP's GPS only fills a missing location;
  * - re-processing an existing model (restore / nightly re-optimise) never
  *   changes the location.
  */
@@ -65,12 +69,13 @@ export function mayReplace(
 ): boolean {
   if (incoming === 'restore') return false;
   if (incoming === 'manual' || incoming === 'kmz') return true;
-  if (incoming === 'seed') return !current.hasPoint;
+  if (incoming === 'seed' || incoming === 'tdmp') return !current.hasPoint;
   // glb
   return (
     !current.hasPoint ||
     current.source === null ||
     current.source === 'glb' ||
-    current.source === 'seed'
+    current.source === 'seed' ||
+    current.source === 'tdmp'
   );
 }

@@ -38,7 +38,13 @@ import {
 import { PrivacyAcceptDto } from './dto/privacy-accept.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CsrfHeaderGuard } from './guards/csrf-header.guard';
-import { REFRESH_COOKIE, REFRESH_COOKIE_PATH } from './auth.constants';
+import { REFRESH_COOKIE } from './auth.constants';
+import {
+  clearRefreshCookie,
+  readCookie,
+  setRefreshCookie,
+} from './refresh-cookie';
+import { TdmpConfig } from '../tdmp/tdmp.config';
 import { requestMeta } from './request-meta';
 
 type AuthedRequest = ExpressRequest & { user: any };
@@ -50,7 +56,23 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly sessionsService: SessionsService,
     private readonly configService: ConfigService,
+    private readonly tdmpConfig: TdmpConfig,
   ) {}
+
+  @Get('providers')
+  @ApiOperation({ summary: 'Which sign-in methods the login page offers' })
+  providers() {
+    const t = this.tdmpConfig;
+    return {
+      authMode: t.authMode,
+      password: t.passwordLoginOpen,
+      google:
+        t.passwordLoginOpen &&
+        !!this.configService.get<string>('GOOGLE_CLIENT_ID'),
+      tdmp: t.loginEnabled,
+      breakGlass: !t.passwordLoginOpen && t.localLoginAllowlist.length > 0,
+    };
+  }
 
   @Post('login')
   @HttpCode(200)
@@ -248,6 +270,7 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Start authenticator set-up (QR code + key)' })
   setupMfa(@Request() req: AuthedRequest) {
+    this.authService.assertLocalAccount(req.user);
     return this.authService.setupMfa(req.user.id);
   }
 
@@ -373,42 +396,22 @@ export class AuthController {
   >(res: Response, result: T) {
     if ('refreshToken' in result && result.refreshToken) {
       const { refreshToken, sessionId: _sid, ...body } = result;
-      res.cookie(REFRESH_COOKIE, refreshToken, {
-        httpOnly: true,
-        secure: this.secureCookies,
-        sameSite: 'strict',
-        path: REFRESH_COOKIE_PATH,
-        maxAge: this.sessionsService.refreshTtlMs,
-      });
+      setRefreshCookie(
+        res,
+        this.configService,
+        refreshToken,
+        this.sessionsService.refreshTtlMs,
+      );
       return body;
     }
     return result;
   }
 
   private clearCookie(res: Response) {
-    res.clearCookie(REFRESH_COOKIE, {
-      httpOnly: true,
-      secure: this.secureCookies,
-      sameSite: 'strict',
-      path: REFRESH_COOKIE_PATH,
-    });
+    clearRefreshCookie(res, this.configService);
   }
 
   private readCookie(req: ExpressRequest): string | undefined {
-    const value = (req.cookies as Record<string, string> | undefined)?.[
-      REFRESH_COOKIE
-    ];
-    return typeof value === 'string' && value ? value : undefined;
-  }
-
-  /** COOKIE_SECURE overrides; otherwise Secure in production only. */
-  private get secureCookies(): boolean {
-    const raw = this.configService
-      .get<string>('COOKIE_SECURE')
-      ?.trim()
-      .toLowerCase();
-    if (raw === 'true') return true;
-    if (raw === 'false') return false;
-    return this.configService.get<string>('NODE_ENV') === 'production';
+    return readCookie(req, REFRESH_COOKIE);
   }
 }

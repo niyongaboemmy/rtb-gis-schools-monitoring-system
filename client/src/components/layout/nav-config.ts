@@ -10,10 +10,11 @@ import {
   GraduationCap,
   LayoutDashboard,
   Map,
+  RefreshCw,
   Settings,
   type LucideIcon,
 } from "lucide-react";
-import { Permission, type PermissionType } from "../../lib/permissions";
+import { Permission, SETTINGS_ANY_PERMISSIONS, type PermissionType } from "../../lib/permissions";
 
 /** The nav item that shows the waiting-for-review badge. */
 export const REVIEW_PATH = "/reports/validate";
@@ -26,6 +27,8 @@ export interface NavLeaf {
   requiredPermission?: PermissionType;
   requiredAnyPermission?: PermissionType[];
   schoolLevelOnly?: boolean;
+  /** Only for national-scope accounts (e.g. integrations). */
+  nationalOnly?: boolean;
 }
 
 export interface NavGroup {
@@ -92,26 +95,32 @@ export const PRIMARY_NAV: NavEntry[] = [
 export const FOOTER_NAV: NavEntry[] = [
   {
     kind: "item",
+    name: "TDMP Integration",
+    path: "/integrations/tdmp",
+    icon: RefreshCw,
+    requiredPermission: Permission.MANAGE_SCHOOLS,
+    nationalOnly: true,
+  },
+  {
+    kind: "item",
     name: "Settings",
     path: "/settings",
     icon: Settings,
-    requiredAnyPermission: [
-      Permission.MANAGE_USERS,
-      Permission.VIEW_USERS,
-      Permission.MANAGE_ROLES,
-      Permission.VIEW_AUDIT_LOGS,
-    ] as PermissionType[],
+    requiredAnyPermission: SETTINGS_ANY_PERMISSIONS,
   },
 ];
 
 export interface NavAccess {
   isSchoolLevel: boolean;
+  /** Missing = treated as national (older callers, tests). */
+  isNational?: boolean;
   isAuthorized: (p: PermissionType) => boolean;
   isAnyAuthorized: (ps: PermissionType[]) => boolean;
 }
 
 function allowed(item: NavLeaf, a: NavAccess): boolean {
   if (item.schoolLevelOnly && !a.isSchoolLevel) return false;
+  if (item.nationalOnly && a.isNational === false) return false;
   if (item.requiredPermission && !a.isAuthorized(item.requiredPermission)) return false;
   if (item.requiredAnyPermission && !a.isAnyAuthorized(item.requiredAnyPermission)) return false;
   return true;

@@ -20,6 +20,15 @@ const accessWith = (perms: PermissionType[], isSchoolLevel = false) => ({
 const ALL = Object.values(Permission) as PermissionType[];
 
 describe("resolveNav", () => {
+  it("shows TDMP Integration to national accounts that manage schools only", () => {
+    const names = (isNational: boolean | undefined, perms = ALL) =>
+      leavesOf(resolveNav(FOOTER_NAV, { ...accessWith(perms), isNational })).map((l) => l.name);
+    expect(names(true)).toContain("TDMP Integration");
+    expect(names(undefined)).toContain("TDMP Integration");
+    expect(names(false)).not.toContain("TDMP Integration");
+    expect(names(true, [Permission.VIEW_SCHOOLS] as PermissionType[])).not.toContain("TDMP Integration");
+  });
+
   it("groups map + directory and the three report pages for a national admin", () => {
     const nav = resolveNav(PRIMARY_NAV, accessWith(ALL));
     const groups = nav.filter((e): e is NavGroup => e.kind === "group");

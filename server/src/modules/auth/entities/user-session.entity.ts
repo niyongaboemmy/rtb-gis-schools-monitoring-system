@@ -48,9 +48,20 @@ export class UserSession {
   @Column({ type: 'varchar', length: 64, nullable: true })
   ip: string | null;
 
-  /** How the session was established: password, google, legacy. */
+  /** How the session was established: password, google, tdmp, legacy. */
   @Column({ type: 'varchar', length: 32, nullable: true })
   method: string | null;
+
+  /**
+   * TDMP refresh token of a `tdmp` session, AES-256-GCM encrypted. Used to
+   * re-check the account with TDMP and revoked on sign-out.
+   */
+  @Column({ name: 'external_refresh_token_enc', type: 'text', nullable: true })
+  externalRefreshTokenEnc: string | null;
+
+  /** Last time TDMP confirmed the account (see TdmpSessionService). */
+  @Column({ name: 'external_checked_at', type: 'timestamp', nullable: true })
+  externalCheckedAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

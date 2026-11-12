@@ -24,3 +24,6 @@ file-server/package-lock.json
 # SSH keys — never commit
 *.pem
 *.pem.pem
+
+# Secrets shared outside the env files: never commit
+docs/TDMP_API_KEY.md

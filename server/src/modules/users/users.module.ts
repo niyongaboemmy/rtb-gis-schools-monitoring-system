@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { TdmpModule } from '../tdmp/tdmp.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
@@ -8,7 +9,12 @@ import { AuditModule } from '../audit/audit.module';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Role]), AuditModule, AuthModule],
+  imports: [
+    TypeOrmModule.forFeature([User, Role]),
+    AuditModule,
+    AuthModule,
+    TdmpModule,
+  ],
   controllers: [UsersController],
   providers: [UsersService],
   exports: [UsersService, TypeOrmModule],

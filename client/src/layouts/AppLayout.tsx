@@ -21,7 +21,7 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import { RouteFallback } from "../components/RouteFallback";
 import { GlobalSearch } from "../components/GlobalSearch";
 import type { PermissionType } from "../lib/permissions";
-import { Permission } from "../lib/permissions";
+import { Permission, SETTINGS_ANY_PERMISSIONS } from "../lib/permissions";
 import { useAuthorization } from "../hooks/useAuthorization";
 import { useScope, isSchoolLevelUser } from "../hooks/useScope";
 import { Breadcrumbs } from "../components/layout/Breadcrumbs";
@@ -250,7 +250,7 @@ export function AppLayout() {
   }, [tourUserId, tourVariant]);
 
   const scope = useScope();
-  const access = { isSchoolLevel: scope.tier === "school", isAuthorized, isAnyAuthorized };
+  const access = { isSchoolLevel: scope.tier === "school", isNational: scope.isNational, isAuthorized, isAnyAuthorized };
   const primaryNav = resolveNav(PRIMARY_NAV, access);
   const footerNav = resolveNav(FOOTER_NAV, access);
   // Reports waiting for review — shown as a badge on "Review Reports".
@@ -464,12 +464,7 @@ export function AppLayout() {
                     <User className="w-3.5 h-3.5 text-muted-foreground" />
                     My profile
                   </button>
-                  {isAnyAuthorized([
-                    Permission.MANAGE_USERS,
-                    Permission.VIEW_USERS,
-                    Permission.MANAGE_ROLES,
-                    Permission.VIEW_AUDIT_LOGS,
-                  ]) && (
+                  {isAnyAuthorized(SETTINGS_ANY_PERMISSIONS) && (
                     <button
                       onClick={() => {
                         setIsProfileOpen(false);

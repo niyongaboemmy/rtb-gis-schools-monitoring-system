@@ -8,6 +8,21 @@ import { Repository } from 'typeorm';
 import { Role } from './entities/role.entity';
 import { AuditService, AuditActor } from '../audit/audit.service';
 
+/** TDMP role names: trimmed, non-empty, unique (case-insensitive), ≤ 50. */
+export function cleanTdmpRoleNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of value) {
+    if (typeof v !== 'string') continue;
+    const name = v.trim().slice(0, 100);
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    out.push(name);
+  }
+  return out.slice(0, 50);
+}
+
 @Injectable()
 export class RolesService {
   constructor(
@@ -37,6 +52,7 @@ export class RolesService {
     description?: string;
     permissions: string[];
     accessLevelId?: string;
+    tdmpRoleNames?: unknown;
   }) {
     const existing = await this.roleRepository.findOne({
       where: { name: dto.name },
@@ -47,6 +63,7 @@ export class RolesService {
     const { accessLevelId, ...rest } = dto;
     const role = this.roleRepository.create({
       ...rest,
+      tdmpRoleNames: cleanTdmpRoleNames(rest.tdmpRoleNames),
       ...(accessLevelId ? { accessLevel: { id: accessLevelId } as any } : {}),
     });
     await this.roleRepository.save(role);
@@ -57,6 +74,8 @@ export class RolesService {
     const role = await this.findOne(id);
 
     const { accessLevelId, ...rest } = dto;
+    if (rest.tdmpRoleNames !== undefined)
+      rest.tdmpRoleNames = cleanTdmpRoleNames(rest.tdmpRoleNames);
 
     // Set relation via entity reference (TypeORM resolves the FK)
     if (accessLevelId !== undefined) {

@@ -38,6 +38,9 @@ export interface User {
   privacyVersion?: string | null;
   /** Current privacy-notice version, as reported by the server. */
   privacyNoticeVersion?: string;
+  /** `tdmp`: signs in through TDMP, which also manages password and 2FA. */
+  authSource?: 'local' | 'tdmp';
+  tdmpUserId?: string | null;
 }
 
 /**

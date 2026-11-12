@@ -42,6 +42,8 @@ import {
   PRIVACY_NOTICE_VERSION,
 } from './auth.constants';
 import type { RequestMeta } from './request-meta';
+import { TdmpConfig } from '../tdmp/tdmp.config';
+import { TdmpSessionService } from './tdmp/tdmp-session.service';
 
 /** How long an emailed verification code stays valid. */
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -70,6 +72,10 @@ const PRIVATE_USER_FIELDS = [
 ] as const;
 
 export type SignInMethod = 'password' | 'google';
+
+/** Shown when a TDMP-managed account tries a local-only flow. */
+const TDMP_MANAGED =
+  'Your sign-in is managed by TDMP. Use "Sign in with TDMP" and manage your password there.';
 
 interface MfaTokenPayload {
   sub: string;
@@ -118,6 +124,8 @@ export class AuthService {
     private readonly sessionsService: SessionsService,
     private readonly mfaService: MfaService,
     private readonly passwordService: PasswordService,
+    private readonly tdmpConfig: TdmpConfig,
+    private readonly tdmpSessions: TdmpSessionService,
   ) {}
 
   // ── Password sign-in ─────────────────────────────────────────────────────
@@ -127,6 +135,10 @@ export class AuthService {
     meta: RequestMeta = {},
   ): Promise<LoginResult> {
     const email = this.normaliseEmail(loginDto.email);
+
+    // AUTH_MODE=tdmp: only the break-glass allowlist may use a password.
+    if (!this.tdmpConfig.mayUsePassword(email))
+      throw new UnauthorizedException(TDMP_MANAGED);
 
     const user = await this.userRepository
       .createQueryBuilder('user')
@@ -170,6 +182,14 @@ export class AuthService {
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
+    // An account taken over by TDMP keeps its old hash; it no longer counts
+    // unless the account is on the break-glass allowlist.
+    if (
+      user.authSource === 'tdmp' &&
+      !this.tdmpConfig.localLoginAllowlist.includes(email)
+    )
+      throw new UnauthorizedException(TDMP_MANAGED);
+
     return this.completePrimaryAuth(user, 'password', meta);
   }
 
@@ -201,9 +221,10 @@ export class AuthService {
   /** Creates a device session, clears failure counters and audits the login. */
   private async issueSession(
     user: User,
-    method: SignInMethod | 'mfa',
+    method: SignInMethod | 'mfa' | 'tdmp',
     meta: RequestMeta,
     extraMeta: Record<string, unknown> = {},
+    tdmpRefreshToken?: string,
   ): Promise<SessionResult> {
     await this.userRepository.update(user.id, {
       lastLoginAt: new Date(),
@@ -211,15 +232,20 @@ export class AuthService {
       lockedUntil: null,
     });
 
-    const { session, refreshToken } = await this.sessionsService.create(
-      user.id,
-      meta,
-      method,
-    );
+    const { session, refreshToken } = tdmpRefreshToken
+      ? await this.sessionsService.create(user.id, meta, method, {
+          refreshTokenEnc: this.tdmpSessions.encrypt(tdmpRefreshToken),
+        })
+      : await this.sessionsService.create(user.id, meta, method);
     const accessToken = await this.signAccessToken(user, session.id);
 
     this.audit({
-      action: method === 'google' ? 'auth.google_login' : 'auth.login',
+      action:
+        method === 'google'
+          ? 'auth.google_login'
+          : method === 'tdmp'
+            ? 'auth.tdmp_login'
+            : 'auth.login',
       actor: { id: user.id, email: user.email },
       targetType: 'user',
       targetId: user.id,
@@ -233,6 +259,24 @@ export class AuthService {
       refreshToken,
       sessionId: session.id,
     };
+  }
+
+  /**
+   * Session for a user who signed in with TDMP. TDMP did the authentication
+   * (including any second factor), so our 2FA is not asked again.
+   */
+  issueTdmpSession(
+    user: User,
+    meta: RequestMeta,
+    tdmpRefreshToken?: string,
+  ): Promise<SessionResult> {
+    return this.issueSession(
+      user,
+      'tdmp',
+      meta,
+      { tdmpUserId: user.tdmpUserId },
+      tdmpRefreshToken,
+    );
   }
 
   // ── Second factor ────────────────────────────────────────────────────────
@@ -350,11 +394,14 @@ export class AuthService {
   ): Promise<SessionResult> {
     if (cookieToken) {
       const rotated = await this.sessionsService.rotate(cookieToken, meta);
-      const user = await this.loadActiveUser(rotated.userId);
+      let user = await this.loadActiveUser(rotated.userId);
       if (!user) {
         await this.sessionsService.revoke(rotated.sessionId, 'inactive');
         throw new UnauthorizedException('Access denied');
       }
+      // TDMP sessions: confirm the account with TDMP and pick up role changes.
+      user =
+        (await this.tdmpSessions.recheck(rotated.session, user, meta)) ?? user;
       return {
         user: this.publicUser(user),
         accessToken: await this.signAccessToken(user, rotated.sessionId),
@@ -413,7 +460,11 @@ export class AuthService {
     const payload = cookieToken
       ? await this.sessionsService.peek(cookieToken)
       : null;
-    if (payload) await this.sessionsService.revoke(payload.sid, 'logout');
+    if (payload) {
+      const session = await this.sessionsService.findById(payload.sid);
+      void this.tdmpSessions.revokeAtTdmp(session).catch(() => undefined);
+      await this.sessionsService.revoke(payload.sid, 'logout');
+    }
     const userId = payload?.sub ?? fallbackUserId;
     if (userId) {
       // Also retire any pre-session legacy token.
@@ -494,6 +545,8 @@ export class AuthService {
     credential: GoogleCredential,
     meta: RequestMeta = {},
   ): Promise<LoginResult> {
+    if (!this.tdmpConfig.passwordLoginOpen)
+      throw new ForbiddenException(TDMP_MANAGED);
     const payload = await this.verifyGoogleCredential(credential);
 
     const email = this.normaliseEmail(payload.email ?? '');
@@ -552,6 +605,7 @@ export class AuthService {
     credential: GoogleCredential,
     meta: RequestMeta = {},
   ) {
+    this.assertLocalAccount(user);
     const payload = await this.verifyGoogleCredential(credential);
     const email = this.normaliseEmail(payload.email ?? '');
     if (!payload.email_verified || email !== this.normaliseEmail(user.email))
@@ -661,9 +715,17 @@ export class AuthService {
       delivered: true,
     };
 
+    if (!this.tdmpConfig.mayUsePassword(normalised))
+      throw new BadRequestException(TDMP_MANAGED);
+
     const user = await this.userRepository.findOne({
       where: { email: normalised },
     });
+    if (
+      user?.authSource === 'tdmp' &&
+      !this.tdmpConfig.localLoginAllowlist.includes(normalised)
+    )
+      throw new BadRequestException(TDMP_MANAGED);
     if (!user) {
       if (generic) return genericBody;
       throw new NotFoundException(
@@ -864,6 +926,7 @@ export class AuthService {
   }
 
   async enableMfa(user: User, code: string, meta: RequestMeta = {}) {
+    this.assertLocalAccount(user);
     const result = await this.mfaService.confirmEnrolment(user.id, code);
     this.audit({
       action: 'auth.mfa_enabled',
@@ -989,7 +1052,9 @@ export class AuthService {
     const out: Record<string, unknown> = { ...user };
     for (const key of PRIVATE_USER_FIELDS) delete out[key];
     out.googleLinked = !!user.googleId;
-    out.mfaRequired = this.mfaService.isRequiredFor(user);
+    // TDMP authenticates TDMP users, including any second factor.
+    out.mfaRequired =
+      user.authSource === 'tdmp' ? false : this.mfaService.isRequiredFor(user);
     out.privacyNoticeVersion = PRIVACY_NOTICE_VERSION;
     return out;
   }
@@ -1143,6 +1208,12 @@ export class AuthService {
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
+
+  /** Passwords, 2FA and Google links only exist for local accounts. */
+  assertLocalAccount(user: Pick<User, 'authSource'>) {
+    if (user?.authSource === 'tdmp')
+      throw new BadRequestException(TDMP_MANAGED);
+  }
 
   private audit(entry: AuditEntry) {
     this.auditService.record(entry);

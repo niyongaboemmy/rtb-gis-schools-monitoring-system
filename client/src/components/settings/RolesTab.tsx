@@ -37,6 +37,7 @@ import { PERMISSION_GROUPS } from "../../lib/permissions";
 import { titleCase } from "../../lib/labels";
 import { formatNumber } from "../../lib/format";
 import { FloatingStat } from "../dashboard/FloatingStat";
+import { TdmpRoleNames } from "./TdmpRoleNames";
 
 /** Roles the seed keeps in sync (cannot be deleted). */
 const BUILT_IN_ROLES = ["super_admin", "admin", "gis_analyst", "viewer"];
@@ -59,6 +60,8 @@ interface RoleRow {
   description?: string | null;
   permissions?: string[];
   accessLevel?: AccessLevelRow | null;
+  /** TDMP role names that sign in with this role. */
+  tdmpRoleNames?: string[] | null;
 }
 
 type Filter = "all" | "on" | "off";
@@ -677,6 +680,8 @@ export function RolesTab() {
                 </div>
               </div>
             </div>
+
+            <TdmpRoleNames role={role} onSaved={replaceRole} />
 
             {/* Browse tools */}
             <div className="flex flex-col gap-2 px-4 pt-4 min-[400px]:px-5 sm:px-6 @2xl:flex-row @2xl:items-center">

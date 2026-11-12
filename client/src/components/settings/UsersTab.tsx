@@ -15,6 +15,8 @@ import { DeleteConfirmationModal } from "../ui/delete-confirmation-modal";
 import { useAuthStore } from "../../store/authStore";
 import { useSchoolsStore } from "../../store/schoolsStore";
 import { resolveDistrictName, resolveProvinceName } from "../../lib/rwanda-locations";
+import { useAuthProviders } from "../../hooks/useAuthProviders";
+import { isTdmpUser } from "../../lib/tdmp";
 import {
   Send,
   SearchX,
@@ -33,6 +35,7 @@ import {
   CalendarPlus,
   LogIn,
   CircleDot,
+  Info,
 } from "lucide-react";
 import { formatDate, formatDateTime, formatNumber } from "../../lib/format";
 import { titleCase } from "../../lib/labels";
@@ -85,6 +88,16 @@ function RoleChip({ role }: { role: ManagedRole | null | undefined }) {
   ) : (
     <StatusPill tone="neutral" dot={false}>
       No role
+    </StatusPill>
+  );
+}
+
+/** Accounts that sign in through TDMP. */
+function SourceBadge({ user }: { user: ManagedUser }) {
+  if (!isTdmpUser(user)) return null;
+  return (
+    <StatusPill tone="primary" dot={false} className="shrink-0">
+      TDMP
     </StatusPill>
   );
 }
@@ -162,6 +175,8 @@ export function UsersTab() {
 
   const { user: currentUser } = useAuthStore();
   const toast = useToast();
+  // TDMP mode: accounts come from TDMP, so no adding, importing or resets here.
+  const tdmpMode = useAuthProviders()?.authMode === "tdmp";
   const fetchPromise = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
@@ -201,6 +216,21 @@ export function UsersTab() {
       toast.success(`User "${name}" deactivated and signed out`);
     } catch (err) {
       toast.error(apiErrorMessage(err, `Could not deactivate ${name}.`));
+    } finally {
+      setAL(key, false);
+    }
+  };
+
+  /** TDMP accounts: the active switch is the one thing edited here. */
+  const handleReactivate = async (u: ManagedUser) => {
+    const key = `activate-user-${u.id}`;
+    setAL(key, true);
+    try {
+      await api.patch(`/users/${u.id}`, { isActive: true });
+      fetchInitialData();
+      toast.success(`${fullName(u)} can sign in again`);
+    } catch (err) {
+      toast.error(apiErrorMessage(err, `Could not reactivate ${fullName(u)}.`));
     } finally {
       setAL(key, false);
     }
@@ -266,27 +296,42 @@ export function UsersTab() {
     setIsModalOpen(true);
   };
 
-  const rowActions = (u: ManagedUser) => (
-    <>
-      <IconAction label={`View ${u.firstName} ${u.lastName}`} icon={Eye} onClick={() => setPreviewUser(u)} />
-      <IconAction label={`Edit ${u.firstName} ${u.lastName}`} icon={Edit2} onClick={() => openEdit(u)} />
-      <IconAction
-        label={`Send ${u.email} a password reset code`}
-        icon={Send}
-        disabled={!u.isActive}
-        loading={isAL(`reset-user-${u.id}`)}
-        onClick={() => void handleSendReset(u.id, u.email)}
-      />
-      <IconAction
-        label={`Deactivate ${u.email}`}
-        icon={Trash2}
-        tone="danger"
-        disabled={u.id === currentUser?.id || !u.isActive}
-        loading={isAL(`del-user-${u.id}`)}
-        onClick={() => setPendingDeactivate({ id: u.id, name: `${u.firstName} ${u.lastName}`.trim() })}
-      />
-    </>
-  );
+  const rowActions = (u: ManagedUser) => {
+    // TDMP accounts: name, email, role and scope come from TDMP.
+    const fromTdmp = isTdmpUser(u);
+    return (
+      <>
+        <IconAction label={`View ${u.firstName} ${u.lastName}`} icon={Eye} onClick={() => setPreviewUser(u)} />
+        {!fromTdmp && <IconAction label={`Edit ${u.firstName} ${u.lastName}`} icon={Edit2} onClick={() => openEdit(u)} />}
+        {!fromTdmp && !tdmpMode && (
+          <IconAction
+            label={`Send ${u.email} a password reset code`}
+            icon={Send}
+            disabled={!u.isActive}
+            loading={isAL(`reset-user-${u.id}`)}
+            onClick={() => void handleSendReset(u.id, u.email)}
+          />
+        )}
+        {fromTdmp && !u.isActive ? (
+          <IconAction
+            label={`Reactivate ${u.email}`}
+            icon={UserCheck}
+            loading={isAL(`activate-user-${u.id}`)}
+            onClick={() => void handleReactivate(u)}
+          />
+        ) : (
+          <IconAction
+            label={`Deactivate ${u.email}`}
+            icon={Trash2}
+            tone="danger"
+            disabled={u.id === currentUser?.id || !u.isActive}
+            loading={isAL(`del-user-${u.id}`)}
+            onClick={() => setPendingDeactivate({ id: u.id, name: `${u.firstName} ${u.lastName}`.trim() })}
+          />
+        )}
+      </>
+    );
+  };
 
   const previewScope = previewUser ? scopeLocation(previewUser.location) : null;
 
@@ -348,6 +393,13 @@ export function UsersTab() {
       </dl>
       </HeroStats>
 
+      {tdmpMode && (
+        <p role="note" className="flex items-start gap-2.5 rounded-2xl bg-primary/8 px-4 py-3 text-sm text-foreground ring-1 ring-inset ring-primary/15">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
+          Users come from TDMP. They appear here after their first sign-in.
+        </p>
+      )}
+
       <SettingsPanel
         index={1}
         flush
@@ -355,20 +407,22 @@ export function UsersTab() {
         subtitle="Accounts, roles and scope"
         icon={Users2}
         actions={
-          <>
-            <Button variant="outline" className={PILL_BUTTON.secondary} onClick={() => setIsUploadModalOpen(true)}>
-              <UploadCloud className="h-4 w-4" aria-hidden /> Import users
-            </Button>
-            <Button
-              className={PILL_BUTTON.primary}
-              onClick={() => {
-                setEditingUser(null);
-                setIsModalOpen(true);
-              }}
-            >
-              <Plus className="h-4 w-4" aria-hidden /> Add user
-            </Button>
-          </>
+          tdmpMode ? undefined : (
+            <>
+              <Button variant="outline" className={PILL_BUTTON.secondary} onClick={() => setIsUploadModalOpen(true)}>
+                <UploadCloud className="h-4 w-4" aria-hidden /> Import users
+              </Button>
+              <Button
+                className={PILL_BUTTON.primary}
+                onClick={() => {
+                  setEditingUser(null);
+                  setIsModalOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4" aria-hidden /> Add user
+              </Button>
+            </>
+          )
         }
         toolbar={
           <Toolbar>
@@ -417,7 +471,13 @@ export function UsersTab() {
           <EmptyNote
             icon={SearchX}
             title={hasFilters ? "No users match these filters" : "No users yet"}
-            hint={hasFilters ? "Try another name, email, role or status." : "Add a user or import a spreadsheet."}
+            hint={
+              hasFilters
+                ? "Try another name, email, role or status."
+                : tdmpMode
+                  ? "People appear here after their first TDMP sign-in."
+                  : "Add a user or import a spreadsheet."
+            }
             action={
               hasFilters ? (
                 <Button variant="outline" className={PILL_BUTTON.small} onClick={clearFilters}>
@@ -448,6 +508,7 @@ export function UsersTab() {
                         <p className="truncate text-[15px] leading-5 text-foreground">
                           {u.firstName} {u.lastName}
                         </p>
+                        <SourceBadge user={u} />
                         <SecurityMarkers user={u} />
                       </div>
                     </Td>
@@ -482,6 +543,7 @@ export function UsersTab() {
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <ActiveStatus active={!!u.isActive} />
                         <RoleChip role={u.role} />
+                        <SourceBadge user={u} />
                         <SecurityMarkers user={u} />
                       </div>
                     </div>
@@ -525,6 +587,7 @@ export function UsersTab() {
               <p className="mt-0.5 break-all text-xs text-muted-foreground">{previewUser.email}</p>
               <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
                 <RoleChip role={previewUser.role} />
+                <SourceBadge user={previewUser} />
                 <SecurityMarkers user={previewUser} />
               </div>
             </div>

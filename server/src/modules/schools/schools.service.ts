@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   BadRequestException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -21,6 +22,8 @@ import { FacilityEntity } from './entities/facility.entity';
 import { BuildingDto } from './dto/building.dto';
 import { CreateChangeRequestDto } from './dto/change-request.dto';
 import { filterSchoolUpdate } from './school-field-permissions';
+import { lockedTdmpChanges } from '../tdmp/tdmp-school.mapper';
+import { TdmpSyncService } from '../tdmp/tdmp-sync.service';
 import { schoolListSelect } from './school-list-select';
 import { checkPoint, round7 } from './location/school-location.rules';
 import { programmeTotals } from '../analytics/school-metrics.helpers';
@@ -57,6 +60,7 @@ export class SchoolsService {
     private readonly storageService: StorageService,
     private readonly eventEmitter: EventEmitter2,
     private readonly auditService: AuditService,
+    @Optional() private readonly tdmpSync?: TdmpSyncService,
   ) {}
 
   async create(createSchoolDto: CreateSchoolDto): Promise<School> {
@@ -67,6 +71,12 @@ export class SchoolsService {
       throw new ConflictException(
         `School with code "${createSchoolDto.code}" already exists`,
       );
+
+    // With TDMP on, a school must exist there: its details come from TDMP
+    // (the form only contributes GPS and GIS data).
+    const tdmpBundle = this.tdmpSync?.enabled
+      ? await this.tdmpSync.fetch(createSchoolDto.code)
+      : null;
 
     // Extract buildings from DTO
     const { buildings, ...schoolData } = createSchoolDto;
@@ -83,6 +93,7 @@ export class SchoolsService {
       locationUpdatedAt: new Date(),
     });
     const savedSchool = await this.schoolRepository.save(school);
+    if (tdmpBundle) await this.tdmpSync!.apply(tdmpBundle, savedSchool);
 
     // Create buildings if provided
     if (buildings && buildings.length > 0) {
@@ -237,6 +248,18 @@ export class SchoolsService {
     editor?: { role?: { name?: string; permissions?: string[] } | null },
   ): Promise<School> {
     const school = await this.findOne(id);
+
+    // TDMP owns these on a linked school, for every role (GPS stays ours).
+    const tdmpLocked = lockedTdmpChanges(
+      updateSchoolDto as Record<string, unknown>,
+      school,
+    );
+    if (tdmpLocked.length)
+      throw new ForbiddenException({
+        code: 'TDMP_OWNED',
+        message: `These details come from TDMP and can only be changed there: ${tdmpLocked.join(', ')}.`,
+        lockedFields: tdmpLocked,
+      });
 
     // Field-level permissions (WS7.7): a profile editor may only change the
     // groups they hold; locked fields need a change request instead.

@@ -290,7 +290,11 @@ export function PersonalDetails({ user, onSaved, onOpenSecurity }: Props) {
               label="Email address"
               icon={Mail}
               wide
-              note="Your sign-in email is managed by an administrator."
+              note={
+                user.authSource === "tdmp"
+                  ? "Your sign-in email is managed in TDMP."
+                  : "Your sign-in email is managed by an administrator."
+              }
             >
               {(d) => (
                 <Input

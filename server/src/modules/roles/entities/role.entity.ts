@@ -34,6 +34,14 @@ export class Role {
   @Column({ type: 'text', array: true, nullable: true })
   seededPermissions: string[] | null;
 
+  /**
+   * TDMP role names that map to this role when someone signs in with TDMP
+   * (matched case-insensitively). A TDMP user matching no role cannot sign in
+   * unless TDMP_DEFAULT_ROLE is set.
+   */
+  @Column({ type: 'text', array: true, default: [] })
+  tdmpRoleNames: string[];
+
   @ManyToOne(() => AccessLevel, (al) => al.roles, {
     nullable: true,
     eager: true,

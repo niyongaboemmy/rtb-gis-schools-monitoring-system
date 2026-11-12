@@ -10,7 +10,8 @@ import { Suspense } from "react";
 import { ProtectedRoute, AppLayout } from "./layouts/AppLayout";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
-import { Permission } from "./lib/permissions";
+import { TdmpSsoComplete, TdmpSsoEntry } from "./pages/TdmpSso";
+import { Permission, SETTINGS_ANY_PERMISSIONS } from "./lib/permissions";
 import { lazyPage } from "./lib/lazy";
 import { useAuthStore } from "./store/authStore";
 import { homePathFor } from "./hooks/useScope";
@@ -32,6 +33,7 @@ const PopulationAnalytics = lazyPage(() => import("./pages/PopulationAnalytics")
 const Reports = lazyPage(() => import("./pages/Reports"));
 const ReportValidation = lazyPage(() => import("./pages/ReportValidation"));
 const Settings = lazyPage(() => import("./pages/Settings"));
+const TdmpIntegration = lazyPage(() => import("./pages/TdmpIntegration"));
 const Welcome = lazyPage(() => import("./pages/Welcome"));
 const Profile = lazyPage(() => import("./pages/Profile"));
 const SchoolDecisionDashboard = lazyPage(() => import("./pages/SchoolDecisionDashboard"));
@@ -63,6 +65,9 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
+          {/* TDMP single sign-on: "Open in RTB GIS" links and the sign-in return */}
+          <Route path="/sso/tdmp" element={<TdmpSsoEntry />} />
+          <Route path="/sso/tdmp/complete" element={<TdmpSsoComplete />} />
 
           {/* Stand-alone viewers (own full-screen chrome, still auth-gated) */}
           {/* GlbViewer was retired; old links land on the 3D explorer. */}
@@ -244,17 +249,13 @@ export default function App() {
             {/* Administration */}
             <Route
               element={
-                <ProtectedRoute
-                  requiredAnyPermission={[
-                    Permission.MANAGE_USERS,
-                    Permission.VIEW_USERS,
-                    Permission.MANAGE_ROLES,
-                    Permission.VIEW_AUDIT_LOGS,
-                  ]}
-                />
+                <ProtectedRoute requiredAnyPermission={SETTINGS_ANY_PERMISSIONS} />
               }
             >
               <Route path="/settings" element={<Settings />} />
+            </Route>
+            <Route element={<ProtectedRoute requiredPermission={Permission.MANAGE_SCHOOLS} />}>
+              <Route path="/integrations/tdmp" element={<TdmpIntegration />} />
             </Route>
 
             <Route path="/profile" element={<Profile />} />

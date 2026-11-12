@@ -53,8 +53,16 @@ export class SessionsService {
     );
   }
 
-  /** Starts a session and returns its first refresh token. */
-  async create(userId: string, meta: RequestMeta, method: string) {
+  /**
+   * Starts a session and returns its first refresh token. `external` holds
+   * the encrypted TDMP refresh token of a `tdmp` session.
+   */
+  async create(
+    userId: string,
+    meta: RequestMeta,
+    method: string,
+    external: { refreshTokenEnc?: string | null } = {},
+  ) {
     const id = crypto.randomUUID();
     const refreshToken = await this.sign(userId, id);
     const now = new Date();
@@ -72,6 +80,8 @@ export class SessionsService {
         expiresAt: new Date(now.getTime() + this.refreshTtlMs),
         revokedAt: null,
         revokedReason: null,
+        externalRefreshTokenEnc: external.refreshTokenEnc ?? null,
+        externalCheckedAt: method === 'tdmp' ? now : null,
       }),
     );
     return { session, refreshToken };
@@ -144,7 +154,12 @@ export class SessionsService {
       userId: session.userId,
       sessionId: session.id,
       refreshToken: next,
+      session,
     };
+  }
+
+  findById(sessionId: string) {
+    return this.sessions.findOne({ where: { id: sessionId } });
   }
 
   /** Reads the session id from a refresh token without rotating it. */

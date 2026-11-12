@@ -13,6 +13,8 @@ import {
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { AuthService, type SessionResult } from './auth.service';
+import { TdmpConfig } from '../tdmp/tdmp.config';
+import { TdmpSessionService } from './tdmp/tdmp-session.service';
 import { User } from '../users/entities/user.entity';
 import { Role } from '../roles/entities/role.entity';
 import { MailService } from '../mail/mail.service';
@@ -137,7 +139,14 @@ async function makeService(
     revokeAll: jest.fn(),
     revokeOwn: jest.fn(),
     listActive: jest.fn().mockResolvedValue([]),
+    findById: jest.fn().mockResolvedValue(null),
     refreshTtlMs: 7 * 86400e3,
+  };
+
+  const tdmpSessions = {
+    encrypt: jest.fn((t: string) => `enc:${t}`),
+    recheck: jest.fn().mockResolvedValue(null),
+    revokeAtTdmp: jest.fn().mockResolvedValue(undefined),
   };
 
   const mfaService = {
@@ -183,6 +192,8 @@ async function makeService(
       { provide: SessionsService, useValue: sessionsService },
       { provide: MfaService, useValue: mfaService },
       { provide: PasswordService, useValue: passwordService },
+      TdmpConfig,
+      { provide: TdmpSessionService, useValue: tdmpSessions },
     ],
   }).compile();
 
@@ -197,6 +208,7 @@ async function makeService(
     sessionsService,
     mfaService,
     passwordService,
+    tdmpSessions,
   };
 }
 

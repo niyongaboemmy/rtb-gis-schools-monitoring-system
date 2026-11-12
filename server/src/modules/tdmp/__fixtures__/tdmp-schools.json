@@ -1,0 +1,339 @@
+{
+ "_source": "Captured from GET https://tdmp.rtb.gov.rw/api/v1/schools and /schools/270501 on 2026-11-12. School-level data only (no personal data).",
+ "list": {
+  "tvetActive": {
+   "id": 292,
+   "schoolCode": "270501",
+   "tmisSchoolCode": "27050205-03",
+   "schoolName": "ACEJ KARAMA",
+   "institutionType": "training_institute",
+   "schoolCategory": "TVET",
+   "schoolStatus": "GOVERNMENT_AIDED",
+   "isActive": "ACTIVE",
+   "ownership": "Gov Aided",
+   "enrollmentActive": true,
+   "location": {
+    "villageId": 6877,
+    "villageName": "Kamazu",
+    "cellId": 950,
+    "cellName": "Nganzo",
+    "sectorId": 192,
+    "sectorName": "Muhanga",
+    "districtId": 14,
+    "districtName": "Muhanga",
+    "provinceId": 2,
+    "provinceName": "Southern Province"
+   },
+   "counts": {
+    "teachers": 33,
+    "students": 1136,
+    "trades": 3,
+    "levels": 1,
+    "modules": 121
+   },
+   "tradeNames": [
+    "CSA",
+    "MAT",
+    "NIT"
+   ],
+   "authoritativeSource": "sdms"
+  },
+  "tvetPrivate": {
+   "id": 293,
+   "schoolCode": "270601",
+   "tmisSchoolCode": "27060203-06",
+   "schoolName": "ACODES MUSHISHIRO",
+   "institutionType": "training_institute",
+   "schoolCategory": "TVET",
+   "schoolStatus": "PRIVATE",
+   "isActive": "ACTIVE",
+   "ownership": "Private",
+   "enrollmentActive": true,
+   "location": {
+    "villageId": 6905,
+    "villageName": "Kiyoro",
+    "cellId": 955,
+    "cellName": "Munazi",
+    "sectorId": 193,
+    "sectorName": "Mushishiro",
+    "districtId": 14,
+    "districtName": "Muhanga",
+    "provinceId": 2,
+    "provinceName": "Southern Province"
+   },
+   "counts": {
+    "teachers": 16,
+    "students": 866,
+    "trades": 6,
+    "levels": 1,
+    "modules": 209
+   },
+   "tradeNames": [
+    "CSA",
+    "MAT",
+    "NIT",
+    "REN",
+    "SOD",
+    "WIR"
+   ],
+   "authoritativeSource": "sdms"
+  },
+  "unfetched": {
+   "id": 153259,
+   "schoolCode": "57PC",
+   "tmisSchoolCode": null,
+   "schoolName": "Bugesera",
+   "institutionType": "missing",
+   "schoolCategory": "unfetched",
+   "schoolStatus": "unfetched",
+   "isActive": "unfetched",
+   "ownership": "Others",
+   "enrollmentActive": false,
+   "location": {
+    "villageId": 44512,
+    "villageName": "Unknown",
+    "cellId": 6445,
+    "cellName": "Unknown",
+    "sectorId": 417,
+    "sectorName": "Unknown",
+    "districtId": 31,
+    "districtName": "Unknown",
+    "provinceId": 1,
+    "provinceName": "Kigali City"
+   },
+   "counts": {
+    "teachers": 0,
+    "students": 1,
+    "trades": 0,
+    "levels": 0,
+    "modules": 0
+   },
+   "tradeNames": [],
+   "authoritativeSource": "csv"
+  },
+  "mixedCase": {
+   "id": 100,
+   "schoolCode": "121103",
+   "tmisSchoolCode": "12110311-03",
+   "schoolName": "COLLEGE DOCTRINA VITAE",
+   "institutionType": "training_institute",
+   "schoolCategory": null,
+   "schoolStatus": "Private",
+   "isActive": "ACTIVE",
+   "ownership": "Private",
+   "enrollmentActive": false,
+   "location": {
+    "villageId": 2105,
+    "villageName": "Ururembo",
+    "cellId": 283,
+    "cellName": "Kibenga",
+    "sectorId": 62,
+    "sectorName": "Ndera",
+    "districtId": 4,
+    "districtName": "Gasabo",
+    "provinceId": 1,
+    "provinceName": "Kigali City"
+   },
+   "counts": {
+    "teachers": 1,
+    "students": 80,
+    "trades": 0,
+    "levels": 0,
+    "modules": 0
+   },
+   "tradeNames": [],
+   "authoritativeSource": "sdms"
+  },
+  "testSource": {
+   "id": 234268,
+   "schoolCode": "SCOPE-DIST-GASABO",
+   "tmisSchoolCode": "162601",
+   "schoolName": "Gasabo District TVET Office (test)",
+   "institutionType": "district",
+   "schoolCategory": null,
+   "schoolStatus": null,
+   "isActive": null,
+   "ownership": "Others",
+   "enrollmentActive": false,
+   "location": {
+    "villageId": 1842,
+    "villageName": "Agataramo",
+    "cellId": 248,
+    "cellName": "Nyamugari",
+    "sectorId": 53,
+    "sectorName": "Gatsata",
+    "districtId": 4,
+    "districtName": "Gasabo",
+    "provinceId": 1,
+    "provinceName": "Kigali City"
+   },
+   "counts": {
+    "teachers": 1,
+    "students": 0,
+    "trades": 0,
+    "levels": 0,
+    "modules": 0
+   },
+   "tradeNames": [],
+   "authoritativeSource": "access_scope_test"
+  },
+  "manualSeed": {
+   "id": 240012,
+   "schoolCode": "SCOPE-DIST-BUGE",
+   "tmisSchoolCode": null,
+   "schoolName": "Bugesera District TVET Office",
+   "institutionType": "district",
+   "schoolCategory": null,
+   "schoolStatus": null,
+   "isActive": null,
+   "ownership": "Others",
+   "enrollmentActive": false,
+   "location": {
+    "villageId": 17,
+    "villageName": "Kiruhura",
+    "cellId": 3,
+    "cellName": "Kagomasi",
+    "sectorId": 1,
+    "sectorName": "Gashora",
+    "districtId": 1,
+    "districtName": "Bugesera",
+    "provinceId": 5,
+    "provinceName": "Eastern Province"
+   },
+   "counts": {
+    "teachers": 1,
+    "students": 0,
+    "trades": 0,
+    "levels": 0,
+    "modules": 0
+   },
+   "tradeNames": [],
+   "authoritativeSource": "manual_seed"
+  },
+  "nullActive": {
+   "id": 153194,
+   "schoolCode": "121101",
+   "tmisSchoolCode": null,
+   "schoolName": "APRED NDERA",
+   "institutionType": "training_institute",
+   "schoolCategory": null,
+   "schoolStatus": null,
+   "isActive": null,
+   "ownership": "Others",
+   "enrollmentActive": false,
+   "location": {
+    "villageId": null,
+    "villageName": null,
+    "cellId": null,
+    "cellName": null,
+    "sectorId": null,
+    "sectorName": null,
+    "districtId": null,
+    "districtName": null,
+    "provinceId": null,
+    "provinceName": null
+   },
+   "counts": {
+    "teachers": 0,
+    "students": 0,
+    "trades": 0,
+    "levels": 0,
+    "modules": 0
+   },
+   "tradeNames": [],
+   "authoritativeSource": "sdms"
+  },
+  "inactive": {
+   "id": 153236,
+   "schoolCode": "120703",
+   "tmisSchoolCode": null,
+   "schoolName": "APAPER COMPLEX SCHOOL",
+   "institutionType": "training_institute",
+   "schoolCategory": "TVET",
+   "schoolStatus": "PRIVATE",
+   "isActive": "INACTIVE",
+   "ownership": "Private",
+   "enrollmentActive": false,
+   "location": {
+    "villageId": 1964,
+    "villageName": "Bukinanyana",
+    "cellId": 268,
+    "cellName": "Kamatamu",
+    "sectorId": 58,
+    "sectorName": "Kacyiru",
+    "districtId": 4,
+    "districtName": "Gasabo",
+    "provinceId": 1,
+    "provinceName": "Kigali City"
+   },
+   "counts": {
+    "teachers": 0,
+    "students": 65,
+    "trades": 0,
+    "levels": 0,
+    "modules": 0
+   },
+   "tradeNames": [],
+   "authoritativeSource": "sdms"
+  }
+ },
+ "detail270501": {
+  "id": 292,
+  "schoolCode": "270501",
+  "schoolName": "ACEJ KARAMA",
+  "schoolShortName": null,
+  "sourceLocationId": null,
+  "institutionType": "training_institute",
+  "schoolCategory": "TVET",
+  "schoolStatus": "GOVERNMENT_AIDED",
+  "isActive": "ACTIVE",
+  "location": {
+   "villageId": 6877,
+   "villageName": "Kamazu",
+   "cellId": 950,
+   "cellName": "Nganzo",
+   "sectorId": 192,
+   "sectorName": "Muhanga",
+   "districtId": 14,
+   "districtName": "Muhanga",
+   "provinceId": 2,
+   "provinceName": "Southern Province"
+  },
+  "provinceName": "Southern Province",
+  "districtName": "Muhanga",
+  "sectorName": "Muhanga",
+  "villageId": 6877,
+  "counts": {
+   "teachers": 33,
+   "students": 1136,
+   "trades": 3,
+   "levels": 1,
+   "modules": 121
+  },
+  "tradeNames": [
+   "CSA",
+   "MAT",
+   "NIT"
+  ],
+  "tmisCodes": [
+   {
+    "tmisCode": "27050205-03",
+    "schoolLevelId": "4",
+    "schoolCategoryId": "3",
+    "schoolName": "ACEJ KARAMA",
+    "source": "sdms_bridge"
+   }
+  ],
+  "authoritativeSource": "sdms",
+  "tmisSchoolCode": "27050205-03",
+  "establishmentDate": "1984-09-01",
+  "deactivatedDate": null,
+  "academicYear": "2026/2027",
+  "currentAcademicYear": "2026/2027",
+  "gpsLong": 29.726629,
+  "gpsLat": -2.071518,
+  "createdAt": "2026-04-28T07:42:08.086+02:00",
+  "updatedAt": "2026-11-12T06:00:34.819+02:00",
+  "lastMaterialisedAt": "2026-11-12T06:00:34.819+02:00"
+ }
+}

@@ -54,6 +54,16 @@ export function validateEnv(
   )
     errors.push('TOTP_ENCRYPTION_KEY is not set (openssl rand -hex 32)');
 
+  // TDMP sign-in (AUTH_MODE=both|tdmp) needs the OAuth client TDMP issued.
+  const authMode =
+    typeof config.AUTH_MODE === 'string' ? config.AUTH_MODE.trim() : '';
+  if (authMode && !['local', 'both', 'tdmp'].includes(authMode))
+    errors.push('AUTH_MODE must be one of: local, both, tdmp');
+  if (authMode === 'both' || authMode === 'tdmp')
+    for (const key of ['TDMP_OAUTH_CLIENT_ID', 'TDMP_OAUTH_CLIENT_SECRET'])
+      if (!(typeof config[key] === 'string' && config[key].trim()))
+        errors.push(`${key} is required when AUTH_MODE=${authMode}`);
+
   if (errors.length)
     throw new Error(
       `Invalid environment configuration:\n  - ${errors.join('\n  - ')}\n` +

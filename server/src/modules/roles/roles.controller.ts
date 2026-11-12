@@ -42,7 +42,13 @@ export class RolesController {
   @ApiOperation({ summary: 'Create new role' })
   @RequirePermissions(Permission.MANAGE_ROLES)
   create(
-    @Body() body: { name: string; description?: string; permissions: string[] },
+    @Body()
+    body: {
+      name: string;
+      description?: string;
+      permissions: string[];
+      tdmpRoleNames?: string[];
+    },
   ) {
     return this.rolesService.create(body);
   }

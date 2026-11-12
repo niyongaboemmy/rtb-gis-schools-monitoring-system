@@ -17,6 +17,8 @@ interface LocationStepProps {
   kmz2dFilePath: string;
   tifFilePath: string;
   onGisChange: (field: string, value: string) => void;
+  /** Province … village come from TDMP (read-only); GPS stays editable. */
+  adminLocked?: boolean;
 }
 
 export function LocationStep({
@@ -36,6 +38,7 @@ export function LocationStep({
   kmz2dFilePath,
   tifFilePath,
   onGisChange,
+  adminLocked = false,
 }: LocationStepProps) {
   return (
     <LocationPicker
@@ -55,6 +58,7 @@ export function LocationStep({
       kmz2dFilePath={kmz2dFilePath}
       tifFilePath={tifFilePath}
       onGisChange={onGisChange}
+      adminLocked={adminLocked}
     />
   );
 }

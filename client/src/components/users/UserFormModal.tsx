@@ -94,6 +94,9 @@ export interface ManagedUser {
   lastLoginAt?: string | null;
   role?: ManagedRole | null;
   location?: UserLocation | null;
+  /** `tdmp`: signs in through TDMP; only the active flag is edited here. */
+  authSource?: "local" | "tdmp";
+  tdmpUserId?: string | null;
 }
 
 interface SchoolOption {

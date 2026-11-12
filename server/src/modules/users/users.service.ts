@@ -2,8 +2,14 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
   Logger,
 } from '@nestjs/common';
+import { TdmpConfig } from '../tdmp/tdmp.config';
+
+/** Refusal for edits TDMP owns (users come from TDMP in AUTH_MODE=tdmp). */
+const tdmpManaged = (message: string) =>
+  new ForbiddenException({ code: 'TDMP_MANAGED', message });
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as crypto from 'crypto';
@@ -44,7 +50,16 @@ export class UsersService {
     private readonly authService: AuthService,
     private readonly sessionsService: SessionsService,
     private readonly passwordService: PasswordService,
+    private readonly tdmpConfig: TdmpConfig,
   ) {}
+
+  /** AUTH_MODE=tdmp: accounts are created by signing in with TDMP. */
+  private assertLocalAccountsOpen() {
+    if (!this.tdmpConfig.passwordLoginOpen)
+      throw tdmpManaged(
+        'Users come from TDMP. They appear here after their first sign-in.',
+      );
+  }
 
   async findAll() {
     return this.userRepository.find({
@@ -60,6 +75,8 @@ export class UsersService {
         'lastLoginAt',
         'mustChangePassword',
         'totpEnabled',
+        'authSource',
+        'tdmpUserId',
       ],
     });
   }
@@ -76,6 +93,7 @@ export class UsersService {
    * the user is emailed a code to choose their own (WS10.4).
    */
   async create(dto: CreateUserDto, actor?: AuditActor, meta: RequestMeta = {}) {
+    this.assertLocalAccountsOpen();
     const email = dto.email.trim().toLowerCase();
     const existing = await this.userRepository.findOne({ where: { email } });
     if (existing)
@@ -128,6 +146,17 @@ export class UsersService {
     meta: RequestMeta = {},
   ) {
     const user = await this.findOne(id);
+    // Name, email, role and location of a TDMP user are refreshed from TDMP
+    // at every sign-in; only switching the account off is local.
+    if (user.authSource === 'tdmp') {
+      const edited = Object.entries(dto)
+        .filter(([k, v]) => v !== undefined && k !== 'isActive')
+        .map(([k]) => k);
+      if (edited.length)
+        throw tdmpManaged(
+          `Managed in TDMP: ${edited.join(', ')}. Only "active" can be changed here.`,
+        );
+    }
     const changes: Record<string, [unknown, unknown]> = {};
     const { roleId, email, ...rest } = dto;
 
@@ -190,18 +219,25 @@ export class UsersService {
 
   async updateProfile(id: string, dto: UpdateProfileDto) {
     const user = await this.findOne(id);
+    if (
+      user.authSource === 'tdmp' &&
+      ((dto.firstName !== undefined && dto.firstName !== user.firstName) ||
+        (dto.lastName !== undefined && dto.lastName !== user.lastName))
+    )
+      throw tdmpManaged('Your name comes from TDMP. Change it there.');
     Object.assign(user, dto);
     const saved = await this.userRepository.save(user);
     return this.authService.publicUser(saved);
   }
 
   changePassword(
-    user: Pick<User, 'id' | 'email' | 'firstName'>,
+    user: Pick<User, 'id' | 'email' | 'firstName' | 'authSource'>,
     currentPass: string,
     newPass: string,
     currentSessionId?: string,
     meta: RequestMeta = {},
   ) {
+    this.authService.assertLocalAccount(user);
     return this.authService.changePassword(
       user,
       currentPass,
@@ -235,6 +271,7 @@ export class UsersService {
     actor?: AuditActor,
     meta: RequestMeta = {},
   ) {
+    this.assertLocalAccountsOpen();
     const results = {
       created: 0,
       skipped: 0,
@@ -355,11 +392,13 @@ export class UsersService {
     return results;
   }
 
-  sendReset(id: string, actor: AuditActor, meta: RequestMeta = {}) {
+  async sendReset(id: string, actor: AuditActor, meta: RequestMeta = {}) {
+    this.authService.assertLocalAccount(await this.findOne(id));
     return this.authService.sendAdminReset(id, actor, meta);
   }
 
-  resetMfa(id: string, actor: AuditActor, meta: RequestMeta = {}) {
+  async resetMfa(id: string, actor: AuditActor, meta: RequestMeta = {}) {
+    this.authService.assertLocalAccount(await this.findOne(id));
     return this.authService.adminResetMfa(id, actor, meta);
   }
 
