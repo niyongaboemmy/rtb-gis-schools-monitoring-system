@@ -1,9 +1,9 @@
 # RTB 3D GIS ↔ TDMP: Integration Requests
 
 **From:** RTB 3D GIS backend team · **To:** TDMP technical team · **First sent:** 2026-11-12 · **Updated:** 2026-11-12 (after go-live)
-**Context:** RTB 3D GIS uses TDMP as the source of truth for school profile, enrolment, staffing and (soon) user sign-in. The school sync has been **live in production since 2026-11-12**. This document gives the status and lists what we still need from you.
+**Context:** RTB 3D GIS uses TDMP as the source of truth for school profile, enrolment, staffing and (soon) user sign-in. The school sync has been **live in production since 2026-11-12**. The exchange now goes both ways: RTB 3D GIS also **provides** TDMP with school coordinates and embeddable dashboards and maps (see "What RTB GIS provides to TDMP"). This document gives the status and lists what we still need from you.
 
-The integration is **read-only** towards TDMP. We never write to TDMP.
+Both directions are **read-only**: we never write to TDMP, and TDMP's key cannot change RTB GIS data.
 
 ## Status at a glance
 
@@ -21,9 +21,34 @@ The integration is **read-only** towards TDMP. We never write to TDMP.
 | R10 | Staging and test accounts | P2 | ⏳ Waiting |
 | R11 | Outcome data | P3 | ⏳ Waiting |
 | R12 | Rotate the API key; separate keys per environment | P1 | ⏳ Waiting: production key now installed, please rotate |
-| **R13** | **GPS for 16 TVET schools** | **P2** | **New** |
+| R13 | GPS for 16 TVET schools | P2 | ⏳ Waiting |
+| **R14** | **Take school coordinates from RTB GIS** | **P2** | **New: ready on our side** |
+| **R15** | **Embed RTB GIS dashboards and maps in TDMP** | **P2** | **New: ready on our side** |
+| **R16** | **TDMP sites allowed to show embedded views** | **P2** | **New** |
 
-Our admin page re-checks these automatically: when you grant an endpoint, it appears as met on our side without any change from us.
+Our admin page re-checks these automatically: when you grant an endpoint, it appears as met on our side without any change from us. R14 and R15 tick themselves off when TDMP first uses our partner key and opens an embedded view.
+
+## What RTB GIS provides to TDMP
+
+Everything below is live and documented, with copy-ready code and a "try it" console, at **https://rtb.aerovyntech.com/developers**.
+
+| What | How | Notes |
+|---|---|---|
+| **Partner key** | Issued by an RTB GIS administrator (TDMP integration page ▸ Shared with TDMP); shown once | Send as `Authorization: ApiKey rtbgis_pk_…` (or `X-API-Key`). Stored hashed on our side, revocable at any time |
+| **School coordinates** | `GET /api/v1/partner/schools/coordinates` (JSON or `format=geojson`) | WGS84 points with their source and quality (`surveyed`, `manual`, `tdmp`, `unverified`); `updatedSince` for incremental pulls |
+| **School list / one school** | `GET /api/v1/partner/schools`, `GET /api/v1/partner/schools/{schoolCode}` | Location quality, condition score, priority, which views have imagery / a 3D model, campus boundary (GeoJSON) |
+| **Embedded views** | `POST /api/v1/partner/embed-links` → put the returned `url` in an iframe | `school-dashboard`, `school-map-2d`, `school-map-3d`, `national-map` (optionally one province / district) |
+| **Key check** | `GET /api/v1/partner/ping` | Returns the partner and scopes |
+
+How access is controlled:
+- **Scopes per key:** `coordinates:read`, `schools:read`, `embed:create`.
+- **Embedded views are read-only and scoped.** A link covers one school (or one area for the national map). It expires in minutes (60–3600 s), and the view it opens lasts the session length you choose (5–480 min). The token travels in the URL fragment, so it is never sent to servers or in Referer headers.
+- **Revocation is immediate:** revoking a key ends every embedded view opened with it.
+- **Everything is audited.** Each embedded view opened is recorded with partner, view and scope.
+- **Framing is restricted** to the sites registered with the key (R16).
+- **No personal data:** coordinates and school figures only.
+
+RTB GIS users with an account can also open the same views directly (`/embed/schools/{id}/dashboard`, `/map-2d`, `/map-3d`, `/embed/map`). They see them with their own role and area.
 
 ## Data we take from TDMP
 
@@ -130,6 +155,52 @@ TDMP has no GPS point inside Rwanda for these schools, so they are not yet on ou
 
 Where TDMP does have GPS it is accurate. For example, FR Ramon Kabuga TSS (280705) is within 0.7 km of its drone-surveyed buildings.
 
+#### R14 (P2, new): Take school coordinates from RTB GIS
+
+RTB GIS places schools from drone surveys (KMZ site maps, 3D models) and GIS staff work. Reading our points keeps TDMP's `gpsLat` / `gpsLong` accurate without re-typing them.
+
+1. Store the partner key we send you on the TDMP **server** only.
+2. Run a daily job after 07:30 Kigali: first a full pull of `GET /api/v1/partner/schools/coordinates?limit=1000` (all pages), then `updatedSince=<previous generatedAt>`.
+3. Update `gpsLat` / `gpsLong` when `quality` is `surveyed` or `manual` and the point is inside Rwanda (lat −2.95…−0.95, lon 28.75…31.0). Skip `tdmp` (that point came from you) and `unverified`.
+
+```http
+GET /api/v1/partner/schools/coordinates?updatedSince=2026-11-12T11:00:00Z&limit=1000
+Authorization: ApiKey rtbgis_pk_…
+
+200 OK
+{ "data": [ { "schoolCode": "280705", "latitude": -1.8835, "longitude": 29.9379,
+              "quality": "surveyed", "source": "kmz", "updatedAt": "2026-11-12T10:40:00Z" } ],
+  "page": { "current": 1, "limit": 1000, "total": 1 }, "generatedAt": "2026-11-13T07:30:00Z" }
+```
+
+Ready-made Node.js and Python jobs: https://rtb.aerovyntech.com/developers#coordinates.
+
+#### R15 (P2, new): Embed RTB GIS dashboards and maps in TDMP
+
+On a school page, TDMP can show the school's condition dashboard, site map and 3D model, read-only and limited to that school, with no second login:
+
+1. On the TDMP **server**, for each page view, call `POST /api/v1/partner/embed-links` with the view and the school code.
+2. Put the returned `url` in an iframe.
+
+```http
+POST /api/v1/partner/embed-links
+Authorization: ApiKey rtbgis_pk_…
+Content-Type: application/json
+
+{ "view": "school-dashboard", "schoolCode": "280705", "sessionMinutes": 120 }
+```
+
+```html
+<iframe src="{url from the response}" style="width:100%;height:720px;border:0"
+        allow="fullscreen" referrerpolicy="no-referrer"></iframe>
+```
+
+Views: `school-dashboard`, `school-map-2d`, `school-map-3d`, `national-map` (add `province` / `district` to limit it). Try a live preview with your key at https://rtb.aerovyntech.com/developers#embed.
+
+#### R16 (P2, new): TDMP sites allowed to show embedded views
+
+Browsers only show RTB GIS inside sites we allow (`Content-Security-Policy: frame-ancestors`), which protects users from clickjacking. Please send every origin that will host the iframes (production and staging), for example `https://tdmp.rtb.gov.rw`, and tell us before adding one.
+
 #### R5 (P3): Change feed
 
 Optional, since volume is small: an `updatedSince=<ISO>` filter on `/schools`, or a webhook on re-materialisation. Please also confirm the daily materialisation time (we observe about 06:00 Kigali) so our daily run stays right after it.
@@ -217,6 +288,7 @@ A staging TDMP (or test tenant) with one test user per role in R7.
 ## What we do on our side
 
 - Sync on a schedule (freshness check, daily full run) and log every run, with a report, in our audit trail.
+- Run the partner API and embedded views described above, with keys issued and revoked by our administrators.
 - Show TDMP-sourced fields as read-only and send corrections back through a "Request a change" process.
 - Keep the partner key on our server only. It never goes to browsers.
 - Store only school-level aggregates and the signed-in user's identity claims (Law 058/2021).

@@ -176,6 +176,12 @@ export class AuthService {
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
+    // Partner embed accounts never sign in.
+    if (user.authSource === 'partner') {
+      await this.registerFailure(user, 'partner_account', meta);
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
+    }
+
     const isPasswordValid = await user.validatePassword(loginDto.password);
     if (!isPasswordValid) {
       await this.registerFailure(user, 'bad_password', meta);
@@ -1213,6 +1219,8 @@ export class AuthService {
   assertLocalAccount(user: Pick<User, 'authSource'>) {
     if (user?.authSource === 'tdmp')
       throw new BadRequestException(TDMP_MANAGED);
+    if (user?.authSource === 'partner')
+      throw new BadRequestException('Partner accounts cannot sign in.');
   }
 
   private audit(entry: AuditEntry) {

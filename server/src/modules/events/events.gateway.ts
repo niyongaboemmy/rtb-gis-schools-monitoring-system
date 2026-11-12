@@ -12,6 +12,7 @@ import { Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { applyEmbedClaims, type EmbedClaims } from '../partner/partner-embed';
 import { Server, Socket } from 'socket.io';
 import { AuthService } from '../auth/auth.service';
 import { School } from '../schools/entities/school.entity';
@@ -77,8 +78,19 @@ export class EventsGateway
     const token = extractSocketToken(client);
     if (!token) return null;
     try {
-      const payload = await this.jwtService.verifyAsync<{ sub: string }>(token);
-      const user = await this.authService.validateUser(payload.sub);
+      const payload = await this.jwtService.verifyAsync<{
+        sub: string;
+        emb?: EmbedClaims;
+      }>(token);
+      const loaded = await this.authService.validateUser(payload.sub);
+      // Embed sessions only reach rooms inside the link's scope; a partner
+      // account without an embed claim is refused.
+      const user = payload.emb
+        ? applyEmbedClaims(loaded, payload.emb)
+        : loaded.authSource === 'partner'
+          ? null
+          : loaded;
+      if (!user) return null;
       client.data.user = user;
       return user;
     } catch {

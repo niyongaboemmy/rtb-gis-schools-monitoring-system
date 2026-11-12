@@ -11,12 +11,14 @@ import {
   CloudOff,
   Compass,
   Eye,
+  Globe2,
   History,
+  KeyRound,
   Link2,
   Link2Off,
   ListChecks,
+  MapPin,
   MapPinOff,
-  PlugZap,
   RefreshCw,
   School,
   ShieldCheck,
@@ -36,7 +38,6 @@ import {
   type ConnectionReport,
   type CoverageArea,
   type ReportSchool,
-  type RequestState,
   type SyncRun,
   type TdmpStatus,
   type TdmpSyncSettings,
@@ -52,6 +53,8 @@ import { StatusPill } from "../components/ui/status-pill";
 import { fieldSurface } from "../components/ui/field-styles";
 import { EASE_OUT, GLASS, PILL_BUTTON, type Tone } from "../components/ui/surfaces";
 import { HelpHint, HowItWorks, NeedsLocationList, SetupChecklist, type SetupStep } from "../components/tdmp/TdmpGuide";
+import { RequestsGuide } from "../components/tdmp/RequestsGuide";
+import { PartnerAccess, type PartnerKey } from "../components/tdmp/PartnerAccess";
 import {
   ActivityList,
   AttentionList,
@@ -72,12 +75,6 @@ const RUN_STATUS: Record<SyncRun["status"], { label: string; tone: Tone }> = {
   failed: { label: "Failed", tone: "danger" },
 };
 
-const REQUEST_STATE: Record<RequestState, { label: string; tone: Tone }> = {
-  done: { label: "Done", tone: "good" },
-  partial: { label: "Partly done", tone: "warn" },
-  waiting: { label: "Waiting", tone: "neutral" },
-  manual: { label: "To confirm", tone: "primary" },
-};
 
 /** Probe interval in a few words. */
 const every = (min: number) => (min < 60 ? `every ${min} min` : min === 60 ? "every hour" : `every ${min / 60} h`);
@@ -327,71 +324,6 @@ function ScheduleForm({ settings, onSaved }: { settings: TdmpSyncSettings; onSav
   );
 }
 
-/** Endpoints and the request tracker. */
-function ConnectionDetails({ report, checking, onCheck }: { report: ConnectionReport | null; checking: boolean; onCheck: () => void }) {
-  if (!report) return <ListSkeleton rows={3} label="Checking TDMP…" />;
-  const done = report.requests.filter((r) => r.state === "done").length;
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="flex flex-wrap items-center gap-2 text-sm">
-          {report.authorised ? (
-            <StatusPill tone="good">Connected</StatusPill>
-          ) : (
-            <StatusPill tone="danger">{report.configured.apiKey ? (report.reachable ? "Key refused" : "Unreachable") : "No API key"}</StatusPill>
-          )}
-          <span className="text-muted-foreground">
-            {report.tvetSchools != null ? `${formatNumber(report.tvetSchools)} TVET schools · ` : ""}checked {formatRelative(report.checkedAt)}
-          </span>
-        </span>
-        <Button variant="outline" className={PILL_BUTTON.small} onClick={onCheck} isLoading={checking} disabled={checking} data-tooltip="Ask TDMP again now: key, endpoints and request status">
-          <PlugZap className="h-3.5 w-3.5" aria-hidden /> Test again
-        </Button>
-      </div>
-
-      <div>
-        <p className="mb-2 text-[13px] font-medium text-muted-foreground">What our key can read</p>
-        <ul className="grid gap-1.5 sm:grid-cols-2" aria-label="TDMP endpoints">
-          {report.endpoints.map((e) => (
-            <li key={e.key} className="flex items-center justify-between gap-3 rounded-xl bg-slate-900/[0.03] px-3 py-2 text-sm dark:bg-white/[0.035]">
-              <span className="min-w-0 truncate text-foreground" title={e.path}>
-                {e.label}
-              </span>
-              <StatusPill tone={e.ok ? "good" : e.status === 403 ? "warn" : "danger"} dot={false}>
-                {e.ok ? "Readable" : e.status === 403 ? `Waiting ${e.request ?? ""}`.trim() : e.status === 0 ? "No answer" : String(e.status)}
-              </StatusPill>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div>
-        <p className="mb-2 text-[13px] font-medium text-muted-foreground">
-          Requests to TDMP · {formatNumber(done)} of {formatNumber(report.requests.length)} done
-        </p>
-        <ul className="divide-y divide-border/40" aria-label="Requests to the TDMP team">
-          {report.requests.map((r) => {
-            const s = REQUEST_STATE[r.state];
-            return (
-              <li key={r.id} className="flex items-start justify-between gap-3 py-2">
-                <span className="min-w-0">
-                  <span className="block text-sm text-foreground">
-                    <span className="font-mono text-xs text-muted-foreground">{r.id}</span> {r.title}
-                  </span>
-                  <span className="block text-xs text-muted-foreground">{r.evidence}</span>
-                </span>
-                <StatusPill tone={s.tone} className="shrink-0">
-                  {s.label}
-                </StatusPill>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-    </div>
-  );
-}
-
 /** Fields of one data area: live, or waiting for a named request. */
 function CoverageDetails({ area, requests }: { area: CoverageArea; requests: ConnectionReport["requests"] | undefined }) {
   const c = areaCoverage(area, requests);
@@ -436,7 +368,8 @@ type ModalKey =
   | { kind: "how" }
   | { kind: "locations" }
   | { kind: "unlinked" }
-  | { kind: "missing" };
+  | { kind: "missing" }
+  | { kind: "partners" };
 
 /** Admin ▸ TDMP integration: a summary of the sync, with details in modals. */
 export default function TdmpIntegration() {
@@ -456,6 +389,7 @@ export default function TdmpIntegration() {
   const [imported, setImported] = useState<Set<string>>(new Set());
   const [savingAuto, setSavingAuto] = useState(false);
   const [modal, setModal] = useState<ModalKey | null>(null);
+  const [partnerKeys, setPartnerKeys] = useState<PartnerKey[] | null>(null);
   const wasRunning = useRef(false);
   const close = useCallback(() => setModal(null), []);
 
@@ -472,6 +406,10 @@ export default function TdmpIntegration() {
     ]);
     setRuns(runsRes.data ?? []);
     setUnlinked(unlinkedRes.data ?? []);
+    api
+      .get<PartnerKey[]>("/partner-keys")
+      .then(({ data }) => setPartnerKeys(data))
+      .catch(() => setPartnerKeys([]));
   }, []);
 
   const checkConnection = useCallback(
@@ -684,7 +622,7 @@ export default function TdmpIntegration() {
       case "schedule":
         return "Automatic sync";
       case "connection":
-        return "Connection and requests";
+        return "Connection and requests to TDMP";
       case "how":
         return "How it works";
       case "locations":
@@ -693,9 +631,14 @@ export default function TdmpIntegration() {
         return "Schools not linked to TDMP";
       case "missing":
         return "Missing from TDMP";
+      case "partners":
+        return "Partner access: what TDMP reads from RTB GIS";
     }
   };
-  const wide = modal && ["connection", "how", "run", "history", "coverage"].includes(modal.kind);
+  const wide = modal && ["how", "run", "history", "coverage"].includes(modal.kind);
+  const modalWidth = modal?.kind === "connection" ? "max-w-6xl" : modal?.kind === "partners" ? "max-w-3xl" : wide ? "max-w-2xl" : "max-w-lg";
+  const activeKeys = (partnerKeys ?? []).filter((k) => !k.revokedAt);
+  const lastPartnerUse = activeKeys.map((k) => k.lastUsedAt).filter(Boolean).sort().pop() ?? null;
 
   return (
     <div className="mx-auto max-w-7xl space-y-5 pb-12">
@@ -878,12 +821,34 @@ export default function TdmpIntegration() {
             <CoverageGrid requests={connection?.requests} onOpen={(area) => setModal({ kind: "coverage", area })} />
           </Card>
 
+          <Card
+            index={2}
+            title="Shared with TDMP"
+            icon={KeyRound}
+            action={
+              <a href="/developers" target="_blank" rel="noreferrer" className={LINK_BUTTON} data-tooltip="The partner API guide for TDMP's developers (new tab)">
+                Developer guide
+              </a>
+            }
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="grid min-w-0 flex-1 grid-cols-1 gap-2 min-[520px]:grid-cols-3">
+                <StatTile icon={KeyRound} label="Active partner keys" value={partnerKeys ? String(activeKeys.length) : "…"} hint={activeKeys.map((k) => k.partner).join(", ") || "None yet"} tone={activeKeys.length ? "good" : "warn"} tip="Keys that let TDMP's server read coordinates and embed views" onClick={() => setModal({ kind: "partners" })} />
+                <StatTile icon={MapPin} label="Coordinates feed" value={activeKeys.some((k) => k.scopes.includes("coordinates:read")) ? "Open" : "Closed"} hint="GET /partner/schools/coordinates" tone="neutral" tip="TDMP takes school coordinates from here to update its GPS" onClick={() => setModal({ kind: "partners" })} />
+                <StatTile icon={Globe2} label="Last partner call" value={lastPartnerUse ? formatRelative(lastPartnerUse) : "Never"} hint="Dashboards, 2D and 3D maps can be embedded" tone="neutral" tip="When a partner key was last used" onClick={() => setModal({ kind: "partners" })} />
+              </div>
+              <Button variant="outline" className={PILL_BUTTON.small} onClick={() => setModal({ kind: "partners" })} data-tooltip="Create, view or revoke partner keys">
+                <KeyRound className="h-3.5 w-3.5" aria-hidden /> Manage keys
+              </Button>
+            </div>
+          </Card>
+
           <div className="grid gap-5 lg:grid-cols-2">
-            <Card index={2} title="Needs attention" icon={AlertTriangle}>
+            <Card index={3} title="Needs attention" icon={AlertTriangle}>
               <AttentionList items={attention} />
             </Card>
             <Card
-              index={3}
+              index={4}
               title="Recent activity"
               icon={Activity}
               action={
@@ -899,7 +864,7 @@ export default function TdmpIntegration() {
       )}
 
       {/* Details */}
-      <Modal isOpen={!!modal} onClose={close} title={modal ? modalTitle(modal) : ""} maxWidth={wide ? "max-w-2xl" : "max-w-lg"}>
+      <Modal isOpen={!!modal} onClose={close} title={modal ? modalTitle(modal) : ""} maxWidth={modalWidth}>
         {modal?.kind === "setup" && <SetupChecklist steps={steps} />}
         {modal?.kind === "step" && (
           <div className="space-y-4">
@@ -945,8 +910,14 @@ export default function TdmpIntegration() {
             }}
           />
         )}
-        {modal?.kind === "connection" && <ConnectionDetails report={connection} checking={checking} onCheck={() => void checkConnection(true)} />}
+        {modal?.kind === "connection" &&
+          (connection ? (
+            <RequestsGuide report={connection} checking={checking} onCheck={() => void checkConnection(true)} />
+          ) : (
+            <ListSkeleton rows={4} label="Checking TDMP…" />
+          ))}
         {modal?.kind === "how" && <HowItWorks />}
+        {modal?.kind === "partners" && <PartnerAccess onChanged={setPartnerKeys} />}
         {modal?.kind === "locations" &&
           (lastSync ? (
             <NeedsLocationList schools={waitingForLocation} onAdd={addWithLocation} />
