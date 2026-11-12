@@ -126,6 +126,23 @@ export function isTdmpLinked(school: { tdmpSchoolCode?: unknown } | null | undef
   return typeof school?.tdmpSchoolCode === "string" && school.tdmpSchoolCode.trim() !== "";
 }
 
+/** Where a school's profile comes from, for directory filters and badges. */
+export type SchoolSource = "tdmp" | "missing" | "local";
+
+export function schoolSource(school: {
+  tdmpSchoolCode?: string | null;
+  tdmpData?: { missingFromTdmp?: boolean } | null;
+}): SchoolSource {
+  if (!isTdmpLinked(school)) return "local";
+  return school.tdmpData?.missingFromTdmp ? "missing" : "tdmp";
+}
+
+export const SCHOOL_SOURCE_LABEL: Record<SchoolSource, string> = {
+  tdmp: "From TDMP",
+  missing: "Missing from TDMP",
+  local: "RTB GIS only",
+};
+
 /** Short hint shown next to a locked field. */
 export const TDMP_LOCK_HINT = "Managed in TDMP — change it there";
 

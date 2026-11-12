@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   AlertTriangle,
@@ -8,6 +8,9 @@ import {
   CircleDashed,
   Clock,
   CloudOff,
+  Compass,
+  MapPinned,
+  Route,
   Eye,
   History,
   Link2,
@@ -45,6 +48,7 @@ import { StatusPill } from "../components/ui/status-pill";
 import { fieldSurface } from "../components/ui/field-styles";
 import { EASE_OUT, GLASS, PILL_BUTTON, type Tone } from "../components/ui/surfaces";
 import { FloatingStat } from "../components/dashboard/FloatingStat";
+import { HelpHint, HowItWorks, NeedsLocationList, SetupChecklist, type SetupStep } from "../components/tdmp/TdmpGuide";
 import {
   SettingsPanel,
   DataTable,
@@ -285,8 +289,12 @@ function AutomationPanel({
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-4 rounded-2xl bg-slate-900/[0.03] px-4 py-3 ring-1 ring-inset ring-slate-900/5 dark:bg-white/[0.035] dark:ring-white/8">
           <div className="min-w-0">
-            <p id="tdmp-auto-label" className="text-sm font-medium text-foreground">
+            <p id="tdmp-auto-label" className="flex items-start gap-1 text-sm font-medium text-foreground">
               Run automatically
+              <HelpHint label="automatic sync">
+                RTB GIS asks TDMP whether its data changed (one small request) at the interval below, and syncs straight away when it did. The
+                daily run catches anything else. Pausing never deletes data.
+              </HelpHint>
             </p>
             <p className="text-xs text-muted-foreground">
               {autoSync
@@ -364,44 +372,28 @@ function AutomationPanel({
 }
 
 /** Connection check and where each request to the TDMP team stands. */
-function ConnectionPanel({ index }: { index: number }) {
-  const toast = useToast();
-  const [report, setReport] = useState<ConnectionReport | null>(null);
-  const [checking, setChecking] = useState(false);
-
-  const check = useCallback(
-    async (refresh: boolean) => {
-      setChecking(true);
-      try {
-        const { data } = await api.get<ConnectionReport>("/tdmp/connection", { params: refresh ? { refresh: 1 } : {} });
-        setReport(data);
-        if (refresh) {
-          if (data.authorised) toast.success(`Connected to TDMP (${formatNumber(data.latencyMs ?? 0)} ms).`);
-          else toast.error(data.reachable ? "TDMP refused our API key." : "TDMP can't be reached.");
-        }
-      } catch (err) {
-        toast.error(apiErrorMessage(err, "Could not check the TDMP connection."));
-      } finally {
-        setChecking(false);
-      }
-    },
-    [toast],
-  );
-
-  useEffect(() => {
-    void check(false);
-  }, [check]);
-
+function ConnectionPanel({
+  index,
+  report,
+  checking,
+  onCheck,
+}: {
+  index: number;
+  report: ConnectionReport | null;
+  checking: boolean;
+  onCheck: () => void;
+}) {
   const done = report?.requests.filter((r) => r.state === "done").length ?? 0;
 
   return (
     <SettingsPanel
       index={index}
+      className="scroll-mt-24"
       title="Connection and TDMP requests"
       subtitle="What our key can read today, and what we are still waiting for from the TDMP team"
       icon={PlugZap}
       actions={
-        <Button variant="outline" className={PILL_BUTTON.small} onClick={() => void check(true)} isLoading={checking} disabled={checking}>
+        <Button variant="outline" className={PILL_BUTTON.small} onClick={onCheck} isLoading={checking} disabled={checking}>
           <PlugZap className="h-3.5 w-3.5" aria-hidden /> Test connection
         </Button>
       }
@@ -496,7 +488,38 @@ export default function TdmpIntegration() {
   const [starting, setStarting] = useState<"sync" | "dry" | null>(null);
   const [codes, setCodes] = useState<Record<string, string>>({});
   const [linking, setLinking] = useState<string | null>(null);
+  const [connection, setConnection] = useState<ConnectionReport | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [imported, setImported] = useState<Set<string>>(new Set());
+  const [savingAuto, setSavingAuto] = useState(false);
+  const [guideOpen, setGuideOpen] = useState<boolean | null>(() => {
+    try {
+      const v = window.localStorage.getItem("tdmp.guideOpen");
+      return v === null ? null : v === "1";
+    } catch {
+      return null;
+    }
+  });
   const wasRunning = useRef(false);
+
+  const checkConnection = useCallback(
+    async (refresh: boolean) => {
+      setChecking(true);
+      try {
+        const { data } = await api.get<ConnectionReport>("/tdmp/connection", { params: refresh ? { refresh: 1 } : {} });
+        setConnection(data);
+        if (refresh) {
+          if (data.authorised) toast.success(`Connected to TDMP (${formatNumber(data.latencyMs ?? 0)} ms).`);
+          else toast.error(data.reachable ? "TDMP refused our API key." : "TDMP can't be reached.");
+        }
+      } catch (err) {
+        toast.error(apiErrorMessage(err, "Could not check the TDMP connection."));
+      } finally {
+        setChecking(false);
+      }
+    },
+    [toast],
+  );
 
   const loadStatus = useCallback(async () => {
     const { data } = await api.get<TdmpStatus>("/tdmp/status");
@@ -530,9 +553,11 @@ export default function TdmpIntegration() {
   }, [loadStatus, loadDetails, toast]);
 
   useEffect(() => {
-    if (isNational) void loadAll();
-    else setLoading(false);
-  }, [loadAll, isNational]);
+    if (isNational) {
+      void loadAll();
+      void checkConnection(false);
+    } else setLoading(false);
+  }, [loadAll, checkConnection, isNational]);
 
   // While a run is going, follow its progress; when it ends, reload once.
   const running = !!status?.running;
@@ -586,6 +611,100 @@ export default function TdmpIntegration() {
       toast.error(apiErrorMessage(err, `Could not link ${school.name}.`));
     } finally {
       setLinking(null);
+    }
+  };
+
+  const setAutoSync = async (on: boolean) => {
+    setSavingAuto(true);
+    try {
+      await api.patch("/tdmp/settings", { autoSync: on });
+      toast.success(on ? "Automatic sync is on." : "Automatic sync is paused.");
+      await loadStatus();
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Could not change automatic sync."));
+    } finally {
+      setSavingAuto(false);
+    }
+  };
+
+  const addWithLocation = async (school: ReportSchool, latitude: number, longitude: number) => {
+    try {
+      await api.post("/tdmp/schools/import", { schoolCode: school.code, latitude, longitude });
+      toast.success(`${school.name} is now in RTB GIS.`);
+      setImported((prev) => new Set(prev).add(school.code));
+      void loadStatus().catch(() => undefined);
+      return true;
+    } catch (err) {
+      toast.error(apiErrorMessage(err, `Could not add ${school.name}.`));
+      return false;
+    }
+  };
+
+  const goTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  // The latest real sync decides what is still waiting for a person.
+  const lastSync = useMemo(() => runs.find((r) => !r.dryRun && r.status === "completed") ?? null, [runs]);
+  const waitingForLocation = useMemo(
+    () => (lastSync?.report?.needsLocation ?? []).filter((s) => !imported.has(s.code)),
+    [lastSync, imported],
+  );
+
+  const steps: SetupStep[] = status
+    ? [
+        {
+          id: "connect",
+          title: "Connect to TDMP",
+          explain: "RTB GIS needs TDMP's read-only partner key on the server. The connection test confirms TDMP accepts it.",
+          done: !!connection?.authorised,
+          blockedNote: !status.enabled.sync ? "Ask the server administrator to add TDMP_API_KEY" : undefined,
+          action: status.enabled.sync ? { label: "Test connection", onClick: () => void checkConnection(true), busy: checking } : undefined,
+        },
+        {
+          id: "preview",
+          title: "Preview with a dry run",
+          explain: "A dry run reads TDMP and lists what would change, without changing anything. Do this before the first sync.",
+          done: runs.some((r) => r.dryRun && r.status === "completed") || !!lastSync,
+          action: status.enabled.sync ? { label: "Start dry run", onClick: () => void start(true), busy: starting === "dry" } : undefined,
+        },
+        {
+          id: "sync",
+          title: "Run the first sync",
+          explain: "Brings in every TVET school TDMP knows and updates the profiles of schools already in RTB GIS. Map locations are never moved.",
+          done: !!lastSync,
+          action: status.enabled.sync ? { label: "Sync now", onClick: () => void start(false), busy: starting === "sync" } : undefined,
+        },
+        {
+          id: "link",
+          title: "Link schools that exist only in RTB GIS",
+          explain: `Schools created here before TDMP (often with placeholder codes) must be matched to their TDMP code, or the same school appears twice.${unlinked.length ? ` ${formatNumber(unlinked.length)} left.` : ""}`,
+          done: !!lastSync && unlinked.length === 0,
+          action: { label: "Review", onClick: () => goTo("tdmp-unlinked") },
+        },
+        {
+          id: "locate",
+          title: "Place schools TDMP has no GPS for",
+          explain: `These schools are in TDMP but not on the map yet: give each one a location.${waitingForLocation.length ? ` ${formatNumber(waitingForLocation.length)} left.` : ""}`,
+          done: !!lastSync && waitingForLocation.length === 0,
+          action: { label: "Add locations", onClick: () => goTo("tdmp-location") },
+        },
+        {
+          id: "auto",
+          title: "Turn on automatic sync",
+          explain: "RTB GIS then checks TDMP every hour and runs a full sync every morning, so school details stay current without anyone pressing a button.",
+          done: status.settings.autoSync,
+          action: status.enabled.sync ? { label: "Turn on", onClick: () => void setAutoSync(true), busy: savingAuto } : undefined,
+        },
+      ]
+    : [];
+  const setupDone = steps.length > 0 && steps.every((st) => st.done);
+  const showGuide = guideOpen ?? !setupDone;
+  const toggleGuide = () => {
+    const next = !showGuide;
+    setGuideOpen(next);
+    try {
+      window.localStorage.setItem("tdmp.guideOpen", next ? "1" : "0");
+    } catch {
+      // Remembering the choice is a convenience only.
     }
   };
 
@@ -672,7 +791,7 @@ export default function TdmpIntegration() {
               hint="Ask the server administrator to add the TDMP partner API key to the server settings. This page then runs and schedules the sync."
             />
           </SettingsPanel>
-          <ConnectionPanel index={1} />
+          <ConnectionPanel index={1} report={connection} checking={checking} onCheck={() => void checkConnection(true)} />
         </div>
       ) : (
         <div className="space-y-5">
@@ -683,8 +802,39 @@ export default function TdmpIntegration() {
             </p>
           )}
 
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+            <SettingsPanel
+              index={0}
+              title={setupDone ? "Setup complete" : "Get started"}
+              subtitle={setupDone ? "TDMP keeps RTB GIS up to date on its own" : "Follow these steps once; afterwards it runs by itself"}
+              icon={Route}
+            >
+              <SetupChecklist steps={steps} />
+            </SettingsPanel>
+            <SettingsPanel
+              index={1}
+              title="How it works"
+              subtitle="Tap each step and field to learn more"
+              icon={Compass}
+              actions={
+                <Button variant="ghost" className={PILL_BUTTON.small} onClick={toggleGuide} aria-expanded={showGuide}>
+                  {showGuide ? "Hide" : "Show"}
+                </Button>
+              }
+            >
+              {showGuide ? (
+                <HowItWorks />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  School profiles come from TDMP; the map, buildings and scores stay in RTB GIS. Select “Show” for the full picture.
+                </p>
+              )}
+            </SettingsPanel>
+          </div>
+
+          <div id="tdmp-sync" className="scroll-mt-24">
           <SettingsPanel
-            index={0}
+            index={2}
             title="Sync now"
             subtitle="Pull the latest school data from TDMP right away, or preview what would change"
             icon={RefreshCw}
@@ -715,6 +865,27 @@ export default function TdmpIntegration() {
               ) : (
                 <p className="text-sm text-muted-foreground">No sync has run yet. Start with a dry run to review the first link.</p>
               )}
+              <p className="flex flex-wrap items-start gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <span className="inline-flex items-start gap-1">
+                  Dry run
+                  <HelpHint label="a dry run">
+                    Reads TDMP and shows what a sync would add, link or change, without changing anything. Safe to run any time.
+                  </HelpHint>
+                </span>
+                <span className="inline-flex items-start gap-1">
+                  Sync now
+                  <HelpHint label="sync now">
+                    Applies TDMP's latest data to RTB GIS right away, instead of waiting for the next automatic run. Usually takes under a minute.
+                  </HelpHint>
+                </span>
+                <span className="inline-flex items-start gap-1">
+                  Linked school
+                  <HelpHint label="a linked school">
+                    A school matched to its TDMP code. Its profile fields then come from TDMP and are read-only here; its map, buildings and
+                    reports stay editable.
+                  </HelpHint>
+                </span>
+              </p>
               <div className="grid gap-2 @xl:grid-cols-2">
                 <FactRow label="Sign in with TDMP" icon={ShieldCheck}>
                   {status.enabled.login ? <StatusPill tone="good">On</StatusPill> : <StatusPill tone="neutral">Off</StatusPill>}
@@ -726,17 +897,40 @@ export default function TdmpIntegration() {
             </div>
           </SettingsPanel>
 
+          </div>
+
           <div className="grid gap-5 xl:grid-cols-2">
-            <AutomationPanel index={1} settings={status.settings} onSaved={() => void loadStatus()} />
-            <SettingsPanel index={2} title="Run report" subtitle="What the selected run found" icon={ListChecks}>
+            <div id="tdmp-auto" className="scroll-mt-24">
+            <AutomationPanel index={3} settings={status.settings} onSaved={() => void loadStatus()} />
+            </div>
+            <SettingsPanel index={4} title="Run report" subtitle="What the selected run found" icon={ListChecks}>
               {selected ? <RunReportView run={selected} /> : <EmptyNote icon={ListChecks} title="No report yet" hint="Run a dry run or a sync to see one." />}
             </SettingsPanel>
           </div>
 
-          <ConnectionPanel index={3} />
+          <div id="tdmp-connection" className="scroll-mt-24">
+            <ConnectionPanel index={6} report={connection} checking={checking} onCheck={() => void checkConnection(true)} />
+          </div>
 
+          <div id="tdmp-location" className="scroll-mt-24">
+            <SettingsPanel
+              index={5}
+              title="Schools waiting for a location"
+              subtitle="In TDMP, not on the map yet: add each with its coordinates"
+              icon={MapPinned}
+              tone={waitingForLocation.length ? "warn" : "good"}
+            >
+              {lastSync ? (
+                <NeedsLocationList schools={waitingForLocation} onAdd={addWithLocation} />
+              ) : (
+                <p className="text-sm text-muted-foreground">Run the first sync to see which schools need a location.</p>
+              )}
+            </SettingsPanel>
+          </div>
+
+          <div id="tdmp-unlinked" className="scroll-mt-24">
           <SettingsPanel
-            index={4}
+            index={7}
             title="Schools not linked to TDMP"
             subtitle="Enter the TDMP school code, or use the suggestion; its details then come from TDMP"
             icon={School}
@@ -810,8 +1004,9 @@ export default function TdmpIntegration() {
               </ul>
             )}
           </SettingsPanel>
+          </div>
 
-          <SettingsPanel index={5} title="Run history" subtitle="Automatic, manual and dry runs; select one to see its report" icon={History} flush>
+          <SettingsPanel index={8} title="Run history" subtitle="Automatic, manual and dry runs; select one to see its report" icon={History} flush>
             {runs.length === 0 ? (
               <EmptyNote icon={History} title="No runs yet" hint="Start a dry run above, or wait for the automatic sync." />
             ) : (

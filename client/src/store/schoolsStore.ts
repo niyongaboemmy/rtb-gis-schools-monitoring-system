@@ -6,6 +6,7 @@
  * the data is fetched once and reused everywhere (SchoolsList, SchoolReporting, etc.)
  */
 import { create } from 'zustand';
+import type { TdmpSchoolData } from '../lib/tdmp';
 import { api } from '../lib/api';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -27,6 +28,10 @@ export interface School {
   /** Populated by the /schools list API — used by the dashboard and the national map */
   latitude?: number;
   longitude?: number;
+  /** Public / Gov Aided / Private / Others (from TDMP). */
+  ownership?: string | null;
+  tdmpSchoolCode?: string | null;
+  tdmpData?: TdmpSchoolData | null;
 }
 
 export interface FacilityItem {

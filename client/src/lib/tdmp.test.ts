@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  schoolSource,
   fieldsLabel,
   progressLabel,
   totalsSummary,
@@ -110,5 +111,13 @@ describe("sync run wording", () => {
   it("says field names plainly", () => {
     expect(fieldsLabel(["name", "totalStudents", "establishedYear"])).toBe("name, learners, year established");
     expect(fieldsLabel(undefined)).toBe("");
+  });
+});
+
+describe("schoolSource", () => {
+  it("tells TDMP-linked, missing and local schools apart", () => {
+    expect(schoolSource({ tdmpSchoolCode: "270501" })).toBe("tdmp");
+    expect(schoolSource({ tdmpSchoolCode: "270501", tdmpData: { missingFromTdmp: true } })).toBe("missing");
+    expect(schoolSource({ tdmpSchoolCode: null })).toBe("local");
   });
 });
