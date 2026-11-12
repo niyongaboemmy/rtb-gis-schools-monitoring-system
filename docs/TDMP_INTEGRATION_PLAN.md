@@ -324,3 +324,21 @@ Deviations from the plan:
 - Boot does not refuse `TDMP_SYNC_ENABLED=true` without a key (the example env enables it by default; production would fail to boot). Without a key the sync is simply off and the admin page says so.
 
 Verified: 666 server unit tests, 61 e2e tests (incl. permission matrix and `test/tdmp-sync.e2e-spec.ts`), 268 client tests, client build + bundle budget, live smoke and a live dry run against TDMP (391 read, 0 failed, nothing written).
+
+## 14. What RTB GIS provides to TDMP (partner API and embedded views)
+
+TDMP also takes data from us. Built 2026-11-12 (`server/src/modules/partner/`); guide for TDMP's developers at `/developers`.
+
+| Piece | Design |
+|---|---|
+| Partner keys | `partner_api_keys` (migration `1788540000000-PartnerApi`): SHA-256 of `rtbgis_pk_…`, scopes (`coordinates:read`, `schools:read`, `embed:create`), allowed origins, created / last used / revoked. Created on the TDMP page ▸ Shared with TDMP (`MANAGE_SCHOOLS`, national). Key shown once |
+| Partner API | `GET /partner/ping`, `/partner/schools/coordinates` (JSON / GeoJSON, `updatedSince`), `/partner/schools`, `/partner/schools/{code}` (with boundary), `POST /partner/embed-links`. `PartnerApiKeyGuard`: `Authorization: ApiKey …` or `X-API-Key`. 120 req/min |
+| Coordinates | Read-only by design: RTB GIS owns location. Each point carries `source` and `quality` (surveyed / manual / tdmp / unverified); TDMP updates its GPS from surveyed / manual points (guide §Coordinates) |
+| Embed links | Short-lived JWT (derived key `rtb-gis/embed-link/v1`, 60–3600 s) for one view and scope; token in the URL **fragment** |
+| Embed sessions | `POST /embed/session` exchanges the link for an access token of the key's own **partner account** (`authSource='partner'`, role `partner_viewer` = viewer's reads, no CREATE_REPORT) with an `emb` claim. `JwtStrategy` and the socket gateway replace the account's location with the link's scope (existing `location.tier` narrowing) and refuse every non-GET. A partner account without `emb` is refused; it can never sign in |
+| Revocation | Revoking a key deactivates its partner account: open embed sessions fail on their next request |
+| Client | `/embed/schools/:id/{dashboard,map-2d,map-3d}`, `/embed/map` (no app chrome) behind `EmbedGate`. Link mode keeps auth in memory only (never the shared localStorage of an RTB GIS tab), never tries the refresh cookie or `/login`, and shows "expired" instead. Opened without a link, the pages use the normal session and role |
+| Framing | nginx sets `frame-ancestors` from the ORIGINAL URI (the SPA fallback rewrites to /index.html): `/embed/*` → `'self'` + TDMP origins; everything else → `'self'` + `X-Frame-Options: SAMEORIGIN`. **Apply by hand** on the server (certbot owns the live file) |
+| Tracking | Requests R14 (coordinates used), R15 (first embed session, from the audit trail), R16 (origins) on the TDMP page |
+
+Tests: `partner-embed.spec.ts`, `test/partner-api.e2e-spec.ts` (keys, scopes, feed, embed scope / read-only / revoke), client `Embed.test.tsx`, `embed.test.ts`, `Developers.test.tsx`, `partner-ui.test.tsx`.

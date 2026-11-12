@@ -298,6 +298,18 @@ export const AUDIT_ACTION_REGISTRY: Record<string, AuditSpec> = {
 
   // ── TDMP integration ───────────────────────────────────────────────────
   'TdmpController.startSync': { action: 'tdmp.sync', target: 'school' },
+  'PartnerKeysController.create': {
+    action: 'partner.key_create',
+    target: 'user',
+  },
+  'PartnerKeysController.revoke': {
+    action: 'partner.key_revoke',
+    target: 'user',
+  },
+  'PartnerApiController.embedLink': {
+    action: 'partner.embed_link',
+    target: 'school',
+  },
   'TdmpController.updateSettings': {
     action: 'tdmp.settings_update',
     target: 'school',
@@ -325,6 +337,8 @@ export const AUDIT_SKIP_HANDLERS = new Set<string>([
   // TDMP sign-in records auth.tdmp_login / auth.tdmp_login_failed itself.
   'TdmpAuthController.start',
   'TdmpAuthController.callback',
+  // Records partner.embed_session itself (with partner, view and scope).
+  'EmbedController.openSession',
 ]);
 
 /** Any AuthController handler matching this is skipped too (2FA verify etc.). */

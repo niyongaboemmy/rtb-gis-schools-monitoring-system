@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import { isEmbedLinkMode, memoryOnlyStorage } from '../lib/embed';
 
 export interface User {
   id: string;
@@ -129,6 +130,9 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'rtb-auth-storage',
+      // Embedded view opened from a signed link: memory only, so it can never
+      // overwrite the profile of an RTB GIS tab open in the same browser.
+      storage: createJSONStorage(() => (isEmbedLinkMode() ? memoryOnlyStorage : localStorage)),
       // Only non-secret profile data survives a reload; the token does not.
       partialize: (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated }),
       // Anything persisted by older builds (incl. a stored token) is dropped.

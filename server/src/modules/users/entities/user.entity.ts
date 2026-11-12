@@ -148,9 +148,12 @@ export class User {
 
   // ── TDMP sign-in ──────────────────────────────────────────────────────────
 
-  /** Where the account is managed: here ('local') or in TDMP ('tdmp'). */
+  /**
+   * Where the account is managed: here ('local'), in TDMP ('tdmp'), or a
+   * partner key's read-only embed account ('partner', never signs in).
+   */
   @Column({ type: 'varchar', length: 16, default: 'local' })
-  authSource: 'local' | 'tdmp';
+  authSource: 'local' | 'tdmp' | 'partner';
 
   /** TDMP user id (OIDC `sub`), set when the account first signs in via TDMP. */
   @Index('IDX_users_tdmpUserId', { unique: true })

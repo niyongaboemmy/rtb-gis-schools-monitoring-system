@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { Role } from '../roles/entities/role.entity';
 import { TdmpSyncRun } from './entities/tdmp-sync-run.entity';
 import { TdmpConfig } from './tdmp.config';
@@ -113,6 +113,7 @@ export class TdmpConnectionService {
     @InjectRepository(Role) private readonly roles: Repository<Role>,
     @InjectRepository(TdmpSyncRun)
     private readonly runs: Repository<TdmpSyncRun>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async check(refresh = false): Promise<ConnectionReport> {
@@ -261,6 +262,19 @@ export class TdmpConnectionService {
       .catch(() => null);
     const noGps = lastSync?.report?.needsLocation?.length ?? null;
 
+    // R14–R16: TDMP using what RTB GIS offers (partner keys, embed views).
+    const partner = await this.dataSource
+      .query(
+        `SELECT
+           count(*) FILTER (WHERE "revokedAt" IS NULL AND 'coordinates:read' = ANY(scopes))::int AS coord_keys,
+           count(*) FILTER (WHERE "revokedAt" IS NULL AND 'coordinates:read' = ANY(scopes) AND "lastUsedAt" IS NOT NULL)::int AS coord_used,
+           count(*) FILTER (WHERE "revokedAt" IS NULL AND 'embed:create' = ANY(scopes))::int AS embed_keys,
+           (SELECT count(*)::int FROM audit_logs WHERE action = 'partner.embed_session') AS embed_sessions
+         FROM partner_api_keys`,
+      )
+      .then((r: Array<Record<string, number>>) => r[0])
+      .catch(() => null);
+
     const state = (done: boolean, partial = false): RequestState =>
       done ? 'done' : partial ? 'partial' : 'waiting';
 
@@ -386,6 +400,44 @@ export class TdmpConnectionService {
             : noGps === 0
               ? 'Every TDMP school had usable GPS in the last sync'
               : `${noGps} schools had no GPS inside Rwanda in the last sync`,
+      },
+      {
+        id: 'R14',
+        title: 'TDMP reads school coordinates from RTB GIS',
+        priority: 'P2',
+        state: !partner
+          ? 'waiting'
+          : state(partner.coord_used > 0, partner.coord_keys > 0),
+        evidence: !partner
+          ? 'Partner keys not available'
+          : partner.coord_used > 0
+            ? 'TDMP has used its partner key'
+            : partner.coord_keys > 0
+              ? 'Key issued; not used yet'
+              : 'No partner key with coordinates access yet (Shared with TDMP ▸ Manage keys)',
+      },
+      {
+        id: 'R15',
+        title: 'TDMP embeds RTB GIS dashboards and maps',
+        priority: 'P2',
+        state: !partner
+          ? 'waiting'
+          : state(partner.embed_sessions > 0, partner.embed_keys > 0),
+        evidence: !partner
+          ? 'Partner keys not available'
+          : partner.embed_sessions > 0
+            ? `${partner.embed_sessions} embedded view(s) opened so far`
+            : partner.embed_keys > 0
+              ? 'Key issued; no embedded view opened yet'
+              : 'No partner key with embed access yet',
+      },
+      {
+        id: 'R16',
+        title: 'TDMP sites allowed to show embedded views',
+        priority: 'P2',
+        state: 'manual',
+        evidence:
+          'Confirm the TDMP origins; they go in the partner key and the frame-ancestors rule',
       },
       {
         id: 'R12',

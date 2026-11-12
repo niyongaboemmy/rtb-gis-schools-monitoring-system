@@ -1,4 +1,5 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
+import { EMBED_EXPIRED_EVENT, isEmbedLinkMode } from "./embed";
 import { LEGACY_REFRESH_KEY, useAuthStore, type User } from "../store/authStore";
 
 export const API_BASE = import.meta.env.VITE_API_URL || "/api/v1";
@@ -147,6 +148,12 @@ api.interceptors.response.use(
 
     // Skip refresh on auth routes to prevent loops during failed sign-in.
     if (NO_REFRESH.test(originalRequest.url ?? "")) {
+      return Promise.reject(error);
+    }
+
+    // Embedded view: no refresh cookie in an iframe, and no /login to go to.
+    if (error.response?.status === 401 && isEmbedLinkMode()) {
+      window.dispatchEvent(new Event(EMBED_EXPIRED_EVENT));
       return Promise.reject(error);
     }
 

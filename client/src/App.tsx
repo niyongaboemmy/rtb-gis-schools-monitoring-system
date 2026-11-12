@@ -34,6 +34,11 @@ const Reports = lazyPage(() => import("./pages/Reports"));
 const ReportValidation = lazyPage(() => import("./pages/ReportValidation"));
 const Settings = lazyPage(() => import("./pages/Settings"));
 const TdmpIntegration = lazyPage(() => import("./pages/TdmpIntegration"));
+const Developers = lazyPage(() => import("./pages/Developers"));
+const EmbedSchoolDashboard = lazyPage(() => import("./pages/Embed").then((m) => ({ default: m.EmbedSchoolDashboard })));
+const EmbedSchoolMap2D = lazyPage(() => import("./pages/Embed").then((m) => ({ default: m.EmbedSchoolMap2D })));
+const EmbedSchoolMap3D = lazyPage(() => import("./pages/Embed").then((m) => ({ default: m.EmbedSchoolMap3D })));
+const EmbedNationalMap = lazyPage(() => import("./pages/Embed").then((m) => ({ default: m.EmbedNationalMap })));
 const Welcome = lazyPage(() => import("./pages/Welcome"));
 const Profile = lazyPage(() => import("./pages/Profile"));
 const SchoolDecisionDashboard = lazyPage(() => import("./pages/SchoolDecisionDashboard"));
@@ -68,6 +73,14 @@ export default function App() {
           {/* TDMP single sign-on: "Open in RTB GIS" links and the sign-in return */}
           <Route path="/sso/tdmp" element={<TdmpSsoEntry />} />
           <Route path="/sso/tdmp/complete" element={<TdmpSsoComplete />} />
+
+          {/* Embeddable views (partner iframes or stand-alone); EmbedGate checks access. */}
+          <Route path="/embed/schools/:id/dashboard" element={<EmbedSchoolDashboard />} />
+          <Route path="/embed/schools/:id/map-2d" element={<EmbedSchoolMap2D />} />
+          <Route path="/embed/schools/:id/map-3d" element={<EmbedSchoolMap3D />} />
+          <Route path="/embed/map" element={<EmbedNationalMap />} />
+          {/* Partner API guide (public: no secrets on it) */}
+          <Route path="/developers" element={<Developers />} />
 
           {/* Stand-alone viewers (own full-screen chrome, still auth-gated) */}
           {/* GlbViewer was retired; old links land on the 3D explorer. */}

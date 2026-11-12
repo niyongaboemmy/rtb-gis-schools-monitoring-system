@@ -9,6 +9,11 @@ import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import { AuthService } from '../auth.service';
 import { requireSecret } from '../../../config/env.validation';
+import {
+  applyEmbedClaims,
+  EMBED_READ_METHODS,
+  type EmbedClaims,
+} from '../../partner/partner-embed';
 
 interface AccessPayload {
   sub: string;
@@ -18,6 +23,8 @@ interface AccessPayload {
   /** Set on MFA / other single-purpose tokens — never valid here. */
   purpose?: string;
   typ?: string;
+  /** Embed session (partner iframe): read-only, scope narrowed to the link. */
+  emb?: EmbedClaims;
 }
 
 /**
@@ -54,6 +61,23 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     const user = await this.authService.validateUser(payload.sub);
     if (!user) throw new UnauthorizedException();
+
+    // Embed session: the partner's read-only account, narrowed to the link's
+    // scope; anything but a read is refused.
+    if (payload.emb) {
+      const method = (req.method ?? 'GET').toUpperCase();
+      if (!EMBED_READ_METHODS.has(method))
+        throw new ForbiddenException({
+          statusCode: 403,
+          code: 'EMBED_READ_ONLY',
+          message: 'Embedded views are read-only.',
+        });
+      const viewer = applyEmbedClaims(user, payload.emb);
+      if (!viewer) throw new UnauthorizedException();
+      return viewer;
+    }
+    // A partner account never works without an embed claim.
+    if (user.authSource === 'partner') throw new UnauthorizedException();
 
     if (user.mustChangePassword) {
       const path = (req.originalUrl ?? req.url ?? '').split('?')[0];
