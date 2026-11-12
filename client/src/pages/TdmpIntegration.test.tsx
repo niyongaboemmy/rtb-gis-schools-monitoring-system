@@ -260,6 +260,19 @@ describe("TDMP integration dashboard", () => {
     expect(within(dialog).getByText(/TDMP's point is only used for a school new to RTB GIS/)).toBeInTheDocument();
   });
 
+  it("guides every header action and summary tile with a tooltip", async () => {
+    mockApi([status()]);
+    renderPage();
+    await screen.findByRole("button", { name: /Setup:/ });
+    const tipOf = (name: RegExp | string) => within(hero()).getByRole("button", { name }).getAttribute("data-tooltip") ?? "";
+    expect(tipOf("Dry run")).toMatch(/Nothing is saved/);
+    expect(tipOf("Sync now")).toMatch(/without waiting for the schedule/);
+    expect(tipOf(/How it works/)).not.toBe("");
+    for (const name of [/Setup:/, /Data coverage:/, /Linked schools/, /Last sync/, /Automatic sync/]) expect(tipOf(name)).not.toBe("");
+    const stepper = screen.getByRole("region", { name: "Setup progress" });
+    for (const step of within(stepper).getAllByRole("button")) expect(step.getAttribute("data-tooltip")).toBeTruthy();
+  });
+
   it("explains when the API key is missing", async () => {
     mockApi([status({ enabled: { login: false, sync: false } })]);
     renderPage();

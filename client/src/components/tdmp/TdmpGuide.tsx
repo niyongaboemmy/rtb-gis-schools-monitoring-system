@@ -144,6 +144,7 @@ export function SetupChecklist({ steps }: { steps: SetupStep[] }) {
                       variant={isNext ? "default" : "outline"}
                       className={PILL_BUTTON.small}
                       onClick={s.action.onClick}
+                      data-tooltip={s.explain}
                       isLoading={s.action.busy}
                       disabled={s.action.busy}
                     >
@@ -359,10 +360,16 @@ function LocationForm({
         </span>
         <Input aria-labelledby={`${id}-lng`} inputMode="decimal" value={lng} onChange={(e) => setLng(e.target.value)} placeholder="30.0619" className="h-9 w-28 rounded-xl" />
       </label>
-      <Button type="submit" className={PILL_BUTTON.small} disabled={!ok || busy} isLoading={busy}>
+      <Button
+        type="submit"
+        className={PILL_BUTTON.small}
+        disabled={!ok || busy}
+        isLoading={busy}
+        data-tooltip={ok ? "Add this school at these coordinates; its details come from TDMP" : "Enter latitude and longitude first"}
+      >
         <MapPinPlus className="h-3.5 w-3.5" aria-hidden /> Add school
       </Button>
-      <a href={mapUrl} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1 text-xs font-medium text-primary hover:underline">
+      <a href={mapUrl} target="_blank" rel="noreferrer" data-tooltip="Search for the school in Google Maps (new tab), then copy its coordinates" className="inline-flex h-9 items-center gap-1 text-xs font-medium text-primary hover:underline">
         Find on map <ExternalLink className="h-3 w-3" aria-hidden />
       </a>
     </form>
@@ -405,6 +412,7 @@ export function NeedsLocationList({
                 variant="outline"
                 className={PILL_BUTTON.small}
                 aria-expanded={open === s.code}
+                data-tooltip="Enter this school's coordinates to put it on the map"
                 onClick={() => setOpen((o) => (o === s.code ? null : s.code))}
               >
                 <MapPinPlus className="h-3.5 w-3.5" aria-hidden /> {open === s.code ? "Close" : "Add with location"}

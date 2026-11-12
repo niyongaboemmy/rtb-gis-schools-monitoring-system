@@ -58,8 +58,11 @@ export function ProgressRing({
   caption,
   center,
   tone = "primary",
+  tip,
   onClick,
 }: {
+  /** Guidance shown on hover / focus. */
+  tip?: string;
   /** 0–100 */
   value: number;
   label: string;
@@ -72,7 +75,7 @@ export function ProgressRing({
   const r = 26;
   const c = 2 * Math.PI * r;
   return (
-    <button type="button" onClick={onClick} className={cn(TILE, "items-center gap-3 p-3")} aria-label={`${label}: ${center}. ${caption}. Show details`}>
+    <button type="button" onClick={onClick} data-tooltip={tip} className={cn(TILE, "items-center gap-3 p-3")} aria-label={`${label}: ${center}. ${caption}. Show details`}>
       <svg viewBox="0 0 64 64" className="h-14 w-14 shrink-0 -rotate-90" aria-hidden>
         <circle cx="32" cy="32" r={r} className="fill-none stroke-slate-900/[0.07] dark:stroke-white/10" strokeWidth="6" />
         <motion.circle
@@ -107,8 +110,10 @@ export function StatTile({
   value,
   hint,
   tone = "neutral",
+  tip,
   onClick,
 }: {
+  tip?: string;
   icon: LucideIcon;
   label: string;
   value: ReactNode;
@@ -117,7 +122,7 @@ export function StatTile({
   onClick: () => void;
 }) {
   return (
-    <button type="button" onClick={onClick} className={cn(TILE, "flex-col gap-1 p-3")}>
+    <button type="button" onClick={onClick} data-tooltip={tip} className={cn(TILE, "flex-col gap-1 p-3")}>
       <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Icon className={cn("h-3.5 w-3.5 shrink-0", TONE_TEXT[tone])} aria-hidden />
         <span className="truncate">{label}</span>
@@ -150,6 +155,7 @@ export function SetupStepper({ steps, onOpen }: { steps: SetupStep[]; onOpen: (s
             <button
               type="button"
               onClick={() => onOpen(s)}
+              data-tooltip={`${s.title}${s.done ? " · done" : ""}: ${s.explain}`}
               aria-current={isNext ? "step" : undefined}
               aria-label={`Step ${i + 1}: ${s.title}${s.done ? " (done)" : isNext ? " (next)" : ""}`}
               className="group relative z-10 flex flex-col items-center gap-1.5 rounded-xl px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -202,7 +208,7 @@ export function CoverageGrid({
         const tone: Tone = pct === 100 ? "good" : pct > 0 ? "warn" : "neutral";
         const Icon = AREA_ICON[a.id];
         return (
-          <button key={a.id} type="button" onClick={() => onOpen(a)} className={cn(TILE, "flex-col gap-2 p-3")} aria-label={`${a.title}: ${c.live} of ${c.total} live. Show fields`}>
+          <button key={a.id} type="button" onClick={() => onOpen(a)} data-tooltip={`${a.summary} Click to see each field.`} className={cn(TILE, "flex-col gap-2 p-3")} aria-label={`${a.title}: ${c.live} of ${c.total} live. Show fields`}>
             <span className="flex w-full items-center justify-between gap-2">
               <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-foreground">
                 <Icon className={cn("h-4 w-4 shrink-0", TONE_TEXT[tone])} aria-hidden />
@@ -244,6 +250,7 @@ export function ActivityList({ runs, onOpen }: { runs: SyncRun[]; onOpen: (run: 
           <button
             type="button"
             onClick={() => onOpen(run)}
+            data-tooltip="Open this run's full report"
             className="group relative flex w-full items-start gap-3 rounded-xl py-1.5 pl-0 pr-2 text-left hover:bg-slate-900/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:hover:bg-white/[0.04]"
           >
             <span className="relative z-10 mt-1 flex h-[19px] w-[19px] shrink-0 items-center justify-center rounded-full bg-background" aria-hidden>
@@ -271,6 +278,8 @@ export interface AttentionItem {
   label: string;
   count: number;
   tone: Tone;
+  /** What clicking does, shown on hover / focus. */
+  tip: string;
   onOpen: () => void;
 }
 
@@ -290,6 +299,7 @@ export function AttentionList({ items }: { items: AttentionItem[] }) {
           <button
             type="button"
             onClick={i.onOpen}
+            data-tooltip={i.tip}
             className="group flex w-full items-center gap-3 rounded-xl bg-slate-900/[0.025] px-3 py-2.5 text-left ring-1 ring-inset ring-slate-900/5 transition-colors hover:ring-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/[0.03] dark:ring-white/8"
           >
             <i.icon className={cn("h-4 w-4 shrink-0", TONE_TEXT[i.tone])} aria-hidden />
