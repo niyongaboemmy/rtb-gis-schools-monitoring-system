@@ -6,7 +6,6 @@
  * server under /auth/tdmp/*), and schools are synced from TDMP by the server.
  */
 import { api, API_BASE } from "./api";
-import { titleCase } from "./labels";
 import { formatNumber } from "./format";
 
 // ── Sign-in providers ───────────────────────────────────────────────────────
@@ -95,6 +94,7 @@ export function isTdmpUser(user: { authSource?: AuthSource | null } | null | und
 /**
  * School fields that come from TDMP. Read-only here once a school is linked;
  * GPS (latitude/longitude/elevation) is NOT in this list — RTB GIS owns it.
+ * Gender splits and the head teacher stay editable until TDMP sends them.
  * Mirrors the server's list; PATCH with a changed one answers 403 TDMP_OWNED.
  */
 export const TDMP_OWNED_SCHOOL_FIELDS = [
@@ -108,13 +108,9 @@ export const TDMP_OWNED_SCHOOL_FIELDS = [
   "sector",
   "cell",
   "village",
+  "ownership",
   "totalStudents",
-  "maleStudents",
-  "femaleStudents",
   "totalTeachers",
-  "maleTeachers",
-  "femaleTeachers",
-  "headTeacher",
 ] as const;
 
 export type TdmpOwnedField = (typeof TDMP_OWNED_SCHOOL_FIELDS)[number];
@@ -133,26 +129,23 @@ export function isTdmpLinked(school: { tdmpSchoolCode?: unknown } | null | undef
 /** Short hint shown next to a locked field. */
 export const TDMP_LOCK_HINT = "Managed in TDMP — change it there";
 
-export type TdmpInfraGroup =
-  | "buildings"
-  | "ict"
-  | "sanitation"
-  | "housing"
-  | "utilities"
-  | "healthAndSafety"
-  | "food"
-  | "books";
-
 /** `school.tdmpData` — the TDMP snapshot stored at the last sync. */
 export interface TdmpSchoolData {
   ownership?: string | null;
   institutionType?: string | null;
   schoolCategory?: string | null;
   schoolStatus?: string | null;
+  isActive?: string | null;
+  /** TSS / VTC band in TDMP; null = in neither. */
+  band?: string | null;
+  typeUnverified?: boolean;
+  tmisSchoolCode?: string | null;
   trades?: string[];
   counts?: { teachers?: number; students?: number; trades?: number; levels?: number; modules?: number };
-  infrastructure?: Partial<Record<TdmpInfraGroup | string, Record<string, number | boolean | string | null>>> | null;
-  staff?: { maleTeachers?: number; femaleTeachers?: number; headTeacher?: string | null };
+  academicYear?: string | null;
+  establishmentDate?: string | null;
+  sourceUpdatedAt?: string | null;
+  missingFromTdmp?: boolean;
 }
 
 export interface TdmpLinkFields {
@@ -162,86 +155,7 @@ export interface TdmpLinkFields {
   tdmpData?: TdmpSchoolData | null;
 }
 
-/** GET /schools/:id/staff */
-export interface TdmpStaffMember {
-  id: number | string;
-  names: string | null;
-  gender: string | null;
-  positionName: string | null;
-  qualificationLevel: string | null;
-  staffType: string | null;
-  employmentStatus: string | null;
-  isHeadTeacher: boolean | null;
-  isDeputyHeadTeacher: boolean | null;
-}
-
-export interface TdmpStaffResponse {
-  source: "tdmp";
-  fetchedAt: string;
-  staff: TdmpStaffMember[];
-}
-
-/** Display order and names of the infrastructure groups. */
-export const TDMP_INFRA_GROUPS: { key: TdmpInfraGroup; label: string }[] = [
-  { key: "buildings", label: "Buildings" },
-  { key: "ict", label: "ICT" },
-  { key: "utilities", label: "Water & power" },
-  { key: "sanitation", label: "Sanitation" },
-  { key: "housing", label: "Boarding" },
-  { key: "healthAndSafety", label: "Health & safety" },
-  { key: "food", label: "Food" },
-  { key: "books", label: "Books" },
-];
-
-/** Infrastructure keys whose camel-case split reads badly. */
-const INFRA_KEY_LABELS: Record<string, string> = {
-  workshopLabs: "Workshops & labs",
-  agriVeterinaryLabs: "Agri / veterinary labs",
-  specialGirlsRooms: "Girls' rooms",
-  computersTotal: "Computers (total)",
-  computersLearners: "Computers for learners",
-  computersTeachers: "Computers for teachers",
-  labWorkingLaptops: "Working lab laptops",
-  labWorkingDesktops: "Working lab desktops",
-  labServers: "Lab servers",
-  hasInternet: "Internet",
-  internetProviders: "Internet providers",
-  connectionTypes: "Connection types",
-  toiletsTotal: "Toilets (total)",
-  toiletsPupils: "Toilets for students",
-  toiletsStaff: "Toilets for staff",
-  toiletsDisability: "Accessible toilets",
-  toiletsFemale: "Toilets (female)",
-  toiletsMale: "Toilets (male)",
-  toiletsFlush: "Flush toilets",
-  toiletsLatrines: "Latrines",
-  dormitoriesBoys: "Dormitories (boys)",
-  dormitoriesGirls: "Dormitories (girls)",
-  tapWaterSupply: "Tap water points",
-  rainWaterSystems: "Rainwater systems",
-  hasGridElectricity: "Grid electricity",
-  hasSolarPower: "Solar power",
-  bedsInSickBay: "Sick-bay beds",
-  booksStudents: "Books for students",
-  booksTeachers: "Books for teachers",
-  booksTotal: "Books (total)",
-};
-
-export function infraKeyLabel(key: string): string {
-  if (INFRA_KEY_LABELS[key]) return INFRA_KEY_LABELS[key];
-  // "classroomDesks" → "Classroom desks": sentence case like the rest of the UI.
-  const text = titleCase(key);
-  return (text.charAt(0) + text.slice(1).toLowerCase()).replace(/\bict\b/gi, "ICT");
-}
-
-export function infraValueLabel(value: number | boolean | string | null | undefined): string {
-  if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "number") return formatNumber(value);
-  return String(value);
-}
-
-// ── Admin (Settings ▸ TDMP) ─────────────────────────────────────────────────
+// ── Admin (TDMP integration page) ───────────────────────────────────────────
 
 export interface SyncTotals {
   fetched: number;
@@ -250,27 +164,72 @@ export interface SyncTotals {
   unchanged: number;
   linked: number;
   skippedNoGps: number;
+  skipped: number;
   failed: number;
+  missing: number;
+  deactivated: number;
+  details: number;
 }
+
+export interface ReportSchool {
+  code: string;
+  name: string;
+  district?: string | null;
+  schoolId?: string;
+  localName?: string;
+  fields?: string[];
+  reason?: string;
+}
+
+export interface RunReport {
+  tdmpMaterialisedAt?: string | null;
+  changes: ReportSchool[];
+  newLinks: ReportSchool[];
+  created: ReportSchool[];
+  needsLocation: ReportSchool[];
+  missing: ReportSchool[];
+  gisOnly: ReportSchool[];
+  skipped: ReportSchool[];
+}
+
+export type SyncTrigger = "schedule" | "probe" | "manual";
 
 export interface SyncRun {
   id: string;
-  trigger: "schedule" | "manual";
+  trigger: SyncTrigger;
   status: "running" | "completed" | "failed";
+  dryRun: boolean;
   startedAt: string;
   finishedAt: string | null;
   totals: SyncTotals;
   errors: string[];
+  report: RunReport | null;
+  progress: { phase: "list" | "bands" | "schools" | "missing"; done: number; total: number } | null;
   triggeredBy: string | null;
+}
+
+export interface TdmpSyncSettings {
+  autoSync: boolean;
+  probeIntervalMinutes: number;
+  dailyRunAt: string;
+  lastProbeAt: string | null;
+  tdmpMaterialisedAt: string | null;
+  updatedAt: string | null;
+  updatedBy: string | null;
+  probeIntervals: number[];
+  nextDailyRunAt: string | null;
 }
 
 export interface TdmpStatus {
   enabled: { login: boolean; sync: boolean };
   authMode: AuthProviders["authMode"];
   running: boolean;
+  currentRun: SyncRun | null;
   lastRun: SyncRun | null;
+  lastSuccessAt: string | null;
   linkedSchools: number;
   unlinkedSchools: number;
+  settings: TdmpSyncSettings;
 }
 
 export interface UnlinkedSchool {
@@ -279,4 +238,105 @@ export interface UnlinkedSchool {
   name: string;
   district: string | null;
   hasGisData: boolean;
+  suggestion: { schoolCode: string; schoolName: string } | null;
+}
+
+export interface EndpointStatus {
+  key: string;
+  label: string;
+  path: string;
+  status: number;
+  ms: number;
+  ok: boolean;
+  request?: string;
+}
+
+export type RequestState = "done" | "partial" | "waiting" | "manual";
+
+export interface RequestStatus {
+  id: string;
+  title: string;
+  priority: "P1" | "P2" | "P3";
+  state: RequestState;
+  evidence: string;
+}
+
+export interface ConnectionReport {
+  checkedAt: string;
+  configured: { apiKey: boolean; oauthClient: boolean; baseUrl: string };
+  reachable: boolean;
+  authorised: boolean;
+  latencyMs: number | null;
+  tdmpMaterialisedAt: string | null;
+  tvetSchools: number | null;
+  endpoints: EndpointStatus[];
+  requests: RequestStatus[];
+}
+
+const TRIGGER_LABEL: Record<SyncTrigger, string> = {
+  schedule: "Daily",
+  probe: "TDMP data changed",
+  manual: "Manual",
+};
+
+export function triggerLabel(run: Pick<SyncRun, "trigger" | "dryRun">): string {
+  return `${TRIGGER_LABEL[run.trigger] ?? run.trigger}${run.dryRun ? " · dry run" : ""}`;
+}
+
+/** "12 new · 340 updated · 2 failed" — only the parts that happened. */
+export function totalsSummary(t: Partial<SyncTotals>, dryRun = false): string {
+  const n = (v: number | undefined) => v ?? 0;
+  const parts: Array<[number, string]> = [
+    [n(t.created), dryRun ? "to add" : "new"],
+    [n(t.linked), dryRun ? "to link" : "linked"],
+    [n(t.updated), dryRun ? "to update" : "updated"],
+    [n(t.unchanged), "unchanged"],
+    [n(t.skippedNoGps), "need a location"],
+    [n(t.deactivated), dryRun ? "to deactivate" : "deactivated"],
+    [n(t.missing), "missing from TDMP"],
+    [n(t.skipped), "skipped"],
+    [n(t.failed), "failed"],
+  ];
+  const shown = parts.filter(([v]) => v > 0).map(([v, what]) => `${formatNumber(v)} ${what}`);
+  return shown.length ? shown.join(" · ") : "No changes";
+}
+
+const PHASE_LABEL: Record<NonNullable<SyncRun["progress"]>["phase"], string> = {
+  list: "Reading the school list",
+  bands: "Reading TSS / VTC bands",
+  schools: "Updating schools",
+  missing: "Checking schools TDMP no longer lists",
+};
+
+export function progressLabel(p: SyncRun["progress"]): string {
+  if (!p) return "Starting…";
+  const base = PHASE_LABEL[p.phase] ?? p.phase;
+  return p.total > 0 ? `${base} · ${formatNumber(p.done)} of ${formatNumber(p.total)}` : base;
+}
+
+/** School field names as people say them. */
+const FIELD_LABEL: Record<string, string> = {
+  code: "code",
+  name: "name",
+  type: "type",
+  status: "status",
+  establishedYear: "year established",
+  province: "province",
+  district: "district",
+  sector: "sector",
+  cell: "cell",
+  village: "village",
+  provinceId: "province id",
+  districtId: "district id",
+  sectorId: "sector id",
+  cellId: "cell id",
+  villageId: "village id",
+  ownership: "ownership",
+  totalStudents: "learners",
+  totalTeachers: "teachers",
+};
+
+export function fieldsLabel(fields: string[] | undefined): string {
+  if (!fields?.length) return "";
+  return fields.map((f) => FIELD_LABEL[f] ?? f).join(", ");
 }

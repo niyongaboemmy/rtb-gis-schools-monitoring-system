@@ -67,8 +67,15 @@ export class TdmpOAuthClient {
     private readonly api: TdmpApiClient,
   ) {}
 
-  authorizeUrl(p: { state: string; challenge: string; nonce: string }): string {
+  /** `prompt: 'none'` = come straight back if TDMP already has a session. */
+  authorizeUrl(p: {
+    state: string;
+    challenge: string;
+    nonce: string;
+    prompt?: 'none';
+  }): string {
     return this.api.url('/oauth/authorize', {
+      prompt: p.prompt,
       response_type: 'code',
       client_id: this.config.clientId,
       redirect_uri: this.config.redirectUri,

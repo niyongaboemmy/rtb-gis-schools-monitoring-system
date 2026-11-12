@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { History, Layers, RefreshCw, Settings2, Shield, Users as UsersIcon } from "lucide-react";
+import { History, Layers, Settings2, Shield, Users as UsersIcon } from "lucide-react";
 import { cn } from "../lib/utils";
 import { EASE_OUT, GLASS } from "../components/ui/surfaces";
 import { TabsBar, type TabItem } from "../components/ui/tabs-bar";
@@ -11,11 +11,10 @@ import { UsersTab } from "../components/settings/UsersTab";
 import { RolesTab } from "../components/settings/RolesTab";
 import { AccessLevelsTab } from "../components/settings/AccessLevelsTab";
 import { AuditTrailTab } from "../components/settings/AuditTrailTab";
-import { TdmpTab } from "../components/settings/TdmpTab";
 import { useAuthStore } from "../store/authStore";
 import { hasAnyPermission, Permission, type PermissionType } from "../lib/permissions";
 
-type SettingsTab = "users" | "roles" | "access-levels" | "audit" | "tdmp";
+type SettingsTab = "users" | "roles" | "access-levels" | "audit";
 
 /** `short` labels fit the tabs on a phone. Each tab needs one of `needs`. */
 const ALL_TABS: (TabItem<SettingsTab> & { needs: PermissionType[] })[] = [
@@ -23,7 +22,6 @@ const ALL_TABS: (TabItem<SettingsTab> & { needs: PermissionType[] })[] = [
   { id: "roles", label: "Roles & permissions", short: "Roles", icon: Shield, needs: [Permission.MANAGE_ROLES] },
   { id: "access-levels", label: "Access levels", short: "Levels", icon: Layers, needs: [Permission.MANAGE_ROLES] },
   { id: "audit", label: "Audit trail", short: "Audit", icon: History, needs: [Permission.VIEW_AUDIT_LOGS] },
-  { id: "tdmp", label: "TDMP", short: "TDMP", icon: RefreshCw, needs: [Permission.MANAGE_SCHOOLS] },
 ];
 
 /** Plain, single-colour title that fades up once. */
@@ -51,12 +49,16 @@ export default function Settings() {
   // The tab lives in the URL, so each tab can be linked to and survives reloads.
   const [params, setParams] = useSearchParams();
   const requested = params.get("tab") as SettingsTab | null;
+  // TDMP moved to its own page; keep old links working.
+  const legacyTdmp = params.get("tab") === "tdmp";
   const firstTab: SettingsTab = tabs[0]?.id ?? "users";
   const active: SettingsTab = tabs.some((t) => t.id === requested) ? (requested as SettingsTab) : firstTab;
   const select = (id: SettingsTab) => setParams(id === firstTab ? {} : { tab: id }, { replace: true });
 
   // The active tab can portal its summary (stat tiles) into the hero.
   const [heroSlot, setHeroSlot] = useState<HTMLElement | null>(null);
+
+  if (legacyTdmp) return <Navigate to="/integrations/tdmp" replace />;
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-12">
@@ -84,7 +86,7 @@ export default function Settings() {
             </span>
             <div className="min-w-0">
               <HeroTitle />
-              <p className="mt-0.5 truncate text-xs text-muted-foreground/70">Users, roles, access and TDMP</p>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground/70">Users, roles and access</p>
             </div>
           </div>
           {/* The area this account administers */}
@@ -128,7 +130,6 @@ export default function Settings() {
           {active === "roles" && has("roles") && <RolesTab />}
           {active === "access-levels" && has("access-levels") && <AccessLevelsTab />}
           {active === "audit" && has("audit") && <AuditTrailTab />}
-          {active === "tdmp" && has("tdmp") && <TdmpTab />}
         </motion.div>
       </AnimatePresence>
       </HeroSlotContext.Provider>

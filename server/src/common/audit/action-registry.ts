@@ -298,6 +298,10 @@ export const AUDIT_ACTION_REGISTRY: Record<string, AuditSpec> = {
 
   // ── TDMP integration ───────────────────────────────────────────────────
   'TdmpController.startSync': { action: 'tdmp.sync', target: 'school' },
+  'TdmpController.updateSettings': {
+    action: 'tdmp.settings_update',
+    target: 'school',
+  },
   'TdmpController.link': { action: 'tdmp.school_link', ...SCHOOL },
   'TdmpController.refresh': { action: 'tdmp.school_refresh', ...SCHOOL },
 };

@@ -39,8 +39,8 @@ export enum KmzProcessingStatus {
 }
 
 /**
- * What TDMP says about a school beyond the mapped columns (ownership, trades,
- * counts, infrastructure, staff summary). Refreshed by every sync.
+ * What TDMP says about a school beyond the mapped columns (classification,
+ * programme codes, counts) plus sync bookkeeping. Refreshed by every sync.
  */
 export interface TdmpSchoolData {
   ownership?: string | null;
@@ -48,24 +48,26 @@ export interface TdmpSchoolData {
   schoolCategory?: string | null;
   schoolStatus?: string | null;
   isActive?: string | null;
+  /** TSS / VTC band from the `categoryBand` sweeps; null = in neither. */
+  band?: string | null;
+  /** Type kept from before because TDMP has no TSS / VTC band for it. */
+  typeUnverified?: boolean;
   tmisSchoolCode?: string | null;
+  /** Programme (trade) codes TDMP lists for the school. */
   trades?: string[];
   counts?: Record<string, number>;
-  /** Facility counts by group (buildings, ict, sanitation, …). */
-  infrastructure?: Record<
-    string,
-    Record<string, number | boolean | string | string[] | null>
-  > | null;
-  staff?: {
-    maleTeachers?: number;
-    femaleTeachers?: number;
-    headTeacher?: string | null;
-  };
   academicYear?: string | null;
+  establishmentDate?: string | null;
   /** TDMP's own "last materialised" time for the record. */
   sourceUpdatedAt?: string | null;
-  /** Set when a full sync no longer finds the school in TDMP. */
+  /** SHA-256 of the normalised TDMP record: equal = nothing to write. */
+  hash?: string;
+  /** When the school detail (year established, GPS) was last read. */
+  detailFetchedAt?: string | null;
+  /** Set when a sync no longer finds the school in TDMP's list. */
   missingFromTdmp?: boolean;
+  /** Consecutive runs in which TDMP answered 404 for the school. */
+  missingRuns?: number;
 }
 
 /** Detail measurement of a school's 3D model (see glb-tools/quality.mjs). */
@@ -158,6 +160,28 @@ export class School {
 
   @Column({ type: 'jsonb', nullable: true })
   tdmpData: TdmpSchoolData | null;
+
+  /** Public / Gov Aided / Private / Others (from TDMP). */
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  ownership: string | null;
+
+  // TDMP administrative unit ids: a stable join for scope and filters (the
+  // names below can be re-spelt upstream).
+  @Column({ type: 'int', nullable: true })
+  provinceId: number | null;
+
+  @Index('IDX_schools_districtId')
+  @Column({ type: 'int', nullable: true })
+  districtId: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  sectorId: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  cellId: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  villageId: number | null;
 
   @Column({ type: 'enum', enum: SchoolType, default: SchoolType.TSS })
   type: SchoolType;

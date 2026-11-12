@@ -250,7 +250,7 @@ export function AppLayout() {
   }, [tourUserId, tourVariant]);
 
   const scope = useScope();
-  const access = { isSchoolLevel: scope.tier === "school", isAuthorized, isAnyAuthorized };
+  const access = { isSchoolLevel: scope.tier === "school", isNational: scope.isNational, isAuthorized, isAnyAuthorized };
   const primaryNav = resolveNav(PRIMARY_NAV, access);
   const footerNav = resolveNav(FOOTER_NAV, access);
   // Reports waiting for review — shown as a badge on "Review Reports".

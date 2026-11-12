@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TdmpConfig } from './tdmp.config';
+import type { TdmpListMeta } from './tdmp.types';
 
 export type Query = Record<string, string | number | boolean | undefined>;
 
@@ -25,7 +26,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** One page of a TDMP list endpoint (`{ data, meta: { page } }`). */
 export interface TdmpPage<T> {
   data: T[];
-  meta?: { page?: { current?: number; limit?: number; total?: number } };
+  meta?: TdmpListMeta;
+}
+
+/** What one endpoint answered, for the connection check. */
+export interface TdmpEndpointCheck {
+  /** HTTP status, or 0 when TDMP could not be reached. */
+  status: number;
+  ms: number;
+  body: unknown;
 }
 
 /**
@@ -97,6 +106,39 @@ export class TdmpApiClient {
       }
       if (!res.ok) throw new TdmpRequestError(res.status, body, path);
       return body as T;
+    }
+  }
+
+  /** One page of a list endpoint, with its `meta`. */
+  page<T>(path: string, query: Query = {}): Promise<TdmpPage<T>> {
+    return this.get<TdmpPage<T>>(path, query);
+  }
+
+  /**
+   * GET an endpoint once and report its status instead of throwing (403 = TDMP
+   * has not granted us that data yet). No retries: this is a quick check.
+   */
+  async check(path: string, query?: Query): Promise<TdmpEndpointCheck> {
+    const started = Date.now();
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (this.config.apiKeyHeader === 'x-api-key')
+      headers['X-API-Key'] = this.config.apiKey;
+    else headers.Authorization = `ApiKey ${this.config.apiKey}`;
+    try {
+      const res = await fetch(this.url(path, query), {
+        headers,
+        signal: AbortSignal.timeout(this.config.timeoutMs),
+      });
+      const text = await res.text();
+      let body: unknown = null;
+      try {
+        body = text ? JSON.parse(text) : null;
+      } catch {
+        body = null;
+      }
+      return { status: res.status, ms: Date.now() - started, body };
+    } catch {
+      return { status: 0, ms: Date.now() - started, body: null };
     }
   }
 

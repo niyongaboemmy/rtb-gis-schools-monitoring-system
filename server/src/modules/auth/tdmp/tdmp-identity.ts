@@ -68,8 +68,11 @@ const clean = (v: unknown): string | undefined =>
   typeof v === 'string' && v.trim() ? v.trim() : undefined;
 
 /**
- * TDMP's row-level scope → our geographic placement. `deny` and anything
- * unrecognised return null: the user is refused rather than over-granted.
+ * TDMP's row-level scope → our geographic placement. `deny`, anything
+ * unrecognised, and a scope that names its tier but not its unit (a district
+ * scope with no district) return null: the user is refused rather than
+ * over-granted. TDMP's published schema only carries `kind` (request R8), so
+ * the unit comes from the extra fields when present, else the anchor school.
  */
 export function placementFromScope(
   scope: TdmpAccessScope,
@@ -83,17 +86,21 @@ export function placementFromScope(
     case 'national':
       return { tier: 'national' };
     case 'province':
-      return { tier: 'province', province };
+      return province ? { tier: 'province', province } : null;
     case 'district':
-      return { tier: 'district', province, district };
-    case 'school':
-      return {
-        tier: 'school',
-        province,
-        district,
-        schoolCode: clean(as.schoolCode) ?? clean(anchor?.schoolCode),
-        schoolName: clean(anchor?.schoolName),
-      };
+      return district ? { tier: 'district', province, district } : null;
+    case 'school': {
+      const schoolCode = clean(as.schoolCode) ?? clean(anchor?.schoolCode);
+      return schoolCode
+        ? {
+            tier: 'school',
+            province,
+            district,
+            schoolCode,
+            schoolName: clean(anchor?.schoolName),
+          }
+        : null;
+    }
     default:
       return null;
   }

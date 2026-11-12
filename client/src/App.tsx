@@ -33,6 +33,7 @@ const PopulationAnalytics = lazyPage(() => import("./pages/PopulationAnalytics")
 const Reports = lazyPage(() => import("./pages/Reports"));
 const ReportValidation = lazyPage(() => import("./pages/ReportValidation"));
 const Settings = lazyPage(() => import("./pages/Settings"));
+const TdmpIntegration = lazyPage(() => import("./pages/TdmpIntegration"));
 const Welcome = lazyPage(() => import("./pages/Welcome"));
 const Profile = lazyPage(() => import("./pages/Profile"));
 const SchoolDecisionDashboard = lazyPage(() => import("./pages/SchoolDecisionDashboard"));
@@ -252,6 +253,9 @@ export default function App() {
               }
             >
               <Route path="/settings" element={<Settings />} />
+            </Route>
+            <Route element={<ProtectedRoute requiredPermission={Permission.MANAGE_SCHOOLS} />}>
+              <Route path="/integrations/tdmp" element={<TdmpIntegration />} />
             </Route>
 
             <Route path="/profile" element={<Profile />} />

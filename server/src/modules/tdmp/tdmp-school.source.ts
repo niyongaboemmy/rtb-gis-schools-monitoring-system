@@ -1,29 +1,72 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { TdmpConfig } from './tdmp.config';
-import {
-  TdmpApiClient,
-  TdmpRequestError,
-  TdmpUnavailableError,
-} from './tdmp-api.client';
-import type { TdmpSchoolBundle } from './tdmp-school.mapper';
-import type { TdmpInfrastructure, TdmpSchool, TdmpTeacher } from './tdmp.types';
+import { TdmpApiClient, TdmpRequestError } from './tdmp-api.client';
+import type { TdmpBand } from './tdmp-school.mapper';
+import type { TdmpListMeta, TdmpSchool } from './tdmp.types';
 
-/** Most staff a school's teacher list may page through. */
-const MAX_STAFF = 2000;
+/** The full school list plus what TDMP says about its freshness. */
+export interface TdmpSchoolSweep {
+  rows: TdmpSchool[];
+  meta: TdmpListMeta;
+}
 
-/** Reads school data from TDMP with the partner API key. */
+/**
+ * Reads school data from TDMP with the partner API key. List-first: one sweep
+ * of the school list carries everything the sync needs except the year
+ * established and GPS, which come from the per-school detail.
+ */
 @Injectable()
 export class TdmpSchoolSource {
-  private readonly logger = new Logger(TdmpSchoolSource.name);
-
   constructor(
     private readonly config: TdmpConfig,
     private readonly api: TdmpApiClient,
   ) {}
 
+  /** `meta` of the filtered list (1-row page): freshness and total. */
+  async probe(): Promise<TdmpListMeta> {
+    const res = await this.api.page<TdmpSchool>('/schools', {
+      ...this.config.schoolFilter,
+      page: 1,
+      limit: 1,
+    });
+    return res?.meta ?? {};
+  }
+
   /** Every school RTB GIS should show (TDMP_SCHOOL_FILTER applied). */
-  listSchools(): AsyncGenerator<TdmpSchool> {
-    return this.api.paginate<TdmpSchool>('/schools', this.config.schoolFilter);
+  async sweep(): Promise<TdmpSchoolSweep> {
+    const limit = this.config.pageSize;
+    const rows: TdmpSchool[] = [];
+    let meta: TdmpListMeta = {};
+    for (let page = 1; page <= 1000; page++) {
+      const res = await this.api.page<TdmpSchool>('/schools', {
+        ...this.config.schoolFilter,
+        page,
+        limit,
+      });
+      if (page === 1) meta = res?.meta ?? {};
+      const data = Array.isArray(res?.data) ? res.data : [];
+      rows.push(...data);
+      const total = res?.meta?.page?.total;
+      if (data.length < limit) break;
+      if (typeof total === 'number' && rows.length >= total) break;
+    }
+    return { rows, meta };
+  }
+
+  /**
+   * School code → TSS / VTC. TDMP only exposes the band as a filter, so each
+   * band is swept for its codes. Codes in neither sweep are absent.
+   */
+  async bands(): Promise<Map<string, TdmpBand>> {
+    const out = new Map<string, TdmpBand>();
+    for (const band of ['TSS', 'VTC'] as const) {
+      for await (const s of this.api.paginate<TdmpSchool>('/schools', {
+        ...this.config.schoolFilter,
+        categoryBand: band,
+      }))
+        if (s?.schoolCode) out.set(String(s.schoolCode).trim(), band);
+    }
+    return out;
   }
 
   /** The canonical school record, or null when TDMP does not know the code. */
@@ -36,69 +79,6 @@ export class TdmpSchoolSource {
     } catch (err) {
       if (err instanceof TdmpRequestError && err.status === 404) return null;
       throw err;
-    }
-  }
-
-  /**
-   * School record plus infrastructure, student gender split and teachers.
-   * Only the school record is required; the extras are skipped (and keep
-   * their stored values) when TDMP refuses or fails them.
-   */
-  async bundle(schoolCode: string): Promise<TdmpSchoolBundle | null> {
-    const school = await this.school(schoolCode);
-    if (!school) return null;
-    const code = school.schoolCode;
-    const [infrastructure, students, teachers] = await Promise.all([
-      this.optional('infrastructure', code, () =>
-        this.api
-          .get<{
-            data: TdmpInfrastructure;
-          }>(`/school-infrastructure/${encodeURIComponent(code)}`)
-          .then((r) => r?.data ?? null),
-      ),
-      this.optional('students', code, async () => {
-        const [male, female] = await Promise.all([
-          this.api.count('/students', { schoolCode: code, gender: 'male' }),
-          this.api.count('/students', { schoolCode: code, gender: 'female' }),
-        ]);
-        return { male, female };
-      }),
-      this.optional('teachers', code, () =>
-        this.staff(code, { staffCategory: 'teachers' }),
-      ),
-    ]);
-    return { school, infrastructure, students, teachers };
-  }
-
-  /** A school's staff list (compact TDMP shape, no NIN / banking data). */
-  async staff(
-    schoolCode: string,
-    filter: Record<string, string> = {},
-  ): Promise<TdmpTeacher[]> {
-    const out: TdmpTeacher[] = [];
-    for await (const t of this.api.paginate<TdmpTeacher>('/teachers', {
-      ...filter,
-      schoolCode,
-    })) {
-      out.push(t);
-      if (out.length >= MAX_STAFF) break;
-    }
-    return out;
-  }
-
-  private async optional<T>(
-    what: string,
-    code: string,
-    fn: () => Promise<T>,
-  ): Promise<T | null> {
-    try {
-      return await fn();
-    } catch (err) {
-      if (err instanceof TdmpUnavailableError) throw err;
-      this.logger.warn(
-        `TDMP ${what} for ${code} skipped: ${(err as Error).message}`,
-      );
-      return null;
     }
   }
 }

@@ -1,17 +1,8 @@
-import { useCallback, useState } from "react";
-import { ChevronDown, CloudDownload, Loader2, RefreshCw, Users } from "lucide-react";
-import { api, apiErrorMessage } from "../../lib/api";
-import { formatDateTime, formatNumber, formatRelative } from "../../lib/format";
+import { AlertTriangle, CloudDownload, RefreshCw } from "lucide-react";
+import { formatDate, formatDateTime, formatNumber, formatRelative } from "../../lib/format";
 import { titleCase } from "../../lib/labels";
 import { cn } from "../../lib/utils";
-import {
-  infraKeyLabel,
-  infraValueLabel,
-  TDMP_INFRA_GROUPS,
-  type TdmpLinkFields,
-  type TdmpSchoolData,
-  type TdmpStaffResponse,
-} from "../../lib/tdmp";
+import { type TdmpLinkFields, type TdmpSchoolData } from "../../lib/tdmp";
 import { Button } from "../ui/button";
 import { GlassCard } from "./GlassCard";
 import { DetailSection, SummaryStat, SummaryStats } from "./details/primitives";
@@ -52,7 +43,7 @@ function syncedLabel(at: string | null | undefined): string {
 
 /**
  * Overview card for a TDMP-linked school: who owns it, its trades and
- * TDMP's head counts. Details (infrastructure, staff) open in a dialog.
+ * TDMP's head counts. Details open in a dialog.
  */
 export function TdmpCard({
   school,
@@ -87,7 +78,7 @@ export function TdmpCard({
         <dl className="divide-y divide-slate-900/5 dark:divide-white/8">
           <Fact label="TDMP code" value={school.tdmpSchoolCode ?? "—"} />
           <Fact label="Ownership" value={text(d.ownership)} />
-          <Fact label="Category" value={text(d.schoolCategory)} />
+          <Fact label="Category" value={d.band ?? text(d.schoolCategory)} />
           <Fact label="Students" value={isNum(counts.students) ? formatNumber(counts.students) : "—"} />
           <Fact label="Teachers" value={isNum(counts.teachers) ? formatNumber(counts.teachers) : "—"} />
         </dl>
@@ -125,169 +116,43 @@ export function TdmpSummary({ school }: { school: TdmpLinkFields }) {
   );
 }
 
-type StaffState =
-  | { kind: "idle" | "loading" }
-  | { kind: "loaded"; data: TdmpStaffResponse }
-  | { kind: "error"; message: string };
-
-/** Staff list, fetched live from TDMP the first time it is opened. */
-function StaffList({ schoolId }: { schoolId: string }) {
-  const [open, setOpen] = useState(false);
-  const [state, setState] = useState<StaffState>({ kind: "idle" });
-
-  const load = useCallback(async () => {
-    setState({ kind: "loading" });
-    try {
-      const { data } = await api.get<TdmpStaffResponse>(`/schools/${schoolId}/staff`);
-      setState({ kind: "loaded", data });
-    } catch (err) {
-      const status = (err as { response?: { status?: number } })?.response?.status;
-      setState({
-        kind: "error",
-        message:
-          status === 409
-            ? "This school is not linked to TDMP, so there is no staff list."
-            : status === 503
-              ? "TDMP can't be reached right now. Try again in a few minutes."
-              : apiErrorMessage(err, "Could not load the staff list."),
-      });
-    }
-  }, [schoolId]);
-
-  const toggle = () => {
-    const next = !open;
-    setOpen(next);
-    if (next && state.kind === "idle") void load();
-  };
-
-  const staff = state.kind === "loaded" ? state.data.staff : [];
-  const panelId = `tdmp-staff-${schoolId}`;
-
-  return (
-    <DetailSection
-      title={
-        <button
-          type="button"
-          onClick={toggle}
-          aria-expanded={open}
-          aria-controls={panelId}
-          className="inline-flex items-center gap-1.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-        >
-          <Users className="h-4 w-4 text-primary" aria-hidden />
-          Staff
-          <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} aria-hidden />
-        </button>
-      }
-      aside={state.kind === "loaded" ? `${formatNumber(staff.length)} · fetched ${formatRelative(state.data.fetchedAt)}` : "Live from TDMP"}
-    >
-      {open && (
-        <div id={panelId}>
-          {state.kind === "loading" && (
-            <p role="status" className="flex items-center gap-2 text-sm text-slate-500 dark:text-white/50">
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Loading staff from TDMP…
-            </p>
-          )}
-          {state.kind === "error" && (
-            <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-white/60">
-              <span>{state.message}</span>
-              <Button type="button" variant="outline" onClick={() => void load()} className="h-8 rounded-full px-3 text-xs">
-                Try again
-              </Button>
-            </div>
-          )}
-          {state.kind === "loaded" &&
-            (staff.length === 0 ? (
-              <p className="text-sm text-slate-500 dark:text-white/50">TDMP lists no staff for this school.</p>
-            ) : (
-              <div className="overflow-x-auto rounded-2xl ring-1 ring-slate-900/5 dark:ring-white/8">
-                <table className="w-full min-w-[36rem] text-left text-sm">
-                  <caption className="sr-only">Staff from TDMP</caption>
-                  <thead className="text-[12px] uppercase tracking-[0.06em] text-slate-500 dark:text-white/45">
-                    <tr>
-                      <th scope="col" className="px-3 py-2 font-medium">Name</th>
-                      <th scope="col" className="px-3 py-2 font-medium">Position</th>
-                      <th scope="col" className="px-3 py-2 font-medium">Gender</th>
-                      <th scope="col" className="px-3 py-2 font-medium">Qualification</th>
-                      <th scope="col" className="px-3 py-2 font-medium">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-900/5 dark:divide-white/8">
-                    {staff.map((s) => (
-                      <tr key={s.id}>
-                        <td className="px-3 py-2 text-slate-900 dark:text-white">
-                          {s.names || "—"}
-                          {s.isHeadTeacher && <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[12px] text-primary">Head teacher</span>}
-                          {s.isDeputyHeadTeacher && <span className="ml-2 rounded-full bg-slate-900/5 px-2 py-0.5 text-[12px] text-slate-600 dark:bg-white/8 dark:text-white/60">Deputy</span>}
-                        </td>
-                        <td className="px-3 py-2 text-slate-600 dark:text-white/65">{s.positionName || (s.staffType ? titleCase(s.staffType) : "—")}</td>
-                        <td className="px-3 py-2 text-slate-600 dark:text-white/65">{text(s.gender)}</td>
-                        <td className="px-3 py-2 text-slate-600 dark:text-white/65">{s.qualificationLevel || "—"}</td>
-                        <td className="px-3 py-2 text-slate-600 dark:text-white/65">{text(s.employmentStatus)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
-        </div>
-      )}
-    </DetailSection>
-  );
-}
-
-/** Dialog body: TDMP facts, trades, infrastructure and the staff list. */
-export function TdmpDetail({ schoolId, school }: { schoolId: string; school: TdmpLinkFields }) {
+/** Dialog body: what TDMP says about the school, and what it doesn't yet. */
+export function TdmpDetail({ school }: { schoolId: string; school: TdmpLinkFields }) {
   const d: TdmpSchoolData = school.tdmpData ?? {};
-  const staff = d.staff ?? {};
   const count = (n: unknown) => (isNum(n) ? formatNumber(n) : "—");
-  const infra = d.infrastructure ?? null;
-  const groups = TDMP_INFRA_GROUPS.map((g) => ({ ...g, values: infra?.[g.key] ?? null })).filter(
-    (g) => g.values && Object.keys(g.values).length > 0,
-  );
 
   return (
     <div className="space-y-6">
+      {d.missingFromTdmp && (
+        <p role="status" className="flex items-start gap-2 rounded-2xl bg-amber-500/10 px-3.5 py-2.5 text-sm text-amber-800 ring-1 ring-inset ring-amber-500/20 dark:text-amber-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          TDMP's latest school list no longer includes this school. Its details are kept as they were until TDMP confirms.
+        </p>
+      )}
+
       <DetailSection title="School" aside={`TDMP code ${school.tdmpSchoolCode ?? "—"}`}>
         <dl className="grid gap-x-8 sm:grid-cols-2">
           <Fact label="Ownership" value={text(d.ownership)} />
           <Fact label="Institution type" value={text(d.institutionType)} />
-          <Fact label="Category" value={text(d.schoolCategory)} />
-          <Fact label="TDMP status" value={text(d.schoolStatus)} />
-          <Fact label="Male teachers" value={count(staff.maleTeachers)} />
-          <Fact label="Female teachers" value={count(staff.femaleTeachers)} />
-          <Fact label="Head teacher" value={staff.headTeacher || "—"} />
+          <Fact label="Band" value={d.band ?? (d.typeUnverified ? "Not classified in TDMP" : "—")} />
+          <Fact label="TDMP status" value={text(d.isActive)} />
+          <Fact label="Established" value={d.establishmentDate ? formatDate(d.establishmentDate) : "—"} />
+          <Fact label="Academic year" value={d.academicYear ?? "—"} />
+          <Fact label="TMIS code" value={d.tmisSchoolCode ?? "—"} />
           <Fact label="Levels" value={count(d.counts?.levels)} />
+          <Fact label="Modules" value={count(d.counts?.modules)} />
+          <Fact label="TDMP data as of" value={d.sourceUpdatedAt ? formatDateTime(d.sourceUpdatedAt) : "—"} />
         </dl>
       </DetailSection>
 
-      <DetailSection title="Trades">
+      <DetailSection title="Trades" aside="Codes as listed in TDMP">
         <TradeChips trades={d.trades ?? []} />
       </DetailSection>
 
-      <DetailSection title="Infrastructure" aside="As reported to TDMP">
-        {groups.length === 0 ? (
-          <p className="text-sm text-slate-500 dark:text-white/50">TDMP has no infrastructure figures for this school yet.</p>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {groups.map((g) => (
-              <section
-                key={g.key}
-                aria-label={g.label}
-                className="rounded-2xl bg-slate-900/[0.035] px-3.5 py-3 ring-1 ring-slate-900/5 dark:bg-white/[0.045] dark:ring-white/8"
-              >
-                <h4 className="mb-1 text-[13px] font-semibold text-slate-900 dark:text-white">{g.label}</h4>
-                <dl className="divide-y divide-slate-900/5 dark:divide-white/8">
-                  {Object.entries(g.values ?? {}).map(([key, value]) => (
-                    <Fact key={key} label={infraKeyLabel(key)} value={infraValueLabel(value)} />
-                  ))}
-                </dl>
-              </section>
-            ))}
-          </div>
-        )}
-      </DetailSection>
-
-      <StaffList schoolId={schoolId} />
+      <p className="text-[13px] text-slate-500 dark:text-white/50">
+        Learner and teacher gender splits, learners per programme and seat capacity are not available from TDMP yet;
+        they stay editable here until TDMP provides them.
+      </p>
     </div>
   );
 }

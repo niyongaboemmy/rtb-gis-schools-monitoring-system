@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
-import { checkIdToken, createPkce } from './tdmp-oauth.client';
+import { checkIdToken, createPkce, TdmpOAuthClient } from './tdmp-oauth.client';
+import { TdmpApiClient } from './tdmp-api.client';
 import { safeNext } from '../auth/tdmp/tdmp-auth.controller';
 
 const ISSUER = 'https://tdmp.rtb.gov.rw/api/v1';
@@ -70,5 +71,38 @@ describe('safeNext', () => {
     expect(safeNext('https://evil.example')).toBe('/');
     expect(safeNext('/\\evil.example')).toBe('/');
     expect(safeNext(undefined)).toBe('/');
+  });
+});
+
+describe('authorizeUrl', () => {
+  const config = {
+    baseUrl: ISSUER,
+    clientId: 'rtb-gis',
+    redirectUri: 'https://gis.example/api/v1/auth/tdmp/callback',
+    scopes: 'openid email profile',
+  };
+  const client = new TdmpOAuthClient(
+    config as never,
+    new TdmpApiClient(config as never),
+  );
+  const p = { state: 's', challenge: 'c', nonce: 'n' };
+
+  it('is a code + PKCE request with no prompt by default', () => {
+    const url = new URL(client.authorizeUrl(p));
+    expect(url.origin + url.pathname).toBe(`${ISSUER}/oauth/authorize`);
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({
+      response_type: 'code',
+      client_id: 'rtb-gis',
+      code_challenge: 'c',
+      code_challenge_method: 'S256',
+      state: 's',
+      nonce: 'n',
+    });
+    expect(url.searchParams.has('prompt')).toBe(false);
+  });
+
+  it('asks for prompt=none on a silent attempt', () => {
+    const url = new URL(client.authorizeUrl({ ...p, prompt: 'none' }));
+    expect(url.searchParams.get('prompt')).toBe('none');
   });
 });

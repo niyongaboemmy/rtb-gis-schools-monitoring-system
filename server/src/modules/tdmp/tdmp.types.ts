@@ -49,42 +49,16 @@ export interface TdmpSchool {
   gpsLat?: number | null;
   updatedAt?: string;
   lastMaterialisedAt?: string;
+  /** Not on list rows yet (requested from TDMP, R3); read when present. */
+  categoryBand?: string | null;
+  authoritativeSource?: string | null;
 }
 
-type Counts = Record<string, number | boolean | string | string[] | null>;
-
-/** GET /school-infrastructure/{schoolCode}. */
-export interface TdmpInfrastructure {
-  schoolCode: string;
-  ownershipType?: string | null;
-  buildings?: Counts;
-  ict?: Counts;
-  sanitation?: Counts;
-  housing?: Counts;
-  utilities?: Counts;
-  healthAndSafety?: Counts;
-  food?: Counts;
-  books?: Counts;
-  academicYear?: string | null;
-  updatedAt?: string;
-}
-
-/** GET /teachers (compact shape — no NIN / banking data). */
-export interface TdmpTeacher {
-  id: number;
-  names?: string | null;
-  firstName?: string | null;
-  lastName?: string | null;
-  gender?: string | null;
-  email?: string | null;
-  phoneNumber?: string | null;
-  positionName?: string | null;
-  qualificationLevel?: string | null;
-  staffType?: string | null;
-  employmentStatus?: string | null;
-  isHeadTeacher?: boolean | null;
-  isDeputyHeadTeacher?: boolean | null;
-  schoolCode?: string | null;
+/** `meta` of the TDMP list endpoints. */
+export interface TdmpListMeta {
+  lastMaterialisedAt?: string | null;
+  authoritativeSource?: string | null;
+  page?: { current?: number; limit?: number; total?: number };
 }
 
 /** OIDC userinfo (GET /oauth/userinfo). */

@@ -65,6 +65,15 @@ export class TdmpConfig {
     return this.str('TDMP_OAUTH_SCOPES') || 'openid email profile';
   }
 
+  /**
+   * Try `prompt=none` first so a user already signed in to TDMP comes straight
+   * back. Off until TDMP confirms support (request R6): an authorize request
+   * TDMP does not understand would leave the user on a TDMP error page.
+   */
+  get silentSignIn(): boolean {
+    return this.str('TDMP_OAUTH_SILENT').toLowerCase() === 'true';
+  }
+
   /** Public URL of the web app (where the browser is sent after sign-in). */
   get appPublicUrl(): string {
     const explicit = this.str('APP_PUBLIC_URL');
@@ -160,7 +169,30 @@ export class TdmpConfig {
     return Math.min(this.int('TDMP_SYNC_CONCURRENCY', 4, 1), 16);
   }
 
+  /** TDMP rejects `limit` above 100 (422). */
   get pageSize(): number {
-    return Math.min(this.int('TDMP_PAGE_SIZE', 100, 1), 500);
+    return Math.min(this.int('TDMP_PAGE_SIZE', 100, 1), 100);
+  }
+
+  /**
+   * `authoritativeSource` values that mark TDMP test rows; those schools are
+   * skipped. Empty string = keep everything.
+   */
+  get ignoreSources(): string[] {
+    const raw = this.config.get<string>('TDMP_IGNORE_SOURCES');
+    return (raw === undefined ? 'access_scope_test,manual_seed' : raw)
+      .split(',')
+      .map((v) => v.trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  /** School detail calls (year established, GPS) allowed per run. */
+  get detailBudget(): number {
+    return this.int('TDMP_DETAIL_BUDGET', 60, 0);
+  }
+
+  /** A school's detail is re-read once it is older than this. */
+  get detailMaxAgeMs(): number {
+    return this.int('TDMP_DETAIL_MAX_AGE_DAYS', 7, 1) * 86_400_000;
   }
 }

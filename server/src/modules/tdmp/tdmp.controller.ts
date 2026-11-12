@@ -1,22 +1,28 @@
 import {
   Body,
-  ConflictException,
   Controller,
   Get,
   HttpCode,
   NotFoundException,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Request,
-  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { IsString, Length } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+} from 'class-validator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -33,9 +39,8 @@ import {
 } from '../../common/scope/access-scope';
 import { School } from '../schools/entities/school.entity';
 import { TdmpSyncService } from './tdmp-sync.service';
-import { TdmpSchoolSource } from './tdmp-school.source';
-import { TdmpUnavailableError } from './tdmp-api.client';
-import { TdmpConfig } from './tdmp.config';
+import { TdmpConnectionService } from './tdmp-connection.service';
+import { PROBE_INTERVALS } from './entities/tdmp-settings.entity';
 
 class LinkSchoolDto {
   @IsString()
@@ -43,10 +48,33 @@ class LinkSchoolDto {
   schoolCode: string;
 }
 
+class StartSyncDto {
+  /** Read TDMP and report what would change, without writing. */
+  @IsOptional()
+  @IsBoolean()
+  dryRun?: boolean;
+}
+
+class UpdateTdmpSettingsDto {
+  @IsOptional()
+  @IsBoolean()
+  autoSync?: boolean;
+
+  @IsOptional()
+  @IsIn(PROBE_INTERVALS as unknown as number[])
+  probeIntervalMinutes?: number;
+
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'dailyRunAt must be HH:mm' })
+  dailyRunAt?: string;
+}
+
+type AuthedRequest = { user?: { email?: string } };
+
 /**
- * TDMP integration routes: the school sync (Settings ▸ TDMP), linking local
- * schools to TDMP codes, resolving a TDMP code for deep links, and a school's
- * staff list read live from TDMP.
+ * TDMP integration routes: the school sync and its schedule (TDMP admin
+ * page), the connection check, linking local schools to TDMP codes, and
+ * resolving a TDMP code for deep links.
  */
 @ApiTags('tdmp')
 @Controller()
@@ -55,8 +83,7 @@ class LinkSchoolDto {
 export class TdmpController {
   constructor(
     private readonly sync: TdmpSyncService,
-    private readonly source: TdmpSchoolSource,
-    private readonly config: TdmpConfig,
+    private readonly connection: TdmpConnectionService,
     @InjectRepository(School)
     private readonly schools: Repository<School>,
   ) {}
@@ -73,10 +100,51 @@ export class TdmpController {
   @HttpCode(202)
   @RequirePermissions(Permission.MANAGE_SCHOOLS)
   @RequireNationalScope()
-  @ApiOperation({ summary: 'Start a full school sync from TDMP' })
-  async startSync(@Request() req: { user?: { email?: string } }) {
-    const run = await this.sync.start('manual', req.user?.email ?? null);
-    return { started: true, runId: run.id };
+  @ApiOperation({
+    summary: 'Start a school sync from TDMP now (dryRun: report only)',
+  })
+  async startSync(@Request() req: AuthedRequest, @Body() dto: StartSyncDto) {
+    const run = await this.sync.start('manual', req.user?.email ?? null, {
+      dryRun: !!dto?.dryRun,
+    });
+    return { started: true, runId: run.id, dryRun: run.dryRun };
+  }
+
+  @Get('tdmp/sync/runs/:id')
+  @RequirePermissions(Permission.MANAGE_SCHOOLS)
+  @RequireNationalScope()
+  @ApiOperation({ summary: 'One TDMP sync run, with its report' })
+  run(@Param('id', ParseUUIDPipe) id: string) {
+    return this.sync.getRun(id);
+  }
+
+  @Get('tdmp/settings')
+  @RequirePermissions(Permission.MANAGE_SCHOOLS)
+  @RequireNationalScope()
+  @ApiOperation({ summary: 'When the TDMP sync runs on its own' })
+  settings() {
+    return this.sync.getSettings();
+  }
+
+  @Patch('tdmp/settings')
+  @RequirePermissions(Permission.MANAGE_SCHOOLS)
+  @RequireNationalScope()
+  @ApiOperation({ summary: 'Pause, resume or reschedule the automatic sync' })
+  updateSettings(
+    @Request() req: AuthedRequest,
+    @Body() dto: UpdateTdmpSettingsDto,
+  ) {
+    return this.sync.updateSettings(dto, req.user?.email ?? null);
+  }
+
+  @Get('tdmp/connection')
+  @RequirePermissions(Permission.MANAGE_SCHOOLS)
+  @RequireNationalScope()
+  @ApiOperation({
+    summary: 'Check TDMP: reachability, our key, and which requests are met',
+  })
+  checkConnection(@Query('refresh') refresh?: string) {
+    return this.connection.check(refresh === 'true' || refresh === '1');
   }
 
   @Get('tdmp/sync/runs')
@@ -129,48 +197,5 @@ export class TdmpController {
     if (!school || !schoolMatchesScope(school, scope))
       throw new NotFoundException('That school is not in RTB GIS yet.');
     return { id: school.id };
-  }
-
-  @Get('schools/:id/staff')
-  @RequirePermissions(Permission.VIEW_SCHOOLS)
-  @ScopedResource('id')
-  @ApiOperation({ summary: "A school's staff, read live from TDMP" })
-  async staff(@Param('id', ParseUUIDPipe) id: string) {
-    const school = await this.schools.findOne({
-      where: { id },
-      select: ['id', 'tdmpSchoolCode'],
-    });
-    if (!school) throw new NotFoundException('School not found');
-    if (!school.tdmpSchoolCode)
-      throw new ConflictException('This school is not linked to TDMP.');
-    if (!this.config.syncEnabled)
-      throw new ServiceUnavailableException(
-        'TDMP is not configured (TDMP_API_KEY).',
-      );
-    try {
-      const rows = await this.source.staff(school.tdmpSchoolCode);
-      return {
-        source: 'tdmp',
-        fetchedAt: new Date().toISOString(),
-        // Contact details and identifiers stay in TDMP.
-        staff: rows.map((t) => ({
-          id: t.id,
-          names: t.names ?? [t.firstName, t.lastName].filter(Boolean).join(' '),
-          gender: t.gender ?? null,
-          positionName: t.positionName ?? null,
-          qualificationLevel: t.qualificationLevel ?? null,
-          staffType: t.staffType ?? null,
-          employmentStatus: t.employmentStatus ?? null,
-          isHeadTeacher: !!t.isHeadTeacher,
-          isDeputyHeadTeacher: !!t.isDeputyHeadTeacher,
-        })),
-      };
-    } catch (err) {
-      if (err instanceof TdmpUnavailableError)
-        throw new ServiceUnavailableException(
-          'TDMP is not reachable right now. Try again later.',
-        );
-      throw err;
-    }
   }
 }

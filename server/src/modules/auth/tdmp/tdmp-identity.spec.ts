@@ -97,6 +97,17 @@ describe('placementFromScope', () => {
     });
   });
 
+  it('a tiered scope without its unit gives no access (fail closed, F10)', () => {
+    // A district officer with no district (and no anchor school) must not
+    // land on the whole province or the whole country.
+    expect(placementFromScope(scope({ kind: 'district' }))).toBeNull();
+    expect(placementFromScope(scope({ kind: 'province' }))).toBeNull();
+    expect(placementFromScope(scope({ kind: 'school' }))).toBeNull();
+    expect(
+      placementFromScope(scope({ kind: 'province', provinceName: 'Southern' })),
+    ).toEqual({ tier: 'province', province: 'Southern' });
+  });
+
   it('deny and unknown kinds give no access', () => {
     expect(placementFromScope(scope({ kind: 'deny' }))).toBeNull();
     expect(placementFromScope(scope({ kind: 'galaxy' }))).toBeNull();

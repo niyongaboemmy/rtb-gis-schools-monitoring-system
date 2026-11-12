@@ -39,8 +39,18 @@ interface FlowState {
   nonce: string;
   next: string;
   school?: string;
+  /** Sent with prompt=none; an interactive retry follows if TDMP refuses. */
+  silent?: boolean;
   exp: number;
 }
+
+/** TDMP answers these to prompt=none when the user must see a TDMP page. */
+const NEEDS_INTERACTION = new Set([
+  'login_required',
+  'interaction_required',
+  'consent_required',
+  'account_selection_required',
+]);
 
 export type SsoError =
   | 'cancelled'
@@ -102,13 +112,26 @@ export class TdmpAuthController {
     @Res() res: Response,
   ) {
     if (!this.tdmp.loginEnabled) return this.fail(res, 'unavailable');
+    return this.redirectToTdmp(res, {
+      next: safeNext(next),
+      school: school && SCHOOL_CODE_RE.test(school) ? school : undefined,
+      silent: this.tdmp.silentSignIn,
+    });
+  }
+
+  /** New flow cookie (state, nonce, PKCE verifier) and off to TDMP. */
+  private redirectToTdmp(
+    res: Response,
+    opts: { next: string; school?: string; silent: boolean },
+  ) {
     const { verifier, challenge } = createPkce();
     const flow: FlowState = {
       state: randomToken(),
       verifier,
       nonce: randomToken(),
-      next: safeNext(next),
-      school: school && SCHOOL_CODE_RE.test(school) ? school : undefined,
+      next: opts.next,
+      school: opts.school,
+      silent: opts.silent || undefined,
       exp: Date.now() + FLOW_TTL_MS,
     };
     // Lax, not Strict: it must come back on TDMP's cross-site redirect.
@@ -129,6 +152,7 @@ export class TdmpAuthController {
         state: flow.state,
         challenge,
         nonce: flow.nonce,
+        prompt: opts.silent ? 'none' : undefined,
       }),
     );
   }
@@ -149,6 +173,14 @@ export class TdmpAuthController {
 
     if (!flow || !state || state !== flow.state)
       return this.fail(res, 'state', meta, 'state mismatch or expired');
+    // Silent attempt refused (no TDMP session yet): ask again, interactively,
+    // once. TDMP then shows its own sign-in page.
+    if (error && flow.silent && NEEDS_INTERACTION.has(error))
+      return this.redirectToTdmp(res, {
+        next: flow.next,
+        school: flow.school,
+        silent: false,
+      });
     if (error)
       return this.fail(
         res,
