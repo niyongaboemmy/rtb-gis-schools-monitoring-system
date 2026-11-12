@@ -309,6 +309,9 @@ Phases 0–1b need nothing from TDMP; the current key covers them.
 | §5.5 schema | Done | migration `1788530000000-TdmpSyncV2` (verified up/down/up; entities = migrated schema) |
 | §5.6 dry run + report | Done | `POST /tdmp/sync {dryRun:true}`, report on the run row, GIS-only name suggestions |
 | Admin page | Done | `/integrations/tdmp`: sync now, dry run, live progress, auto-sync on/off + interval + daily time, connection test, request tracker (R1–R12), unlinked schools with suggestions, run history + reports |
+| Schools TDMP has no GPS for | Done | admin adds each with coordinates (`POST /tdmp/schools/import`, location `manual`) |
+| Directory | Done | Ownership and Source filters, TDMP badge, TMIS-code search, ownership/TDMP code in exports |
+| Guided admin page | Done | setup checklist from live state, interactive "How it works", in-place help hints |
 | `prompt=none` | Code ready, **off** | `TDMP_OAUTH_SILENT=false` until TDMP confirms (R6) |
 | Phase 2 SSO pilot | Waiting | needs R6 (OAuth client), R7 (roles), R8 (scope fields) |
 | Phase 4 aggregates | Waiting | needs R1, R2; the admin page shows when TDMP grants them |

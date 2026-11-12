@@ -303,6 +303,10 @@ export const AUDIT_ACTION_REGISTRY: Record<string, AuditSpec> = {
     target: 'school',
   },
   'TdmpController.link': { action: 'tdmp.school_link', ...SCHOOL },
+  'TdmpController.importSchool': {
+    action: 'tdmp.school_import',
+    target: 'school',
+  },
   'TdmpController.refresh': { action: 'tdmp.school_refresh', ...SCHOOL },
 };
 

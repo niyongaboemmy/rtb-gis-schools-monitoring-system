@@ -63,6 +63,7 @@ import { api, apiErrorMessage } from "../lib/api";
 import { DeleteConfirmationModal } from "../components/ui/delete-confirmation-modal";
 import { cn } from "../lib/utils";
 import { formatNumber } from "../lib/format";
+import { SCHOOL_SOURCE_LABEL, schoolSource } from "../lib/tdmp";
 
 /* ─────────────────────────────  config  ───────────────────────────── */
 
@@ -87,6 +88,23 @@ const PRIORITY_STYLE: Record<
   medium: { label: "Medium", dot: "#3b82f6", badge: "default" },
   low: { label: "Low", dot: "#10b981", badge: "success" },
 };
+/** Small tag: is this school's profile kept in sync with TDMP? */
+function SourceTag({ school }: { school: School }) {
+  const src = schoolSource(school);
+  if (src === "local") return null;
+  return (
+    <span
+      title={src === "tdmp" ? `TDMP code ${school.tdmpSchoolCode}` : "TDMP's latest list no longer includes this school"}
+      className={cn(
+        "shrink-0 rounded-full px-1.5 py-px text-[11px] font-medium",
+        src === "tdmp" ? "bg-primary/10 text-primary" : "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+      )}
+    >
+      {src === "tdmp" ? "TDMP" : "Not in TDMP"}
+    </span>
+  );
+}
+
 const priorityStyle = (p?: string) =>
   PRIORITY_STYLE[(p ?? "").toLowerCase()] ?? {
     label: "Unassessed",
@@ -114,6 +132,19 @@ const GIS_OPTIONS = [
   { label: "Completed", value: "completed" },
   { label: "Processing", value: "processing" },
   { label: "Pending", value: "pending" },
+];
+const OWNERSHIP_OPTIONS = [
+  { label: "Any ownership", value: "" },
+  { label: "Public", value: "Public" },
+  { label: "Government aided", value: "Gov Aided" },
+  { label: "Private", value: "Private" },
+  { label: "Other", value: "Others" },
+];
+const SOURCE_OPTIONS = [
+  { label: "Any source", value: "" },
+  { label: SCHOOL_SOURCE_LABEL.tdmp, value: "tdmp" },
+  { label: SCHOOL_SOURCE_LABEL.local, value: "local" },
+  { label: SCHOOL_SOURCE_LABEL.missing, value: "missing" },
 ];
 const SORT_OPTIONS = [
   { label: "Priority", value: "priority" },
@@ -197,6 +228,8 @@ export default function SchoolsList() {
   const priority = params.get("priority") ?? "";
   const gis = params.get("gis") ?? "";
   const province = params.get("province") ?? "";
+  const ownership = params.get("own") ?? "";
+  const source = params.get("src") ?? "";
   const sort = (params.get("sort") as SortKey) || "priority";
   const dir = (params.get("dir") as SortDir) || SORT_DEFAULT_DIR[sort] || "asc";
   const view = params.get("view") === "grid" ? "grid" : "table";
@@ -265,6 +298,7 @@ export default function SchoolsList() {
         ![
           s.name,
           s.code,
+          s.tdmpData?.tmisSchoolCode,
           resolveDistrictName(s.district),
           resolveProvinceName(s.province),
         ]
@@ -285,9 +319,11 @@ export default function SchoolsList() {
           return false;
       }
       if (province && resolveProvinceName(s.province) !== province) return false;
+      if (ownership && (s.ownership ?? "") !== ownership) return false;
+      if (source && schoolSource(s) !== source) return false;
       return true;
     });
-  }, [allSchools, q, type, priority, gis, province]);
+  }, [allSchools, q, type, priority, gis, province, ownership, source]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -363,6 +399,8 @@ export default function SchoolsList() {
     priority && { key: "priority", label: priorityStyle(priority).label },
     gis && { key: "gis", label: `GIS: ${gis}` },
     province && { key: "province", label: province },
+    ownership && { key: "own", label: OWNERSHIP_OPTIONS.find((o) => o.value === ownership)?.label ?? ownership },
+    source && { key: "src", label: SCHOOL_SOURCE_LABEL[source as keyof typeof SCHOOL_SOURCE_LABEL] ?? source },
   ].filter(Boolean) as { key: string; label: string }[];
 
   const loading = allSchoolsLoading && !allSchoolsLoaded;
@@ -374,7 +412,7 @@ export default function SchoolsList() {
   };
   const clearFilters = () => {
     setSearchDraft("");
-    patch({ q: null, type: null, priority: null, gis: null, province: null });
+    patch({ q: null, type: null, priority: null, gis: null, province: null, own: null, src: null });
   };
 
   /* ── saved views (WS3.10): named presets per user, URL stays shareable ── */
@@ -415,7 +453,10 @@ export default function SchoolsList() {
     sorted.map((s) => ({
       Name: s.name,
       Code: s.code,
+      "TMIS code": s.tdmpData?.tmisSchoolCode ?? "",
       Type: s.type ?? "",
+      Ownership: s.ownership ?? "",
+      Source: SCHOOL_SOURCE_LABEL[schoolSource(s)],
       Province: resolveProvinceName(s.province),
       District: resolveDistrictName(s.district),
       Priority: priorityStyle(s.priorityLevel).label,
@@ -597,9 +638,11 @@ export default function SchoolsList() {
       <PillSelect label="Priority" options={PRIORITY_OPTIONS} value={priority} onChange={(v) => patch({ priority: v || null })} />
       <PillSelect label="GIS state" options={GIS_OPTIONS} value={gis} onChange={(v) => patch({ gis: v || null })} />
       <PillSelect label="Province" options={provinceOptions} value={province} onChange={(v) => patch({ province: v || null })} />
+      <PillSelect label="Ownership" options={OWNERSHIP_OPTIONS} value={ownership} onChange={(v) => patch({ own: v || null })} />
+      <PillSelect label="Source" options={SOURCE_OPTIONS} value={source} onChange={(v) => patch({ src: v || null })} />
     </>
   );
-  const filterCount = [type, priority, gis, province].filter(Boolean).length;
+  const filterCount = [type, priority, gis, province, ownership, source].filter(Boolean).length;
 
   return (
     <div className="relative mx-auto max-w-[1600px] space-y-5 pb-24">
@@ -899,7 +942,11 @@ export default function SchoolsList() {
                                 ) : (
                                   <div className="line-clamp-2 text-[15px] font-medium text-foreground">{school.name}</div>
                                 )}
-                                <div className="text-[13px] tabular-nums text-muted-foreground">{school.code}</div>
+                                <div className="flex flex-wrap items-center gap-1.5 text-[13px] tabular-nums text-muted-foreground">
+                                  <span>{school.code}</span>
+                                  <SourceTag school={school} />
+                                  {school.ownership && <span>· {school.ownership}</span>}
+                                </div>
                               </div>
                             </TableCell>
                             <TableCell
@@ -1615,8 +1662,11 @@ function SchoolCard({
           <h3 className="truncate text-[15px] font-medium text-foreground transition-colors group-hover:text-primary">
             {school.name}
           </h3>
-          <p className="truncate text-[13px] text-muted-foreground">
-            {school.code} · {resolveDistrictName(school.district)}, {shortProvince(resolveProvinceName(school.province))}
+          <p className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
+            <span className="truncate">
+              {school.code} · {resolveDistrictName(school.district)}, {shortProvince(resolveProvinceName(school.province))}
+            </span>
+            <SourceTag school={school} />
           </p>
         </button>
         <Checkbox checked={selected} onChange={onSelect} className="mt-0.5" aria-label={`Select ${school.name}`} />

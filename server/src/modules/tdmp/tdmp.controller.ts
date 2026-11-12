@@ -18,6 +18,7 @@ import { Repository } from 'typeorm';
 import {
   IsBoolean,
   IsIn,
+  IsNumber,
   IsOptional,
   IsString,
   Length,
@@ -46,6 +47,18 @@ class LinkSchoolDto {
   @IsString()
   @Length(1, 64)
   schoolCode: string;
+}
+
+class ImportSchoolDto {
+  @IsString()
+  @Length(1, 64)
+  schoolCode: string;
+
+  @IsNumber()
+  latitude: number;
+
+  @IsNumber()
+  longitude: number;
 }
 
 class StartSyncDto {
@@ -170,6 +183,21 @@ export class TdmpController {
   @ApiOperation({ summary: 'Link a local school to a TDMP school code' })
   link(@Param('id', ParseUUIDPipe) id: string, @Body() dto: LinkSchoolDto) {
     return this.sync.link(id, dto.schoolCode);
+  }
+
+  @Post('tdmp/schools/import')
+  @HttpCode(201)
+  @RequirePermissions(Permission.MANAGE_SCHOOLS)
+  @RequireNationalScope()
+  @ApiOperation({
+    summary: 'Add a TDMP school that has no GPS in TDMP, at a given location',
+  })
+  importSchool(@Body() dto: ImportSchoolDto) {
+    return this.sync.importWithLocation(
+      dto.schoolCode,
+      dto.latitude,
+      dto.longitude,
+    );
   }
 
   @Post('tdmp/schools/:id/refresh')

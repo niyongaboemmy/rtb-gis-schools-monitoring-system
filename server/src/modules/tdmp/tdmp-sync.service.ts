@@ -9,8 +9,16 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron } from '@nestjs/schedule';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { DataSource, In, IsNull, Not, Repository, type QueryRunner } from 'typeorm';
+import {
+  DataSource,
+  In,
+  IsNull,
+  Not,
+  Repository,
+  type QueryRunner,
+} from 'typeorm';
 import { School, SchoolStatus } from '../schools/entities/school.entity';
+import { checkPoint } from '../schools/location/school-location.rules';
 import { AuditService } from '../audit/audit.service';
 import { TdmpConfig } from './tdmp.config';
 import { TdmpSchoolSource } from './tdmp-school.source';
@@ -103,7 +111,21 @@ export function kigaliTimeToday(now: Date, hhmm: string): Date {
 
 /** Words of a school name, for suggesting a TDMP match. */
 function nameWords(name: string): Set<string> {
-  const STOP = new Set(['school', 'tvet', 'tss', 'vtc', 'de', 'des', 'du', 'la', 'le', 'and', 'the', 'technical', 'secondary']);
+  const STOP = new Set([
+    'school',
+    'tvet',
+    'tss',
+    'vtc',
+    'de',
+    'des',
+    'du',
+    'la',
+    'le',
+    'and',
+    'the',
+    'technical',
+    'secondary',
+  ]);
   return new Set(
     name
       .toLowerCase()
@@ -182,12 +204,18 @@ export class TdmpSyncService {
   }
 
   async updateSettings(
-    patch: Partial<Pick<TdmpSettings, 'autoSync' | 'probeIntervalMinutes' | 'dailyRunAt'>>,
+    patch: Partial<
+      Pick<TdmpSettings, 'autoSync' | 'probeIntervalMinutes' | 'dailyRunAt'>
+    >,
     by: string | null,
   ): Promise<TdmpSettings> {
     const s = await this.getSettings();
     if (patch.probeIntervalMinutes !== undefined) {
-      if (!(PROBE_INTERVALS as readonly number[]).includes(patch.probeIntervalMinutes))
+      if (
+        !(PROBE_INTERVALS as readonly number[]).includes(
+          patch.probeIntervalMinutes,
+        )
+      )
         throw new BadRequestException(
           `probeIntervalMinutes must be one of ${PROBE_INTERVALS.join(', ')}`,
         );
@@ -221,7 +249,9 @@ export class TdmpSyncService {
       return trigger;
     } catch (err) {
       if (!(err instanceof ConflictException))
-        this.logger.error(`TDMP auto-sync tick failed: ${(err as Error).message}`);
+        this.logger.error(
+          `TDMP auto-sync tick failed: ${(err as Error).message}`,
+        );
       return null;
     }
   }
@@ -354,7 +384,8 @@ export class TdmpSyncService {
     const lastSuccess = await this.lastSuccessfulRun();
     const now = new Date();
     let nextDaily = kigaliTimeToday(now, settings.dailyRunAt);
-    if (nextDaily <= now) nextDaily = new Date(nextDaily.getTime() + 86_400_000);
+    if (nextDaily <= now)
+      nextDaily = new Date(nextDaily.getTime() + 86_400_000);
     return {
       enabled: {
         login: this.config.loginEnabled,
@@ -421,7 +452,9 @@ export class TdmpSyncService {
         name: r.name,
         district: r.district,
         hasGisData: withGis.has(r.id),
-        suggestion: hint ? { schoolCode: code, schoolName: name.join('|') } : null,
+        suggestion: hint
+          ? { schoolCode: code, schoolName: name.join('|') }
+          : null,
       };
     });
   }
@@ -459,6 +492,44 @@ export class TdmpSyncService {
     return this.schools.findOneOrFail({ where: { id: schoolId } });
   }
 
+  /**
+   * Adds a TDMP school that the sync could not place (TDMP has no usable
+   * GPS for it) at a location a person gives. Everything else comes from
+   * TDMP and the school is linked straight away; the location is RTB GIS's
+   * own (`manual`), so later syncs never move it.
+   */
+  async importWithLocation(
+    schoolCode: string,
+    latitude: unknown,
+    longitude: unknown,
+  ): Promise<School> {
+    this.assertEnabled();
+    const point = checkPoint(latitude, longitude);
+    if ('error' in point) throw new BadRequestException(point.error);
+    const bundle = await this.fetch(schoolCode.trim());
+    const code = bundle.school.schoolCode;
+    const existing = await this.schools.findOne({
+      where: [
+        { tdmpSchoolCode: code },
+        { tdmpSchoolId: bundle.school.id },
+        { code },
+      ],
+    });
+    if (existing)
+      throw new ConflictException(
+        `"${existing.name}" already has TDMP code ${code}. Open it instead.`,
+      );
+    const school = this.schools.create({
+      latitude: point.lat,
+      longitude: point.lng,
+      locationSource: 'manual',
+      locationUpdatedAt: new Date(),
+    });
+    const { school: saved } = await this.applyDetailed(bundle, school);
+    if (saved?.id) this.events.emit('school.updated', { schoolId: saved.id });
+    return this.schools.findOneOrFail({ where: { tdmpSchoolCode: code } });
+  }
+
   /** Re-reads one linked school from TDMP. */
   async refresh(schoolId: string): Promise<School> {
     this.assertEnabled();
@@ -485,7 +556,9 @@ export class TdmpSyncService {
       throw err;
     }
     if (!raw)
-      throw new NotFoundException(`TDMP has no school with code ${schoolCode}.`);
+      throw new NotFoundException(
+        `TDMP has no school with code ${schoolCode}.`,
+      );
     const n = normaliseTdmpSchool(raw);
     if (!n.ok)
       throw new ConflictException(
@@ -516,7 +589,11 @@ export class TdmpSyncService {
     bundle: TdmpSchoolBundle,
     target?: School,
     dryRun = false,
-  ): Promise<{ outcome: SyncOutcome; changed: string[]; school: School | null }> {
+  ): Promise<{
+    outcome: SyncOutcome;
+    changed: string[];
+    school: School | null;
+  }> {
     const s = bundle.school;
     let school: School | null = target ?? null;
     let outcome: SyncOutcome | null = null;
@@ -561,7 +638,8 @@ export class TdmpSyncService {
     const changed = changedFields(school, fields);
     const relinked =
       school.tdmpSchoolCode !== s.schoolCode || school.tdmpSchoolId !== s.id;
-    const dataChanged = school.tdmpData?.hash !== tdmpData.hash ||
+    const dataChanged =
+      school.tdmpData?.hash !== tdmpData.hash ||
       !!school.tdmpData?.missingFromTdmp;
 
     if (school.id && !outcome && !changed.length && !relinked && !dataChanged) {
@@ -606,18 +684,30 @@ export class TdmpSyncService {
       detailsLeft: this.config.detailBudget,
     };
     try {
-      await this.progress(run, totals, { phase: 'list', done: 0, total: 0 }, true);
+      await this.progress(
+        run,
+        totals,
+        { phase: 'list', done: 0, total: 0 },
+        true,
+      );
       const { rows, meta } = await this.source.sweep();
       report.tdmpMaterialisedAt = meta.lastMaterialisedAt ?? null;
       totals.fetched = rows.length;
 
-      await this.progress(run, totals, { phase: 'bands', done: 0, total: 0 }, true);
+      await this.progress(
+        run,
+        totals,
+        { phase: 'bands', done: 0, total: 0 },
+        true,
+      );
       let bands: Map<string, TdmpBand> | null = null;
       try {
         bands = await this.source.bands();
       } catch (err) {
         if (err instanceof TdmpUnavailableError) throw err;
-        ctx.note(`TSS / VTC bands not read (${(err as Error).message}); school types kept.`);
+        ctx.note(
+          `TSS / VTC bands not read (${(err as Error).message}); school types kept.`,
+        );
       }
 
       // Every code TDMP listed counts as "seen", even rows we skip.
@@ -652,61 +742,74 @@ export class TdmpSyncService {
       const unmatchedTdmp: TdmpSchool[] = [];
 
       let done = 0;
-      await eachLimit(valid, this.config.syncConcurrency, async ({ raw, school }) => {
-        const code = school.schoolCode;
-        try {
-          const local =
-            byTdmpCode.get(code) ??
-            (school.id != null ? byTdmpId.get(school.id) : undefined) ??
-            byCode.get(code) ??
-            (school.tmisSchoolCode ? byCode.get(school.tmisSchoolCode) : undefined) ??
-            null;
-          if (local) matchedLocalIds.add(local.id);
-          else unmatchedTdmp.push(school);
-          const band = bands ? (bands.get(code) ?? null) : undefined;
-          const bundle = await this.withDetail(raw, school, band, local, ctx);
-          if (!bundle) return;
-          // Read before applying: apply() updates the loaded entity in place.
-          const localName = local?.name;
+      await eachLimit(
+        valid,
+        this.config.syncConcurrency,
+        async ({ raw, school }) => {
+          const code = school.schoolCode;
+          try {
+            const local =
+              byTdmpCode.get(code) ??
+              (school.id != null ? byTdmpId.get(school.id) : undefined) ??
+              byCode.get(code) ??
+              (school.tmisSchoolCode
+                ? byCode.get(school.tmisSchoolCode)
+                : undefined) ??
+              null;
+            if (local) matchedLocalIds.add(local.id);
+            else unmatchedTdmp.push(school);
+            const band = bands ? (bands.get(code) ?? null) : undefined;
+            const bundle = await this.withDetail(raw, school, band, local, ctx);
+            if (!bundle) return;
+            // Read before applying: apply() updates the loaded entity in place.
+            const localName = local?.name;
 
-          const { outcome, changed } = await this.applyDetailed(
-            bundle,
-            local ?? undefined,
-            ctx.dryRun,
-          );
-          totals[outcome]++;
-          const entry: TdmpReportSchool = {
-            code,
-            name: bundle.school.schoolName,
-            district: bundle.school.location?.districtName ?? null,
-            schoolId: local?.id,
-            localName:
-              localName && !sameName(localName, bundle.school.schoolName)
-                ? localName
-                : undefined,
-          };
-          if (outcome === 'skippedNoGps') {
-            push(report.needsLocation, { ...entry, reason: 'TDMP has no GPS inside Rwanda' });
-          } else if (outcome === 'created') {
-            push(report.created, entry);
-          } else if (outcome === 'linked') {
-            push(report.newLinks, { ...entry, fields: changed });
-          } else if (outcome === 'updated' && changed.length) {
-            push(report.changes, { ...entry, fields: changed });
+            const { outcome, changed } = await this.applyDetailed(
+              bundle,
+              local ?? undefined,
+              ctx.dryRun,
+            );
+            totals[outcome]++;
+            const entry: TdmpReportSchool = {
+              code,
+              name: bundle.school.schoolName,
+              district: bundle.school.location?.districtName ?? null,
+              schoolId: local?.id,
+              localName:
+                localName && !sameName(localName, bundle.school.schoolName)
+                  ? localName
+                  : undefined,
+            };
+            if (outcome === 'skippedNoGps') {
+              push(report.needsLocation, {
+                ...entry,
+                reason: 'TDMP has no GPS inside Rwanda',
+              });
+            } else if (outcome === 'created') {
+              push(report.created, entry);
+            } else if (outcome === 'linked') {
+              push(report.newLinks, { ...entry, fields: changed });
+            } else if (outcome === 'updated' && changed.length) {
+              push(report.changes, { ...entry, fields: changed });
+            }
+          } catch (err) {
+            if (err instanceof TdmpUnavailableError) throw err;
+            totals.failed++;
+            ctx.note(`${code}: ${(err as Error).message}`);
+          } finally {
+            done++;
+            await this.progress(run, totals, {
+              phase: 'schools',
+              done,
+              total: valid.length,
+            });
           }
-        } catch (err) {
-          if (err instanceof TdmpUnavailableError) throw err;
-          totals.failed++;
-          ctx.note(`${code}: ${(err as Error).message}`);
-        } finally {
-          done++;
-          await this.progress(run, totals, { phase: 'schools', done, total: valid.length });
-        }
-      });
+        },
+      );
 
-      if (totals.failed === 0)
-        await this.handleMissing(seen, locals, ctx);
-      else ctx.note('Missing-school check skipped because some schools failed.');
+      if (totals.failed === 0) await this.handleMissing(seen, locals, ctx);
+      else
+        ctx.note('Missing-school check skipped because some schools failed.');
 
       // Local schools TDMP doesn't know, with a name-based suggestion.
       for (const l of locals) {
@@ -756,9 +859,17 @@ export class TdmpSyncService {
           action: 'tdmp.sync',
           outcome: run.status === 'completed' ? 'success' : 'failure',
           targetType: 'school',
-          meta: { runId: run.id, trigger: run.trigger, dryRun: run.dryRun, ...totals },
+          meta: {
+            runId: run.id,
+            trigger: run.trigger,
+            dryRun: run.dryRun,
+            ...totals,
+          },
         });
-      this.events.emit('tdmp.sync.finished', { runId: run.id, status: run.status });
+      this.events.emit('tdmp.sync.finished', {
+        runId: run.id,
+        status: run.status,
+      });
     }
   }
 
@@ -786,7 +897,11 @@ export class TdmpSyncService {
       const detail = await this.source.school(school.schoolCode);
       ctx.totals.details++;
       if (detail) {
-        const merged = normaliseTdmpSchool({ ...raw, ...detail, ownership: raw.ownership ?? detail.ownership });
+        const merged = normaliseTdmpSchool({
+          ...raw,
+          ...detail,
+          ownership: raw.ownership ?? detail.ownership,
+        });
         if (merged.ok)
           return {
             school: merged.school,
@@ -800,7 +915,9 @@ export class TdmpSyncService {
       school: {
         ...school,
         establishmentDate:
-          school.establishmentDate ?? local?.tdmpData?.establishmentDate ?? null,
+          school.establishmentDate ??
+          local?.tdmpData?.establishmentDate ??
+          null,
         currentAcademicYear:
           school.currentAcademicYear ??
           school.academicYear ??
@@ -839,7 +956,11 @@ export class TdmpSyncService {
     let done = 0;
     for (const school of missing) {
       const code = school.tdmpSchoolCode!;
-      await this.progress(ctx.run, ctx.totals, { phase: 'missing', done: done++, total: missing.length });
+      await this.progress(ctx.run, ctx.totals, {
+        phase: 'missing',
+        done: done++,
+        total: missing.length,
+      });
       const detail = await this.source.school(code);
       ctx.totals.details++;
       const runs = detail ? 0 : (school.tdmpData?.missingRuns ?? 0) + 1;
@@ -853,7 +974,7 @@ export class TdmpSyncService {
           : 'Still in TDMP, but no longer in the TVET list';
       if (closed) ctx.totals.deactivated++;
       else ctx.totals.missing++;
-      ctx.report.missing.length < MAX_REPORT_ROWS &&
+      if (ctx.report.missing.length < MAX_REPORT_ROWS)
         ctx.report.missing.push({
           code,
           name: school.name,
@@ -919,4 +1040,3 @@ export class TdmpSyncService {
       );
   }
 }
-

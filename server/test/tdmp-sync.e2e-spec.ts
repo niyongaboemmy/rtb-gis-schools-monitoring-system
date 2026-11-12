@@ -595,6 +595,35 @@ describe('TDMP admin routes', () => {
     ).toBeUndefined();
   });
 
+  it('adds a TDMP school without GPS at a location an admin gives', async () => {
+    await http()
+      .post(`${PREFIX}/tdmp/schools/import`)
+      .set(auth('super_admin'))
+      .send({ schoolCode: NOGPS_CODE, latitude: 48.85, longitude: 2.35 })
+      .expect(400);
+    const res = await http()
+      .post(`${PREFIX}/tdmp/schools/import`)
+      .set(auth('super_admin'))
+      .send({ schoolCode: NOGPS_CODE, latitude: -1.95, longitude: 30.06 })
+      .expect(201);
+    expect(res.body).toMatchObject({
+      tdmpSchoolCode: NOGPS_CODE,
+      name: 'E2E School Without GPS',
+      locationSource: 'manual',
+      ownership: 'Private',
+    });
+    await http()
+      .post(`${PREFIX}/tdmp/schools/import`)
+      .set(auth('super_admin'))
+      .send({ schoolCode: NOGPS_CODE, latitude: -1.95, longitude: 30.06 })
+      .expect(409);
+    await http()
+      .post(`${PREFIX}/tdmp/schools/import`)
+      .set(auth('district_officer'))
+      .send({ schoolCode: NOGPS_CODE, latitude: -1.95, longitude: 30.06 })
+      .expect(403);
+  });
+
   it('run history lists every run, newest first', async () => {
     const res = await http()
       .get(`${PREFIX}/tdmp/sync/runs?limit=50`)
