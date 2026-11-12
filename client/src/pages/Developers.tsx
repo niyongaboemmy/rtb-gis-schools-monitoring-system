@@ -110,7 +110,9 @@ const ENDPOINTS: Endpoint[] = [
     path: "/partner/ping",
     title: "Check your key",
     desc: "Returns the partner and scopes the key carries. Use it to verify your setup.",
-    response: `{ "partner": "TDMP", "keyName": "TDMP production", "keyPrefix": "rtbgis_pk_3f9a1c",
+    response: `{ "access": { "tier": "district", "province": "Southern Province", "district": "Muhanga",
+              "views": ["school-dashboard", "school-map-2d"], "summary": "Muhanga district" },
+  "partner": "TDMP", "keyName": "TDMP production", "keyPrefix": "rtbgis_pk_3f9a1c",
   "scopes": ["schools:read", "coordinates:read", "embed:create"], "time": "2026-11-12T10:00:00.000Z" }`,
   },
   {
@@ -483,6 +485,32 @@ export default function Developers() {
               </table>
             </div>
             <P>Keep the key on your server. Never put it in a web page, a mobile app or a URL.</P>
+            <h3 className="pt-2 font-medium text-foreground">Access level</h3>
+            <P>
+              Each key also has an <strong className="text-foreground">access level</strong> set by RTB GIS. Every endpoint applies it, so a key never
+              sees more than it was given. <C>GET /partner/ping</C> shows yours.
+            </P>
+            <div className="overflow-x-auto rounded-2xl ring-1 ring-border">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-900/[0.03] text-left text-xs text-muted-foreground dark:bg-white/[0.04]">
+                  <tr>
+                    <th className="px-3 py-2">Level</th>
+                    <th className="px-3 py-2">Data endpoints</th>
+                    <th className="px-3 py-2">Embed links</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60 text-muted-foreground">
+                  <tr><td className="px-3 py-2"><C>national</C></td><td className="px-3 py-2">All schools</td><td className="px-3 py-2">Any school; national map of any area</td></tr>
+                  <tr><td className="px-3 py-2"><C>province</C></td><td className="px-3 py-2">Schools in the province</td><td className="px-3 py-2">Schools in the province; national map of the province or one of its districts</td></tr>
+                  <tr><td className="px-3 py-2"><C>district</C></td><td className="px-3 py-2">Schools in the district</td><td className="px-3 py-2">Schools in the district; national map of the district</td></tr>
+                  <tr><td className="px-3 py-2"><C>schools</C></td><td className="px-3 py-2">Only the listed schools</td><td className="px-3 py-2">Only the listed schools; no national map</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <P>
+              A school outside your access answers <C>404</C>, as if it did not exist. Asking for a wider area or a view the key does not allow answers{" "}
+              <C>403 PARTNER_ACCESS_DENIED</C>. If RTB GIS narrows a key, views already open under the old access end at once.
+            </P>
           </Section>
 
           <Section id="endpoints" title="Endpoints" icon={Code2}>
@@ -638,8 +666,9 @@ store.set("rtbgis.coordinates.since", generated_at)`,
                   {[
                     ["401", "PARTNER_KEY_INVALID", "Key missing, unknown or revoked."],
                     ["403", "PARTNER_SCOPE_MISSING", "The key lacks the scope for this route."],
+                    ["403", "PARTNER_ACCESS_DENIED", "Outside the key's access level: a wider area, or a view the key may not open."],
                     ["400", "—", "A parameter is wrong (the message says which)."],
-                    ["404", "—", "No school with that code in RTB GIS."],
+                    ["404", "—", "No school with that code within your access."],
                     ["429", "—", "More than 120 requests a minute from one client: wait and retry."],
                     ["401", "EMBED_LINK_INVALID / EMBED_LINK_REVOKED", "Shown inside the iframe: the link expired or its key was revoked."],
                   ].map(([h, c, m]) => (

@@ -5,6 +5,7 @@ import {
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Request,
@@ -50,6 +51,12 @@ import {
   PartnerScopes,
 } from './partner-api-key.guard';
 import { EMBED_VIEWS, applyEmbedClaims, type EmbedView } from './partner-embed';
+import {
+  accessOf,
+  describeAccess,
+  MAX_ACCESS_SCHOOLS,
+  PARTNER_ACCESS_TIERS,
+} from './partner-access';
 
 class EmbedLinkDto {
   @IsIn(EMBED_VIEWS as unknown as string[])
@@ -104,6 +111,59 @@ class CreatePartnerKeyDto {
   @ArrayMaxSize(10)
   @IsString({ each: true })
   allowedOrigins?: string[];
+
+  @IsOptional()
+  @IsIn(PARTNER_ACCESS_TIERS as unknown as string[])
+  accessTier?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 80)
+  accessProvince?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 80)
+  accessDistrict?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_ACCESS_SCHOOLS)
+  @IsString({ each: true })
+  accessSchoolCodes?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsIn(EMBED_VIEWS as unknown as string[], { each: true })
+  allowedViews?: string[];
+}
+
+/** Access level only (edit an existing key). */
+class UpdatePartnerAccessDto {
+  @IsOptional()
+  @IsIn(PARTNER_ACCESS_TIERS as unknown as string[])
+  accessTier?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 80)
+  accessProvince?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 80)
+  accessDistrict?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_ACCESS_SCHOOLS)
+  @IsString({ each: true })
+  accessSchoolCodes?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @IsIn(EMBED_VIEWS as unknown as string[], { each: true })
+  allowedViews?: string[];
 }
 
 class EmbedSessionDto {
@@ -162,7 +222,9 @@ export class PartnerApiController {
     summary: 'Check a partner key: who you are and what it may do',
   })
   ping(@CurrentPartner() key: PartnerApiKey) {
+    const access = accessOf(key);
     return {
+      access: { ...access, summary: describeAccess(access) },
       partner: key.partner,
       keyName: key.name,
       keyPrefix: key.keyPrefix,
@@ -180,7 +242,10 @@ export class PartnerApiController {
     ...listQueries,
     ApiQuery({ name: 'format', required: false, enum: ['json', 'geojson'] }),
   )
-  coordinates(@Query() q: Record<string, string>) {
+  coordinates(
+    @CurrentPartner() key: PartnerApiKey,
+    @Query() q: Record<string, string>,
+  ) {
     const query = {
       updatedSince: q.updatedSince,
       status: q.status,
@@ -189,8 +254,8 @@ export class PartnerApiController {
       limit: Number(q.limit),
     };
     return q.format === 'geojson'
-      ? this.schools.coordinatesGeoJson(query)
-      : this.schools.coordinates(query);
+      ? this.schools.coordinatesGeoJson(query, accessOf(key))
+      : this.schools.coordinates(query, accessOf(key));
   }
 
   @Get('schools')
@@ -200,14 +265,20 @@ export class PartnerApiController {
       'Schools in RTB GIS, with location quality and which views can be embedded',
   })
   @applyAll(...listQueries)
-  list(@Query() q: Record<string, string>) {
-    return this.schools.list({
-      updatedSince: q.updatedSince,
-      status: q.status,
-      district: q.district,
-      page: Number(q.page),
-      limit: Number(q.limit),
-    });
+  list(
+    @CurrentPartner() key: PartnerApiKey,
+    @Query() q: Record<string, string>,
+  ) {
+    return this.schools.list(
+      {
+        updatedSince: q.updatedSince,
+        status: q.status,
+        district: q.district,
+        page: Number(q.page),
+        limit: Number(q.limit),
+      },
+      accessOf(key),
+    );
   }
 
   @Get('schools/:code')
@@ -216,8 +287,8 @@ export class PartnerApiController {
     summary:
       'One school by TDMP / SDMS code, with its campus boundary (GeoJSON)',
   })
-  detail(@Param('code') code: string) {
-    return this.schools.detail(code.trim());
+  detail(@CurrentPartner() key: PartnerApiKey, @Param('code') code: string) {
+    return this.schools.detail(code.trim(), accessOf(key));
   }
 
   @Post('embed-links')
@@ -261,6 +332,20 @@ export class PartnerKeysController {
       req.user?.email ?? null,
     );
     return { ...key, apiKey: rawKey };
+  }
+
+  @Patch(':id/access')
+  @RequirePermissions(Permission.MANAGE_SCHOOLS)
+  @RequireNationalScope()
+  @ApiOperation({
+    summary:
+      "Change a key's access level; views opened under the old access end at once",
+  })
+  updateAccess(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePartnerAccessDto,
+  ) {
+    return this.keys.updateAccess(id, dto);
   }
 
   @Post(':id/revoke')

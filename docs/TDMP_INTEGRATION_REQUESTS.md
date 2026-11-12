@@ -42,6 +42,7 @@ Everything below is live and documented, with copy-ready code and a "try it" con
 
 How access is controlled:
 - **Scopes per key:** `coordinates:read`, `schools:read`, `embed:create`.
+- **Access level per key**, set by RTB GIS: **national**, one **province**, one **district**, or a **list of schools**, plus which embedded views it may open. Every endpoint applies it: lists only contain schools within it, a school outside it answers 404, and embed links can never cover more (a wider area or a view not allowed answers `403 PARTNER_ACCESS_DENIED`). Narrowing a key ends the views opened under the old access. `GET /partner/ping` shows the key's level. TDMP's production key is national with all views.
 - **Embedded views are read-only and scoped.** A link covers one school (or one area for the national map). It expires in minutes (60–3600 s), and the view it opens lasts the session length you choose (5–480 min). The token travels in the URL fragment, so it is never sent to servers or in Referer headers.
 - **Revocation is immediate:** revoking a key ends every embedded view opened with it.
 - **Everything is audited.** Each embedded view opened is recorded with partner, view and scope.
