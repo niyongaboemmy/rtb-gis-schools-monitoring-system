@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Role } from '../roles/entities/role.entity';
+import { TdmpSyncRun } from './entities/tdmp-sync-run.entity';
 import { TdmpConfig } from './tdmp.config';
 import { TdmpApiClient, type TdmpEndpointCheck } from './tdmp-api.client';
 import type { TdmpListMeta, TdmpSchool } from './tdmp.types';
@@ -110,6 +111,8 @@ export class TdmpConnectionService {
     private readonly config: TdmpConfig,
     private readonly api: TdmpApiClient,
     @InjectRepository(Role) private readonly roles: Repository<Role>,
+    @InjectRepository(TdmpSyncRun)
+    private readonly runs: Repository<TdmpSyncRun>,
   ) {}
 
   async check(refresh = false): Promise<ConnectionReport> {
@@ -249,6 +252,15 @@ export class TdmpConnectionService {
       .getCount()
       .catch(() => 0);
 
+    // R13: schools TDMP has no GPS for, as the latest real sync saw them.
+    const lastSync = await this.runs
+      .findOne({
+        where: { status: 'completed', dryRun: false },
+        order: { startedAt: 'DESC' },
+      })
+      .catch(() => null);
+    const noGps = lastSync?.report?.needsLocation?.length ?? null;
+
     const state = (done: boolean, partial = false): RequestState =>
       done ? 'done' : partial ? 'partial' : 'waiting';
 
@@ -362,6 +374,18 @@ export class TdmpConnectionService {
         evidence: ok('performance')
           ? 'Pass rates readable'
           : 'Pass rates: 403; employment and labour-market data not in the API',
+      },
+      {
+        id: 'R13',
+        title: 'GPS for TVET schools that have none in TDMP',
+        priority: 'P2',
+        state: noGps === null ? 'waiting' : state(noGps === 0),
+        evidence:
+          noGps === null
+            ? 'Run a sync to check'
+            : noGps === 0
+              ? 'Every TDMP school had usable GPS in the last sync'
+              : `${noGps} schools had no GPS inside Rwanda in the last sync`,
       },
       {
         id: 'R12',

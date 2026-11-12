@@ -61,6 +61,8 @@ export function HelpHint({ label, children, className }: { label: string; childr
 
 export interface SetupStep {
   id: string;
+  /** One or two words for the stepper. */
+  short: string;
   title: string;
   /** What this step means, in one or two plain sentences. */
   explain: string;
@@ -167,22 +169,22 @@ const STAGES = [
   {
     id: "read",
     icon: CloudDownload,
-    title: "1 · Read from TDMP",
-    short: "TDMP school list",
+    title: "Read",
+    short: "From TDMP",
     body: "RTB GIS reads TDMP's list of TVET schools with a read-only key. It never writes anything back to TDMP. TDMP refreshes its own data about 06:00 each morning.",
   },
   {
     id: "compare",
     icon: GitCompareArrows,
-    title: "2 · Compare",
-    short: "Match by school code",
+    title: "Compare",
+    short: "By school code",
     body: "Each TDMP school is matched to an RTB GIS school by its official SDMS code. Schools that did not change since the last sync are skipped, so nothing is rewritten without a reason.",
   },
   {
     id: "update",
     icon: Building2,
-    title: "3 · Update RTB GIS",
-    short: "Profile updated, map kept",
+    title: "Update",
+    short: "Profiles, not maps",
     body: "Matched schools get TDMP's latest name, status, location names, ownership and learner and teacher totals. A school TDMP has but RTB GIS does not is added at TDMP's GPS point. The map location you set in RTB GIS is never moved.",
   },
 ] as const;
@@ -283,8 +285,11 @@ export function HowItWorks() {
                   <s.icon className="h-4 w-4" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-sm font-medium text-foreground">{s.title}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{s.short}</span>
+                  <span className="block text-sm font-medium text-foreground">
+                    <span className="mr-1 tabular-nums text-muted-foreground">{i + 1}</span>
+                    {s.title}
+                  </span>
+                  <span className="block text-xs leading-snug text-muted-foreground">{s.short}</span>
                 </span>
               </button>
               {i < STAGES.length - 1 && (

@@ -357,3 +357,117 @@ export function fieldsLabel(fields: string[] | undefined): string {
   if (!fields?.length) return "";
   return fields.map((f) => FIELD_LABEL[f] ?? f).join(", ");
 }
+
+// ── Data coverage: what we need from TDMP, and what is live today ───────────
+
+export interface CoverageField {
+  label: string;
+  /** The request that unlocks it; none = live with today's access. */
+  request?: string;
+  /** Also live when that request is only partly met (e.g. sign-in works without prompt=none). */
+  partialOk?: boolean;
+}
+
+export interface CoverageArea {
+  id: "profile" | "enrolment" | "staffing" | "identity" | "outcomes";
+  title: string;
+  priority: "P1" | "P1/P2" | "P3";
+  summary: string;
+  fields: CoverageField[];
+}
+
+/** The five data areas agreed with TDMP (docs/TDMP_INTEGRATION_PLAN.md §1). */
+export const TDMP_COVERAGE: CoverageArea[] = [
+  {
+    id: "profile",
+    title: "School profile",
+    priority: "P1",
+    summary: "Code, name, type, status, location and year established.",
+    fields: [
+      { label: "Code and name" },
+      { label: "Type (TSS / VTC)" },
+      { label: "Status" },
+      { label: "Location names and ids" },
+      { label: "Ownership" },
+      { label: "Year established" },
+    ],
+  },
+  {
+    id: "enrolment",
+    title: "Enrolment",
+    priority: "P1",
+    summary: "Learner totals, programmes, learners per programme, seats.",
+    fields: [
+      { label: "Learner total" },
+      { label: "Programme codes" },
+      { label: "Programme names", request: "R1" },
+      { label: "Learners per programme", request: "R1" },
+      { label: "Learners by gender", request: "R1" },
+      { label: "Seat capacity", request: "R2" },
+    ],
+  },
+  {
+    id: "staffing",
+    title: "Staffing",
+    priority: "P1/P2",
+    summary: "Teacher counts by gender and wider staff totals.",
+    fields: [
+      { label: "Teacher total" },
+      { label: "Teachers by gender", request: "R1" },
+      { label: "Admin and support staff", request: "R1" },
+      { label: "Head teacher", request: "R3" },
+    ],
+  },
+  {
+    id: "identity",
+    title: "Sign-in",
+    priority: "P1",
+    summary: "Single sign-on with TDMP accounts, roles and scope.",
+    fields: [
+      { label: "Sign-in client", request: "R6", partialOk: true },
+      { label: "Role mapping", request: "R7" },
+      { label: "District / school scope", request: "R8" },
+      { label: "MFA done in TDMP", request: "R9" },
+    ],
+  },
+  {
+    id: "outcomes",
+    title: "Outcomes",
+    priority: "P3",
+    summary: "Pass rates, graduate employment, labour demand.",
+    fields: [
+      { label: "Assessment pass rates", request: "R11" },
+      { label: "Graduate employment", request: "R11" },
+      { label: "Labour-market demand", request: "R11" },
+    ],
+  },
+];
+
+export interface FieldCoverage extends CoverageField {
+  live: boolean;
+}
+
+/** Each field of an area, marked live or waiting given where the requests stand. */
+export function areaCoverage(
+  area: CoverageArea,
+  requests: Pick<RequestStatus, "id" | "state">[] | undefined,
+): { fields: FieldCoverage[]; live: number; total: number } {
+  const state = (id?: string) => requests?.find((r) => r.id === id)?.state;
+  const fields = area.fields.map((f) => {
+    const s = state(f.request);
+    return { ...f, live: !f.request || s === "done" || (!!f.partialOk && s === "partial") };
+  });
+  return { fields, live: fields.filter((f) => f.live).length, total: fields.length };
+}
+
+/** Share of all needed fields that are live (0–100). */
+export function overallCoverage(requests: Pick<RequestStatus, "id" | "state">[] | undefined): number {
+  let live = 0;
+  let total = 0;
+  for (const a of TDMP_COVERAGE) {
+    const c = areaCoverage(a, requests);
+    live += c.live;
+    total += c.total;
+  }
+  return total ? Math.round((live / total) * 100) : 0;
+}

@@ -20,15 +20,15 @@ vi.mock("../hooks/useScope", () => ({ useScope: () => ({ isNational: national })
 
 import TdmpIntegration from "./TdmpIntegration";
 
-const totals = { fetched: 391, created: 0, linked: 12, updated: 3, unchanged: 370, skippedNoGps: 2, skipped: 4, failed: 0, missing: 0, deactivated: 0, details: 20 };
+const totals = { fetched: 391, created: 373, linked: 2, updated: 0, unchanged: 0, skippedNoGps: 16, skipped: 0, failed: 0, missing: 0, deactivated: 0, details: 391 };
 
-const RUN: SyncRun = {
+const SYNC: SyncRun = {
   id: "11111111-1111-4111-8111-111111111111",
   trigger: "manual",
   status: "completed",
-  dryRun: true,
-  startedAt: "2026-11-12T07:00:00.000Z",
-  finishedAt: "2026-11-12T07:00:40.000Z",
+  dryRun: false,
+  startedAt: "2026-11-12T08:11:26.000Z",
+  finishedAt: "2026-11-12T08:11:58.000Z",
   totals,
   errors: [],
   progress: null,
@@ -46,7 +46,7 @@ const RUN: SyncRun = {
 };
 
 const settings = {
-  autoSync: true,
+  autoSync: false,
   probeIntervalMinutes: 60,
   dailyRunAt: "07:15",
   lastProbeAt: "2026-11-12T07:30:00.000Z",
@@ -54,7 +54,7 @@ const settings = {
   updatedAt: null,
   updatedBy: null,
   probeIntervals: [15, 30, 60, 180, 360],
-  nextDailyRunAt: "2026-11-13T05:15:00.000Z",
+  nextDailyRunAt: null,
 };
 
 const status = (over: Partial<TdmpStatus> = {}): TdmpStatus => ({
@@ -62,10 +62,10 @@ const status = (over: Partial<TdmpStatus> = {}): TdmpStatus => ({
   authMode: "local",
   running: false,
   currentRun: null,
-  lastRun: RUN,
+  lastRun: SYNC,
   lastSuccessAt: new Date().toISOString(),
-  linkedSchools: 300,
-  unlinkedSchools: 12,
+  linkedSchools: 374,
+  unlinkedSchools: 1,
   settings,
   ...over,
 });
@@ -73,11 +73,11 @@ const status = (over: Partial<TdmpStatus> = {}): TdmpStatus => ({
 const UNLINKED: UnlinkedSchool[] = [
   {
     id: "22222222-2222-4222-8222-222222222222",
-    code: "TSS-SOU-002",
-    name: "ACODES Mushishiro",
-    district: "Muhanga",
+    code: "TSS-SOU-001",
+    name: "FR RAMON TSS KABUGA",
+    district: "Kamonyi",
     hasGisData: true,
-    suggestion: { schoolCode: "270601", schoolName: "ACODES MUSHISHIRO" },
+    suggestion: { schoolCode: "280705", schoolName: "Fr Ramon KABUGA TSS" },
   },
 ];
 
@@ -94,17 +94,17 @@ const CONNECTION: ConnectionReport = {
     { key: "trades", label: "Programme names", path: "/trades", status: 403, ms: 90, ok: false, request: "R1" },
   ],
   requests: [
-    { id: "R1", title: "Aggregate reports", priority: "P2", state: "waiting", evidence: "0 of 5 endpoints readable with our key" },
-    { id: "R7", title: "TDMP role catalogue and mapping", priority: "P1", state: "done", evidence: "1 role(s) mapped" },
+    { id: "R1", title: "Aggregate reports", priority: "P2", state: "waiting", evidence: "0 of 5 endpoints readable" },
+    { id: "R7", title: "TDMP role catalogue", priority: "P1", state: "done", evidence: "1 role mapped" },
   ],
 };
 
-function mockApi(statuses: TdmpStatus[]) {
+function mockApi(statuses: TdmpStatus[], unlinked: UnlinkedSchool[] = UNLINKED, runs: SyncRun[] = [SYNC]) {
   let i = 0;
   get.mockImplementation((url: string) => {
     if (url === "/tdmp/status") return Promise.resolve({ data: statuses[Math.min(i++, statuses.length - 1)] });
-    if (url === "/tdmp/sync/runs") return Promise.resolve({ data: [RUN] });
-    if (url === "/tdmp/schools/unlinked") return Promise.resolve({ data: UNLINKED });
+    if (url === "/tdmp/sync/runs") return Promise.resolve({ data: runs });
+    if (url === "/tdmp/schools/unlinked") return Promise.resolve({ data: unlinked });
     if (url === "/tdmp/connection") return Promise.resolve({ data: CONNECTION });
     return Promise.reject(new Error(`unexpected ${url}`));
   });
@@ -117,6 +117,8 @@ const renderPage = () =>
     </ToastProvider>,
   );
 
+const hero = () => screen.getByRole("region", { name: "TDMP integration" });
+
 beforeEach(() => {
   national = true;
   get.mockReset();
@@ -124,52 +126,36 @@ beforeEach(() => {
   patch.mockReset();
 });
 
-describe("TDMP integration page", () => {
-  it("shows the schedule, the last run report and the requests to TDMP", async () => {
+describe("TDMP integration dashboard", () => {
+  it("summarises setup, coverage, schools, last sync and schedule", async () => {
     mockApi([status()]);
     renderPage();
+    const h = await screen.findByRole("region", { name: "TDMP integration" });
+    // connect, preview, first sync done · link, locate, automate open
+    expect(await within(h).findByRole("button", { name: /Setup: 3\/6/ })).toBeInTheDocument();
+    expect(within(h).getByRole("button", { name: /Data coverage: \d+%/ })).toBeInTheDocument();
+    expect(within(h).getByText("374 / 375")).toBeInTheDocument();
+    expect(within(h).getByText("Paused")).toBeInTheDocument();
 
-    expect(await screen.findByText("Automatic sync on")).toBeInTheDocument();
-    expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByText(/Checks TDMP every hour/)).toBeInTheDocument();
-
-    // Report of the selected (dry) run
-    const report = screen.getByRole("region", { name: "Run report" });
-    fireEvent.click(within(report).getByRole("button", { name: /Need a location first/ }));
-    expect(within(report).getByText("ACODES MUSHISHIRO")).toBeInTheDocument();
-    fireEvent.click(within(report).getByRole("button", { name: /Schools to link/ }));
-    expect(within(report).getByText("In RTB GIS: ACEJ Karama TSS")).toBeInTheDocument();
-
-    // Connection + requests
-    const conn = screen.getByRole("region", { name: "Connection and TDMP requests" });
-    expect(await within(conn).findByText("Connected")).toBeInTheDocument();
-    expect(within(conn).getByText("Not granted")).toBeInTheDocument();
-    expect(within(conn).getByText(/1 of 2 done/)).toBeInTheDocument();
-    expect(within(conn).getByText("Waiting for TDMP")).toBeInTheDocument();
+    const attention = screen.getByRole("region", { name: "Needs attention" });
+    expect(within(attention).getByText("Schools without a map location")).toBeInTheDocument();
+    expect(within(attention).getByText("Schools not linked to TDMP")).toBeInTheDocument();
   });
 
-  it("starts a sync without waiting for the schedule and follows its progress", async () => {
+  it("starts a sync from the header and follows its progress", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
-      const runningRun: SyncRun = {
-        ...RUN,
-        id: "33333333-3333-4333-8333-333333333333",
-        status: "running",
-        dryRun: false,
-        finishedAt: null,
-        report: null,
-        progress: { phase: "schools", done: 120, total: 391 },
-      };
-      const finished: SyncRun = { ...runningRun, status: "completed", progress: null, finishedAt: "2026-11-12T08:01:00.000Z", report: RUN.report };
-      mockApi([status(), status({ running: true, currentRun: runningRun }), status({ running: false, lastRun: finished })]);
-      post.mockResolvedValue({ data: { started: true, runId: runningRun.id } });
+      const runningRun: SyncRun = { ...SYNC, id: "33333333-3333-4333-8333-333333333333", status: "running", finishedAt: null, report: null, progress: { phase: "schools", done: 120, total: 391 } };
+      const finished: SyncRun = { ...runningRun, status: "completed", progress: null, finishedAt: "2026-11-12T08:13:00.000Z", report: SYNC.report };
+      mockApi([status(), status({ running: true, currentRun: runningRun }), status({ lastRun: finished })]);
+      post.mockResolvedValue({ data: { started: true } });
       renderPage();
 
-      const syncPanel = await screen.findByRole("region", { name: "Sync now" });
-      fireEvent.click(within(syncPanel).getByRole("button", { name: "Sync now" }));
+      await screen.findByRole("button", { name: /Setup:/ });
+      fireEvent.click(within(hero()).getByRole("button", { name: "Sync now" }));
       await waitFor(() => expect(post).toHaveBeenCalledWith("/tdmp/sync", { dryRun: false }));
       expect(await screen.findByText("Updating schools · 120 of 391")).toBeInTheDocument();
-      expect(within(syncPanel).getByRole("button", { name: /Syncing/ })).toBeDisabled();
+      expect(within(hero()).getByRole("button", { name: /Syncing/ })).toBeDisabled();
 
       await act(async () => {
         vi.advanceTimersByTime(2100);
@@ -180,50 +166,105 @@ describe("TDMP integration page", () => {
     }
   });
 
-  it("runs a dry run", async () => {
-    mockApi([status()]);
-    post.mockResolvedValue({ data: { started: true, dryRun: true } });
-    renderPage();
-    const syncPanel = await screen.findByRole("region", { name: "Sync now" });
-    fireEvent.click(within(syncPanel).getByRole("button", { name: "Dry run" }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith("/tdmp/sync", { dryRun: true }));
-  });
-
-  it("pauses the automatic sync with one switch", async () => {
-    mockApi([status()]);
-    patch.mockResolvedValue({ data: {} });
-    renderPage();
-    fireEvent.click(await screen.findByRole("switch"));
-    await waitFor(() => expect(patch).toHaveBeenCalledWith("/tdmp/settings", { autoSync: false }));
-  });
-
-  it("saves a new probe interval and daily time", async () => {
-    mockApi([status()]);
-    patch.mockResolvedValue({ data: {} });
-    renderPage();
-    fireEvent.change(await screen.findByLabelText(/Check TDMP for changes/), { target: { value: "30" } });
-    fireEvent.change(screen.getByLabelText(/Daily full run at/), { target: { value: "06:45" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() =>
-      expect(patch).toHaveBeenCalledWith("/tdmp/settings", { autoSync: true, probeIntervalMinutes: 30, dailyRunAt: "06:45" }),
-    );
-  });
-
-  it("links an unlinked school with the suggested TDMP code", async () => {
+  it("runs a dry run from the header", async () => {
     mockApi([status()]);
     post.mockResolvedValue({ data: {} });
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: /Link to 270601/ }));
-    await waitFor(() =>
-      expect(post).toHaveBeenCalledWith(`/tdmp/schools/${UNLINKED[0].id}/link`, { schoolCode: "270601" }),
-    );
+    await screen.findByRole("button", { name: /Setup:/ });
+    fireEvent.click(within(hero()).getByRole("button", { name: "Dry run" }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/tdmp/sync", { dryRun: true }));
+  });
+
+  it("each setup step opens its explanation and action", async () => {
+    mockApi([status()], []);
+    patch.mockResolvedValue({ data: {} });
+    renderPage();
+    const stepper = await screen.findByRole("region", { name: "Setup progress" });
+    fireEvent.click(within(stepper).getByRole("button", { name: /Step 6: Turn on automatic sync/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/Checks TDMP every hour/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Turn on" }));
+    await waitFor(() => expect(patch).toHaveBeenCalledWith("/tdmp/settings", { autoSync: true }));
+  });
+
+  it("a data area opens which fields are live and which wait on TDMP", async () => {
+    mockApi([status()]);
+    renderPage();
+    const data = await screen.findByRole("region", { name: "Data from TDMP" });
+    fireEvent.click(await within(data).findByRole("button", { name: /Enrolment: 2 of 6 live/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getAllByText("Live")).toHaveLength(2);
+    expect(within(dialog).getAllByText(/Waiting · R1/)).toHaveLength(3);
+    expect(within(dialog).getByText(/Waiting · R2/)).toBeInTheDocument();
+  });
+
+  it("changes the schedule in its modal", async () => {
+    mockApi([status()]);
+    patch.mockResolvedValue({ data: {} });
+    renderPage();
+    await screen.findByRole("button", { name: /Setup:/ });
+    fireEvent.click(within(hero()).getByRole("button", { name: /Automatic sync/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("switch"));
+    fireEvent.change(within(dialog).getByLabelText(/Check TDMP for changes/), { target: { value: "30" } });
+    fireEvent.change(within(dialog).getByLabelText(/Daily full run at/), { target: { value: "06:45" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(patch).toHaveBeenCalledWith("/tdmp/settings", { autoSync: true, probeIntervalMinutes: 30, dailyRunAt: "06:45" }));
+  });
+
+  it("opens a run's report from recent activity", async () => {
+    mockApi([status()]);
+    renderPage();
+    const activity = await screen.findByRole("region", { name: "Recent activity" });
+    fireEvent.click(await within(activity).findByRole("button", { name: /Manual/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /Schools linked/ }));
+    expect(within(dialog).getByText("In RTB GIS: ACEJ Karama TSS")).toBeInTheDocument();
+  });
+
+  it("links an unlinked school with the suggested code", async () => {
+    mockApi([status()]);
+    post.mockResolvedValue({ data: {} });
+    renderPage();
+    const attention = await screen.findByRole("region", { name: "Needs attention" });
+    fireEvent.click(await within(attention).findByRole("button", { name: /Schools not linked to TDMP/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /Link to 280705/ }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith(`/tdmp/schools/${UNLINKED[0].id}/link`, { schoolCode: "280705" }));
+  });
+
+  it("adds a school TDMP has no GPS for", async () => {
+    mockApi([status()]);
+    post.mockResolvedValue({ data: {} });
+    renderPage();
+    const attention = await screen.findByRole("region", { name: "Needs attention" });
+    fireEvent.click(await within(attention).findByRole("button", { name: /Schools without a map location/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /Add with location/ }));
+    fireEvent.change(within(dialog).getByLabelText("Latitude"), { target: { value: "-2.05" } });
+    fireEvent.change(within(dialog).getByLabelText("Longitude"), { target: { value: "29.75" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /Add school/ }));
+    await waitFor(() => expect(post).toHaveBeenCalledWith("/tdmp/schools/import", { schoolCode: "270601", latitude: -2.05, longitude: 29.75 }));
+    expect(await within(dialog).findByText(/Every TDMP school has a place on the map/)).toBeInTheDocument();
+  });
+
+  it("explains how it works, interactively", async () => {
+    mockApi([status()]);
+    renderPage();
+    await screen.findByRole("button", { name: /Setup:/ });
+    fireEvent.click(within(hero()).getByRole("button", { name: /How it works/ }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("tab", { name: /Compare/ }));
+    expect(await within(dialog).findByText(/official SDMS code/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Map location" }));
+    expect(within(dialog).getByText(/TDMP's point is only used for a school new to RTB GIS/)).toBeInTheDocument();
   });
 
   it("explains when the API key is missing", async () => {
     mockApi([status({ enabled: { login: false, sync: false } })]);
     renderPage();
     expect(await screen.findByText(/TDMP sync is not configured/)).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Sync now" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sync now" })).not.toBeInTheDocument();
   });
 
   it("is for national accounts only", async () => {
@@ -231,72 +272,5 @@ describe("TDMP integration page", () => {
     renderPage();
     expect(await screen.findByText("National access needed")).toBeInTheDocument();
     expect(get).not.toHaveBeenCalled();
-  });
-});
-
-describe("TDMP integration page — guidance", () => {
-  const SYNCED: SyncRun = { ...RUN, id: "44444444-4444-4444-8444-444444444444", dryRun: false };
-
-  function mockWith(runs: SyncRun[], st: TdmpStatus, unlinked: UnlinkedSchool[] = UNLINKED) {
-    get.mockImplementation((url: string) => {
-      if (url === "/tdmp/status") return Promise.resolve({ data: st });
-      if (url === "/tdmp/sync/runs") return Promise.resolve({ data: runs });
-      if (url === "/tdmp/schools/unlinked") return Promise.resolve({ data: unlinked });
-      if (url === "/tdmp/connection") return Promise.resolve({ data: CONNECTION });
-      return Promise.reject(new Error(`unexpected ${url}`));
-    });
-  }
-
-  it("ticks off finished setup steps and points to the next one", async () => {
-    mockWith([SYNCED], status({ settings: { ...settings, autoSync: false } }));
-    renderPage();
-    const setup = await screen.findByRole("region", { name: "Get started" });
-    const steps = within(setup).getAllByRole("listitem");
-    await waitFor(() => expect(within(steps[0]).getByText(/\(done\)/)).toBeInTheDocument()); // connected
-    expect(within(steps[2]).getByText(/\(done\)/)).toBeInTheDocument(); // first sync ran
-    // One school is still unlinked, so linking is next.
-    expect(steps[3]).toHaveAttribute("aria-current", "step");
-    expect(within(setup).getByText(/2 of 6 done|3 of 6 done/)).toBeInTheDocument();
-  });
-
-  it("turns on automatic sync from the checklist", async () => {
-    mockWith([SYNCED], status({ settings: { ...settings, autoSync: false } }), []);
-    patch.mockResolvedValue({ data: {} });
-    renderPage();
-    const setup = await screen.findByRole("region", { name: "Get started" });
-    fireEvent.click(await within(setup).findByRole("button", { name: /Turn on/ }));
-    await waitFor(() => expect(patch).toHaveBeenCalledWith("/tdmp/settings", { autoSync: true }));
-  });
-
-  it("explains each stage and field when tapped", async () => {
-    mockWith([SYNCED], status());
-    renderPage();
-    const how = await screen.findByRole("region", { name: "How it works" });
-    fireEvent.click(within(how).getByRole("tab", { name: /Compare/ }));
-    expect(await within(how).findByText(/official SDMS code/)).toBeInTheDocument();
-    fireEvent.click(within(how).getByRole("button", { name: "Map location" }));
-    expect(within(how).getByText(/TDMP's point is only used for a school new to RTB GIS/)).toBeInTheDocument();
-  });
-
-  it("opens a help hint in place", async () => {
-    mockWith([SYNCED], status());
-    renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "What is a dry run?" }));
-    expect(screen.getByRole("note")).toHaveTextContent(/without changing anything/);
-  });
-
-  it("adds a school TDMP has no GPS for, at the given coordinates", async () => {
-    mockWith([SYNCED], status());
-    post.mockResolvedValue({ data: {} });
-    renderPage();
-    const panel = await screen.findByRole("region", { name: "Schools waiting for a location" });
-    fireEvent.click(within(panel).getByRole("button", { name: /Add with location/ }));
-    fireEvent.change(within(panel).getByLabelText("Latitude"), { target: { value: "-2.05" } });
-    fireEvent.change(within(panel).getByLabelText("Longitude"), { target: { value: "29.75" } });
-    fireEvent.click(within(panel).getByRole("button", { name: /Add school/ }));
-    await waitFor(() =>
-      expect(post).toHaveBeenCalledWith("/tdmp/schools/import", { schoolCode: "270601", latitude: -2.05, longitude: 29.75 }),
-    );
-    expect(await within(panel).findByText(/Every TDMP school has a place on the map/)).toBeInTheDocument();
   });
 });
