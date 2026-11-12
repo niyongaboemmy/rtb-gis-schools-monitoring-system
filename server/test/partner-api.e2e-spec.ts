@@ -431,6 +431,36 @@ describe('Embedded views', () => {
     ).toBe(true);
   });
 
+  it('a national view limited to a district alone finds its province and data', async () => {
+    const { s, link } = await openSession({
+      view: 'national-dashboard',
+      district: home.district.toLowerCase(),
+    });
+    expect(link.scope).toEqual({
+      tier: 'district',
+      province: home.province,
+      district: home.district,
+    });
+    const auth = { Authorization: `Bearer ${s.accessToken}` };
+    const list = await http()
+      .get(`${PREFIX}/schools?limit=500`)
+      .set(auth)
+      .expect(200);
+    expect(list.body.data.length).toBeGreaterThan(0);
+    expect(
+      list.body.data.every(
+        (x: { district: string }) => x.district === home.district,
+      ),
+    ).toBe(true);
+    await http().get(`${PREFIX}/analytics/overview`).set(auth).expect(200);
+
+    const unknown = await http()
+      .post(`${PREFIX}/partner/embed-links`)
+      .set(withKey(fullKey.apiKey))
+      .send({ view: 'national-map', district: 'Atlantis' });
+    expect(unknown.status).toBe(400);
+  });
+
   it('rejects a forged or wrong-purpose token', async () => {
     const bad = await http()
       .post(`${PREFIX}/embed/session`)
@@ -620,6 +650,28 @@ describe('Access levels', () => {
         (x: { district: string }) => x.district === home.district,
       ),
     ).toBe(true);
+  });
+
+  it('a district key saved without a province still opens its district', async () => {
+    const res = await createKey({
+      accessTier: 'district',
+      accessDistrict: home.district.toUpperCase(),
+    });
+    expect(res.status).toBe(201);
+    const map = await linkFor(res.body.apiKey as string, {
+      view: 'national-map',
+    }).expect(201);
+    expect(map.body.scope).toEqual({
+      tier: 'district',
+      province: home.province,
+      district: home.district,
+    });
+    const s = await sessionFrom(map.body.url);
+    const seen = await http()
+      .get(`${PREFIX}/schools?limit=500`)
+      .set({ Authorization: `Bearer ${s.body.accessToken}` })
+      .expect(200);
+    expect(seen.body.data.length).toBeGreaterThan(0);
   });
 
   it('a school-list key sees only its schools and only its allowed views', async () => {

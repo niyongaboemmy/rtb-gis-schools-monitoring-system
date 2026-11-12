@@ -67,6 +67,17 @@ export function useScope(): ResolvedScope {
   }
 
   const loc = user?.location ?? null;
+
+  // Mirrors the server: the user's own reach (location.tier) can narrow the
+  // role's tier but never widen it.
+  const userTier = loc?.tier && loc.tier in RANK_BY_TIER ? (loc.tier as AccessTier) : null;
+  const roleReach = !tier || tier === "national" || rank <= 10 ? 10 : rank;
+  if (userTier && RANK_BY_TIER[userTier] > roleReach) {
+    tier = userTier;
+    rank = RANK_BY_TIER[userTier];
+    levelName = userTier.charAt(0).toUpperCase() + userTier.slice(1);
+  }
+
   const node =
     tier === "school"
       ? loc?.schoolName || null

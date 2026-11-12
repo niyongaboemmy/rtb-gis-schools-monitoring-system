@@ -19,6 +19,8 @@ export interface User {
     } | null;
   };
   location?: {
+    /** The user's own reach (TDMP placement, embed link area): can only narrow the role's tier. */
+    tier?: string;
     province?: string;
     district?: string;
     sector?: string;
