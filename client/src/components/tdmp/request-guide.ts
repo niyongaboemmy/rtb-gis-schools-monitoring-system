@@ -1,7 +1,7 @@
 /**
  * What each request to the TDMP team means, written for the TDMP team:
  * why we need it, exactly what to do, a concrete example, and what it turns
- * on in RTB GIS. Mirrors docs/TDMP_INTEGRATION_REQUESTS.md (R1–R13).
+ * on in RTB GIS. Mirrors docs/TDMP_INTEGRATION_REQUESTS.md.
  */
 export interface RequestGuide {
   /** One line, plain language. */
@@ -18,12 +18,11 @@ export interface RequestGuide {
 
 export const REQUEST_GUIDE: Record<string, RequestGuide> = {
   R1: {
-    summary: "Let our partner key read five school-level reports.",
-    why: "Learner and teacher gender splits, learners per programme and programme names make the enrolment and staffing figures complete. Our key gets 403 on these routes, although the TDMP docs list them for external_api_consumer.",
+    summary: "Let our partner key read three school-level reports.",
+    why: "Learners per programme (with the gender split) size workshops, classrooms, sanitation and dormitories against what each school has on the ground. Programme names and administrative units label them. Our key gets 403 on these routes, although the TDMP docs list them for external_api_consumer.",
     ask: [
-      "Give the RTB 3D GIS service account read access to the five routes below (school-level aggregates only).",
+      "Give the RTB 3D GIS service account read access to /reports/trades/students, /trades and /locations (school-level aggregates only).",
       "Keep /students and /teachers closed to us: we never need learner or teacher records.",
-      "If a report cannot filter by school, a small /schools/{code}/staff-summary route is enough.",
     ],
     example: {
       label: "A call that should return 200 instead of 403 (illustrative values)",
@@ -35,8 +34,8 @@ Authorization: ApiKey fortress_sk_…
 { "data": [ { "tradeCode": "SOD", "tradeName": "Software Development",
               "total": 312, "breakdown": { "byGender": { "Male": 201, "Female": 111 } } } ] }`,
     },
-    unlocks: ["Learners per programme", "Learners by gender", "Teachers by gender", "Admin and support staff", "Programme names"],
-    check: "We call the five routes with our key on every connection test. Each one that answers 200 turns green here.",
+    unlocks: ["Learners per programme", "Learners by gender", "Programme names", "Administrative units"],
+    check: "We call the three routes with our key on every connection test. Each one that answers 200 turns green here.",
   },
   R2: {
     summary: "Approved seats per programme, per school.",
@@ -58,23 +57,21 @@ Authorization: ApiKey fortress_sk_…
     check: "Marked done once the capacity field appears in a TDMP response we read.",
   },
   R3: {
-    summary: "Three more fields on each /schools list row.",
-    why: "Today we need an extra call per school for the year established, and the TSS / VTC band is only a filter. 64 of the 375 schools we sync are in neither band.",
+    summary: "Two more fields on each /schools list row.",
+    why: "The TSS / VTC band is only a filter today, and there is no change date on list rows. 64 of the 375 schools we sync are in neither band.",
     ask: [
-      "Return categoryBand, establishmentDate and updatedAt on every /schools list row.",
+      "Return categoryBand and updatedAt on every /schools list row.",
       "Tell us what the 64 schools in neither band are (integrated, short courses…).",
-      "Optional: headTeacherName for the school contact card.",
     ],
     example: {
       label: "One list row with the extra fields",
       lang: "json",
       code: `{ "schoolCode": "270501", "schoolName": "ACEJ KARAMA",
   "categoryBand": "TSS",
-  "establishmentDate": "1984-09-01",
   "updatedAt": "2026-11-12T06:00:34+02:00" }`,
     },
     unlocks: ["Type for all schools", "Faster sync (no per-school calls)"],
-    check: "We read the first 100 rows on every connection test and look for the three fields.",
+    check: "We read the first 100 rows on every connection test and look for the two fields.",
   },
   R4: {
     summary: "Clean placeholder values and confirm two rules.",
@@ -204,48 +201,6 @@ test.school@…    (Head teacher, ACEJ KARAMA)`,
     unlocks: ["Safe sign-in testing"],
     check: "To confirm with TDMP.",
   },
-  R11: {
-    summary: "Outcome indicators for future dashboards.",
-    why: "Pass rates, graduate employment and labour demand will sit next to the condition score. They are not part of it.",
-    ask: [
-      "Read access to /performance/summary when we start this phase.",
-      "Tell us whether tracer-study and labour-market data are planned.",
-    ],
-    example: {
-      label: "Pass rates per school (illustrative values)",
-      lang: "http",
-      code: `GET /api/v1/performance/summary?groupBy=school&academicYear=2025/2026
-
-200 OK
-{ "data": [ { "schoolCode": "270501", "passRate": 0.87, "students": 210 } ] }`,
-    },
-    unlocks: ["Assessment pass rates", "Graduate employment", "Labour-market demand"],
-    check: "Pass rates turn green once /performance/summary answers 200 for our key.",
-  },
-  R14: {
-    summary: "Take school coordinates from RTB GIS to update TDMP's GPS.",
-    why: "RTB GIS places schools from drone surveys and GIS staff work. Reading our points keeps TDMP's gpsLat / gpsLong accurate without anyone re-typing them.",
-    ask: [
-      "Store the partner key we issue on the TDMP server (never in a browser).",
-      "Run a daily job: GET /partner/schools/coordinates, first in full, then with updatedSince.",
-      "Update gpsLat / gpsLong when quality is surveyed or manual, and the point is inside Rwanda.",
-      "Full guide with ready code: /developers#coordinates.",
-    ],
-    example: {
-      label: "Daily incremental pull",
-      lang: "http",
-      code: `GET /api/v1/partner/schools/coordinates?updatedSince=2026-11-12T11:00:00Z&limit=1000
-Authorization: ApiKey rtbgis_pk_…
-
-200 OK
-{ "data": [ { "schoolCode": "280705", "latitude": -1.8835, "longitude": 29.9379,
-              "quality": "surveyed", "updatedAt": "2026-11-12T10:40:00Z" } ],
-  "page": { "current": 1, "limit": 1000, "total": 1 },
-  "generatedAt": "2026-11-13T07:30:00Z" }`,
-    },
-    unlocks: ["Accurate GPS in TDMP", "One source of truth for location"],
-    check: "Partly done once a key with coordinates access exists; done once TDMP has used it.",
-  },
   R15: {
     summary: "Show RTB GIS dashboards and 2D / 3D maps inside TDMP.",
     why: "TDMP users see a school's condition, site map and 3D model next to its TDMP record, without a second login. Views are read-only and limited to that school.",
@@ -300,21 +255,5 @@ Authorization: ApiKey rtbgis_pk_…
     },
     unlocks: ["Clean key history"],
     check: "To confirm after the new key is installed.",
-  },
-  R13: {
-    summary: "GPS for the TVET schools that have none in TDMP.",
-    why: "These schools are in TDMP but cannot be placed on the national map. Our admins can place them by hand, but fixing GPS at the source helps every system.",
-    ask: [
-      "Add gpsLat / gpsLong (WGS84, inside Rwanda) for the schools listed in the requests document.",
-      "Or take the points we set from our partner API: GET /api/v1/partner/schools/coordinates.",
-    ],
-    example: {
-      label: "GET /api/v1/schools/310517 on TDMP, once fixed (placeholder coordinates)",
-      lang: "json",
-      code: `{ "schoolCode": "310517", "schoolName": "MUBUGA TSS",
-  "gpsLat": -2.xxxxxx, "gpsLong": 29.xxxxxx }`,
-    },
-    unlocks: ["Every school on the map"],
-    check: "Counted from our latest sync: schools whose TDMP point is missing or outside Rwanda.",
   },
 };

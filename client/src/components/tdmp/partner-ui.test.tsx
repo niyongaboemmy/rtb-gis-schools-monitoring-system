@@ -27,7 +27,7 @@ const REPORT: ConnectionReport = {
     { key: "trades", label: "Programme names", path: "/trades", status: 403, ms: 1, ok: false, request: "R1" },
   ],
   requests: [
-    { id: "R1", title: "Aggregate reports", priority: "P2", state: "waiting", evidence: "0 of 5 endpoints readable" },
+    { id: "R1", title: "Aggregate reports", priority: "P2", state: "waiting", evidence: "0 of 3 endpoints readable" },
     { id: "R6", title: "OAuth client for RTB 3D GIS", priority: "P1", state: "partial", evidence: "Client id configured" },
     { id: "R7", title: "TDMP role catalogue", priority: "P1", state: "done", evidence: "1 role mapped" },
   ],
@@ -37,10 +37,10 @@ describe("RequestsGuide", () => {
   it("opens on the first open request with why, steps, an example and live status", () => {
     render(<RequestsGuide report={REPORT} checking={false} onCheck={() => undefined} />);
     expect(screen.getByRole("heading", { name: "Aggregate reports" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Why it matters")).toHaveTextContent(/gender splits/);
+    expect(screen.getByLabelText("Why it matters")).toHaveTextContent(/gender split/);
     expect(within(screen.getByLabelText("What we ask TDMP")).getAllByRole("listitem").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByLabelText("Example")).toHaveTextContent(/reports\/trades\/students/);
-    expect(screen.getByLabelText("How we check it")).toHaveTextContent("0 of 5 endpoints readable");
+    expect(screen.getByLabelText("How we check it")).toHaveTextContent("0 of 3 endpoints readable");
     expect(screen.getByLabelText("Related endpoints")).toHaveTextContent("/trades");
     expect(screen.getByText(/1 of 3 requests done/)).toBeInTheDocument();
   });

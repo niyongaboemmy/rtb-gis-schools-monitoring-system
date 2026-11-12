@@ -576,9 +576,9 @@ describe('TDMP admin routes', () => {
       schools: 200,
       trades: 403,
       tradesStudents: 403,
-      performance: 403,
       discovery: 200,
     });
+    expect(byKey).not.toHaveProperty('performance');
     const r1 = res.body.requests.find((r: { id: string }) => r.id === 'R1');
     expect(r1).toMatchObject({ state: 'waiting' });
   });

@@ -369,14 +369,14 @@ export interface CoverageField {
 }
 
 export interface CoverageArea {
-  id: "profile" | "enrolment" | "staffing" | "identity" | "outcomes";
+  id: "profile" | "enrolment" | "staffing" | "identity";
   title: string;
   priority: "P1" | "P1/P2" | "P3";
   summary: string;
   fields: CoverageField[];
 }
 
-/** The five data areas agreed with TDMP (docs/TDMP_INTEGRATION_PLAN.md §1). */
+/** The four data areas agreed with TDMP (docs/TDMP_INTEGRATION_PLAN.md §1). */
 export const TDMP_COVERAGE: CoverageArea[] = [
   {
     id: "profile",
@@ -409,14 +409,9 @@ export const TDMP_COVERAGE: CoverageArea[] = [
   {
     id: "staffing",
     title: "Staffing",
-    priority: "P1/P2",
-    summary: "Teacher counts by gender and wider staff totals.",
-    fields: [
-      { label: "Teacher total" },
-      { label: "Teachers by gender", request: "R1" },
-      { label: "Admin and support staff", request: "R1" },
-      { label: "Head teacher", request: "R3" },
-    ],
+    priority: "P1",
+    summary: "Teacher totals per school.",
+    fields: [{ label: "Teacher total" }],
   },
   {
     id: "identity",
@@ -428,17 +423,6 @@ export const TDMP_COVERAGE: CoverageArea[] = [
       { label: "Role mapping", request: "R7" },
       { label: "District / school scope", request: "R8" },
       { label: "MFA done in TDMP", request: "R9" },
-    ],
-  },
-  {
-    id: "outcomes",
-    title: "Outcomes",
-    priority: "P3",
-    summary: "Pass rates, graduate employment, labour demand.",
-    fields: [
-      { label: "Assessment pass rates", request: "R11" },
-      { label: "Graduate employment", request: "R11" },
-      { label: "Labour-market demand", request: "R11" },
     ],
   },
 ];

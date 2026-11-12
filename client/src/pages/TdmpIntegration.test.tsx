@@ -94,7 +94,7 @@ const CONNECTION: ConnectionReport = {
     { key: "trades", label: "Programme names", path: "/trades", status: 403, ms: 90, ok: false, request: "R1" },
   ],
   requests: [
-    { id: "R1", title: "Aggregate reports", priority: "P2", state: "waiting", evidence: "0 of 5 endpoints readable" },
+    { id: "R1", title: "Aggregate reports", priority: "P2", state: "waiting", evidence: "0 of 3 endpoints readable" },
     { id: "R7", title: "TDMP role catalogue", priority: "P1", state: "done", evidence: "1 role mapped" },
   ],
 };
