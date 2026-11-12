@@ -185,9 +185,9 @@ const ENDPOINTS: Endpoint[] = [
     scope: "embed:create",
     desc: "A short-lived URL to a dashboard or map, to put in an iframe. Call it from your server for each page view; never expose the key to browsers.",
     params: [
-      { name: "view", in: "body", type: "school-dashboard | school-map-2d | school-map-3d | national-map", required: true, desc: "Which view." },
+      { name: "view", in: "body", type: "school-dashboard | school-map-2d | school-map-3d | national-map | national-dashboard", required: true, desc: "Which view. The link opens that view only." },
       { name: "schoolCode", in: "body", type: "string", desc: "Required for school views. The viewer only sees this school." },
-      { name: "province / district", in: "body", type: "string", desc: "National map only: limit it to one province or district." },
+      { name: "province / district", in: "body", type: "string", desc: "National map / dashboard only: limit it to one province or district." },
       { name: "ttlSeconds", in: "body", type: "60–3600", desc: "How long the link can be opened (default 300)." },
       { name: "sessionMinutes", in: "body", type: "5–480", desc: "How long the view stays open once loaded (default 120)." },
     ],
@@ -319,7 +319,7 @@ function EmbedBuilder({ apiKey }: { apiKey: string }) {
   const [code, setCode] = useState("280705");
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const school = view !== "national-map";
+  const school = view !== "national-map" && view !== "national-dashboard";
   const snippet = `<iframe
   src="{url from POST /partner/embed-links}"
   title="RTB 3D GIS — ${view}"
@@ -349,6 +349,7 @@ function EmbedBuilder({ apiKey }: { apiKey: string }) {
             <option value="school-map-2d">School map (2D)</option>
             <option value="school-map-3d">School model (3D)</option>
             <option value="national-map">National map</option>
+            <option value="national-dashboard">National dashboard</option>
           </select>
         </label>
         {school && (
@@ -562,12 +563,13 @@ export default function Developers() {
               <C>POST /partner/embed-links</C> when your page renders. The link opens a read-only session limited to that school (or area) for
               the session length you chose. When it ends, the view asks the user to reload.
             </P>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
               {[
                 { icon: LayoutDashboard, t: "school-dashboard", d: "Condition score, priorities, facilities, enrolment and reports." },
                 { icon: Map, t: "school-map-2d", d: "Site map with drone imagery and buildings." },
                 { icon: Globe2, t: "school-map-3d", d: "The 3D model with measuring tools (nothing saved)." },
-                { icon: MapPin, t: "national-map", d: "All schools; optionally one province or district." },
+                { icon: MapPin, t: "national-map", d: "All schools on the map; optionally one province or district." },
+                { icon: BookOpen, t: "national-dashboard", d: "National figures and rankings; optionally one province or district." },
               ].map((v) => (
                 <div key={v.t} className="rounded-2xl bg-slate-900/[0.03] p-3 ring-1 ring-inset ring-slate-900/5 dark:bg-white/[0.035] dark:ring-white/8">
                   <v.icon className="mb-1.5 h-4 w-4 text-primary" aria-hidden />
@@ -576,6 +578,12 @@ export default function Developers() {
                 </div>
               ))}
             </div>
+            <P>
+              <strong className="text-foreground">One link, one view.</strong> A dashboard link shows only the dashboard, a 2D link only the 2D map,
+              a 3D link only the model, a national-map link only the national map, and a national-dashboard link only the national dashboard. The
+              session behind it can reach no other view&apos;s data (RTB GIS refuses it with <C>403 EMBED_VIEW_DENIED</C>), always within your key&apos;s
+              access level.
+            </P>
             <EmbedBuilder apiKey={apiKey} />
             <P>
               People who already have an RTB GIS account can also open <C>/embed/schools/&#123;id&#125;/dashboard</C> (and the map views)
@@ -671,6 +679,7 @@ store.set("rtbgis.coordinates.since", generated_at)`,
                     ["404", "—", "No school with that code within your access."],
                     ["429", "—", "More than 120 requests a minute from one client: wait and retry."],
                     ["401", "EMBED_LINK_INVALID / EMBED_LINK_REVOKED", "Shown inside the iframe: the link expired or its key was revoked."],
+                    ["403", "EMBED_VIEW_DENIED", "An embedded view asked for data that belongs to another view."],
                   ].map(([h, c, m]) => (
                     <tr key={h + c}>
                       <td className="px-3 py-2 font-mono text-xs">{h}</td>

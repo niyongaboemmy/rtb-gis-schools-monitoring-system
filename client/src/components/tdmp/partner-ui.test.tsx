@@ -93,7 +93,7 @@ describe("PartnerAccess", () => {
       expect(post).toHaveBeenCalledWith("/partner-keys", {
         name: "TDMP production", partner: "TDMP",
         scopes: ["coordinates:read", "schools:read", "embed:create"], allowedOrigins: ["https://tdmp.rtb.gov.rw"],
-        accessTier: "national", allowedViews: ["school-dashboard", "school-map-2d", "school-map-3d", "national-map"],
+        accessTier: "national", allowedViews: ["school-dashboard", "school-map-2d", "school-map-3d", "national-map", "national-dashboard"],
       }),
     );
     expect(await screen.findByText(/it will not be shown again/)).toBeInTheDocument();
@@ -144,7 +144,7 @@ describe("PartnerAccess — access levels", () => {
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith("/partner-keys", expect.objectContaining({
         accessTier: "district", accessProvince: "Southern Province", accessDistrict: "Muhanga",
-        allowedViews: ["school-dashboard", "school-map-2d", "national-map"],
+        allowedViews: ["school-dashboard", "school-map-2d", "national-map", "national-dashboard"],
       })),
     );
   });

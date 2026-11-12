@@ -14,10 +14,12 @@ export const EMBED_VIEWS = [
   'school-map-2d',
   'school-map-3d',
   'national-map',
+  'national-dashboard',
 ] as const;
 export type EmbedView = (typeof EMBED_VIEWS)[number];
 
-export const isSchoolView = (v: EmbedView) => v !== 'national-map';
+export const isSchoolView = (v: EmbedView) =>
+  v !== 'national-map' && v !== 'national-dashboard';
 
 /** Web-app path of a view (the client renders these without app chrome). */
 export function embedPath(view: EmbedView, schoolId?: string): string {
@@ -30,7 +32,74 @@ export function embedPath(view: EmbedView, schoolId?: string): string {
       return `/embed/schools/${schoolId}/map-3d`;
     case 'national-map':
       return '/embed/map';
+    case 'national-dashboard':
+      return '/embed/dashboard';
   }
+}
+
+/**
+ * The API routes each embedded view may call (GET only, after /api/v1,
+ * without the query string). An embed session reaches exactly its view: a
+ * dashboard link cannot load map tiles or a 3D model, a 2D link cannot load
+ * the dashboard figures or the 3D model, and so on. `:sid` is the link's own
+ * school, so a school view never reaches another school even on an allowed
+ * route. Scope (school / area) is still enforced by the usual guards.
+ */
+const SID = ':sid';
+export const EMBED_VIEW_ROUTES: Record<EmbedView, string[]> = {
+  'school-dashboard': [
+    `/schools/${SID}`,
+    `/analytics/schools/${SID}/metrics`,
+    `/analytics/schools/${SID}/actions`,
+    '/schools/dashboard/reporting',
+    '/schools/dashboard/reporting/overview',
+    '/reports',
+    '/schools/facilities',
+  ],
+  'school-map-2d': [
+    `/schools/${SID}`,
+    `/schools/${SID}/buildings`,
+    `/schools/${SID}/kmz/2d/manifest`,
+    `/schools/${SID}/kmz/2d/tiles`,
+    `/schools/${SID}/kmz/places-overlay`,
+    `/schools/${SID}/site-features`,
+    '/schools/facilities',
+  ],
+  'school-map-3d': [
+    `/schools/${SID}`,
+    `/schools/${SID}/buildings`,
+    `/schools/${SID}/kmz/status`,
+    `/schools/${SID}/viewer-state`,
+    `/schools/${SID}/site-features`,
+    '/schools/facilities',
+  ],
+  'national-map': ['/schools', '/analytics/overview', '/analytics/hierarchy'],
+  'national-dashboard': [
+    '/schools',
+    '/analytics/overview',
+    '/analytics/hierarchy',
+  ],
+};
+
+/** `/api/v1/schools/x?y=1` → `/schools/x` (no prefix, no query, no trailing slash). */
+export function apiPath(url: string): string {
+  const path = (url ?? '').split('?')[0].split('#')[0];
+  return path.replace(/^\/api\/v1(?=\/|$)/, '').replace(/\/+$/, '') || '/';
+}
+
+/** Whether an embed session for `view` (school `sid`) may make this request. */
+export function embedRouteAllowed(
+  view: EmbedView,
+  sid: string | undefined,
+  method: string,
+  url: string,
+): boolean {
+  if (!EMBED_READ_METHODS.has((method ?? 'GET').toUpperCase())) return false;
+  const path = apiPath(url);
+  return (EMBED_VIEW_ROUTES[view] ?? []).some((route) => {
+    if (route.includes(SID)) return !!sid && path === route.replace(SID, sid);
+    return path === route;
+  });
 }
 
 /** Where an embed session may look: the same shape as `user.location`. */

@@ -1,13 +1,15 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
-import { ExternalLink, Lock, RefreshCw, ShieldAlert } from "lucide-react";
+import { ArrowLeft, ExternalLink, Lock, RefreshCw, ShieldAlert } from "lucide-react";
 import { API_BASE, api } from "../lib/api";
 import { EMBED_EXPIRED_EVENT, EMBED_LINK_TOKEN } from "../lib/embed";
+import { EmbedViewContext, type EmbedView } from "../lib/embed-view";
 import { hasPermission, Permission, type PermissionType } from "../lib/permissions";
 import { useAuthStore, type User } from "../store/authStore";
 import SchoolDecisionDashboard from "./SchoolDecisionDashboard";
 import NationalMap from "./NationalMap";
+import Dashboard from "./Dashboard";
 import SchoolMap from "../components/SchoolMap";
 import School3DView from "../components/School3DView";
 
@@ -57,7 +59,11 @@ function Badge({ to }: { to: string }) {
  * memory) or, opened directly, with the signed-in RTB GIS session. Either way
  * the user needs `need`, and the server limits the data to their scope.
  */
-export function EmbedGate({ need, children }: { need: PermissionType; children: ReactNode }) {
+export function EmbedGate({ view, need, children }: { view: EmbedView; need: PermissionType; children: ReactNode }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  // The one page this embed is; anything else is not part of it.
+  const [home] = useState(location.pathname);
   const user = useAuthStore((s) => s.user);
   const status = useAuthStore((s) => s.status);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -115,16 +121,34 @@ export function EmbedGate({ need, children }: { need: PermissionType; children: 
     );
   if (!hasPermission(user, need))
     return <Notice icon={ShieldAlert} title="No access to this view" hint="Your role does not include it. Ask an RTB GIS administrator." />;
+  // A link or button inside the view tried to open another page.
+  if (location.pathname !== home)
+    return (
+      <Notice
+        icon={ShieldAlert}
+        title="Not part of this view"
+        hint="This embedded view only shows what was shared. Open RTB 3D GIS for more."
+        action={
+          <button
+            type="button"
+            onClick={() => navigate(home, { replace: true })}
+            className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> Back to the view
+          </button>
+        }
+      />
+    );
 
   return (
-    <>
+    <EmbedViewContext.Provider value={view}>
       {children}
       {expired && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background/85 backdrop-blur-sm" role="alertdialog" aria-label="View expired">
           <Notice icon={RefreshCw} title="This view has expired" hint="Reload the page to continue." />
         </div>
       )}
-    </>
+    </EmbedViewContext.Provider>
   );
 }
 
@@ -133,7 +157,7 @@ const appLink = (path: string) => `${window.location.origin}${path}`;
 export function EmbedSchoolDashboard() {
   const { id } = useParams<{ id: string }>();
   return (
-    <EmbedGate need={Permission.VIEW_INTELLIGENCE}>
+    <EmbedGate view="school-dashboard" need={Permission.VIEW_INTELLIGENCE}>
       <main className="min-h-screen bg-background p-3 text-foreground sm:p-5">
         <SchoolDecisionDashboard id={id} standalone={false} />
       </main>
@@ -182,7 +206,7 @@ function SchoolMap2D({ id }: { id: string }) {
 export function EmbedSchoolMap2D() {
   const { id = "" } = useParams<{ id: string }>();
   return (
-    <EmbedGate need={Permission.SCHOOL_VIEW_2D3D_MAP}>
+    <EmbedGate view="school-map-2d" need={Permission.SCHOOL_VIEW_2D3D_MAP}>
       <SchoolMap2D id={id} />
       <Badge to={appLink(`/schools/${id}/3dview`)} />
     </EmbedGate>
@@ -192,7 +216,7 @@ export function EmbedSchoolMap2D() {
 export function EmbedSchoolMap3D() {
   const { id = "" } = useParams<{ id: string }>();
   return (
-    <EmbedGate need={Permission.SCHOOL_VIEW_2D3D_MAP}>
+    <EmbedGate view="school-map-3d" need={Permission.SCHOOL_VIEW_2D3D_MAP}>
       <div className="h-screen w-full">
         <School3DView schoolId={id} schoolName="" onClose={() => undefined} />
       </div>
@@ -203,11 +227,22 @@ export function EmbedSchoolMap3D() {
 
 export function EmbedNationalMap() {
   return (
-    <EmbedGate need={Permission.VIEW_MAP}>
+    <EmbedGate view="national-map" need={Permission.VIEW_MAP}>
       <main className="min-h-screen bg-background p-3 text-foreground sm:p-5">
         <NationalMap />
       </main>
       <Badge to={appLink("/map")} />
+    </EmbedGate>
+  );
+}
+
+export function EmbedNationalDashboard() {
+  return (
+    <EmbedGate view="national-dashboard" need={Permission.VIEW_DASHBOARD}>
+      <main className="min-h-screen bg-background p-3 text-foreground sm:p-5">
+        <Dashboard />
+      </main>
+      <Badge to={appLink("/")} />
     </EmbedGate>
   );
 }

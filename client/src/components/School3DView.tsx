@@ -75,6 +75,7 @@ import { collectMedia, collectReportMedia, type GalleryItem } from "./2dviewerco
 // Styles
 import "./School3DView.css";
 import { buildingPayloadFields } from "../lib/buildingPayload";
+import { useEmbedView } from "../lib/embed-view";
 import { FONT_SANS, FONT_MONO } from "../lib/fonts";
 
 // ─── GLB browser cache ──────────────────────────────────────────────────────
@@ -418,6 +419,8 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   const navigate = useNavigate();
   const { id: routeId } = useParams<{ id: string }>();
   const schoolId = propSchoolId || routeId || "";
+  // Embedded 3D view (partner iframe): the model only, no way to the 2D map.
+  const modelOnly = useEmbedView() === "school-map-3d";
   const schoolName = propSchoolName || "";
   const { hasPermission, user } = useAuthorization();
   const notify = useToast();
@@ -2158,6 +2161,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
   }, [schoolId, focusBuilding]);
 
   const open2DView = useCallback(() => {
+    if (modelOnly) return;
     const b = selectedBuilding;
     if (on2DView) { on2DView(b?.id ?? null); return; }
     const lat = Number(b?.geolocation?.latitude ?? b?.latitude);
@@ -2172,7 +2176,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
       }
     }
     navigate(viewerLink("2d", schoolId, { buildingId: b?.id ?? null, ...ll }));
-  }, [selectedBuilding, schoolId, getSceneFrame, on2DView, navigate]);
+  }, [selectedBuilding, schoolId, getSceneFrame, on2DView, navigate, modelOnly]);
 
   // Keyboard: tool shortcuts, Esc cancel, Backspace / Ctrl+Z undo, Enter finish, ? help.
   useEffect(() => {
@@ -2356,7 +2360,7 @@ export default function School3DView({ schoolId: propSchoolId, schoolName: propS
                 visibility={visibility} cycleVisibility={cycleVisibility}
                 handleScreenshot={handleScreenshot} screenshotFlash={screenshotFlash}
                 handleResetCamera={handleResetCamera} handleSaveHome={handleSaveHome} saveFlash={saveFlash} toggleOrientation={toggleOrientation}
-                on2DView={schoolId ? open2DView : undefined}
+                on2DView={schoolId && !modelOnly ? open2DView : undefined}
               />
               {measureMode && (
                 <ActiveToolBanner

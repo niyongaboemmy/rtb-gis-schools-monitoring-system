@@ -12,6 +12,7 @@ import { fieldSurface } from "../ui/field-styles";
 import { PILL_BUTTON } from "../ui/surfaces";
 import { useToast } from "../ui/toast";
 import {
+  AREA_VIEWS,
   accessReady,
   accessSummary,
   fromKey,
@@ -127,7 +128,7 @@ export function AccessEditor({ value, onChange }: { value: AccessValue; onChange
         <div className="flex flex-wrap gap-2">
           {VIEWS.map((v) => {
             const on = value.allowedViews.includes(v.id);
-            const disabled = v.id === "national-map" && value.accessTier === "schools";
+            const disabled = AREA_VIEWS.includes(v.id) && value.accessTier === "schools";
             return (
               <button
                 key={v.id}
@@ -135,7 +136,7 @@ export function AccessEditor({ value, onChange }: { value: AccessValue; onChange
                 aria-pressed={on && !disabled}
                 disabled={disabled}
                 onClick={() => set({ allowedViews: on ? value.allowedViews.filter((x) => x !== v.id) : [...value.allowedViews, v.id] })}
-                data-tooltip={disabled ? "A key for specific schools cannot open the national map" : undefined}
+                data-tooltip={disabled ? "A key for specific schools cannot open national views" : undefined}
                 className={cn(
                   "rounded-full px-3 py-1 text-xs ring-1 ring-inset disabled:opacity-40",
                   on && !disabled ? "bg-primary/10 font-medium text-primary ring-primary/30" : "text-muted-foreground ring-slate-900/10 dark:ring-white/10",

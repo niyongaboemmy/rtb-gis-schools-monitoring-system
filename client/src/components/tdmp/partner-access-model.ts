@@ -35,7 +35,11 @@ export const VIEWS: Array<{ id: string; label: string }> = [
   { id: "school-map-2d", label: "2D map" },
   { id: "school-map-3d", label: "3D model" },
   { id: "national-map", label: "National map" },
+  { id: "national-dashboard", label: "National dashboard" },
 ];
+
+/** Views that cover an area: not available to a key for specific schools. */
+export const AREA_VIEWS = ["national-map", "national-dashboard"];
 export const ALL_VIEWS = VIEWS.map((v) => v.id);
 
 /** One line for a key's reach, e.g. "Muhanga district". */
