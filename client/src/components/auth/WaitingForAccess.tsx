@@ -8,10 +8,11 @@ import { AuthAlert, AuthShell } from "../ui/AuthShell";
 import { authCardClass, authMutedClass, authPrimaryButtonClass } from "./auth-styles";
 
 /**
- * Shown instead of the app to someone who signed in with TDMP but has no role
- * and area in RTB GIS yet (`user.accessPending`). TDMP sign-in carries no
- * role, so an RTB GIS administrator gives access (Settings ▸ Users). Nothing
- * here calls a data API: the server refuses them for pending accounts.
+ * Shown instead of the app to someone who signed in (TDMP, or Google for the
+ * first time) but has no role and area in RTB GIS yet (`user.accessPending`).
+ * Neither sign-in carries a role, so an RTB GIS administrator gives access
+ * (Settings ▸ Users). Nothing here calls a data API: the server refuses them
+ * for pending accounts.
  */
 export function WaitingForAccess() {
   const user = useAuthStore((s) => s.user);
@@ -49,7 +50,8 @@ export function WaitingForAccess() {
   return (
     <AuthShell stepKey="waiting-for-access" art="verify" busy={checking} title="Your account is waiting for access">
       <p className={`text-sm leading-relaxed ${authMutedClass}`}>
-        You signed in with TDMP. An RTB GIS administrator needs to give you a role and area before you can use RTB GIS.
+        You signed in with {user?.authSource === "tdmp" ? "TDMP" : "Google"}. An RTB GIS administrator needs to give you
+        a role and area before you can use RTB GIS.
         You&rsquo;ll get access as soon as they do.
       </p>
 

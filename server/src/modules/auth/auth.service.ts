@@ -25,7 +25,6 @@ type GoogleIdentity = Pick<
 type GoogleCredential = Pick<GoogleLoginDto, 'idToken' | 'accessToken'>;
 const GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 import { User } from '../users/entities/user.entity';
-import { Role } from '../roles/entities/role.entity';
 import { LoginDto } from './dto/login.dto';
 import { MfaVerifyDto } from './dto/mfa.dto';
 import { MailService } from '../mail/mail.service';
@@ -44,6 +43,7 @@ import {
 import type { RequestMeta } from './request-meta';
 import { TdmpConfig } from '../tdmp/tdmp.config';
 import { TdmpSessionService } from './tdmp/tdmp-session.service';
+import { PENDING_LOCATION } from './tdmp/tdmp-identity.service';
 
 /** How long an emailed verification code stays valid. */
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -124,8 +124,6 @@ export class AuthService {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
-    @InjectRepository(Role)
-    private readonly roleRepository: Repository<Role>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly mailService: MailService,
@@ -610,10 +608,10 @@ export class AuthService {
    * Signs in with a Google ID token. The token is verified against Google's
    * public keys and our client id, so the client cannot forge an identity.
    *
-   * Unknown addresses self-register with GOOGLE_DEFAULT_ROLE only when
-   * GOOGLE_ALLOW_SELF_REGISTER is not "false" and the domain is in
-   * GOOGLE_ALLOWED_DOMAINS (when set). Users with 2FA still pass the second
-   * factor afterwards.
+   * Unknown addresses may self-register only when GOOGLE_ALLOW_SELF_REGISTER
+   * is not "false" and the domain is in GOOGLE_ALLOWED_DOMAINS (when set) —
+   * and even then they get no role: the account waits for an administrator
+   * (`accessPending`). Users with 2FA still pass the second factor afterwards.
    */
   async loginWithGoogle(
     credential: GoogleCredential,
@@ -1396,17 +1394,17 @@ export class AuthService {
     }
   }
 
-  /** Self-registers a Google identity with the configured default role. */
+  /**
+   * Self-registers a Google identity with NO access: no role, `accessPending`
+   * set, so the account only reaches `/auth/*` and `/users/me/*` until an
+   * administrator gives it a role and area (Settings ▸ Users ▸ waiting list).
+   * A verified Google address only proves who someone is, never that they
+   * work for RTB, so nobody gets data access just by signing in.
+   */
   private async createUserFromGoogle(email: string, payload: GoogleIdentity) {
-    const roleName = this.configService
-      .get<string>('GOOGLE_DEFAULT_ROLE', 'viewer')
-      .trim();
-    const role = await this.roleRepository.findOne({
-      where: { name: roleName },
-    });
-    if (!role)
-      throw new ServiceUnavailableException(
-        `Default role "${roleName}" is missing. Ask an administrator to seed roles.`,
+    if (this.configService.get<string>('GOOGLE_DEFAULT_ROLE')?.trim())
+      this.logger.warn(
+        'GOOGLE_DEFAULT_ROLE is ignored: new Google accounts wait for an administrator to give them a role',
       );
 
     // `password` is NOT NULL, and these accounts never sign in with one. A
@@ -1419,8 +1417,10 @@ export class AuthService {
       googleId: payload.sub,
       avatarUrl: payload.picture ?? null,
       isActive: true,
-      role,
-    } as Partial<User>);
+      role: null,
+      accessPending: true,
+      location: { ...PENDING_LOCATION },
+    } as unknown as Partial<User>);
 
     const saved = await this.userRepository.save(user);
     this.audit({
@@ -1428,7 +1428,9 @@ export class AuthService {
       actor: { id: saved.id, email },
       targetType: 'user',
       targetId: saved.id,
-      meta: { email, role: roleName },
+      targetLabel: email,
+      subjectUserId: saved.id,
+      meta: { email, accessPending: true },
     });
     return saved;
   }

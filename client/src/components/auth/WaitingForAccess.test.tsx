@@ -69,6 +69,18 @@ describe("Waiting for access", () => {
     expect(get).not.toHaveBeenCalled();
   });
 
+  it("names the sign-in the person used (TDMP or Google)", () => {
+    const { unmount } = renderGate();
+    expect(screen.getByText(/You signed in with TDMP\./)).toBeInTheDocument();
+    unmount();
+
+    // A first Google sign-in creates an account with no role (local, pending).
+    useAuthStore.setState({ user: { ...pending, authSource: "local" } });
+    renderGate();
+    expect(screen.getByText(/You signed in with Google\./)).toBeInTheDocument();
+    expect(screen.queryByText("The app")).not.toBeInTheDocument();
+  });
+
   it("stays put while access is still pending", async () => {
     get.mockResolvedValue({ data: { ...pending } });
     renderGate();
