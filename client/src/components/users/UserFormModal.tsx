@@ -162,9 +162,11 @@ export function UserFormModal({
   const tdmpExpected = !editingUser && mode === "tdmp-expected";
   const tdmpForm = tdmpEdit || tdmpExpected;
   const accessFromTdmp = tdmpEdit && tdmpAccess === "tdmp";
-  // A role must be picked on purpose for TDMP people (no silent default).
+  // A role must be picked on purpose for TDMP people and anyone waiting for
+  // access, e.g. a Google self-registration (no silent default).
   const defaultRoleId = (u: ManagedUser | null) =>
-    u?.role?.id || (tdmpExpected || u?.authSource === "tdmp" ? "" : roles.length > 0 ? roles[0].id : "");
+    u?.role?.id ||
+    (tdmpExpected || u?.authSource === "tdmp" || u?.accessPending ? "" : roles.length > 0 ? roles[0].id : "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   // New accounts: email a set-password code (recommended) instead of an
@@ -360,9 +362,14 @@ export function UserFormModal({
         });
         toast.success(`${formData.email.trim()} will get this role and area at their first TDMP sign-in.`);
       } else if (editingUser) {
+        // Waiting for access: saving without a role would leave them waiting.
+        if (editingUser.accessPending && !formData.roleId) {
+          setError("Choose a role.");
+          return;
+        }
         // Edit flow — passwords are never set here (use "Send reset code").
         await api.patch(`/users/${editingUser.id}`, base);
-        toast.success(`User "${who}" updated`);
+        toast.success(editingUser.accessPending ? `${who} now has access` : `User "${who}" updated`);
       } else {
         if (!sendInvite && !isPasswordAcceptable(formData.password, formData.email)) {
           setError("The temporary password does not meet the password policy.");

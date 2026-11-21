@@ -137,6 +137,40 @@ describe("Give access to a TDMP user", () => {
   });
 });
 
+describe("Give access to a Google self-registration", () => {
+  // A first Google sign-in: local account, no role, waiting for an admin.
+  const googleUser: ManagedUser = {
+    id: "u7",
+    email: "someone@gmail.com",
+    firstName: "Some",
+    lastName: "One",
+    isActive: true,
+    createdAt: "2026-11-21T08:00:00.000Z",
+    role: null,
+    location: { tier: "school" },
+    authSource: "local",
+    accessPending: true,
+  };
+
+  beforeEach(() => patch.mockReset().mockResolvedValue({ data: {} }));
+
+  it("pre-selects no role and refuses to save until one is chosen", async () => {
+    renderForm({ editingUser: googleUser, grantAccess: true, mode: "default" });
+    // Never a silent default (the first role in the list could be an admin one).
+    expect(screen.getByRole("button", { name: /choose a role/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Give access" }));
+    expect(await screen.findByText("Choose a role.")).toBeInTheDocument();
+    expect(patch).not.toHaveBeenCalled();
+
+    pick(/choose a role/i, /viewer/i);
+    fireEvent.click(screen.getByRole("button", { name: "Give access" }));
+    await waitFor(() =>
+      expect(patch).toHaveBeenCalledWith("/users/u7", expect.objectContaining({ roleId: "r-viewer" })),
+    );
+  });
+});
+
 describe("missingScopeField", () => {
   it.each([
     ["national", {}, null],

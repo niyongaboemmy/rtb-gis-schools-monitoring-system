@@ -15,6 +15,7 @@ import * as crypto from 'crypto';
 import { AuthService, type SessionResult } from './auth.service';
 import { TdmpConfig } from '../tdmp/tdmp.config';
 import { TdmpSessionService } from './tdmp/tdmp-session.service';
+import { PENDING_LOCATION } from './tdmp/tdmp-identity.service';
 import { User } from '../users/entities/user.entity';
 import { Role } from '../roles/entities/role.entity';
 import { MailService } from '../mail/mail.service';
@@ -169,7 +170,6 @@ async function makeService(
 
   const configValues: Record<string, string> = {
     GOOGLE_CLIENT_ID: 'client-id.apps.googleusercontent.com',
-    GOOGLE_DEFAULT_ROLE: 'viewer',
     JWT_SECRET: 'test-access-secret',
     JWT_REFRESH_SECRET: 'test-refresh-secret',
     ...config,
@@ -945,8 +945,8 @@ describe('AuthService.loginWithGoogle', () => {
     });
   });
 
-  it('self-registers an unknown address with the default role', async () => {
-    const { service, userRepo, roleRepo } = await makeService({
+  it('self-registers an unknown address with no access, waiting for an administrator', async () => {
+    const { service, userRepo, roleRepo, auditService } = await makeService({
       findOne: jest.fn().mockResolvedValue(null),
       create: jest.fn((dto: Partial<User>) => ({ id: 'new-id', ...dto })),
       save: jest.fn((entity: User) => Promise.resolve(entity)),
@@ -956,19 +956,55 @@ describe('AuthService.loginWithGoogle', () => {
       idToken: 'id-token',
     })) as SessionResult;
 
-    expect(roleRepo.findOne).toHaveBeenCalledWith({
-      where: { name: 'viewer' },
-    });
-
     const created = userRepo.create.mock.calls[0][0] as Partial<User>;
     expect(created.email).toBe('alice@rtb.gov.rw');
     expect(created.firstName).toBe('Alice');
     expect(created.googleId).toBe('google-sub-123');
     expect(created.isActive).toBe(true);
+    // No role, and on the waiting list: JwtStrategy refuses every data route.
+    expect(created.role).toBeNull();
+    expect(created.accessPending).toBe(true);
+    expect(created.location).toEqual(PENDING_LOCATION);
+    expect(roleRepo.findOne).not.toHaveBeenCalled();
     // password is NOT NULL in the schema; a random secret keeps password
     // login unusable for these accounts until the user resets it.
     expect(created.password).toMatch(/^[0-9a-f]{96}$/);
+
+    // A session for the waiting page only; the client sees accessPending.
     expect(result.accessToken).toBeDefined();
+    expect(result.user).toMatchObject({ accessPending: true, role: null });
+    expect(auditService.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'auth.google_register',
+        meta: { email: 'alice@rtb.gov.rw', accessPending: true },
+      }),
+    );
+  });
+
+  it('never hands out GOOGLE_DEFAULT_ROLE, even a privileged one', async () => {
+    const { service, userRepo, roleRepo } = await makeService(
+      {
+        findOne: jest.fn().mockResolvedValue(null),
+        create: jest.fn((dto: Partial<User>) => ({ id: 'new-id', ...dto })),
+        save: jest.fn((entity: User) => Promise.resolve(entity)),
+      },
+      { GOOGLE_DEFAULT_ROLE: 'super_admin' },
+    );
+    roleRepo.findOne.mockResolvedValue({
+      id: 'r-super',
+      name: 'super_admin',
+      permissions: ['MANAGE_USERS'],
+    });
+
+    const result = (await service.loginWithGoogle({
+      idToken: 'id-token',
+    })) as SessionResult;
+
+    const created = userRepo.create.mock.calls[0][0] as Partial<User>;
+    expect(created.role).toBeNull();
+    expect(created.accessPending).toBe(true);
+    expect(roleRepo.findOne).not.toHaveBeenCalled();
+    expect(result.user).toMatchObject({ accessPending: true, role: null });
   });
 
   it('refuses an unverified Google email', async () => {
@@ -1017,16 +1053,21 @@ describe('AuthService.loginWithGoogle', () => {
     });
   });
 
-  it('fails clearly when the default role has not been seeded', async () => {
-    const { service, roleRepo, userRepo } = await makeService({
-      findOne: jest.fn().mockResolvedValue(null),
+  it('keeps an already-waiting Google account on the waiting list', async () => {
+    const waiting = buildUser({
+      googleId: 'google-sub-123',
+      role: null,
+      accessPending: true,
+    } as never);
+    const { service } = await makeService({
+      findOne: jest.fn().mockResolvedValue(waiting),
     });
-    roleRepo.findOne.mockResolvedValue(null);
 
-    await expect(
-      service.loginWithGoogle({ idToken: 'id-token' }),
-    ).rejects.toThrow(/Default role "viewer" is missing/);
-    expect(userRepo.save).not.toHaveBeenCalled();
+    const result = (await service.loginWithGoogle({
+      idToken: 'id-token',
+    })) as SessionResult;
+
+    expect(result.user).toMatchObject({ accessPending: true, role: null });
   });
 });
 

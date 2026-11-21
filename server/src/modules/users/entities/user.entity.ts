@@ -161,7 +161,8 @@ export class User {
   tdmpUserId: string | null;
 
   /**
-   * Signed in with TDMP but nobody gave them a role yet. Until an admin does
+   * Signed in with TDMP (or self-registered with Google) but nobody gave them
+   * a role yet. Until an admin does
    * (Settings ▸ Users ▸ waiting list), they can only reach their own profile.
    */
   @Column({ type: 'boolean', default: false })

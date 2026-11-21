@@ -106,7 +106,7 @@ function SourceBadge({ user }: { user: ManagedUser }) {
   );
 }
 
-/** Signed in with TDMP, waiting for an administrator to give access. */
+/** Signed in (TDMP or Google), waiting for an administrator to give access. */
 function WaitingBadge({ user }: { user: ManagedUser }) {
   if (!user.accessPending || !user.isActive) return null;
   return (
@@ -331,7 +331,7 @@ export function UsersTab() {
     setIsModalOpen(true);
   };
 
-  /** People who signed in with TDMP and wait for a role and area. */
+  /** People who signed in (TDMP or Google) and wait for a role and area. */
   const waiting = useMemo(() => users.filter((u) => u.accessPending && u.isActive), [users]);
 
   const rowActions = (u: ManagedUser) => {

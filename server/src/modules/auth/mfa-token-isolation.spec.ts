@@ -38,7 +38,6 @@ describe('MFA token purpose isolation', () => {
   };
   const service = new AuthService(
     userRepo as never,
-    {} as never,
     jwt,
     config as never,
     {} as never,
