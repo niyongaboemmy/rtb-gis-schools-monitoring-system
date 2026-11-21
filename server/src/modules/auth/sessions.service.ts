@@ -55,13 +55,14 @@ export class SessionsService {
 
   /**
    * Starts a session and returns its first refresh token. `external` holds
-   * the encrypted TDMP refresh token of a `tdmp` session.
+   * the encrypted TDMP refresh token of a `tdmp` session and, optionally, a
+   * shorter lifetime than JWT_REFRESH_EXPIRES_IN.
    */
   async create(
     userId: string,
     meta: RequestMeta,
     method: string,
-    external: { refreshTokenEnc?: string | null } = {},
+    external: { refreshTokenEnc?: string | null; maxTtlMs?: number } = {},
   ) {
     const id = crypto.randomUUID();
     const refreshToken = await this.sign(userId, id);
@@ -77,7 +78,10 @@ export class SessionsService {
         ip: meta.ip ?? null,
         method,
         lastUsedAt: now,
-        expiresAt: new Date(now.getTime() + this.refreshTtlMs),
+        expiresAt: new Date(
+          now.getTime() +
+            Math.min(this.refreshTtlMs, external.maxTtlMs ?? Infinity),
+        ),
         revokedAt: null,
         revokedReason: null,
         externalRefreshTokenEnc: external.refreshTokenEnc ?? null,

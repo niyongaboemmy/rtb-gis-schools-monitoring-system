@@ -4,6 +4,7 @@ import { useAuthStore } from "../../store/authStore";
 import { ForcePasswordChange } from "./ForcePasswordChange";
 import { PrivacyAcceptancePrompt } from "./PrivacyNotice";
 import { needsPrivacyAcceptance } from "./privacy";
+import { WaitingForAccess } from "./WaitingForAccess";
 
 /** Brief splash while the access token is restored from the cookie. */
 export function SessionSplash() {
@@ -19,6 +20,7 @@ export function SessionSplash() {
 /**
  * App-wide auth gate for signed-in pages:
  *  - splash while the session is restored on page load (no login flash),
+ *  - the "waiting for access" page for TDMP accounts without a role yet,
  *  - the forced password change (WS10.3),
  *  - the privacy-notice acceptance prompt (WS8.7).
  * Wrap the protected part of the router with it.
@@ -27,6 +29,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const { status, isAuthenticated, user } = useAuthStore();
 
   if (status === "restoring") return <SessionSplash />;
+  // Signed in with TDMP, no role yet: no app (and no data requests) until an
+  // administrator gives access.
+  if (isAuthenticated && user?.accessPending) return <WaitingForAccess />;
   if (isAuthenticated && user?.mustChangePassword) return <ForcePasswordChange />;
 
   return (

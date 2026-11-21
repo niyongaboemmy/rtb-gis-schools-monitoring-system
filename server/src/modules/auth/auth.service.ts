@@ -71,7 +71,16 @@ const PRIVATE_USER_FIELDS = [
   'googleId',
 ] as const;
 
-export type SignInMethod = 'password' | 'google';
+export type SignInMethod = 'password' | 'google' | 'tdmp';
+
+/** A TDMP sign-in waiting for our second factor (see tdmp-pending.ts). */
+export interface PendingTdmpSignIn {
+  userId: string;
+  refreshToken?: string;
+}
+
+const TDMP_SIGN_IN_EXPIRED =
+  'Your TDMP sign-in took too long. Please sign in again.';
 
 /** Shown when a TDMP-managed account tries a local-only flow. */
 const TDMP_MANAGED =
@@ -227,7 +236,7 @@ export class AuthService {
   /** Creates a device session, clears failure counters and audits the login. */
   private async issueSession(
     user: User,
-    method: SignInMethod | 'mfa' | 'tdmp',
+    method: SignInMethod | 'mfa',
     meta: RequestMeta,
     extraMeta: Record<string, unknown> = {},
     tdmpRefreshToken?: string,
@@ -238,11 +247,16 @@ export class AuthService {
       lockedUntil: null,
     });
 
-    const { session, refreshToken } = tdmpRefreshToken
-      ? await this.sessionsService.create(user.id, meta, method, {
-          refreshTokenEnc: this.tdmpSessions.encrypt(tdmpRefreshToken),
-        })
-      : await this.sessionsService.create(user.id, meta, method);
+    // TDMP sessions end after TDMP_SESSION_MAX_HOURS (SSO guide §9).
+    const { session, refreshToken } =
+      method === 'tdmp'
+        ? await this.sessionsService.create(user.id, meta, method, {
+            refreshTokenEnc: tdmpRefreshToken
+              ? this.tdmpSessions.encrypt(tdmpRefreshToken)
+              : null,
+            maxTtlMs: this.tdmpConfig.sessionMaxMs,
+          })
+        : await this.sessionsService.create(user.id, meta, method);
     const accessToken = await this.signAccessToken(user, session.id);
 
     this.audit({
@@ -268,8 +282,8 @@ export class AuthService {
   }
 
   /**
-   * Session for a user who signed in with TDMP. TDMP did the authentication
-   * (including any second factor), so our 2FA is not asked again.
+   * Session for a user who signed in with TDMP and needs no second factor
+   * here (see `tdmpNeedsSecondFactor`).
    */
   issueTdmpSession(
     user: User,
@@ -285,10 +299,52 @@ export class AuthService {
     );
   }
 
+  /**
+   * TDMP does not tell us whether it used a second factor (no `amr` claim),
+   * so privileged roles still use ours, like any other sign-in.
+   */
+  tdmpNeedsSecondFactor(user: User): boolean {
+    return user.totpEnabled || this.mfaService.isRequiredFor(user);
+  }
+
+  /**
+   * Second step of a TDMP sign-in that needs our 2FA: the challenge (or
+   * enrolment) for the pending sign-in, or a session if it is not needed
+   * any more.
+   */
+  async startTdmpSecondFactor(
+    pending: PendingTdmpSignIn | null,
+    meta: RequestMeta = {},
+  ): Promise<LoginResult> {
+    if (!pending) throw new UnauthorizedException(TDMP_SIGN_IN_EXPIRED);
+    const user = await this.loadForMfa(pending.userId);
+    if (user.authSource !== 'tdmp')
+      throw new UnauthorizedException(TDMP_SIGN_IN_EXPIRED);
+    if (this.tdmpNeedsSecondFactor(user))
+      return this.completePrimaryAuth(user, 'tdmp', meta);
+    return this.issueTdmpSession(user, meta, pending.refreshToken);
+  }
+
+  /** The TDMP refresh token for a 2FA step that finishes a TDMP sign-in. */
+  private tdmpRefreshFor(
+    payload: MfaTokenPayload,
+    pending: PendingTdmpSignIn | null | undefined,
+  ): string | undefined {
+    if (payload.method !== 'tdmp') return undefined;
+    if (!pending || pending.userId !== payload.sub)
+      throw new UnauthorizedException(TDMP_SIGN_IN_EXPIRED);
+    return pending.refreshToken;
+  }
+
   // ── Second factor ────────────────────────────────────────────────────────
 
-  async verifyMfa(dto: MfaVerifyDto, meta: RequestMeta = {}) {
+  async verifyMfa(
+    dto: MfaVerifyDto,
+    meta: RequestMeta = {},
+    pendingTdmp?: PendingTdmpSignIn | null,
+  ) {
     const payload = await this.readMfaToken(dto.mfaToken);
+    const tdmpRefresh = this.tdmpRefreshFor(payload, pendingTdmp);
     const user = await this.loadForMfa(payload.sub);
 
     const factor: SecondFactor | null = dto.code
@@ -317,7 +373,13 @@ export class AuthService {
         targetId: user.id,
         request: meta,
       });
-    return this.issueSession(user, payload.method, meta, { mfa: factor.kind });
+    return this.issueSession(
+      user,
+      payload.method,
+      meta,
+      { mfa: factor.kind },
+      tdmpRefresh,
+    );
   }
 
   /** Emails a sign-in code as an alternative to the authenticator app. */
@@ -355,8 +417,10 @@ export class AuthService {
     mfaToken: string,
     code: string,
     meta: RequestMeta = {},
+    pendingTdmp?: PendingTdmpSignIn | null,
   ) {
     const payload = await this.readMfaToken(mfaToken, 'enroll');
+    const tdmpRefresh = this.tdmpRefreshFor(payload, pendingTdmp);
     const user = await this.loadForMfa(payload.sub);
     let recoveryCodes: string[];
     try {
@@ -380,9 +444,13 @@ export class AuthService {
     void this.notify(user, 'Two-factor authentication turned on', [
       'Two-factor authentication was turned on for your account.',
     ]);
-    const session = await this.issueSession(user, payload.method, meta, {
-      mfa: 'enroll',
-    });
+    const session = await this.issueSession(
+      user,
+      payload.method,
+      meta,
+      { mfa: 'enroll' },
+      tdmpRefresh,
+    );
     return { ...session, recoveryCodes };
   }
 
@@ -582,6 +650,10 @@ export class AuthService {
         throw new ForbiddenException(
           'This account is deactivated. Contact an administrator to restore access.',
         );
+      // TDMP accounts (including pre-registered and waiting ones) only sign
+      // in through TDMP; Google must not be a way around it.
+      if (user.authSource === 'tdmp' || user.authSource === 'partner')
+        throw new ForbiddenException(TDMP_MANAGED);
       if (user.googleUnlinkedAt)
         throw new ForbiddenException(
           'Google sign-in is turned off for this account. Sign in with your password, then link Google from your profile.',
@@ -932,7 +1004,6 @@ export class AuthService {
   }
 
   async enableMfa(user: User, code: string, meta: RequestMeta = {}) {
-    this.assertLocalAccount(user);
     const result = await this.mfaService.confirmEnrolment(user.id, code);
     this.audit({
       action: 'auth.mfa_enabled',
@@ -1058,9 +1129,7 @@ export class AuthService {
     const out: Record<string, unknown> = { ...user };
     for (const key of PRIVATE_USER_FIELDS) delete out[key];
     out.googleLinked = !!user.googleId;
-    // TDMP authenticates TDMP users, including any second factor.
-    out.mfaRequired =
-      user.authSource === 'tdmp' ? false : this.mfaService.isRequiredFor(user);
+    out.mfaRequired = this.mfaService.isRequiredFor(user);
     out.privacyNoticeVersion = PRIVACY_NOTICE_VERSION;
     return out;
   }
@@ -1215,7 +1284,7 @@ export class AuthService {
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  /** Passwords, 2FA and Google links only exist for local accounts. */
+  /** Passwords and Google links only exist for local accounts. */
   assertLocalAccount(user: Pick<User, 'authSource'>) {
     if (user?.authSource === 'tdmp')
       throw new BadRequestException(TDMP_MANAGED);

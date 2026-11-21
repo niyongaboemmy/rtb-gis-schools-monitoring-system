@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { homePathFor } from "../hooks/useScope";
 import { useAuthStore, type User } from "../store/authStore";
-import { api, apiErrorMessage } from "../lib/api";
+import { api, apiErrorMessage, CSRF_HEADERS } from "../lib/api";
 import { ArrowLeft, ChevronRight, KeyRound, Loader2, Lock, Mail, Smartphone } from "lucide-react";
 import { AuthInput } from "../components/auth/AuthInput";
 import { PasswordInput } from "../components/ui/password-input";
@@ -23,7 +23,7 @@ import { ForcePasswordChange } from "../components/auth/ForcePasswordChange";
 import { PrivacyAcceptancePrompt } from "../components/auth/PrivacyNotice";
 import { needsPrivacyAcceptance } from "../components/auth/privacy";
 import { useAuthProviders } from "../hooks/useAuthProviders";
-import { ssoErrorMessage, tdmpStartUrl } from "../lib/tdmp";
+import { safeNextPath, SSO_MFA_EXPIRED, ssoErrorMessage, tdmpStartUrl } from "../lib/tdmp";
 
 /** A completed sign-in. The refresh token arrives as an httpOnly cookie. */
 interface SessionPayload {
@@ -32,7 +32,7 @@ interface SessionPayload {
   recoveryCodes?: string[];
 }
 
-/** /auth/login and /auth/google answer with one of these. */
+/** /auth/login, /auth/google and /auth/tdmp/mfa answer with one of these. */
 type LoginResponse =
   | SessionPayload
   | { mfaRequired: true; mfaToken: string; methods: string[] }
@@ -76,6 +76,12 @@ const DEV_PASSWORD = import.meta.env.DEV ? "Admin@123" : "";
 export default function Login() {
   const [params] = useSearchParams();
   const providers = useAuthProviders();
+  // Back from TDMP, but the role needs our second factor: the server holds the
+  // pending sign-in (httpOnly cookie) and continues it via /auth/tdmp/mfa.
+  const ssoMfa = params.get("sso_mfa") === "1";
+  const ssoNext = safeNextPath(params.get("next"));
+  const [ssoMfaState, setSsoMfaState] = useState<"idle" | "loading" | "expired">(ssoMfa ? "loading" : "idle");
+  const ssoMfaStarted = useRef(false);
   // TDMP mode with an emergency allowlist: the password form opens on request.
   const [adminFormOpen, setAdminFormOpen] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
@@ -95,7 +101,8 @@ export default function Login() {
   const { setSession } = useAuthStore();
   const navigate = useNavigate();
 
-  const goHome = (user: User) => navigate(homePathFor(user));
+  const goHome = (user: User) =>
+    ssoMfa && ssoNext !== "/" ? navigate(ssoNext, { replace: true }) : navigate(homePathFor(user));
 
   /** Runs the post-sign-in steps the account still owes, then enters the app. */
   const continueAfterSession = (user: User) => {
@@ -163,6 +170,25 @@ export default function Login() {
   // Mandatory-2FA enrolment during sign-in: the confirm call also returns the
   // session, which is held until the user has saved the recovery codes.
   const [pendingSession, setPendingSession] = useState<SessionPayload | null>(null);
+
+  // TDMP sign-in that still owes our second factor: fetch the challenge once.
+  useEffect(() => {
+    if (!ssoMfa || ssoMfaStarted.current) return;
+    ssoMfaStarted.current = true;
+    void (async () => {
+      try {
+        const { data } = await api.post<LoginResponse>("/auth/tdmp/mfa", {}, { headers: CSRF_HEADERS });
+        setSsoMfaState("idle");
+        handleLoginResponse(data);
+      } catch (err) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        setError(status === 401 ? SSO_MFA_EXPIRED : apiErrorMessage(err, SSO_MFA_EXPIRED));
+        setSsoMfaState("expired");
+      }
+    })();
+    // Runs once on arrival; the handlers only set local state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ssoMfa]);
 
   if (step === "change-password") {
     return (
@@ -273,13 +299,26 @@ export default function Login() {
     );
   }
 
+  if (ssoMfaState === "loading") {
+    return (
+      <AuthShell stepKey="sso-mfa" art="verify" busy title="Finishing sign-in">
+        <div className="flex h-11 items-center justify-center" role="status">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" aria-hidden />
+          <span className="sr-only">Finishing your TDMP sign-in…</span>
+        </div>
+      </AuthShell>
+    );
+  }
+
   /** Full page load: the server redirects on to TDMP and back. */
   const startTdmp = () => {
     setRedirecting(true);
-    window.location.assign(tdmpStartUrl());
+    window.location.assign(tdmpStartUrl(ssoMfa ? { next: ssoNext } : {}));
   };
 
-  const showPasswordForm = !!providers && (providers.password || (providers.breakGlass && adminFormOpen));
+  // A TDMP sign-in that stopped at the second factor only offers TDMP again.
+  const showPasswordForm =
+    !ssoMfa && !!providers && (providers.password || (providers.breakGlass && adminFormOpen));
 
   return (
     <AuthShell
@@ -306,7 +345,7 @@ export default function Login() {
         </div>
       )}
 
-      {providers?.breakGlass && !providers.password && !adminFormOpen && (
+      {!ssoMfa && providers?.breakGlass && !providers.password && !adminFormOpen && (
         <div className="flex justify-center">
           <button type="button" onClick={() => setAdminFormOpen(true)} className={authSubtleLinkClass}>
             <KeyRound className="h-4 w-4" aria-hidden /> Administrator sign-in
@@ -378,7 +417,7 @@ export default function Login() {
       </form>
       )}
 
-      {providers?.google && (
+      {!ssoMfa && providers?.google && (
         <GoogleSignInButton
           onCredential={(credential) => void handleGoogleCredential(credential)}
           onError={setError}

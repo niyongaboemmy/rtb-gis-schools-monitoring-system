@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   areaCoverage,
   overallCoverage,
@@ -15,6 +15,11 @@ import {
   ssoErrorMessage,
   SSO_ERROR_MESSAGES,
   tdmpStartUrl,
+  returnToTdmpIfSessionLost,
+  shouldAutoReturnToTdmp,
+  signInReady,
+  TDMP_AUTO_RETURN_KEY,
+  TDMP_AUTO_RETURN_WINDOW_MS,
 } from "./tdmp";
 import { setupChecklist } from "../components/profile/profile-utils";
 
@@ -84,10 +89,74 @@ describe("TDMP ownership", () => {
 
 
 describe("profile checklist for TDMP accounts", () => {
-  it("drops the 2FA step, which TDMP manages", () => {
-    const base = { id: "u", firstName: "A", lastName: "B", email: "a@rtb.gov.rw", role: "viewer" };
+  const base = { id: "u", firstName: "A", lastName: "B", email: "a@rtb.gov.rw", role: "viewer" };
+  it("asks for 2FA only when the TDMP user's role requires it", () => {
     expect(setupChecklist({ ...base, authSource: "tdmp" }).some((i) => i.id === "mfa")).toBe(false);
+    expect(setupChecklist({ ...base, authSource: "tdmp", mfaRequired: true }).some((i) => i.id === "mfa")).toBe(true);
     expect(setupChecklist({ ...base, authSource: "local" }).some((i) => i.id === "mfa")).toBe(true);
+  });
+});
+
+describe("automatic return to TDMP", () => {
+  const tdmpUser = { authSource: "tdmp" };
+  const ok = { user: tdmpUser, tdmpSignIn: true, pathname: "/schools/1", embed: false, lastReturnAt: null };
+
+  it("sends a TDMP user back through TDMP", () => {
+    expect(shouldAutoReturnToTdmp(ok)).toBe(true);
+  });
+
+  it.each([
+    ["a local user", { user: { authSource: "local" } }],
+    ["after an explicit sign-out (profile already cleared)", { user: null }],
+    ["when TDMP sign-in is off", { tdmpSignIn: false }],
+    ["inside an embedded view", { embed: true }],
+    ["on the login page", { pathname: "/login" }],
+    ["on the sign-in return page", { pathname: "/sso/tdmp/complete" }],
+  ])("does nothing for %s", (_label, over) => {
+    expect(shouldAutoReturnToTdmp({ ...ok, ...over })).toBe(false);
+  });
+
+  it("returns at most once every two minutes", () => {
+    const now = 1_000_000;
+    expect(shouldAutoReturnToTdmp({ ...ok, lastReturnAt: now - 60_000, now })).toBe(false);
+    expect(shouldAutoReturnToTdmp({ ...ok, lastReturnAt: now - TDMP_AUTO_RETURN_WINDOW_MS - 1, now })).toBe(true);
+  });
+
+  describe("returnToTdmpIfSessionLost", () => {
+    beforeEach(() => sessionStorage.clear());
+    const providers = vi.fn(async () => ({ tdmp: true }));
+
+    it("opens TDMP sign-in with the current page as next, then not again right away", async () => {
+      const go = vi.fn();
+      await expect(
+        returnToTdmpIfSessionLost(tdmpUser, "/schools/7?tab=map", { embed: false, getProviders: providers, go }),
+      ).resolves.toBe(true);
+      expect(go).toHaveBeenCalledWith("/api/v1/auth/tdmp/start?next=%2Fschools%2F7%3Ftab%3Dmap");
+      expect(sessionStorage.getItem(TDMP_AUTO_RETURN_KEY)).not.toBeNull();
+
+      const again = vi.fn();
+      await expect(
+        returnToTdmpIfSessionLost(tdmpUser, "/schools/7", { embed: false, getProviders: providers, go: again }),
+      ).resolves.toBe(false);
+      expect(again).not.toHaveBeenCalled();
+    });
+
+    it("never asks the server for a local user or after sign-out", async () => {
+      const getProviders = vi.fn(async () => ({ tdmp: true }));
+      const go = vi.fn();
+      await expect(returnToTdmpIfSessionLost({ authSource: "local" }, "/", { embed: false, getProviders, go })).resolves.toBe(false);
+      await expect(returnToTdmpIfSessionLost(null, "/", { embed: false, getProviders, go })).resolves.toBe(false);
+      expect(getProviders).not.toHaveBeenCalled();
+      expect(go).not.toHaveBeenCalled();
+    });
+
+    it("stays on the normal path when TDMP sign-in is off", async () => {
+      const go = vi.fn();
+      await expect(
+        returnToTdmpIfSessionLost(tdmpUser, "/", { embed: false, getProviders: async () => ({ tdmp: false }), go }),
+      ).resolves.toBe(false);
+      expect(go).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -139,12 +208,34 @@ describe("data coverage", () => {
   });
   it("treats a partly met sign-in request as live where allowed", () => {
     const identity = TDMP_COVERAGE.find((a) => a.id === "identity")!;
-    expect(areaCoverage(identity, waiting).fields[0]).toMatchObject({ label: "Sign-in client", live: true });
+    expect(areaCoverage(identity, waiting).fields[0]).toMatchObject({ label: "Sign-in registration", live: true });
   });
   it("gives an overall percentage", () => {
     const pct = overallCoverage(waiting);
     expect(pct).toBeGreaterThan(0);
     expect(pct).toBeLessThan(100);
     expect(overallCoverage(["R1", "R2", "R3", "R6", "R7", "R8", "R9"].map((id) => ({ id, state: "done" as const })))).toBe(100);
+  });
+});
+
+describe("signInReady", () => {
+  const base = {
+    authMode: "both" as const,
+    accessSource: "local" as const,
+    clientConfigured: true,
+    credentials: "accepted" as const,
+    signingKeys: 1,
+    issuerMatches: true,
+    redirectUri: "https://gis/api/v1/auth/tdmp/callback",
+    launchUrl: "https://gis/sso/tdmp",
+    sessionMaxHours: 24,
+  };
+  it("needs accepted credentials, published keys and a matching issuer", () => {
+    expect(signInReady(base)).toBe(true);
+    expect(signInReady({ ...base, credentials: "rejected" })).toBe(false);
+    expect(signInReady({ ...base, credentials: null, clientConfigured: false })).toBe(false);
+    expect(signInReady({ ...base, signingKeys: 0 })).toBe(false);
+    expect(signInReady({ ...base, issuerMatches: false })).toBe(false);
+    expect(signInReady(undefined)).toBe(false);
   });
 });

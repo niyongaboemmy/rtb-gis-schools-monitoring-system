@@ -1,3 +1,5 @@
+// First: hand TDMP's public sign-in paths straight to the API (no render).
+import { relayingToTdmpApi } from "./lib/tdmp-relay";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 // Font files, self-hosted (no Google Fonts call). The typography system that
@@ -14,10 +16,11 @@ import { ThemeProvider } from "./components/ThemeProvider.tsx";
 
 installScrollbars();
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <ThemeProvider defaultTheme="dark" storageKey="rtb-gis-theme">
-      <App />
-    </ThemeProvider>
-  </StrictMode>,
-);
+if (!relayingToTdmpApi)
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <ThemeProvider defaultTheme="dark" storageKey="rtb-gis-theme">
+        <App />
+      </ThemeProvider>
+    </StrictMode>,
+  );

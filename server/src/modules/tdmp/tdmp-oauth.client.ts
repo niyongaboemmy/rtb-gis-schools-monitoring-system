@@ -1,11 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { TdmpConfig } from './tdmp.config';
-import { TdmpApiClient } from './tdmp-api.client';
-import type { TdmpAccessScope, TdmpTokenSet, TdmpUserInfo } from './tdmp.types';
+import { TdmpApiClient, TdmpRequestError } from './tdmp-api.client';
+import type {
+  TdmpAccessScope,
+  TdmpJwk,
+  TdmpTokenSet,
+  TdmpUserInfo,
+} from './tdmp.types';
 
 /** Allowed clock difference when checking ID token times. */
 const CLOCK_SKEW_S = 120;
+
+/** TDMP's keys are cached this long, and re-read at most this often. */
+const JWKS_TTL_MS = 60 * 60 * 1000;
+const JWKS_MIN_REFETCH_MS = 60 * 1000;
 
 export interface IdTokenClaims {
   iss?: string;
@@ -16,6 +25,42 @@ export interface IdTokenClaims {
   email?: string;
   email_verified?: boolean;
   name?: string;
+  given_name?: string;
+  family_name?: string;
+}
+
+/**
+ * Checks an RS256 JWT signature against TDMP's keys (SSO guide §7). Only
+ * RS256 is accepted, so `none` and HMAC tokens are refused. Returns false for
+ * an unknown key id; throws for a malformed token.
+ */
+export function verifyRs256(token: string, keys: TdmpJwk[]): boolean {
+  const parts = token.split('.');
+  if (parts.length !== 3) throw new Error('Malformed ID token');
+  let header: { alg?: string; kid?: string };
+  try {
+    header = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
+  } catch {
+    throw new Error('Malformed ID token');
+  }
+  if (header.alg !== 'RS256') throw new Error('ID token is not RS256');
+  const rsa = keys.filter((k) => k.kty === 'RSA' && k.n && k.e);
+  const key = header.kid
+    ? rsa.find((k) => k.kid === header.kid)
+    : rsa.length === 1
+      ? rsa[0]
+      : undefined;
+  if (!key) return false;
+  const publicKey = crypto.createPublicKey({
+    key: { kty: 'RSA', n: key.n, e: key.e },
+    format: 'jwk',
+  });
+  return crypto.verify(
+    'RSA-SHA256',
+    Buffer.from(`${parts[0]}.${parts[1]}`),
+    publicKey,
+    Buffer.from(parts[2], 'base64url'),
+  );
 }
 
 /** S256 PKCE pair (RFC 7636). */
@@ -30,8 +75,7 @@ export function createPkce(): { verifier: string; challenge: string } {
 
 /**
  * Reads an ID token's claims and checks issuer, audience, expiry and nonce.
- * The signature is not verified: the token comes straight from TDMP's token
- * endpoint over TLS with our client credentials (OIDC Core §3.1.3.7).
+ * The signature is checked separately (`TdmpOAuthClient.verifyIdToken`).
  */
 export function checkIdToken(
   idToken: string,
@@ -62,6 +106,8 @@ export function checkIdToken(
 /** TDMP as an OAuth 2.0 / OpenID Connect provider for user sign-in. */
 @Injectable()
 export class TdmpOAuthClient {
+  private jwks: { keys: TdmpJwk[]; at: number } | null = null;
+
   constructor(
     private readonly config: TdmpConfig,
     private readonly api: TdmpApiClient,
@@ -129,6 +175,70 @@ export class TdmpOAuthClient {
       clientId: this.config.clientId,
       nonce,
     });
+  }
+
+  /**
+   * Signature (TDMP's JWKS, RS256) and claims (issuer, audience, expiry,
+   * nonce) of an ID token. TDMP rotating its key is handled by re-reading
+   * the key set once when the key id is unknown.
+   */
+  async verifyIdToken(idToken: string, nonce: string): Promise<IdTokenClaims> {
+    let ok = verifyRs256(idToken, await this.keys());
+    if (!ok && Date.now() - (this.jwks?.at ?? 0) > JWKS_MIN_REFETCH_MS)
+      ok = verifyRs256(idToken, await this.keys(true));
+    if (!ok) throw new Error('ID token signature is not valid');
+    return this.checkIdToken(idToken, nonce);
+  }
+
+  /**
+   * Whether TDMP accepts our client ID and secret, without any user: a
+   * refresh with a made-up token answers `invalid_grant` (400) for a known
+   * client and `invalid_client` (401) otherwise (SSO guide §11.2).
+   */
+  async checkClientCredentials(): Promise<
+    'accepted' | 'rejected' | 'unreachable'
+  > {
+    try {
+      await this.api.request(
+        '/oauth/token',
+        this.formInit({
+          grant_type: 'refresh_token',
+          refresh_token: 'rtb-gis-credential-check',
+        }),
+      );
+      return 'accepted';
+    } catch (err) {
+      if (err instanceof TdmpRequestError) {
+        const code = (err.body as { error?: string } | null)?.error;
+        if (err.status === 401 || code === 'invalid_client') return 'rejected';
+        return 'accepted';
+      }
+      return 'unreachable';
+    }
+  }
+
+  /** RS256 signing keys TDMP publishes, or null when they can't be read. */
+  async signingKeyCount(): Promise<number | null> {
+    try {
+      const keys = await this.keys(true);
+      return keys.filter((k) => k.kty === 'RSA' && k.n && k.e).length;
+    } catch {
+      return null;
+    }
+  }
+
+  private async keys(force = false): Promise<TdmpJwk[]> {
+    if (!force && this.jwks && Date.now() - this.jwks.at < JWKS_TTL_MS)
+      return this.jwks.keys;
+    const set = await this.api.request<{ keys?: TdmpJwk[] }>(
+      '/oauth/.well-known/jwks.json',
+      { method: 'GET', headers: { Accept: 'application/json' } },
+    );
+    this.jwks = {
+      keys: Array.isArray(set?.keys) ? set.keys : [],
+      at: Date.now(),
+    };
+    return this.jwks.keys;
   }
 
   private async token(form: Record<string, string>): Promise<TdmpTokenSet> {

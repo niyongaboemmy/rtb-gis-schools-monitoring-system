@@ -5,6 +5,7 @@ import { Role } from '../roles/entities/role.entity';
 import { TdmpConfig } from './tdmp.config';
 import { TdmpApiClient, type TdmpEndpointCheck } from './tdmp-api.client';
 import type { TdmpListMeta, TdmpSchool } from './tdmp.types';
+import { TdmpOAuthClient } from './tdmp-oauth.client';
 
 /** One TDMP endpoint and whether our key may read it. */
 export interface EndpointStatus {
@@ -30,8 +31,25 @@ export interface RequestStatus {
   evidence: string;
 }
 
+/** Whether "Sign in with TDMP" can work with what is configured. */
+export interface SignInReadiness {
+  authMode: string;
+  accessSource: 'local' | 'tdmp';
+  clientConfigured: boolean;
+  /** TDMP's answer to our client ID + secret; null = not configured. */
+  credentials: 'accepted' | 'rejected' | 'unreachable' | null;
+  /** RS256 keys published for ID tokens; null = not readable. */
+  signingKeys: number | null;
+  /** Discovery `issuer` equals TDMP_ISSUER / TDMP_BASE_URL. */
+  issuerMatches: boolean | null;
+  redirectUri: string;
+  launchUrl: string;
+  sessionMaxHours: number;
+}
+
 export interface ConnectionReport {
   checkedAt: string;
+  signIn: SignInReadiness;
   configured: { apiKey: boolean; oauthClient: boolean; baseUrl: string };
   reachable: boolean;
   /** Key accepted on the school list. */
@@ -93,7 +111,33 @@ export class TdmpConnectionService {
     private readonly api: TdmpApiClient,
     @InjectRepository(Role) private readonly roles: Repository<Role>,
     private readonly dataSource: DataSource,
+    private readonly oauth: TdmpOAuthClient,
   ) {}
+
+  private async signInReadiness(
+    discovery: Record<string, unknown> | null,
+    clientConfigured: boolean,
+  ): Promise<SignInReadiness> {
+    const [credentials, signingKeys] = await Promise.all([
+      clientConfigured ? this.oauth.checkClientCredentials() : null,
+      this.oauth.signingKeyCount(),
+    ]);
+    const strip = (v: unknown) =>
+      typeof v === 'string' ? v.replace(/\/+$/, '') : '';
+    return {
+      authMode: this.config.authMode,
+      accessSource: this.config.accessSource,
+      clientConfigured,
+      credentials,
+      signingKeys,
+      issuerMatches: discovery?.issuer
+        ? strip(discovery.issuer) === strip(this.config.issuer)
+        : null,
+      redirectUri: this.config.redirectUri,
+      launchUrl: `${this.config.appPublicUrl}/sso/tdmp`,
+      sessionMaxHours: Math.round(this.config.sessionMaxMs / 3_600_000),
+    };
+  }
 
   async check(refresh = false): Promise<ConnectionReport> {
     if (!refresh && this.cache && Date.now() - this.cache.at < CACHE_MS)
@@ -165,8 +209,13 @@ export class TdmpConnectionService {
           null)
         : null;
 
+    const signIn = await this.signInReadiness(
+      discovery,
+      configured.oauthClient,
+    );
     return {
       checkedAt: new Date().toISOString(),
+      signIn,
       configured,
       reachable: endpoints.some((e) => e.status > 0),
       authorised: !!list && list.status === 200,
@@ -174,16 +223,10 @@ export class TdmpConnectionService {
       tdmpMaterialisedAt: listBody?.meta?.lastMaterialisedAt ?? null,
       tvetSchools: listBody?.meta?.page?.total ?? null,
       endpoints,
-      requests: await this.requests(
-        endpoints,
-        rows,
-        discovery,
-        configured.oauthClient,
-        {
-          unfetched,
-          sample: allRows,
-        },
-      ),
+      requests: await this.requests(endpoints, rows, discovery, signIn, {
+        unfetched,
+        sample: allRows,
+      }),
     };
   }
 
@@ -191,16 +234,13 @@ export class TdmpConnectionService {
     endpoints: EndpointStatus[],
     rows: TdmpSchool[],
     discovery: Record<string, unknown> | null,
-    oauthClient: boolean,
+    signIn: SignInReadiness,
     quality: { unfetched: number | null; sample: TdmpSchool[] },
   ): Promise<RequestStatus[]> {
     const ok = (key: string) =>
       endpoints.find((e) => e.key === key)?.ok ?? false;
     const claims = Array.isArray(discovery?.claims_supported)
       ? (discovery.claims_supported as string[])
-      : [];
-    const prompts = Array.isArray(discovery?.prompt_values_supported)
-      ? (discovery.prompt_values_supported as string[])
       : [];
 
     const r1 = ['tradesStudents', 'trades', 'locations'];
@@ -287,41 +327,51 @@ export class TdmpConnectionService {
       },
       {
         id: 'R6',
-        title: 'OAuth client for RTB 3D GIS',
+        title: 'Register RTB 3D GIS for "Sign in with TDMP"',
         priority: 'P1',
-        state: state(oauthClient && prompts.includes('none'), oauthClient),
+        // The TDMP SSO guide (§3) is a registration, not a POST we make;
+        // done once TDMP accepts the client id and secret on our server.
+        state: state(
+          signIn.credentials === 'accepted' && (signIn.signingKeys ?? 0) > 0,
+          signIn.clientConfigured,
+        ),
         evidence: [
-          oauthClient
-            ? 'Client id and secret configured'
-            : 'TDMP_OAUTH_CLIENT_ID / SECRET not set',
-          prompts.includes('none')
-            ? 'prompt=none supported'
-            : 'prompt=none not advertised',
-          discovery?.end_session_endpoint
-            ? 'end-session endpoint present'
-            : 'no end-session endpoint',
-        ].join(' · '),
+          !signIn.clientConfigured
+            ? 'TDMP_OAUTH_CLIENT_ID / SECRET not set'
+            : signIn.credentials === 'accepted'
+              ? 'Client id and secret accepted by TDMP'
+              : signIn.credentials === 'rejected'
+                ? 'TDMP refuses the client id / secret (invalid_client)'
+                : 'Client configured; TDMP not reachable to confirm it',
+          signIn.signingKeys
+            ? `${signIn.signingKeys} ID-token signing key(s) published`
+            : 'ID-token signing keys not readable',
+          signIn.issuerMatches === false
+            ? 'issuer differs from TDMP_BASE_URL (set TDMP_ISSUER)'
+            : null,
+          `redirect URI ${signIn.redirectUri}`,
+          `launch URL ${signIn.launchUrl}`,
+        ]
+          .filter(Boolean)
+          .join(' · '),
       },
       {
         id: 'R7',
-        title: 'TDMP role catalogue and mapping',
-        priority: 'P1',
-        state: mappedRoles > 0 ? 'done' : 'waiting',
-        evidence:
-          mappedRoles > 0
-            ? `${mappedRoles} role(s) mapped to TDMP roles (Settings ▸ Roles)`
-            : 'No role mapped to a TDMP role yet',
+        title: 'Role at sign-in (to agree)',
+        priority: 'P2',
+        state: claims.includes('roles') ? 'done' : 'waiting',
+        evidence: claims.includes('roles')
+          ? 'TDMP advertises a roles claim'
+          : `Not blocking: roles are set in RTB GIS until TDMP provides them${mappedRoles > 0 ? ` (${mappedRoles} role(s) already mapped for later)` : ''}`,
       },
       {
         id: 'R8',
-        title: 'Province / district / school in the access scope',
-        priority: 'P1',
-        state:
-          claims.includes('roles') || claims.includes('access_scope')
-            ? 'done'
-            : 'waiting',
-        evidence:
-          'Until then province- and district-scoped users without an anchor school are refused',
+        title: 'Area (province / district / school) at sign-in (to agree)',
+        priority: 'P2',
+        state: claims.includes('access_scope') ? 'done' : 'waiting',
+        evidence: claims.includes('access_scope')
+          ? 'TDMP advertises an access_scope claim'
+          : 'Not blocking: areas are set in RTB GIS until TDMP provides them',
       },
       {
         id: 'R9',
@@ -329,15 +379,31 @@ export class TdmpConnectionService {
         priority: 'P3',
         state: claims.includes('amr') ? 'done' : 'waiting',
         evidence: claims.length
-          ? `Claims advertised: ${claims.join(', ')}`
+          ? `Claims advertised: ${claims.join(', ')}. Our 2FA stays on for privileged roles until amr is there`
           : 'Discovery not readable',
       },
       {
         id: 'R10',
-        title: 'Staging environment and test accounts',
+        title: 'Test environment and test accounts',
         priority: 'P2',
         state: 'manual',
-        evidence: 'Confirm with TDMP',
+        evidence:
+          'TDMP has a test environment (guide §4): ask for a test registration',
+      },
+      {
+        id: 'R17',
+        title: 'Tell connected systems when an account is deactivated',
+        priority: 'P2',
+        state: 'manual',
+        evidence:
+          'To agree (guide §12). Meanwhile TDMP sessions end after TDMP_SESSION_MAX_HOURS',
+      },
+      {
+        id: 'R18',
+        title: 'Open a specific school from the TDMP launcher',
+        priority: 'P3',
+        state: 'manual',
+        evidence: 'To agree (guide §12). Our /sso/tdmp?school= is ready',
       },
       {
         id: 'R15',

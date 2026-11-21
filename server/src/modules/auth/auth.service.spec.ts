@@ -1407,3 +1407,133 @@ describe('AuthService.loginWithGoogle with an access token', () => {
     ).rejects.toThrow(BadRequestException);
   });
 });
+
+describe('AuthService – TDMP sign-in', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const tdmpUser = (over: Record<string, unknown> = {}) =>
+    buildUser({
+      authSource: 'tdmp',
+      tdmpUserId: '77',
+      ...over,
+    } as never);
+
+  it('asks for our 2FA when TOTP is on or the role is privileged', async () => {
+    const { service, mfaService } = await makeService();
+    expect(service.tdmpNeedsSecondFactor(tdmpUser())).toBe(false);
+    expect(service.tdmpNeedsSecondFactor(tdmpUser({ totpEnabled: true }))).toBe(
+      true,
+    );
+    mfaService.isRequiredFor.mockReturnValue(true);
+    expect(service.tdmpNeedsSecondFactor(tdmpUser())).toBe(true);
+  });
+
+  it('issues a TDMP session capped at TDMP_SESSION_MAX_HOURS with the encrypted TDMP token', async () => {
+    const { service, sessionsService, tdmpSessions, auditService } =
+      await makeService({}, { TDMP_SESSION_MAX_HOURS: '12' });
+    const result = await service.issueTdmpSession(tdmpUser(), {}, 'rt-tdmp');
+    expect(result.refreshToken).toBe('refresh-token-1');
+    expect(tdmpSessions.encrypt).toHaveBeenCalledWith('rt-tdmp');
+    expect(sessionsService.create).toHaveBeenCalledWith(
+      'user-uuid-1',
+      {},
+      'tdmp',
+      { refreshTokenEnc: 'enc:rt-tdmp', maxTtlMs: 12 * 3_600_000 },
+    );
+    expect(auditService.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'auth.tdmp_login' }),
+    );
+  });
+
+  it('refuses to continue a TDMP sign-in without its pending cookie', async () => {
+    const { service } = await makeService();
+    await expect(service.startTdmpSecondFactor(null)).rejects.toThrow(
+      UnauthorizedException,
+    );
+  });
+
+  it('continues a pending TDMP sign-in with the 2FA enrolment', async () => {
+    const user = tdmpUser();
+    const { service, mfaService, jwtService, sessionsService } =
+      await makeService({ findOne: jest.fn().mockResolvedValue(user) });
+    mfaService.isRequiredFor.mockReturnValue(true);
+    jwtService.signAsync.mockResolvedValueOnce('enrol-token');
+    await expect(
+      service.startTdmpSecondFactor({ userId: user.id, refreshToken: 'rt' }),
+    ).resolves.toEqual({
+      mfaEnrollmentRequired: true,
+      mfaToken: 'enrol-token',
+    });
+    expect(jwtService.signAsync.mock.calls[0][0]).toMatchObject({
+      method: 'tdmp',
+      stage: 'enroll',
+    });
+    expect(sessionsService.create).not.toHaveBeenCalled();
+  });
+
+  it('issues the session straight away when 2FA is no longer needed', async () => {
+    const user = tdmpUser();
+    const { service, sessionsService } = await makeService({
+      findOne: jest.fn().mockResolvedValue(user),
+    });
+    const result = await service.startTdmpSecondFactor({
+      userId: user.id,
+      refreshToken: 'rt',
+    });
+    expect(result).toMatchObject({ refreshToken: 'refresh-token-1' });
+    expect(sessionsService.create.mock.calls[0][2]).toBe('tdmp');
+  });
+
+  it('refuses a pending sign-in for a non-TDMP account', async () => {
+    const { service } = await makeService({
+      findOne: jest.fn().mockResolvedValue(buildUser()),
+    });
+    await expect(
+      service.startTdmpSecondFactor({ userId: 'user-uuid-1' }),
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('finishes a TDMP 2FA step only with the matching pending sign-in', async () => {
+    const user = tdmpUser({ totpEnabled: true });
+    const { service, mfaService, jwtService, sessionsService } =
+      await makeService({ findOne: jest.fn().mockResolvedValue(user) });
+    jwtService.verifyAsync.mockResolvedValue({
+      sub: user.id,
+      purpose: 'mfa',
+      stage: 'verify',
+      method: 'tdmp',
+      jti: 'j-tdmp',
+    });
+    mfaService.verify.mockResolvedValue(true);
+
+    await expect(
+      service.verifyMfa({ mfaToken: 't', code: '123456' }, {}, null),
+    ).rejects.toThrow(UnauthorizedException);
+    await expect(
+      service.verifyMfa(
+        { mfaToken: 't', code: '123456' },
+        {},
+        { userId: 'someone-else', refreshToken: 'rt' },
+      ),
+    ).rejects.toThrow(UnauthorizedException);
+
+    const session = await service.verifyMfa(
+      { mfaToken: 't', code: '123456' },
+      {},
+      { userId: user.id, refreshToken: 'rt-tdmp' },
+    );
+    expect(session).toMatchObject({ refreshToken: 'refresh-token-1' });
+    expect(sessionsService.create).toHaveBeenCalledWith(
+      user.id,
+      {},
+      'tdmp',
+      expect.objectContaining({ refreshTokenEnc: 'enc:rt-tdmp' }),
+    );
+  });
+
+  it('refuses password-only flows for TDMP accounts', async () => {
+    const { service } = await makeService();
+    expect(() => service.assertLocalAccount(tdmpUser())).toThrow();
+    expect(() => service.assertLocalAccount(buildUser())).not.toThrow();
+  });
+});

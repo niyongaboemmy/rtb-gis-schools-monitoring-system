@@ -6,6 +6,7 @@ import { useToast } from "../ui/toast";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { PILL_BUTTON } from "../ui/surfaces";
+import { useAuthProviders } from "../../hooks/useAuthProviders";
 
 interface RoleWithTdmp {
   id: string;
@@ -32,6 +33,8 @@ export function TdmpRoleNames<T extends RoleWithTdmp>({
   role: T;
   onSaved: (updated: T) => void;
 }) {
+  // TDMP sign-in carries no role today: the mapping waits until it does.
+  const accessFromTdmp = useAuthProviders()?.tdmpAccess === "tdmp";
   const toast = useToast();
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -74,6 +77,11 @@ export function TdmpRoleNames<T extends RoleWithTdmp>({
         People signing in from TDMP with any of these TDMP role names get this role. A TDMP user whose roles match
         nothing cannot sign in.
       </p>
+      {!accessFromTdmp && (
+        <p className="mt-1.5 text-xs font-medium text-warning">
+          Used only when TDMP sends roles at sign-in (not yet available).
+        </p>
+      )}
 
       {names.length > 0 && (
         <ul className="mt-2.5 flex flex-wrap gap-1.5" aria-label="TDMP role names">

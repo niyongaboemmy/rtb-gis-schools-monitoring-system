@@ -116,57 +116,53 @@ Authorization: ApiKey fortress_sk_…
     check: "To confirm with TDMP: we cannot detect a webhook from here.",
   },
   R6: {
-    summary: "Register RTB 3D GIS as an OAuth client for single sign-on.",
-    why: "With a client, anyone signed in to TDMP opens RTB 3D GIS without signing in again, with the right role and area. Everything on our side is built and tested.",
+    summary: "Register RTB 3D GIS for \"Sign in with TDMP\" (production and test).",
+    why: "This is the only thing single sign-on still needs. Everything on our side follows the TDMP sign-in guide (12 Nov 2026): code + PKCE, ID token checked against your keys, profile from /oauth/userinfo, newest refresh token kept, token revoked at sign-out.",
     ask: [
-      "Create a confidential client with the body below and send clientId / clientSecret over a secure channel.",
-      "Mark it first-party, so the consent screen is skipped.",
-      "Support prompt=none (straight back when the user already has a TDMP session).",
-      "Tell us token lifetimes, and add an end-session endpoint if you can.",
+      "Register RTB 3D GIS with the details below (guide §3) and send the client ID and secret over a secure channel.",
+      "Add the launch URL as a tile on the TDMP sign-in page (guide §10).",
+      "Create a test registration on the TDMP test environment with the localhost redirect URI.",
     ],
     example: {
-      label: "POST /api/v1/oauth/clients",
-      lang: "json",
-      code: `{
-  "name": "RTB 3D GIS",
-  "redirectUris": [
-    "https://rtb.aerovyntech.com/api/v1/auth/tdmp/callback",
-    "http://localhost:5173/api/v1/auth/tdmp/callback"
-  ],
-  "grantTypes": ["authorization_code", "refresh_token"]
-}`,
+      label: "Registration details",
+      lang: "text",
+      code: `System name        RTB 3D GIS
+Server or browser  Has a server (client secret)
+Redirect URI       https://rtb.aerovyntech.com/auth/tdmp/callback
+Launch URL         https://rtb.aerovyntech.com/sso/tdmp
+Test redirect URI  http://localhost:5173/auth/tdmp/callback
+Technical contact  (name and email)`,
     },
-    unlocks: ["Sign in with TDMP", "No second login"],
-    check: "Partly done when the client id / secret are on our server; done once TDMP also advertises prompt=none.",
+    unlocks: ["Sign in with TDMP", "RTB 3D GIS tile on the TDMP sign-in page"],
+    check: "Done once the client ID and secret are on our server.",
   },
   R7: {
-    summary: "Which TDMP roles may open RTB 3D GIS.",
-    why: "Each TDMP role must map to one of our roles. Roles we don't know are refused, so we need the list before sign-on can open.",
+    summary: "Send each user's role when they sign in (to agree).",
+    why: "TDMP sign-in carries no role today (guide §8). Not blocking: RTB 3D GIS administrators pre-register expected users with a role, and anyone else waits for access. With roles from TDMP, nobody has to be set up twice.",
     ask: [
-      "Send the TDMP role names (e.g. from GET /iam/roles).",
+      "Agree with us how roles will arrive: a roles claim in the ID token and /oauth/userinfo, or sign-in tokens accepted at GET /auth/me/access-scope.",
       "Confirm or correct the mapping below.",
     ],
     example: {
-      label: "Draft mapping",
+      label: "Draft mapping (TDMP access level → RTB 3D GIS role)",
       lang: "text",
-      code: `RTB HQ administrator        → admin             (national)
-RTB planner / M&E officer   → viewer            (national)
-District education officer  → district_officer  (own district)
-School manager / head       → school_leader     (own school)
-anything else               → no access`,
+      code: `National (RTB HQ administrator)   → admin             (national)
+National (planner / M&E officer)  → viewer            (national)
+District                          → district_officer  (own district)
+School (manager / head teacher)   → school_leader     (own school)
+None                              → no access`,
     },
-    unlocks: ["Right role at sign-in"],
-    check: "Done once at least one RTB GIS role is mapped to a TDMP role (Settings ▸ Roles).",
+    unlocks: ["Right role at sign-in, without pre-registering"],
+    check: "Done once TDMP's sign-in discovery lists a roles claim.",
   },
   R8: {
-    summary: "Say which province, district or school a user covers.",
-    why: "access-scope gives the kind of scope but not its unit. Without it we cannot place a district officer, so we refuse them rather than show too much.",
+    summary: "Send which province, district or school a user covers (to agree).",
+    why: "Sign-in carries no area today (guide §8). Not blocking: administrators set each user's area in RTB 3D GIS until TDMP provides it.",
     ask: [
-      "Add the unit names and ids to GET /auth/me/access-scope, as below.",
-      "Ideally, also send roles and scope as id_token claims.",
+      "Send the area with the role (R7): an access_scope claim, or the unit filled in on GET /auth/me/access-scope, as below.",
     ],
     example: {
-      label: "GET /api/v1/auth/me/access-scope",
+      label: "access_scope",
       lang: "json",
       code: `"accessScope": {
   "kind": "district",
@@ -175,30 +171,62 @@ anything else               → no access`,
   "schoolCode": null
 }`,
     },
-    unlocks: ["District and province users can sign in"],
-    check: "Done once TDMP's sign-in discovery lists roles or access_scope claims.",
+    unlocks: ["District and province users placed automatically"],
+    check: "Done once TDMP's sign-in discovery lists an access_scope claim.",
   },
   R9: {
     summary: "Tell us when the user already did MFA in TDMP.",
-    why: "Then we skip our own second factor instead of asking twice.",
-    ask: ["Add amr to the id_token when MFA was used."],
-    example: { label: "id_token claims", lang: "json", code: `{ "sub": "14", "email": "officer@rtb.gov.rw", "amr": ["pwd", "otp"] }` },
+    why: "The guide lists no amr claim, so we still ask privileged roles for our own second factor after TDMP sign-in. With amr we would stop asking twice.",
+    ask: ["Add amr to the ID token when MFA was used."],
+    example: { label: "ID token claims", lang: "json", code: `{ "sub": "14", "email": "officer@rtb.gov.rw", "amr": ["pwd", "otp"] }` },
     unlocks: ["One MFA prompt instead of two"],
     check: "Done once TDMP's discovery document lists the amr claim.",
   },
   R10: {
-    summary: "A staging TDMP with one test user per role.",
-    why: "We test sign-on, roles and scopes without touching real accounts.",
-    ask: ["Provide a staging URL (or test tenant).", "Create one test user for each role in R7."],
+    summary: "Test registration and one test account per access level.",
+    why: "The guide mentions a separate test environment. We test sign-in, the waiting list and areas without touching real accounts.",
+    ask: [
+      "Send the test registration details (see R6).",
+      "Create one test user per access level: national, province, district, school, none.",
+    ],
     example: {
       label: "What we need",
       lang: "text",
-      code: `https://staging.tdmp.rtb.gov.rw
-test.admin@…     (RTB HQ administrator)
-test.district@…  (District officer, Muhanga)
-test.school@…    (Head teacher, ACEJ KARAMA)`,
+      code: `Test client ID / secret (localhost redirect URI)
+test.national@…   (National)
+test.district@…   (District, Muhanga)
+test.school@…     (School, ACEJ KARAMA)
+test.none@…       (No data access)`,
     },
     unlocks: ["Safe sign-in testing"],
+    check: "To confirm with TDMP.",
+  },
+  R17: {
+    summary: "Tell connected systems when a TDMP account is deactivated.",
+    why: "A TDMP refresh token keeps working for up to 30 days after the account is deactivated (guide §9). Until there is a signal, our TDMP sessions end after 24 hours and users go back through TDMP sign-in.",
+    ask: [
+      "Agree with us one way to learn of deactivations quickly: refresh tokens that stop at deactivation, back-channel logout, or a webhook.",
+    ],
+    example: {
+      label: "Any of these",
+      lang: "text",
+      code: `POST /oauth/token (refresh_token)   → 400 invalid_grant once deactivated
+POST {our back-channel logout URL}  ← logout_token for the user
+POST {our webhook}                  ← { "event": "user.deactivated", "sub": "14" }`,
+    },
+    unlocks: ["Deactivations take effect within minutes, not up to 24 hours"],
+    check: "To confirm with TDMP.",
+  },
+  R18: {
+    summary: "Open a specific school from the TDMP launcher.",
+    why: "The launcher opens one fixed page per system (guide §12). Our launch page already opens a school after sign-in when it gets the school code.",
+    ask: ["Pass the school code to our launch URL from TDMP school pages."],
+    example: {
+      label: "Launch URL with a school",
+      lang: "text",
+      code: `https://rtb.aerovyntech.com/sso/tdmp?school={schoolCode}`,
+    },
+    unlocks: ["One click from a TDMP school to the same school in RTB 3D GIS"],
     check: "To confirm with TDMP.",
   },
   R15: {

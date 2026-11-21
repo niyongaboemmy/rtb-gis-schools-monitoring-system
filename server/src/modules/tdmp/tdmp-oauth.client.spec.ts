@@ -1,5 +1,10 @@
 import * as crypto from 'crypto';
-import { checkIdToken, createPkce, TdmpOAuthClient } from './tdmp-oauth.client';
+import {
+  checkIdToken,
+  createPkce,
+  TdmpOAuthClient,
+  verifyRs256,
+} from './tdmp-oauth.client';
 import { TdmpApiClient } from './tdmp-api.client';
 import { safeNext } from '../auth/tdmp/tdmp-auth.controller';
 
@@ -104,5 +109,98 @@ describe('authorizeUrl', () => {
   it('asks for prompt=none on a silent attempt', () => {
     const url = new URL(client.authorizeUrl({ ...p, prompt: 'none' }));
     expect(url.searchParams.get('prompt')).toBe('none');
+  });
+});
+
+describe('verifyRs256 (ID token signature)', () => {
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+  });
+  const other = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const jwk = (key: crypto.KeyObject, kid: string) => ({
+    ...(key.export({ format: 'jwk' }) as { kty: string; n: string; e: string }),
+    kid,
+    alg: 'RS256',
+  });
+  const sign = (
+    claims: Record<string, unknown>,
+    header: Record<string, unknown> = { alg: 'RS256', kid: 'k1' },
+    key = privateKey,
+  ) => {
+    const input = [header, claims]
+      .map((p) => Buffer.from(JSON.stringify(p)).toString('base64url'))
+      .join('.');
+    const sig = crypto.sign('RSA-SHA256', Buffer.from(input), key);
+    return `${input}.${sig.toString('base64url')}`;
+  };
+  const keys = [jwk(publicKey, 'k1'), jwk(other.publicKey, 'k2')];
+
+  it('accepts a token signed with the key it names', () => {
+    expect(verifyRs256(sign(good), keys)).toBe(true);
+  });
+
+  it('rejects a token signed with another key or tampered with', () => {
+    expect(verifyRs256(sign(good, undefined, other.privateKey), keys)).toBe(
+      false,
+    );
+    const [h, , s] = sign(good).split('.');
+    const forged = Buffer.from(
+      JSON.stringify({ ...good, sub: 'admin' }),
+    ).toString('base64url');
+    expect(verifyRs256(`${h}.${forged}.${s}`, keys)).toBe(false);
+  });
+
+  it('returns false for an unknown key id (caller re-reads the keys)', () => {
+    expect(verifyRs256(sign(good, { alg: 'RS256', kid: 'k9' }), keys)).toBe(
+      false,
+    );
+  });
+
+  it('refuses unsigned and HMAC tokens outright', () => {
+    expect(() =>
+      verifyRs256(sign(good, { alg: 'none', kid: 'k1' }), keys),
+    ).toThrow();
+    expect(() =>
+      verifyRs256(sign(good, { alg: 'HS256', kid: 'k1' }), keys),
+    ).toThrow();
+  });
+});
+
+describe('TdmpOAuthClient.checkClientCredentials', () => {
+  const config = {
+    baseUrl: ISSUER,
+    clientId: 'rtb-gis',
+    clientSecret: 's3cret',
+    timeoutMs: 1000,
+  };
+  const realFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = realFetch;
+  });
+  const answer = (status: number, body: unknown) => {
+    global.fetch = jest.fn(
+      async () =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        }),
+    ) as typeof fetch;
+  };
+  const client = () =>
+    new TdmpOAuthClient(config as never, new TdmpApiClient(config as never));
+
+  it('reads invalid_grant as "TDMP knows our client"', async () => {
+    answer(400, { error: 'invalid_grant' });
+    await expect(client().checkClientCredentials()).resolves.toBe('accepted');
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(init.headers.Authorization).toBe(
+      `Basic ${Buffer.from('rtb-gis:s3cret').toString('base64')}`,
+    );
+    expect(String(init.body)).toContain('grant_type=refresh_token');
+  });
+
+  it('reads invalid_client as a wrong id or secret', async () => {
+    answer(401, { error: 'invalid_client' });
+    await expect(client().checkClientCredentials()).resolves.toBe('rejected');
   });
 });

@@ -160,6 +160,13 @@ export class User {
   @Column({ type: 'varchar', length: 64, nullable: true })
   tdmpUserId: string | null;
 
+  /**
+   * Signed in with TDMP but nobody gave them a role yet. Until an admin does
+   * (Settings ▸ Users ▸ waiting list), they can only reach their own profile.
+   */
+  @Column({ type: 'boolean', default: false })
+  accessPending: boolean;
+
   // ── Privacy notice (WS8.7) ────────────────────────────────────────────────
 
   @Column({ type: 'timestamp', nullable: true })

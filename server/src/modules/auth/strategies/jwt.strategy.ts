@@ -29,10 +29,11 @@ interface AccessPayload {
 }
 
 /**
- * While `mustChangePassword` is set the account can only reach the auth
- * routes and its own `users/me/*` routes (WS10.3).
+ * While `mustChangePassword` is set (WS10.3), or a TDMP user waits for an
+ * administrator to give them access, the account can only reach the auth
+ * routes and its own `users/me/*` routes.
  */
-const PASSWORD_CHANGE_ALLOWED = [
+const SELF_SERVICE_ROUTES = [
   /^\/api\/v1\/auth(\/|$)/,
   /^\/api\/v1\/users\/me(\/|$)/,
 ];
@@ -94,9 +95,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // A partner account never works without an embed claim.
     if (user.authSource === 'partner') throw new UnauthorizedException();
 
+    const path = (req.originalUrl ?? req.url ?? '').split('?')[0];
+    const selfService = SELF_SERVICE_ROUTES.some((re) => re.test(path));
+
+    if (user.accessPending && !selfService)
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'ACCESS_PENDING',
+        message:
+          'An RTB GIS administrator needs to give you a role and area first.',
+      });
+
     if (user.mustChangePassword) {
-      const path = (req.originalUrl ?? req.url ?? '').split('?')[0];
-      if (!PASSWORD_CHANGE_ALLOWED.some((re) => re.test(path)))
+      if (!selfService)
         throw new ForbiddenException({
           statusCode: 403,
           code: 'PASSWORD_CHANGE_REQUIRED',

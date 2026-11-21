@@ -25,7 +25,7 @@ import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/constants/permissions.constant';
 import * as XLSX from 'xlsx';
-import { CreateUserDto } from './dto/create-user.dto';
+import { CreateTdmpUserDto, CreateUserDto } from './dto/create-user.dto';
 import { UpdateProfileDto, UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { BulkUsersDto, MAX_BULK_USER_ROWS } from './dto/bulk-users.dto';
@@ -62,6 +62,16 @@ export class UsersController {
   @RequirePermissions(Permission.MANAGE_USERS)
   create(@Request() req: any, @Body() body: CreateUserDto) {
     return this.usersService.create(body, req.user, requestMeta(req));
+  }
+
+  @Post('tdmp')
+  @ApiOperation({
+    summary:
+      'Pre-register a TDMP user: role and area apply at their first TDMP sign-in',
+  })
+  @RequirePermissions(Permission.MANAGE_USERS)
+  createTdmpUser(@Request() req: any, @Body() body: CreateTdmpUserDto) {
+    return this.usersService.createTdmpUser(body, req.user, requestMeta(req));
   }
 
   @Get('upload/template')

@@ -81,11 +81,16 @@ export class TdmpConfig {
     return (explicit || first || 'http://localhost:5173').replace(/\/+$/, '');
   }
 
-  /** Must match a redirect URI registered with the TDMP OAuth client. */
+  /**
+   * Must match a redirect URI registered with TDMP exactly. The default is
+   * the public path from TDMP's SSO guide; the web app hands it to the API
+   * route `/api/v1/auth/tdmp/callback` (client/src/lib/tdmp-relay.ts), and
+   * that API route also works as a redirect URI by itself.
+   */
   get redirectUri(): string {
     return (
       this.str('TDMP_OAUTH_REDIRECT_URI') ||
-      `${this.appPublicUrl}/api/v1/auth/tdmp/callback`
+      `${this.appPublicUrl}/auth/tdmp/callback`
     );
   }
 
@@ -115,14 +120,37 @@ export class TdmpConfig {
   }
 
   /**
-   * Our role for TDMP users whose TDMP roles match no mapping. Empty (the
-   * default) refuses them.
+   * Where a TDMP user's role and area come from.
+   *  - `local` (default): set in RTB GIS. Admins pre-register expected users
+   *    (Settings ▸ Users); anyone else who signs in waits for access. TDMP's
+   *    sign-in gives identity only (SSO guide §8).
+   *  - `tdmp`: read from `/auth/me/access-scope` and `roles.tdmpRoleNames` at
+   *    every sign-in. Only once TDMP accepts sign-in tokens there (§12).
+   */
+  get accessSource(): 'local' | 'tdmp' {
+    return this.str('TDMP_ACCESS_SOURCE').toLowerCase() === 'tdmp'
+      ? 'tdmp'
+      : 'local';
+  }
+
+  /**
+   * Role for TDMP users nobody pre-registered. Empty (the default): they
+   * wait for an administrator (`local`) or are refused (`tdmp`).
    */
   get defaultRoleName(): string {
     return this.str('TDMP_DEFAULT_ROLE');
   }
 
-  /** Re-check a TDMP user's account and scope at most this often. */
+  /**
+   * A TDMP session lasts at most this long, then the user goes back through
+   * TDMP sign-in. TDMP refresh tokens outlive a deactivated account by up to
+   * 30 days, so this is how deactivations reach us (SSO guide §9).
+   */
+  get sessionMaxMs(): number {
+    return this.int('TDMP_SESSION_MAX_HOURS', 24, 1) * 3_600_000;
+  }
+
+  /** Re-check a TDMP user's account (and profile) at most this often. */
   get recheckMs(): number {
     return this.int('TDMP_RECHECK_MINUTES', 15, 1) * 60_000;
   }

@@ -19,6 +19,7 @@ import {
   Send,
   History,
   Globe2,
+  Info,
   type LucideIcon,
 } from "lucide-react";
 import { api, apiErrorMessage } from "../../lib/api";
@@ -31,6 +32,7 @@ import { useAuthorization } from "../../hooks/useAuthorization";
 import { Permission } from "../../lib/permissions";
 import { titleCase } from "../../lib/labels";
 import { Eyebrow, FieldLabel, IconTile } from "../settings/settings-ui";
+import { missingScopeField } from "./user-scope";
 import {
   getProvinces,
   getDistricts,
@@ -68,6 +70,8 @@ function RadioOption({ checked, onChange, children }: { checked: boolean; onChan
 }
 
 export interface UserLocation {
+  /** The person's own reach set by the server (e.g. a TDMP account waiting for access). */
+  tier?: string;
   province?: string;
   district?: string;
   sector?: string;
@@ -80,6 +84,9 @@ export interface ManagedRole {
   name: string;
   accessLevel?: { name?: string } | null;
 }
+
+/** Where a TDMP user's role and area come from (GET /auth/providers `tdmpAccess`). */
+export type TdmpAccessSource = "local" | "tdmp";
 
 /** A user row as returned by `GET /users`. */
 export interface ManagedUser {
@@ -94,9 +101,14 @@ export interface ManagedUser {
   lastLoginAt?: string | null;
   role?: ManagedRole | null;
   location?: UserLocation | null;
-  /** `tdmp`: signs in through TDMP; only the active flag is edited here. */
-  authSource?: "local" | "tdmp";
+  /**
+   * `tdmp`: signs in through TDMP. Name and email come from TDMP; role and
+   * area are set here (unless TDMP sends them, `tdmpAccess: 'tdmp'`).
+   */
+  authSource?: "local" | "tdmp" | "partner";
   tdmpUserId?: string | null;
+  /** Signed in with TDMP and waiting for an administrator to give access. */
+  accessPending?: boolean;
 }
 
 interface SchoolOption {
@@ -122,6 +134,15 @@ interface UserFormModalProps {
   editingUser: ManagedUser | null;
   roles: ManagedRole[];
   schools: SchoolOption[];
+  /**
+   * `tdmp-expected`: a new person who will sign in with TDMP; they get this
+   * role and area at their first sign-in (POST /users/tdmp). Ignored when
+   * editing.
+   */
+  mode?: "default" | "tdmp-expected";
+  /** Editing a person waiting for access: titled "Give access". */
+  grantAccess?: boolean;
+  tdmpAccess?: TdmpAccessSource;
 }
 
 export function UserFormModal({
@@ -131,7 +152,19 @@ export function UserFormModal({
   editingUser,
   roles,
   schools,
+  mode = "default",
+  grantAccess = false,
+  tdmpAccess = "local",
 }: UserFormModalProps) {
+  // TDMP accounts: name and email come from TDMP; role and area are ours
+  // unless TDMP sends them.
+  const tdmpEdit = !!editingUser && editingUser.authSource === "tdmp";
+  const tdmpExpected = !editingUser && mode === "tdmp-expected";
+  const tdmpForm = tdmpEdit || tdmpExpected;
+  const accessFromTdmp = tdmpEdit && tdmpAccess === "tdmp";
+  // A role must be picked on purpose for TDMP people (no silent default).
+  const defaultRoleId = (u: ManagedUser | null) =>
+    u?.role?.id || (tdmpExpected || u?.authSource === "tdmp" ? "" : roles.length > 0 ? roles[0].id : "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   // New accounts: email a set-password code (recommended) instead of an
@@ -159,8 +192,8 @@ export function UserFormModal({
           lastName: editingUser.lastName,
           email: editingUser.email,
           password: "",
-          roleId: editingUser.role?.id || (roles.length > 0 ? roles[0].id : ""),
-          location: editingUser.location || {},
+          roleId: defaultRoleId(editingUser),
+          location: editingUser.accessPending ? {} : editingUser.location || {},
         });
       } else {
         setFormData({
@@ -168,14 +201,16 @@ export function UserFormModal({
           lastName: "",
           email: "",
           password: "",
-          roleId: roles.length > 0 ? roles[0].id : "",
+          roleId: defaultRoleId(null),
           location: {},
         });
       }
       setError("");
       setSendInvite(true);
     }
-  }, [isOpen, editingUser, roles]);
+    // defaultRoleId only reads props listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, editingUser, roles, mode]);
 
   const sendReset = async () => {
     if (!editingUser) return;
@@ -292,8 +327,39 @@ export function UserFormModal({
     };
 
     const who = `${formData.firstName} ${formData.lastName}`.trim() || formData.email;
+
+    if (tdmpForm) {
+      if (accessFromTdmp) {
+        setLoading(false);
+        return;
+      }
+      const problem = !formData.roleId
+        ? "Choose a role."
+        : missingScopeField(accessLevelName, formData.location ?? {});
+      if (problem) {
+        setError(problem);
+        setLoading(false);
+        return;
+      }
+    }
+
     try {
-      if (editingUser) {
+      if (tdmpEdit && editingUser) {
+        // Only role and area: name and email belong to TDMP.
+        await api.patch(`/users/${editingUser.id}`, { roleId: formData.roleId, location });
+        toast.success(
+          editingUser.accessPending ? `${who} now has access` : `Role and area updated for ${who}`,
+        );
+      } else if (tdmpExpected) {
+        await api.post("/users/tdmp", {
+          email: formData.email.trim(),
+          ...(formData.firstName.trim() ? { firstName: formData.firstName.trim() } : {}),
+          ...(formData.lastName.trim() ? { lastName: formData.lastName.trim() } : {}),
+          roleId: formData.roleId,
+          ...(Object.keys(location).length ? { location } : {}),
+        });
+        toast.success(`${formData.email.trim()} will get this role and area at their first TDMP sign-in.`);
+      } else if (editingUser) {
         // Edit flow — passwords are never set here (use "Send reset code").
         await api.patch(`/users/${editingUser.id}`, base);
         toast.success(`User "${who}" updated`);
@@ -316,7 +382,12 @@ export function UserFormModal({
       onSuccess();
       onClose();
     } catch (err) {
-      setError(apiErrorMessage(err, `Could not ${editingUser ? "update" : "create"} the user.`));
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      setError(
+        tdmpExpected && status === 409
+          ? `An account for ${formData.email.trim()} already exists. Edit it instead.`
+          : apiErrorMessage(err, `Could not ${editingUser ? "update" : "create"} the user.`),
+      );
     } finally {
       setLoading(false);
     }
@@ -332,10 +403,22 @@ export function UserFormModal({
           <IconTile icon={editingUser ? UserIcon : UserPlus} />
           <span className="flex min-w-0 flex-col gap-1">
             <span className="text-lg font-semibold tracking-tight text-foreground">
-              {editingUser ? "Edit user" : "Add user"}
+              {grantAccess && editingUser
+                ? "Give access"
+                : tdmpExpected
+                  ? "Add expected TDMP user"
+                  : editingUser
+                    ? "Edit user"
+                    : "Add user"}
             </span>
             <span className="text-xs font-normal text-muted-foreground/70">
-              {editingUser ? "Details, role and scope" : "Details, sign-in, role and scope"}
+              {grantAccess && editingUser
+                ? `Role and area for ${editingUser.email}`
+                : tdmpExpected
+                  ? "Role and area for their first TDMP sign-in"
+                  : editingUser
+                    ? "Details, role and scope"
+                    : "Details, sign-in, role and scope"}
             </span>
           </span>
         </span>
@@ -349,10 +432,18 @@ export function UserFormModal({
             type="submit"
             form="user-form"
             className={cn(PILL_BUTTON.primary, "w-full sm:w-auto")}
-            disabled={loading}
+            disabled={loading || accessFromTdmp}
             isLoading={loading}
           >
-            {loading ? "Saving…" : editingUser ? "Save changes" : "Add user"}
+            {loading
+              ? "Saving…"
+              : grantAccess && editingUser
+                ? "Give access"
+                : tdmpExpected
+                  ? "Add expected user"
+                  : editingUser
+                    ? "Save changes"
+                    : "Add user"}
           </Button>
         </div>
       }
@@ -373,11 +464,16 @@ export function UserFormModal({
             <FormSection icon={UserIcon} title="Details">
               <div className="grid grid-cols-1 gap-4 @md:grid-cols-2">
                 <div className="space-y-1.5">
-                  <FieldLabel htmlFor="user-first-name">First name</FieldLabel>
+                  <FieldLabel htmlFor="user-first-name">
+                    First name{tdmpExpected && <span className="font-normal text-muted-foreground"> (optional)</span>}
+                  </FieldLabel>
                   <Input
                     id="user-first-name"
                     name="firstName"
-                    required
+                    required={!tdmpForm}
+                    readOnly={tdmpEdit}
+                    aria-readonly={tdmpEdit || undefined}
+                    aria-describedby={tdmpEdit ? "user-tdmp-details-hint" : undefined}
                     autoComplete="off"
                     placeholder="e.g. Jean"
                     value={formData.firstName}
@@ -385,11 +481,16 @@ export function UserFormModal({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <FieldLabel htmlFor="user-last-name">Last name</FieldLabel>
+                  <FieldLabel htmlFor="user-last-name">
+                    Last name{tdmpExpected && <span className="font-normal text-muted-foreground"> (optional)</span>}
+                  </FieldLabel>
                   <Input
                     id="user-last-name"
                     name="lastName"
-                    required
+                    required={!tdmpForm}
+                    readOnly={tdmpEdit}
+                    aria-readonly={tdmpEdit || undefined}
+                    aria-describedby={tdmpEdit ? "user-tdmp-details-hint" : undefined}
                     autoComplete="off"
                     placeholder="e.g. Claude"
                     value={formData.lastName}
@@ -406,15 +507,43 @@ export function UserFormModal({
                   name="email"
                   type="email"
                   required
+                  readOnly={tdmpEdit}
+                  aria-readonly={tdmpEdit || undefined}
+                  aria-describedby={
+                    tdmpEdit ? "user-tdmp-details-hint" : tdmpExpected ? "user-tdmp-email-hint" : undefined
+                  }
                   autoComplete="off"
                   placeholder="name@rtb.gov.rw"
                   value={formData.email}
                   onChange={handleInputChange}
                 />
+                {tdmpExpected && (
+                  <p id="user-tdmp-email-hint" className="text-xs text-muted-foreground">
+                    The email they use in TDMP. Their name is filled in from TDMP when they sign in.
+                  </p>
+                )}
               </div>
+              {tdmpEdit && (
+                <p id="user-tdmp-details-hint" className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <StatusPill tone="primary" dot={false}>
+                    From TDMP
+                  </StatusPill>
+                  Name and email are managed in TDMP.
+                </p>
+              )}
             </FormSection>
 
-            {editingUser ? (
+            {tdmpExpected ? (
+              <FormSection icon={KeyRound} title="First sign-in">
+                <p
+                  role="note"
+                  className="flex items-start gap-2.5 rounded-2xl bg-primary/8 px-4 py-3 text-sm text-foreground ring-1 ring-inset ring-primary/15"
+                >
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
+                  They get this role and area the first time they sign in with TDMP using this email.
+                </p>
+              </FormSection>
+            ) : editingUser ? (
               <FormSection icon={Lock} title="Sign-in and security">
                 <div className={cn("space-y-3 rounded-2xl p-4", INSET)}>
                   <div className="flex flex-wrap gap-1.5">
@@ -426,15 +555,17 @@ export function UserFormModal({
                     {editingUser.mustChangePassword && <StatusPill tone="warn">Must change password</StatusPill>}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className={PILL_BUTTON.small}
-                      onClick={() => void sendReset()}
-                      isLoading={actionBusy === "reset"}
-                    >
-                      <Send className="h-3.5 w-3.5" aria-hidden /> Send reset code
-                    </Button>
+                    {!tdmpEdit && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={PILL_BUTTON.small}
+                        onClick={() => void sendReset()}
+                        isLoading={actionBusy === "reset"}
+                      >
+                        <Send className="h-3.5 w-3.5" aria-hidden /> Send reset code
+                      </Button>
+                    )}
                     {editingUser.totpEnabled && (
                       <Button
                         type="button"
@@ -448,8 +579,9 @@ export function UserFormModal({
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Administrators never set passwords for existing users: the user receives a one-time code by email and
-                    chooses their own.
+                    {tdmpEdit
+                      ? "Signs in with TDMP: there is no password in RTB GIS."
+                      : "Administrators never set passwords for existing users: the user receives a one-time code by email and chooses their own."}
                   </p>
                 </div>
               </FormSection>
@@ -489,9 +621,18 @@ export function UserFormModal({
           </div>
 
           <FormSection icon={MapPin} title="Role and scope">
+            {accessFromTdmp && (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <StatusPill tone="primary" dot={false}>
+                  From TDMP
+                </StatusPill>
+                Comes from TDMP at each sign-in.
+              </p>
+            )}
             <div className="space-y-1.5">
               <FieldLabel icon={Flag}>Role</FieldLabel>
               <RichDropdown
+                disabled={accessFromTdmp}
                 value={formData.roleId}
                 onChange={(val) => {
                   setFormData((prev) => ({
@@ -523,6 +664,7 @@ export function UserFormModal({
                 <div className="space-y-1.5">
                   <FieldLabel>Province</FieldLabel>
                   <RichDropdown
+                    disabled={accessFromTdmp}
                     value={formData.location?.province || ""}
                     onChange={(val) => {
                       resetLocationFields("province");
@@ -549,7 +691,7 @@ export function UserFormModal({
                         label: d,
                         value: d,
                       }))}
-                      disabled={!formData.location?.province}
+                      disabled={accessFromTdmp || !formData.location?.province}
                       placeholder={formData.location?.province ? "Choose a district" : "Choose a province first"}
                     />
                   </div>
@@ -568,7 +710,7 @@ export function UserFormModal({
                         label: s,
                         value: s,
                       }))}
-                      disabled={!formData.location?.district}
+                      disabled={accessFromTdmp || !formData.location?.district}
                       placeholder={formData.location?.district ? "Choose a sector" : "Choose a district first"}
                     />
                   </div>
@@ -591,7 +733,7 @@ export function UserFormModal({
                         label: s.name,
                         value: s.id,
                       }))}
-                      disabled={!formData.location?.district}
+                      disabled={accessFromTdmp || !formData.location?.district}
                       placeholder={formData.location?.district ? "Choose a school" : "Choose a district first"}
                       searchPlaceholder="Find a school"
                     />

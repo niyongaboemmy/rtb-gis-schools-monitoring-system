@@ -119,26 +119,27 @@ const TONES = {
 } as const;
 
 function statusTiles(user: User): StatusTile[] {
-  if (user.authSource === "tdmp") {
-    return [
-      {
-        label: "Sign-in",
-        value: "TDMP",
-        caption: "Password and 2FA managed in TDMP",
-        icon: ShieldCheck,
-        tone: "good",
-      },
-    ];
-  }
   const mfa = user.totpEnabled;
+  const twoFactor: StatusTile = {
+    label: "Two-factor",
+    value: mfa ? "On" : "Off",
+    caption: mfa ? "Authenticator app" : user.mfaRequired ? "Required for your role" : "Recommended",
+    icon: mfa ? ShieldCheck : ShieldAlert,
+    tone: mfa ? "good" : "warn",
+  };
+  if (user.authSource === "tdmp") {
+    const signIn: StatusTile = {
+      label: "Sign-in",
+      value: "TDMP",
+      caption: "Password managed in TDMP",
+      icon: ShieldCheck,
+      tone: "good",
+    };
+    // Our 2FA applies to TDMP users whose role requires it (or who turned it on).
+    return mfa || user.mfaRequired ? [signIn, twoFactor] : [signIn];
+  }
   return [
-    {
-      label: "Two-factor",
-      value: mfa ? "On" : "Off",
-      caption: mfa ? "Authenticator app" : user.mfaRequired ? "Required for your role" : "Recommended",
-      icon: mfa ? ShieldCheck : ShieldAlert,
-      tone: mfa ? "good" : "warn",
-    },
+    twoFactor,
     {
       label: "Password",
       value: user.passwordChangedAt ? formatDate(user.passwordChangedAt) : "Never changed",

@@ -64,6 +64,21 @@ export function validateEnv(
       if (!(typeof config[key] === 'string' && config[key].trim()))
         errors.push(`${key} is required when AUTH_MODE=${authMode}`);
 
+  const accessSource =
+    typeof config.TDMP_ACCESS_SOURCE === 'string'
+      ? config.TDMP_ACCESS_SOURCE.trim()
+      : '';
+  if (accessSource && !['local', 'tdmp'].includes(accessSource))
+    errors.push('TDMP_ACCESS_SOURCE must be local or tdmp');
+  const maxHours =
+    typeof config.TDMP_SESSION_MAX_HOURS === 'string'
+      ? config.TDMP_SESSION_MAX_HOURS.trim()
+      : '';
+  if (maxHours && !/^[1-9]\d*$/.test(maxHours))
+    errors.push(
+      'TDMP_SESSION_MAX_HOURS must be a whole number of hours (1 or more)',
+    );
+
   if (errors.length)
     throw new Error(
       `Invalid environment configuration:\n  - ${errors.join('\n  - ')}\n` +

@@ -19,6 +19,12 @@ export interface AuthProviders {
   tdmp: boolean;
   /** TDMP mode with an emergency allowlist: password form behind a link. */
   breakGlass: boolean;
+  /**
+   * Where a TDMP user's role and area come from: `local` = set by an RTB GIS
+   * administrator (today: TDMP sign-in carries no role); `tdmp` = taken from
+   * TDMP at each sign-in (future).
+   */
+  tdmpAccess: "local" | "tdmp";
 }
 
 /** What an older server (no /auth/providers) supports. */
@@ -28,6 +34,7 @@ export const LEGACY_PROVIDERS: AuthProviders = {
   google: true,
   tdmp: false,
   breakGlass: false,
+  tdmpAccess: "local",
 };
 
 let providersPromise: Promise<AuthProviders> | null = null;
@@ -80,11 +87,98 @@ export function ssoErrorMessage(code: string | null | undefined): string | null 
   return SSO_ERROR_MESSAGES[code as SsoErrorCode] ?? SSO_ERROR_MESSAGES.failed;
 }
 
+/** `POST /auth/tdmp/mfa` answered 401: the pending TDMP sign-in expired. */
+export const SSO_MFA_EXPIRED = "Your TDMP sign-in took too long. Please sign in again.";
+
+// ── Automatic return to TDMP ────────────────────────────────────────────────
+//
+// TDMP sessions here last at most a day; TDMP itself usually still knows the
+// person. When a TDMP user's session can't be restored, send them back through
+// TDMP sign-in (normally no password) instead of showing the login page.
+
+export const TDMP_AUTO_RETURN_KEY = "rtb_tdmp_auto_return";
+/** At most one automatic return in this window, so a failing sign-in never loops. */
+export const TDMP_AUTO_RETURN_WINDOW_MS = 2 * 60 * 1000;
+
+/** Pages that never trigger the automatic return (sign-in pages, public pages). */
+const NO_AUTO_RETURN = /^\/(login|forgot-password|sso\/|embed\/|developers)/;
+
+export function shouldAutoReturnToTdmp(opts: {
+  /** The remembered profile, read before the local session is cleared. */
+  user: { authSource?: string | null } | null | undefined;
+  tdmpSignIn: boolean;
+  pathname: string;
+  embed: boolean;
+  /** Time of the last automatic return, or null. */
+  lastReturnAt: number | null;
+  now?: number;
+}): boolean {
+  const now = opts.now ?? Date.now();
+  if (opts.embed || !opts.tdmpSignIn) return false;
+  if (opts.user?.authSource !== "tdmp") return false;
+  if (NO_AUTO_RETURN.test(opts.pathname)) return false;
+  if (opts.lastReturnAt !== null && now - opts.lastReturnAt < TDMP_AUTO_RETURN_WINDOW_MS) return false;
+  return true;
+}
+
+function readLastReturn(): number | null {
+  try {
+    const raw = sessionStorage.getItem(TDMP_AUTO_RETURN_KEY);
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLastReturn(at: number) {
+  try {
+    sessionStorage.setItem(TDMP_AUTO_RETURN_KEY, String(at));
+  } catch {
+    /* storage unavailable: the window check just won't apply */
+  }
+}
+
+/**
+ * The session is gone (refresh failed). For a TDMP user, sends the browser
+ * back through TDMP sign-in, returning to `path`. Resolves true when it did;
+ * the caller then skips its own redirect to /login. An explicit sign-out
+ * clears the remembered profile first, so it never lands here as a TDMP user.
+ */
+export async function returnToTdmpIfSessionLost(
+  user: { authSource?: string | null } | null | undefined,
+  path: string,
+  opts: {
+    embed: boolean;
+    /** Injected in tests. */
+    getProviders?: () => Promise<Pick<AuthProviders, "tdmp">>;
+    go?: (url: string) => void;
+  },
+): Promise<boolean> {
+  // Cheap checks first: no request for local users or embedded views.
+  if (opts.embed || user?.authSource !== "tdmp") return false;
+  const providers = await (opts.getProviders ?? fetchAuthProviders)();
+  const pathname = path.split(/[?#]/)[0] || "/";
+  if (
+    !shouldAutoReturnToTdmp({
+      user,
+      tdmpSignIn: providers.tdmp,
+      pathname,
+      embed: opts.embed,
+      lastReturnAt: readLastReturn(),
+    })
+  )
+    return false;
+  writeLastReturn(Date.now());
+  (opts.go ?? ((url: string) => window.location.assign(url)))(tdmpStartUrl({ next: path }));
+  return true;
+}
+
 // ── Users ───────────────────────────────────────────────────────────────────
 
-export type AuthSource = "local" | "tdmp";
+export type AuthSource = "local" | "tdmp" | "partner";
 
-/** True for accounts whose sign-in (password, 2FA) is managed by TDMP. */
+/** True for accounts that sign in through TDMP (no password here). */
 export function isTdmpUser(user: { authSource?: AuthSource | null } | null | undefined): boolean {
   return user?.authSource === "tdmp";
 }
@@ -278,8 +372,30 @@ export interface RequestStatus {
   evidence: string;
 }
 
+/** Whether "Sign in with TDMP" can work with what the server has. */
+export interface SignInReadiness {
+  authMode: AuthProviders["authMode"];
+  accessSource: "local" | "tdmp";
+  clientConfigured: boolean;
+  /** TDMP's answer to our client ID + secret; null = not configured. */
+  credentials: "accepted" | "rejected" | "unreachable" | null;
+  /** RS256 keys TDMP publishes for ID tokens; null = not readable. */
+  signingKeys: number | null;
+  issuerMatches: boolean | null;
+  redirectUri: string;
+  launchUrl: string;
+  sessionMaxHours: number;
+}
+
+/** True once TDMP accepts our client and publishes its signing keys. */
+export function signInReady(s: SignInReadiness | null | undefined): boolean {
+  return !!s && s.credentials === "accepted" && (s.signingKeys ?? 0) > 0 && s.issuerMatches !== false;
+}
+
 export interface ConnectionReport {
   checkedAt: string;
+  /** Absent on servers older than the sign-in check. */
+  signIn?: SignInReadiness;
   configured: { apiKey: boolean; oauthClient: boolean; baseUrl: string };
   reachable: boolean;
   authorised: boolean;
@@ -417,11 +533,11 @@ export const TDMP_COVERAGE: CoverageArea[] = [
     id: "identity",
     title: "Sign-in",
     priority: "P1",
-    summary: "Single sign-on with TDMP accounts, roles and scope.",
+    summary: "Single sign-on with TDMP accounts. Roles and areas are set in RTB GIS until TDMP sends them.",
     fields: [
-      { label: "Sign-in client", request: "R6", partialOk: true },
-      { label: "Role mapping", request: "R7" },
-      { label: "District / school scope", request: "R8" },
+      { label: "Sign-in registration", request: "R6", partialOk: true },
+      { label: "Role at sign-in (later)", request: "R7" },
+      { label: "Area at sign-in (later)", request: "R8" },
       { label: "MFA done in TDMP", request: "R9" },
     ],
   },

@@ -16,11 +16,13 @@ Both directions are **read-only**: we never write to TDMP, and TDMP's key cannot
 | R3 | Extra fields on `/schools` list rows | P2 | ⏳ Waiting |
 | R4 | Data quality on `/schools` | P2 | ⏳ Waiting: details below, including one possible duplicate |
 | R5 | Change feed (`updatedSince` / webhook) | P3 | Optional: our freshness check covers it |
-| R6 | OAuth client for RTB 3D GIS | P1 | ⏳ Waiting: blocks single sign-on |
-| R7 | Role catalogue | P1 | ⏳ Waiting: blocks single sign-on |
-| R8 | Province / district / school in the access scope | P1 | ⏳ Waiting: blocks single sign-on for area-level users |
-| R9 | `amr` claim | P3 | ⏳ Waiting |
-| R10 | Staging and test accounts | P2 | ⏳ Waiting |
+| R6 | Register RTB 3D GIS for "Sign in with TDMP" (production + test) | P1 | ⏳ Waiting: the only thing single sign-on still needs |
+| R7 | Role at sign-in | P2 | To agree (guide §12). No longer blocking: roles are set in RTB 3D GIS until then |
+| R8 | Area (province / district / school) at sign-in | P2 | To agree (guide §12). No longer blocking: areas are set in RTB 3D GIS until then |
+| R9 | `amr` claim | P3 | Not provided (guide §6.4); our 2FA stays on for privileged roles |
+| R10 | Test environment and test accounts | P2 | ⏳ Waiting: the guide says a test environment exists; please send test registration details |
+| R17 | Tell connected systems when an account is deactivated | P2 | To agree (guide §12). Until then our TDMP sessions last at most 24 h |
+| R18 | Open a specific school from the TDMP launcher | P3 | To agree (guide §12) |
 | R12 | Rotate the API key; separate keys per environment | P1 | ⏳ Waiting: production key now installed, please rotate |
 | **R15** | **Embed RTB GIS dashboards and maps in TDMP** | **P2** | **Ready on our side: partner key issued to TDMP** |
 | **R16** | **TDMP sites allowed to show embedded views** | **P2** | **⏳ Waiting: list of TDMP origins** |
@@ -66,7 +68,7 @@ RTB GIS users with an account can also open the same views directly (`/embed/sch
 | School profile | `GET /schools`, `GET /schools/{schoolCode}`, `categoryBand=TSS\|VTC` filter | ✅ 375 TVET schools synced: code, name, type, status, location names and ids, ownership, year established |
 | Enrolment / staffing totals | `counts.students`, `counts.teachers`, `tradeNames` | ✅ Learner and teacher totals, programme codes |
 | Sync | Your daily refresh (we observe ~06:00 Kigali) | ✅ Automatic: a freshness check at an interval we set (15 min–6 h) plus a full run daily at 07:15; unchanged schools are skipped |
-| User identity | OIDC discovery, JWKS, code + PKCE, refresh tokens, `/auth/me/access-scope` | ✅ Built on our side; waiting on R6–R8 to switch on |
+| User identity | Code + PKCE, JWKS-verified ID token, `/oauth/userinfo`, rotating refresh tokens, revoke at sign-out (per the TDMP SSO guide) | ✅ Built on our side; waiting on R6 (registration) to switch on |
 
 First sync: 391 schools read, 373 added, 2 matched to existing RTB GIS schools, 0 failures, in 32 seconds. The next scheduled run found all schools unchanged and rewrote nothing.
 
@@ -155,46 +157,25 @@ Optional, since volume is small: an `updatedSince=<ISO>` filter on `/schools`, o
 
 ### User identity and access (single sign-on)
 
-Everything on our side is built and tested. Single sign-on goes live as soon as R6, R7 and R8 are in place.
+Thank you for the **"Sign in with TDMP: integration guide"** (12 Nov 2026). RTB 3D GIS now follows it: authorization code + PKCE (S256), state and nonce, the ID token checked against your JWKS, the profile read from `/oauth/userinfo`, accounts linked by `sub` (email only once, when verified), our own session, the newest refresh token always kept, and the refresh token revoked at sign-out. Because sign-in carries no role or area (§8), RTB 3D GIS sets them itself for now, and our sessions for TDMP users last at most 24 hours (§9).
 
-#### R6 (P1): Register an OAuth client for RTB 3D GIS
+#### R6 (P1): Register RTB 3D GIS (guide §3)
 
-Please create a confidential client (`POST /oauth/clients`) and send the `clientId` / `clientSecret` over a secure channel:
+| Item | Value |
+|---|---|
+| System name | RTB 3D GIS |
+| Server or browser only | Has a server (please issue a client secret) |
+| Redirect URI | `https://rtb.aerovyntech.com/auth/tdmp/callback` |
+| Launch URL | `https://rtb.aerovyntech.com/sso/tdmp` (starts sign-in at once; for a tile on the TDMP sign-in page) |
+| Technical contact | *to fill in: name and email* |
 
-```json
-{
-  "name": "RTB 3D GIS",
-  "redirectUris": [
-    "https://rtb.aerovyntech.com/api/v1/auth/tdmp/callback",
-    "http://localhost:5173/api/v1/auth/tdmp/callback"
-  ],
-  "grantTypes": ["authorization_code", "refresh_token"]
-}
-```
+Please also create a **test registration** on your test environment with the redirect URI `http://localhost:5173/auth/tdmp/callback`. We will send the later production domain (under `rtb.gov.rw`) as an addition. Please send the client secrets over a secure channel.
 
-We will send any later production domain (e.g. under `rtb.gov.rw`) as an addition. A separate client for localhost/staging is fine.
+#### R7 / R8 (P2): Role and area at sign-in (guide §12)
 
-Please also confirm or enable the following:
-1. **First-party / trusted client**: the consent screen (`/oauth/flows/{id}/approve`) is skipped for RTB 3D GIS.
-2. **`prompt=none`**: `/oauth/authorize` returns straight away with a code when the user already has a TDMP session, or with `error=login_required` when they don't. Our side supports it and switches it on once you confirm.
-3. Token lifetimes, and whether refresh tokens rotate.
-4. An **end-session endpoint** and **back-channel logout** (or a webhook) when a user signs out or is disabled. Until then we re-check `/auth/me/access-scope` every 15 minutes.
-
-#### R7 (P1): Role catalogue and mapping
-
-Please send the TDMP role names that should open RTB 3D GIS (e.g. from `GET /iam/roles`). Our draft mapping:
-
-| TDMP role (to confirm) | RTB 3D GIS role | Sees |
-|---|---|---|
-| RTB HQ administrator | `admin` | National |
-| RTB planner / M&E officer | `viewer` or `gis_analyst` | National |
-| District education officer | `district_officer` | Own district |
-| School manager / head teacher | `school_leader` | Own school |
-| Any other role | no access | — |
-
-#### R8 (P1): Complete the `GET /auth/me/access-scope` response
-
-The published schema has `accessScope: { kind }` plus `anchorSchool`. For province- and district-scoped users without an anchor school we cannot tell *which* unit they cover, so we refuse them rather than over-grant access. Please add:
+Not blocking any more: until TDMP provides them, RTB 3D GIS administrators pre-register expected users with a role and area, and anyone else who signs in waits for access. When TDMP is ready, we can switch to TDMP's values without other changes; any of these would work for us:
+- `roles` and `access_scope` claims in the ID token and `/oauth/userinfo`, or
+- accepting sign-in tokens at `GET /auth/me/access-scope`, with the unit filled in:
 
 ```json
 "accessScope": {
@@ -205,15 +186,31 @@ The published schema has `accessScope: { kind }` plus `anchorSchool`. For provin
 }
 ```
 
-Ideally, also send role names and scope as **id_token claims** (`roles`, `access_scope`).
+Our draft mapping, for when roles arrive:
+
+| TDMP access level / role | RTB 3D GIS role | Sees |
+|---|---|---|
+| National (RTB HQ administrator) | `admin` | National |
+| National (planner / M&E officer) | `viewer` or `gis_analyst` | National |
+| District | `district_officer` | Own district |
+| School (manager / head teacher) | `school_leader` | Own school |
+| None | no access | — |
 
 #### R9 (P3): `amr` claim
 
-If TDMP performed multi-factor authentication, include `amr` (e.g. `["pwd","otp"]`) in the id_token so we don't ask for a second factor twice.
+The guide lists no `amr` claim, so RTB 3D GIS keeps asking privileged roles for its own second factor after TDMP sign-in. If TDMP adds `amr` (e.g. `["pwd","otp"]`), we can stop asking twice.
 
-#### R10 (P2): Staging and test accounts
+#### R10 (P2): Test environment and test accounts
 
-A staging TDMP (or test tenant) with one test user per role in R7.
+The guide mentions a separate test environment. Please send the test registration (R6) and one test account per access level: national, province, district, school, and none.
+
+#### R17 (P2): Deactivated accounts (guide §9, §12)
+
+A refresh token keeps working for up to 30 days after a TDMP account is deactivated. Until there is a signal (back-channel logout, a webhook, or refresh tokens stopping at deactivation), our TDMP sessions end after 24 hours and users go back through TDMP sign-in.
+
+#### R18 (P3): Open a specific school from TDMP (guide §12)
+
+Our launch page already accepts `https://rtb.aerovyntech.com/sso/tdmp?school={schoolCode}` and opens that school after sign-in. It needs the TDMP launcher to pass the school code.
 
 ### Access key
 

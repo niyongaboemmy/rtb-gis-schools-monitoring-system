@@ -1,6 +1,6 @@
 # TDMP Integration — Implementation Plan
 
-**Status:** Phases 1–1b implemented on `intergration` (2026-11-12); SSO pilot code ready, waiting on TDMP (see §13) · **Owner:** RTB GIS backend · **Builds on:** branch `intergration` (commit `7f97b1df`, "TDMP as source of truth for users and schools")
+**Status:** Phases 1–1b implemented (2026-11-12); SSO reworked to TDMP's SSO guide (2026-11-21), waiting only on TDMP's registration (see §13) · **Owner:** RTB GIS backend · **Builds on:** branch `intergration` (commit `7f97b1df`, "TDMP as source of truth for users and schools")
 **Companion document for the TDMP team:** [TDMP_INTEGRATION_REQUESTS.md](TDMP_INTEGRATION_REQUESTS.md)
 
 ## 1. Goal and scope
@@ -36,7 +36,7 @@ The spec is `GET /api/v1/docs/api.json` (OpenAPI 3.1, 262 operations, rendered a
 | B | Seat capacity | — | **Not exposed anywhere in the API** |
 | C | `counts.teachers` (on `/schools`) | ✅ | Teacher total |
 | D | `/oauth/.well-known/openid-configuration` | ✅ public | Issuer `https://tdmp.rtb.gov.rw/api/v1`; code + PKCE (S256), `refresh_token`; RS256 id_token. Claims: `sub email email_verified name preferred_username` (**no role, scope or `amr`**) |
-| D | `GET /auth/me/access-scope` (user token) | ✅ | `roleNames`, `anchorSchool`, `accessScope.kind` (unrestricted / province / district / school / deny) |
+| D | `GET /auth/me/access-scope` (user token) | ⚠️ | Works with a TDMP password-login token, but **not with a sign-in (OAuth) token**: the SSO guide (§8) says sign-in tokens are accepted only at `/oauth/userinfo`. So sign-in can't use it; see §6 |
 | — | `GET /locations/*` | ❌ 403 | Administrative unit lists |
 
 **Freshness:** TDMP re-materialises schools daily, at about **06:00 Africa/Kigali** (`lastMaterialisedAt` = `…T06:00:34+02:00`).
@@ -173,34 +173,42 @@ CREATE INDEX "IDX_schools_districtId" ON schools ("districtId");
 
 ## 6. Single sign-on design (area D)
 
-TDMP is an OIDC provider, so RTB GIS is a confidential client using authorization code + PKCE. "No second login" works because TDMP already holds the user's session.
+Follows TDMP's **"Sign in with TDMP: integration guide"** (TDMP technical team, 12 Nov 2026). TDMP is an OIDC provider; RTB GIS is a confidential client using authorization code + PKCE. TDMP approves RTB systems without a consent screen, and a user already signed in to TDMP is not asked for a password again.
+
+What the guide settles:
+- **Sign-in gives identity only**: `sub`, `email`, `email_verified`, `name`, `given_name`, `family_name`, `preferred_username`, `updated_at`. No role, no area, no `amr`. Sign-in tokens are accepted **only** at `/oauth/userinfo`, not at `/auth/me/access-scope` or anywhere else in TDMP (§8). So RTB GIS decides each person's role and area.
+- **Tokens**: access ≈ 5 min, ID token 1 h (RS256, keys at `/oauth/.well-known/jwks.json`), refresh 30 days. Refresh tokens **rotate**; presenting an old one cancels all of the user's tokens (§7).
+- **No shared sign-out**, and a refresh token keeps working for up to 30 days after a TDMP account is deactivated (§9).
+- **Launcher**: a tile on TDMP's sign-in page opens our launch URL, which must start sign-in at once (§10). It opens one fixed page; opening a specific school needs a TDMP change (§12).
 
 ```
-TDMP portal "Open 3D GIS" ─▶ https://<gis>/api/v1/sso/tdmp?school=<code>
-  ─▶ /api/v1/auth/tdmp/start          (state + nonce + PKCE verifier in a signed, httpOnly, 10-min cookie)
-  ─▶ TDMP /oauth/authorize?…&prompt=none   (TDMP session exists → straight back; no form)
+TDMP tile / "Sign in with TDMP" ─▶ https://<gis>/sso/tdmp            (launch page: starts sign-in at once)
+  ─▶ /api/v1/auth/tdmp/start          (state + nonce + PKCE verifier in an encrypted, httpOnly, 10-min cookie)
+  ─▶ TDMP /oauth/authorize            (TDMP session exists → straight back; otherwise TDMP's own login)
+  ─▶ /auth/tdmp/callback?code&state     (registered public path; the web app hands it on)
   ─▶ /api/v1/auth/tdmp/callback?code&state
        1. check state; POST /oauth/token (form-urlencoded, HTTP Basic client auth, code_verifier)
-       2. verify id_token: RS256 via JWKS, iss, aud=client_id, exp, nonce
-       3. GET /auth/me/access-scope (user bearer) → roleNames + scope
-       4. pickRole(roleNames) → our role; placementFromScope() → user.location (fail closed, F10)
-       5. upsert user by tdmpUserId (=sub), link by verified email on first login
-       6. issue our 15-min access token + rtb_rt refresh cookie; store TDMP refresh token encrypted
-  ─▶ redirect to homePathFor(role) or /schools/<id> for the deep-linked school
+       2. verify the ID token: RS256 signature against TDMP's JWKS, iss, aud = client_id, exp, nonce
+       3. GET /oauth/userinfo → sub, email, email_verified, names (must agree with the ID token)
+       4. link by sub; match an existing / pre-registered account by verified email once
+       5. role + area: kept from the local account, or "waiting for access" for someone new
+       6. privileged role → our 2FA first (/login?sso_mfa=1, pending sign-in in an httpOnly cookie)
+       7. our 15-min access token + rtb_rt refresh cookie (session ≤ 24 h); TDMP refresh token stored encrypted
+  ─▶ /sso/tdmp/complete → home, or the pending user's "waiting for access" page
 ```
-
-If there's no TDMP session, `prompt=none` returns `login_required`. We then retry once without `prompt`, and TDMP shows its own login page. RTB GIS never shows a password form to TDMP users.
 
 | Concern | Rule |
 |---|---|
-| Modes | `AUTH_MODE=local` (today) → `both` (pilot, 2 weeks) → `tdmp`. In `tdmp` mode passwords, Google sign-in and self-reset are off except `LOCAL_LOGIN_ALLOWLIST` (2 break-glass admins) |
-| Role | `roles.tdmpRoleNames` mapping, edited in Settings ▸ Roles. Unmapped means refused (`TDMP_DEFAULT_ROLE` empty). Draft mapping in the requests doc, R7 |
-| Scope | From `/auth/me/access-scope`, matched to our places by **TDMP location ids** (§5.5), names as fallback |
-| Account status | Re-check `access-scope` every 15 min on our refresh (`TDMP_RECHECK_MINUTES`). Disabled user or `deny` ends our session. TDMP unreachable means a 4 h grace period (`TDMP_OFFLINE_GRACE_MINUTES`), then the session ends |
-| Logout | Ours: revoke the session + `POST /oauth/revoke` on the TDMP refresh token. TDMP-initiated: back-channel logout (R6) |
-| MFA | Our TOTP stays mandatory for privileged roles until TDMP sends `amr` (R9) |
-| Audit | `auth.sso.login`, `auth.sso.refused` (with reason), `auth.sso.scope_changed`, registered in `common/audit/action-registry.ts` |
-| Profile | Name and email are TDMP-owned (read-only); phone and preferences stay ours |
+| Modes | `AUTH_MODE=local` (today) → `both` (pilot, ~2 weeks) → `tdmp`. In `tdmp` mode passwords, Google sign-in and self-reset are off except `LOCAL_LOGIN_ALLOWLIST` (break-glass admins) |
+| Identity | `sub` is the permanent link (`users.tdmpUserId`). Email matches an existing account only once and only when `email_verified` is true. Name and email follow TDMP and are read-only here |
+| Role and area | `TDMP_ACCESS_SOURCE=local`: set in RTB GIS. Admins **pre-register** expected users (Settings ▸ Users ▸ "Add expected TDMP user": email + role + area, `POST /users/tdmp`). Anyone else who signs in gets an account with no role (`accessPending`): every route except `/auth/*` and `/users/me/*` answers `403 ACCESS_PENDING`, no live updates, and admins see them on the waiting list. Giving them a role lets them in at once. `TDMP_DEFAULT_ROLE` (empty by default) would admit everyone with one role instead. `TDMP_ACCESS_SOURCE=tdmp` keeps the role mapping (`roles.tdmpRoleNames`) and `/auth/me/access-scope` path for when TDMP provides roles (§12) |
+| Account status | A TDMP session lasts at most `TDMP_SESSION_MAX_HOURS` (24), then the app sends the user back through TDMP (no password if TDMP still knows them). Every `TDMP_RECHECK_MINUTES` (15) our refresh swaps the TDMP refresh token — **the rotated token is saved before anything else** — and re-reads the profile; TDMP refusing the token ends our session. TDMP unreachable: `TDMP_OFFLINE_GRACE_MINUTES` (4 h) grace |
+| Logout | Ours: revoke the session + `POST /oauth/revoke` on the TDMP refresh token (client credentials). The user stays signed in to TDMP itself (no shared sign-out) |
+| MFA | TDMP sends no `amr`, so privileged roles (`MFA_PRIVILEGED_PERMISSIONS`, enforced in production) still use our TOTP after TDMP sign-in; TDMP users manage their 2FA in their profile like anyone else |
+| Audit | `auth.tdmp_login`, `auth.tdmp_login_failed` (with reason), `auth.tdmp_access_requested`, `auth.tdmp_session_ended`, `user.tdmp_preregister`, `user.access_granted` |
+| Other sign-in routes | Google sign-in and password sign-in/reset refuse TDMP accounts (including pre-registered and waiting ones), so neither is a way around TDMP |
+
+**Registration with TDMP (guide §3):** system name RTB GIS · has a server (confidential client) · redirect URI `https://rtb.aerovyntech.com/auth/tdmp/callback` (plus the `*.rtb.gov.rw` name when the domain moves) · launch URL `https://rtb.aerovyntech.com/sso/tdmp` · technical contact. Ask separately for a **test registration** (localhost redirect) on TDMP's test environment.
 
 ## 7. Configuration
 
@@ -221,7 +229,9 @@ AUTH_MODE=both                      # local | both | tdmp
 TDMP_OAUTH_CLIENT_ID=
 TDMP_OAUTH_CLIENT_SECRET=
 TDMP_OAUTH_SCOPES=openid email profile
-TDMP_OAUTH_REDIRECT_URI=https://rtb.aerovyntech.com/api/v1/auth/tdmp/callback
+TDMP_OAUTH_REDIRECT_URI=https://rtb.aerovyntech.com/auth/tdmp/callback
+TDMP_ACCESS_SOURCE=local            # role/area set in RTB GIS (guide §8)
+TDMP_SESSION_MAX_HOURS=24           # back through TDMP at least daily (guide §9)
 TDMP_RECHECK_MINUTES=15
 TDMP_OFFLINE_GRACE_MINUTES=240
 LOCAL_LOGIN_ALLOWLIST=admin@rtb.gov.rw
@@ -237,7 +247,7 @@ TDMP_DEFAULT_ROLE=
 | **0. Secrets** | Key in the prod `.env` / GitHub secret; delete `docs/TDMP_API_KEY.md`; ask TDMP to rotate (R12) | — | — | 0.5 d |
 | **1. Sync** | Rebase `intergration` on `main`. Fixes F1–F9 and F11, list-first run, normalisation, migration §5.5, dry-run report, schedules | A, B/C totals | — | 3 d |
 | **1b. First link** | Dry run on prod data, review unmatched with RTB, link, enable schedules, verify dashboards | A | Phase 1 | 1–2 d |
-| **2. SSO pilot** | F10, `prompt=none` retry, audit actions, role mapping; `AUTH_MODE=both` on prod | D | TDMP: R6, R7, R8 | 2 d + TDMP turnaround |
+| **2. SSO pilot** | Reworked to the TDMP SSO guide (§6): identity only from TDMP, local role/area with pre-registration and a waiting list, 24 h sessions, JWKS-verified ID tokens, our 2FA for privileged roles. Then `AUTH_MODE=both` on prod with pre-registered pilot users | D | TDMP: R6 (registration) only | Done on our side; TDMP turnaround |
 | **3. SSO only** | `AUTH_MODE=tdmp` after 2 clean weeks; break-glass accounts tested | D | Phase 2 | 0.5 d |
 | **4. Aggregates** | Learners per programme (with gender split), programme names, seat capacity; weekly job | B | TDMP: R1, R2 | 2 d |
 
@@ -295,8 +305,9 @@ Phases 0–1b need nothing from TDMP; the current key covers them.
 | Schools TDMP has no GPS for | Done | admin adds each with coordinates (`POST /tdmp/schools/import`, location `manual`) |
 | Directory | Done | Ownership and Source filters, TDMP badge, TMIS-code search, ownership/TDMP code in exports |
 | Guided admin page | Done | setup checklist from live state, interactive "How it works", in-place help hints |
-| `prompt=none` | Code ready, **off** | `TDMP_OAUTH_SILENT=false` until TDMP confirms (R6) |
-| Phase 2 SSO pilot | Waiting | needs R6 (OAuth client), R7 (roles), R8 (scope fields) |
+| `prompt=none` | Code kept, **off** | not in TDMP's guide and not needed (TDMP approves RTB systems at once) |
+| SSO to the TDMP guide (2026-11-21) | Done | identity from userinfo + JWKS-verified ID token; `TDMP_ACCESS_SOURCE=local` (pre-registration `POST /users/tdmp`, waiting list `users.accessPending`, `403 ACCESS_PENDING`); `TDMP_SESSION_MAX_HOURS=24`; rotated TDMP refresh token saved first; 2FA for privileged roles via `/login?sso_mfa=1` + `POST /auth/tdmp/mfa`; migration `1788560000000-TdmpLocalAccess`; `test/tdmp-sso.e2e-spec.ts` against a guide-faithful fake TDMP |
+| Phase 2 SSO pilot | Waiting | needs R6 (registration). R7/R8 are no longer blocking: roles and areas are set in RTB GIS until TDMP provides them |
 | Phase 4 aggregates | Waiting | needs R1, R2; the admin page shows when TDMP grants them |
 
 Deviations from the plan:
