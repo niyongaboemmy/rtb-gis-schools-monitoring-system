@@ -74,13 +74,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           code: 'EMBED_READ_ONLY',
           message: 'Embedded views are read-only.',
         });
-      // Exactly one view: only the API routes that view needs.
+      // One view: only the API routes it needs (plus, for the national map /
+      // dashboard, the school views it may drill into; ScopeGuard keeps those
+      // inside the link's area).
       if (
         !embedRouteAllowed(
           payload.emb.view,
           payload.emb.sid,
           method,
           req.originalUrl ?? req.url ?? '',
+          payload.emb.drill,
         )
       )
         throw new ForbiddenException({

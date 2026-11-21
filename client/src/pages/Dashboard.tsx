@@ -16,6 +16,7 @@ import {
 import { IntelligenceScore } from "../components/analytics/IntelligenceScore";
 import { RecommendationList } from "../components/analytics/RecommendationList";
 import { Link, useNavigate } from "react-router-dom";
+import { useSchoolLink } from "../lib/embed-view";
 import { useSchoolsStore, calculatedScore } from "../store/schoolsStore";
 import { useAuthStore } from "../store/authStore";
 import { hasPermission } from "../lib/permissions";
@@ -57,6 +58,7 @@ export default function Dashboard() {
 
   const toast = useToast();
   const navigate = useNavigate();
+  const schoolLink = useSchoolLink();
   const { user } = useAuthStore();
   const { allSchools, allSchoolsLoading, fetchAllSchools, invalidateAllSchools } =
     useSchoolsStore();
@@ -216,7 +218,10 @@ export default function Dashboard() {
       <RwandaBackdrop
         schools={mapSchools}
         anchor={mapSlotRef}
-        onSchoolClick={(s) => navigate(`/schools/${s.id}/decision`)}
+        onSchoolClick={(s) => {
+          const to = schoolLink.hrefOrFallback(s.id, "dashboard");
+          if (to) navigate(to, { state: schoolLink.state });
+        }}
         provinces={stats?.provinceStats?.map((p) => ({ ...p, avgScore: num(p.avgScore) }))}
         onProvinceClick={(p) => void handleProvinceClick(p)}
         className="fixed top-14 bottom-0 right-0 left-[var(--app-shell-inset,0px)] z-0 transition-[left] duration-200"
@@ -271,14 +276,17 @@ export default function Dashboard() {
                   {exporting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Download className="h-4 w-4" aria-hidden />}
                 </Button>
               )}
-              <Button asChild aria-label="Explore map" className="group h-10 gap-1.5 rounded-full pl-2 pr-2 sm:pl-4 sm:pr-3">
-                <Link to="/map">
-                  <span className="hidden sm:inline">Explore map</span>
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 transition-transform duration-300 group-hover:rotate-45">
-                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
-                  </span>
-                </Link>
-              </Button>
+              {/* The full map is part of the app, not of an embedded dashboard. */}
+              {!schoolLink.embedded && (
+                <Button asChild aria-label="Explore map" className="group h-10 gap-1.5 rounded-full pl-2 pr-2 sm:pl-4 sm:pr-3">
+                  <Link to="/map">
+                    <span className="hidden sm:inline">Explore map</span>
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 transition-transform duration-300 group-hover:rotate-45">
+                      <ArrowUpRight className="h-3.5 w-3.5" aria-hidden />
+                    </span>
+                  </Link>
+                </Button>
+              )}
             </div>
           </motion.div>
           </div>

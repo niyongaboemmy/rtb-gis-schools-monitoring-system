@@ -392,6 +392,7 @@ export class EmbedController {
         view: s.emb.view,
         scope: s.emb.loc,
         keyId: s.emb.pk,
+        drill: s.emb.drill ?? [],
       },
     });
     return {
@@ -399,6 +400,8 @@ export class EmbedController {
       expiresIn: s.expiresIn,
       view: s.emb.view,
       schoolId: s.emb.sid ?? null,
+      // School views a school opened from this (national) view may show.
+      drill: s.emb.drill ?? [],
       partner: s.partner,
       user: this.auth.publicUser(viewer),
     };

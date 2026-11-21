@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { formatScore } from "../../lib/format";
 import { label } from "../../lib/labels";
+import { useSchoolLink } from "../../lib/embed-view";
 
 type Band = "critical" | "high" | "medium" | "low";
 const bandOf = (s: number): Band => (s < 35 ? "critical" : s < 55 ? "high" : s < 75 ? "medium" : "low");
@@ -16,6 +17,7 @@ interface School {
 /** Quick ranking summary: overall score + band, best and lowest school. */
 export function RankingQuickInfo({ score, top, bottom }: { score: number | null; top?: School; bottom?: School }) {
   const band = score != null ? bandOf(score) : null;
+  const schoolLink = useSchoolLink();
   const rows = [
     { tag: "Top", school: top, Icon: ArrowUpRight, tone: "#10b981" },
     { tag: "Lowest", school: bottom, Icon: ArrowDownRight, tone: "#ef4444" },
@@ -37,7 +39,9 @@ export function RankingQuickInfo({ score, top, bottom }: { score: number | null;
         school ? (
           <Link
             key={tag}
-            to={`/schools/${school.id}/decision`}
+            to={schoolLink.hrefOrFallback(school.id, "dashboard") ?? "#"}
+            state={schoolLink.state}
+            onClick={(e) => !schoolLink.hrefOrFallback(school.id, "dashboard") && e.preventDefault()}
             className="group -mx-1.5 flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-slate-900/4 dark:hover:bg-white/5"
           >
             <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: tone }} aria-hidden />
