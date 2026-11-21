@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowUpRight, Box, ChevronDown, Copy, Crosshair, Navigation, Share2, X } from "lucide-react";
-import { useSchoolLink } from "../../lib/embed-view";
+import { schoolLinkProps, useSchoolLink } from "../../lib/embed-view";
 import { cn } from "../../lib/utils";
 import { formatLength, formatNumber } from "../../lib/format";
 import { label } from "../../lib/labels";
@@ -101,8 +101,11 @@ export function SchoolCardBody({
 
   // In an embedded national map, school links stay inside the iframe.
   const schoolLink = useSchoolLink();
-  const openTo = schoolLink.embedded ? schoolLink.hrefOrFallback(s.id, "dashboard") : canDecision ? schoolLink.href(s.id, "dashboard") : null;
-  const to3d = can3d ? schoolLink.href(s.id, "map-3d") : null;
+  // Embedded: in the iframe when the link allows it, else RTB GIS in a new tab.
+  const openT = schoolLink.embedded || canDecision ? schoolLink.open(s, "dashboard") : null;
+  const t3d = can3d ? schoolLink.open(s, "map-3d", false) : null;
+  // A new-tab 3D link would only repeat "Open school".
+  const to3d = t3d && !t3d.newTab ? t3d : null;
 
   const share = async () => {
     const url = new URL("/map", window.location.origin);
@@ -173,10 +176,10 @@ export function SchoolCardBody({
 
         {/* Main action + quick actions */}
         <div className="flex items-center gap-1.5">
-          {openTo && (
+          {openT && (
             <Link
-              to={openTo}
-              state={schoolLink.state}
+              {...schoolLinkProps(openT, schoolLink.state)}
+              title={openT.newTab ? "Opens the school in RTB 3D GIS (new tab)" : undefined}
               className="group inline-flex h-9 min-w-0 flex-1 items-center justify-between gap-2 rounded-full bg-primary pl-4 pr-1 text-[15px] text-primary-foreground shadow-[0_6px_16px_-8px_hsl(var(--primary)/0.8)] transition-transform hover:-translate-y-px motion-reduce:hover:translate-y-0"
             >
               Open school
@@ -185,12 +188,11 @@ export function SchoolCardBody({
               </span>
             </Link>
           )}
-          <div className={cn("flex items-center gap-0.5 rounded-full bg-slate-900/[0.04] p-0.5 dark:bg-white/[0.06]", !openTo && "mx-auto")}>
+          <div className={cn("flex items-center gap-0.5 rounded-full bg-slate-900/[0.04] p-0.5 dark:bg-white/[0.06]", !openT && "mx-auto")}>
             {to3d && (
               // The school viewer, opened on its 3D tab (embedded: the 3D view).
               <Link
-                to={to3d}
-                state={schoolLink.state}
+                {...schoolLinkProps(to3d, schoolLink.state)}
                 aria-label="3D view"
                 title="3D view"
                 className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-700 transition-colors hover:bg-slate-900/5 hover:text-slate-900 dark:text-white/75 dark:hover:bg-white/10 dark:hover:text-white"

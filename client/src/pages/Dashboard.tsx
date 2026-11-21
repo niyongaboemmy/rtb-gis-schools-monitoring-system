@@ -219,8 +219,10 @@ export default function Dashboard() {
         schools={mapSchools}
         anchor={mapSlotRef}
         onSchoolClick={(s) => {
-          const to = schoolLink.hrefOrFallback(s.id, "dashboard");
-          if (to) navigate(to, { state: schoolLink.state });
+          const t = schoolLink.open(s, "dashboard");
+          if (!t) return;
+          if (t.newTab) window.open(t.to, "_blank", "noopener,noreferrer");
+          else navigate(t.to, { state: schoolLink.state });
         }}
         provinces={stats?.provinceStats?.map((p) => ({ ...p, avgScore: num(p.avgScore) }))}
         onProvinceClick={(p) => void handleProvinceClick(p)}

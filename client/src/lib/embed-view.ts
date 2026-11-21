@@ -74,5 +74,34 @@ export function useSchoolLink() {
     return null;
   };
 
-  return { href, hrefOrFallback, state, embedded };
+  /**
+   * Where a school link goes and how. In the app: the school's page. In an
+   * embedded national view: the embedded school view when the link allows
+   * it (`fallback`: any allowed view), otherwise the school in RTB GIS in a
+   * NEW TAB (TDMP sign-in, then that school) — the iframe never navigates
+   * away, which partner pages treat as leaving the embed. null: no link.
+   */
+  const open = (
+    school: { id: string; code?: string | null },
+    target: SchoolTarget,
+    fallback = true,
+  ): SchoolLinkTarget | null => {
+    const inside = fallback ? hrefOrFallback(school.id, target) : href(school.id, target);
+    if (inside) return { to: inside, newTab: false };
+    if (!embedded || !school.code) return null;
+    return { to: `${window.location.origin}/sso/tdmp?school=${encodeURIComponent(school.code)}`, newTab: true };
+  };
+
+  return { href, hrefOrFallback, open, state, embedded };
+}
+
+/** A school link: a path inside the app / embed, or an RTB GIS page for a new tab. */
+export interface SchoolLinkTarget {
+  to: string;
+  newTab: boolean;
+}
+
+/** Props for `<Link>` from a SchoolLinkTarget (new tab: external, no opener). */
+export function schoolLinkProps(t: SchoolLinkTarget, state?: EmbedNavState) {
+  return t.newTab ? { to: t.to, target: "_blank", rel: "noopener noreferrer" } : { to: t.to, state };
 }

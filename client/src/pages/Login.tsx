@@ -101,8 +101,10 @@ export default function Login() {
   const { setSession } = useAuthStore();
   const navigate = useNavigate();
 
+  // `next` (same-app paths only) wins: the TDMP second-factor return, the
+  // embed's "Sign in" link, or a school opened in a new tab from an embed.
   const goHome = (user: User) =>
-    ssoMfa && ssoNext !== "/" ? navigate(ssoNext, { replace: true }) : navigate(homePathFor(user));
+    ssoNext !== "/" ? navigate(ssoNext, { replace: true }) : navigate(homePathFor(user));
 
   /** Runs the post-sign-in steps the account still owes, then enters the app. */
   const continueAfterSession = (user: User) => {
