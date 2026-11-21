@@ -185,6 +185,7 @@ What the guide settles:
 TDMP tile / "Sign in with TDMP" ─▶ https://<gis>/sso/tdmp            (launch page: starts sign-in at once)
   ─▶ /api/v1/auth/tdmp/start          (state + nonce + PKCE verifier in an encrypted, httpOnly, 10-min cookie)
   ─▶ TDMP /oauth/authorize            (TDMP session exists → straight back; otherwise TDMP's own login)
+  ─▶ /auth/tdmp/callback?code&state     (registered public path; the web app hands it on)
   ─▶ /api/v1/auth/tdmp/callback?code&state
        1. check state; POST /oauth/token (form-urlencoded, HTTP Basic client auth, code_verifier)
        2. verify the ID token: RS256 signature against TDMP's JWKS, iss, aud = client_id, exp, nonce
@@ -207,7 +208,7 @@ TDMP tile / "Sign in with TDMP" ─▶ https://<gis>/sso/tdmp            (launch
 | Audit | `auth.tdmp_login`, `auth.tdmp_login_failed` (with reason), `auth.tdmp_access_requested`, `auth.tdmp_session_ended`, `user.tdmp_preregister`, `user.access_granted` |
 | Other sign-in routes | Google sign-in and password sign-in/reset refuse TDMP accounts (including pre-registered and waiting ones), so neither is a way around TDMP |
 
-**Registration with TDMP (guide §3):** system name RTB GIS · has a server (confidential client) · redirect URI `https://rtb.aerovyntech.com/api/v1/auth/tdmp/callback` (plus the `*.rtb.gov.rw` name when the domain moves) · launch URL `https://rtb.aerovyntech.com/sso/tdmp` · technical contact. Ask separately for a **test registration** (localhost redirect) on TDMP's test environment.
+**Registration with TDMP (guide §3):** system name RTB GIS · has a server (confidential client) · redirect URI `https://rtb.aerovyntech.com/auth/tdmp/callback` (plus the `*.rtb.gov.rw` name when the domain moves) · launch URL `https://rtb.aerovyntech.com/sso/tdmp` · technical contact. Ask separately for a **test registration** (localhost redirect) on TDMP's test environment.
 
 ## 7. Configuration
 
@@ -228,7 +229,7 @@ AUTH_MODE=both                      # local | both | tdmp
 TDMP_OAUTH_CLIENT_ID=
 TDMP_OAUTH_CLIENT_SECRET=
 TDMP_OAUTH_SCOPES=openid email profile
-TDMP_OAUTH_REDIRECT_URI=https://rtb.aerovyntech.com/api/v1/auth/tdmp/callback
+TDMP_OAUTH_REDIRECT_URI=https://rtb.aerovyntech.com/auth/tdmp/callback
 TDMP_ACCESS_SOURCE=local            # role/area set in RTB GIS (guide §8)
 TDMP_SESSION_MAX_HOURS=24           # back through TDMP at least daily (guide §9)
 TDMP_RECHECK_MINUTES=15

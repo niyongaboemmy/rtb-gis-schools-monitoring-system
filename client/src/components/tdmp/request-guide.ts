@@ -128,9 +128,9 @@ Authorization: ApiKey fortress_sk_…
       lang: "text",
       code: `System name        RTB 3D GIS
 Server or browser  Has a server (client secret)
-Redirect URI       https://rtb.aerovyntech.com/api/v1/auth/tdmp/callback
+Redirect URI       https://rtb.aerovyntech.com/auth/tdmp/callback
 Launch URL         https://rtb.aerovyntech.com/sso/tdmp
-Test redirect URI  http://localhost:5173/api/v1/auth/tdmp/callback
+Test redirect URI  http://localhost:5173/auth/tdmp/callback
 Technical contact  (name and email)`,
     },
     unlocks: ["Sign in with TDMP", "RTB 3D GIS tile on the TDMP sign-in page"],

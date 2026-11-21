@@ -165,11 +165,11 @@ Thank you for the **"Sign in with TDMP: integration guide"** (12 Nov 2026). RTB 
 |---|---|
 | System name | RTB 3D GIS |
 | Server or browser only | Has a server (please issue a client secret) |
-| Redirect URI | `https://rtb.aerovyntech.com/api/v1/auth/tdmp/callback` |
+| Redirect URI | `https://rtb.aerovyntech.com/auth/tdmp/callback` |
 | Launch URL | `https://rtb.aerovyntech.com/sso/tdmp` (starts sign-in at once; for a tile on the TDMP sign-in page) |
 | Technical contact | *to fill in: name and email* |
 
-Please also create a **test registration** on your test environment with the redirect URI `http://localhost:5173/api/v1/auth/tdmp/callback`. We will send the later production domain (under `rtb.gov.rw`) as an addition. Please send the client secrets over a secure channel.
+Please also create a **test registration** on your test environment with the redirect URI `http://localhost:5173/auth/tdmp/callback`. We will send the later production domain (under `rtb.gov.rw`) as an addition. Please send the client secrets over a secure channel.
 
 #### R7 / R8 (P2): Role and area at sign-in (guide §12)
 

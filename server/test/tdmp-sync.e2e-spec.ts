@@ -12,6 +12,8 @@
  * test rows skipped, hash skip on the next run, admin settings, connection
  * check, national-only routes, one run at a time, audit trail.
  */
+// Must stay the first import (see the file).
+import { TDMP } from './tdmp-sync.env';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -26,12 +28,6 @@ import { School } from '../src/modules/schools/entities/school.entity';
 import { TdmpSyncRun } from '../src/modules/tdmp/entities/tdmp-sync-run.entity';
 import { TdmpSettings } from '../src/modules/tdmp/entities/tdmp-settings.entity';
 import type { TdmpSchool } from '../src/modules/tdmp/tdmp.types';
-
-process.env.SCOPE_ENFORCEMENT = process.env.SCOPE_ENFORCEMENT ?? 'true';
-const TDMP = 'https://tdmp.e2e.test/api/v1';
-process.env.TDMP_BASE_URL = TDMP;
-process.env.TDMP_API_KEY = 'fortress_sk_e2e_fake';
-process.env.TDMP_SYNC_ENABLED = 'true';
 
 const PREFIX = '/api/v1';
 const RUN = Date.now().toString(36);

@@ -12,9 +12,9 @@ Send the TDMP team the registration (request R6 in [TDMP_INTEGRATION_REQUESTS.md
 |---|---|
 | System name | RTB 3D GIS |
 | Server or browser only | Has a server |
-| Redirect URI (production) | `https://rtb.aerovyntech.com/api/v1/auth/tdmp/callback` |
+| Redirect URI (production) | `https://rtb.aerovyntech.com/auth/tdmp/callback` |
 | Launch URL | `https://rtb.aerovyntech.com/sso/tdmp` |
-| Redirect URI (test registration) | `http://localhost:5173/api/v1/auth/tdmp/callback` |
+| Redirect URI (test registration) | `http://localhost:5173/auth/tdmp/callback` |
 | Technical contact | name and email |
 
 Also ask for one test account per access level (national, province, district, school, none).
@@ -25,17 +25,20 @@ TDMP shows the client secret once. Put it straight into the server settings and 
 
 ## Stage 1: Test registration, on a developer machine
 
-1. In `server/.env` (never committed), add TDMP's **test** values. `TDMP_BASE_URL` and `TDMP_ISSUER` are TDMP's test-environment addresses if they differ from production:
+1. In `server/.env` (never committed), add TDMP's **test** values. TDMP's test environment is `https://tdmptest.rtb.gov.rw` (found 21 Nov 2026: it holds the RTB 3D GIS test client). It reports production (`https://tdmp.rtb.gov.rw/api/v1`) as its issuer, so set `TDMP_ISSUER` to that:
 
    ```bash
    AUTH_MODE=both
-   TDMP_BASE_URL=<TDMP test environment>/api/v1
+   TDMP_BASE_URL=https://tdmptest.rtb.gov.rw/api/v1
+   TDMP_ISSUER=https://tdmp.rtb.gov.rw/api/v1
    TDMP_OAUTH_CLIENT_ID=<test client id>
    TDMP_OAUTH_CLIENT_SECRET=<test client secret>
-   TDMP_OAUTH_REDIRECT_URI=http://localhost:5173/api/v1/auth/tdmp/callback
+   TDMP_OAUTH_REDIRECT_URI=<a redirect URI registered on the test client>
    TDMP_ACCESS_SOURCE=local
    TDMP_SESSION_MAX_HOURS=24
    ```
+
+   On 21 Nov 2026 the test client had only `https://rtb.aerovyntech.com/auth/tdmp/callback` registered. That sends the browser back to the production site, so a sign-in started on `localhost` can't finish there. Either ask TDMP to add `http://localhost:5173/auth/tdmp/callback` to the test client (for local testing), or run stage 1 on `rtb.aerovyntech.com` itself with the test values.
 
 2. Restart the server. It refuses to start if `AUTH_MODE=both` has no client ID / secret.
 3. **TDMP admin page** (`/integrations/tdmp`) ▸ setup step **"Sign in with TDMP"** ▸ *Check again*. It must say done. It checks that TDMP accepts the client ID and secret, publishes its signing keys and has the expected issuer. If it says TDMP refuses the client, the ID or secret is wrong.
@@ -65,7 +68,7 @@ Passwords keep working; "Sign in with TDMP" appears next to them.
    AUTH_MODE=both
    TDMP_OAUTH_CLIENT_ID=<production client id>
    TDMP_OAUTH_CLIENT_SECRET=<production client secret>
-   TDMP_OAUTH_REDIRECT_URI=https://rtb.aerovyntech.com/api/v1/auth/tdmp/callback
+   TDMP_OAUTH_REDIRECT_URI=https://rtb.aerovyntech.com/auth/tdmp/callback
    TDMP_ACCESS_SOURCE=local
    TDMP_SESSION_MAX_HOURS=24
    TDMP_RECHECK_MINUTES=15

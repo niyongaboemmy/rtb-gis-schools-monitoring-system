@@ -12,6 +12,8 @@
  * like the real TDMP — refuses sign-in tokens everywhere except the profile
  * address. The browser legs (start → TDMP → callback) are driven by hand.
  */
+// Must stay the first import (see the file).
+import { APP, CLIENT_ID, CLIENT_SECRET, TDMP } from './tdmp-sso.env';
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -25,24 +27,6 @@ import { configureApp } from '../src/app.setup';
 import { User } from '../src/modules/users/entities/user.entity';
 import { Role } from '../src/modules/roles/entities/role.entity';
 import { School } from '../src/modules/schools/entities/school.entity';
-
-const TDMP = 'https://tdmp-sso.e2e.test/api/v1';
-const APP = 'https://app.e2e.test';
-const CLIENT_ID = 'rtb-gis-e2e';
-const CLIENT_SECRET = 'e2e-client-secret';
-process.env.SCOPE_ENFORCEMENT = process.env.SCOPE_ENFORCEMENT ?? 'true';
-process.env.AUTH_MODE = 'both';
-process.env.TDMP_BASE_URL = TDMP;
-process.env.TDMP_OAUTH_CLIENT_ID = CLIENT_ID;
-process.env.TDMP_OAUTH_CLIENT_SECRET = CLIENT_SECRET;
-process.env.TDMP_OAUTH_REDIRECT_URI = `${APP}/api/v1/auth/tdmp/callback`;
-process.env.APP_PUBLIC_URL = APP;
-process.env.TDMP_ACCESS_SOURCE = 'local';
-process.env.TDMP_DEFAULT_ROLE = '';
-process.env.TDMP_SESSION_MAX_HOURS = '24';
-process.env.MFA_ENFORCE_PRIVILEGED = 'true';
-process.env.COOKIE_SECURE = 'false';
-delete process.env.TDMP_API_KEY;
 
 const PREFIX = '/api/v1';
 const RUN = Date.now().toString(36);
@@ -671,11 +655,13 @@ describe('TDMP sign-in (SSO guide)', () => {
       .set(CSRF)
       .set('Cookie', cookieHeader(jar))
       .expect(200);
-    await new Promise<void>((resolve) => {
-      setTimeout(() => resolve(), 200);
-    });
-    expect(tdmpCalls.filter((c) => c === 'POST /oauth/revoke').length).toBe(
-      before + 1,
-    );
+    // The revoke runs in the background after the response: wait for it.
+    const revokes = () =>
+      tdmpCalls.filter((c) => c === 'POST /oauth/revoke').length;
+    for (let i = 0; i < 30 && revokes() === before; i++)
+      await new Promise<void>((resolve) => {
+        setTimeout(() => resolve(), 100);
+      });
+    expect(revokes()).toBe(before + 1);
   });
 });

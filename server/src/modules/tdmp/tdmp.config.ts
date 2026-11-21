@@ -81,11 +81,16 @@ export class TdmpConfig {
     return (explicit || first || 'http://localhost:5173').replace(/\/+$/, '');
   }
 
-  /** Must match a redirect URI registered with the TDMP OAuth client. */
+  /**
+   * Must match a redirect URI registered with TDMP exactly. The default is
+   * the public path from TDMP's SSO guide; the web app hands it to the API
+   * route `/api/v1/auth/tdmp/callback` (client/src/lib/tdmp-relay.ts), and
+   * that API route also works as a redirect URI by itself.
+   */
   get redirectUri(): string {
     return (
       this.str('TDMP_OAUTH_REDIRECT_URI') ||
-      `${this.appPublicUrl}/api/v1/auth/tdmp/callback`
+      `${this.appPublicUrl}/auth/tdmp/callback`
     );
   }
 
