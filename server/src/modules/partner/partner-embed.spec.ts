@@ -4,12 +4,15 @@ import {
   embedRouteAllowed,
   areaLocation,
   clamp,
+  drillViews,
   EMBED_LINK_TTL,
   EMBED_READ_METHODS,
+  EMBED_VIEWS,
   embedPath,
   isSchoolView,
   schoolLocation,
   type EmbedClaims,
+  type EmbedView,
 } from './partner-embed';
 import { coordinateQuality } from './partner-schools.service';
 import { readPartnerKey } from './partner-api-key.guard';
@@ -223,5 +226,74 @@ describe('embedRouteAllowed: one view, nothing else', () => {
   it('knows the national dashboard view', () => {
     expect(embedPath('national-dashboard')).toBe('/embed/dashboard');
     expect(isSchoolView('national-dashboard')).toBe(false);
+  });
+});
+
+describe('drill-down from the national map', () => {
+  const S = '0b5c1d2e-1111-4222-8333-444455556666';
+  const OTHER = '9f9f9f9f-1111-4222-8333-444455556666';
+  const maps = ['school-map-2d', 'school-map-3d'] as const;
+
+  it("offers the key's school views to national views only", () => {
+    expect(drillViews('national-map', [...EMBED_VIEWS])).toEqual([
+      'school-dashboard',
+      'school-map-2d',
+      'school-map-3d',
+    ]);
+    expect(
+      drillViews('national-map', ['national-map', 'school-map-3d']),
+    ).toEqual(['school-map-3d']);
+    expect(drillViews('national-map', ['national-map'])).toEqual([]);
+    expect(drillViews('school-map-2d', [...EMBED_VIEWS])).toEqual([]);
+  });
+
+  it('opens the drilled views for any school (scope is checked by the route guard)', () => {
+    const ok = (url: string, drill: readonly EmbedView[] = maps) =>
+      embedRouteAllowed('national-map', undefined, 'GET', url, drill);
+    expect(ok(`/api/v1/schools/${S}/kmz/2d/manifest`)).toBe(true);
+    expect(ok(`/api/v1/schools/${OTHER}/viewer-state`)).toBe(true);
+    expect(ok(`/api/v1/schools/${S}/buildings`)).toBe(true);
+    // The map's own routes still work.
+    expect(ok('/api/v1/schools?limit=1000')).toBe(true);
+  });
+
+  it('only the drilled views, never writes, never a malformed id', () => {
+    const ok = (
+      url: string,
+      method = 'GET',
+      drill: readonly EmbedView[] = maps,
+    ) => embedRouteAllowed('national-map', undefined, method, url, drill);
+    // Dashboard figures are not part of a maps-only drill.
+    expect(ok(`/api/v1/analytics/schools/${S}/metrics`)).toBe(false);
+    expect(
+      ok(`/api/v1/analytics/schools/${S}/metrics`, 'GET', ['school-dashboard']),
+    ).toBe(true);
+    expect(ok(`/api/v1/schools/${S}/buildings`, 'POST')).toBe(false);
+    expect(ok('/api/v1/schools/not-a-uuid/buildings')).toBe(false);
+    expect(ok(`/api/v1/schools/${S}/buildings/extra`)).toBe(false);
+    expect(ok(`/api/v1/schools/${S}/site-features/export.csv`)).toBe(false);
+  });
+
+  it('without drill (older links) the national map stays the map', () => {
+    expect(
+      embedRouteAllowed(
+        'national-map',
+        undefined,
+        'GET',
+        `/api/v1/schools/${S}`,
+      ),
+    ).toBe(false);
+  });
+
+  it('a school view ignores drill: it never reaches another school', () => {
+    expect(
+      embedRouteAllowed(
+        'school-map-2d',
+        S,
+        'GET',
+        `/api/v1/schools/${OTHER}/buildings`,
+        [...EMBED_VIEWS],
+      ),
+    ).toBe(false);
   });
 });

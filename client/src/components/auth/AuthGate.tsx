@@ -37,7 +37,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
   return (
     <>
       {children}
-      {isAuthenticated && needsPrivacyAcceptance(user) && <PrivacyAcceptancePrompt />}
+      {/* A partner embed session is read-only (it cannot record acceptance);
+          its viewers accept the partner platform's own terms. */}
+      {isAuthenticated && user?.authSource !== "partner" && needsPrivacyAcceptance(user) && <PrivacyAcceptancePrompt />}
     </>
   );
 }

@@ -21,6 +21,19 @@ export type EmbedView = (typeof EMBED_VIEWS)[number];
 export const isSchoolView = (v: EmbedView) =>
   v !== 'national-map' && v !== 'national-dashboard';
 
+/**
+ * The school views a national-map / national-dashboard link may drill into
+ * (a school opened from the map): the key's school views. School views never
+ * drill. Scope still applies, so only schools inside the link's area open.
+ */
+export function drillViews(
+  view: EmbedView,
+  keyViews: readonly EmbedView[],
+): EmbedView[] {
+  if (isSchoolView(view)) return [];
+  return keyViews.filter(isSchoolView);
+}
+
 /** Web-app path of a view (the client renders these without app chrome). */
 export function embedPath(view: EmbedView, schoolId?: string): string {
   switch (view) {
@@ -87,19 +100,37 @@ export function apiPath(url: string): string {
   return path.replace(/^\/api\/v1(?=\/|$)/, '').replace(/\/+$/, '') || '/';
 }
 
-/** Whether an embed session for `view` (school `sid`) may make this request. */
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Whether an embed session for `view` (school `sid`) may make this request.
+ * `drill` (national views only) adds the routes of those school views for
+ * any school: the ScopeGuard on those routes keeps it inside the link's area.
+ */
 export function embedRouteAllowed(
   view: EmbedView,
   sid: string | undefined,
   method: string,
   url: string,
+  drill: readonly EmbedView[] = [],
 ): boolean {
   if (!EMBED_READ_METHODS.has((method ?? 'GET').toUpperCase())) return false;
   const path = apiPath(url);
-  return (EMBED_VIEW_ROUTES[view] ?? []).some((route) => {
+  const own = (EMBED_VIEW_ROUTES[view] ?? []).some((route) => {
     if (route.includes(SID)) return !!sid && path === route.replace(SID, sid);
     return path === route;
   });
+  if (own || isSchoolView(view)) return own;
+  return drill
+    .filter(isSchoolView)
+    .some((d) =>
+      (EMBED_VIEW_ROUTES[d] ?? []).some((route) =>
+        new RegExp(`^${route.split(SID).map(escapeRe).join(UUID)}$`, 'i').test(
+          path,
+        ),
+      ),
+    );
 }
 
 /** Where an embed session may look: the same shape as `user.location`. */
@@ -120,6 +151,8 @@ export interface EmbedClaims {
   /** Our school id for school views. */
   sid?: string;
   loc: EmbedLocation;
+  /** National views: the school views a school opened from it may show. */
+  drill?: EmbedView[];
 }
 
 /** Payload of the signed link the partner's server receives. */

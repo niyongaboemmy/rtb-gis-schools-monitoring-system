@@ -5,6 +5,7 @@ import { cn } from "../../lib/utils";
 import { formatScore } from "../../lib/format";
 import { label } from "../../lib/labels";
 import { MetricInfo } from "../metric-help/MetricInfo";
+import { useSchoolLink } from "../../lib/embed-view";
 
 export interface RankedSchool {
   id: string;
@@ -48,6 +49,7 @@ function RankList({
   delay: number;
 }) {
   const reduce = useReducedMotion();
+  const schoolLink = useSchoolLink();
   return (
     <div className="min-w-0 space-y-3">
       <div className="flex items-center gap-2.5">
@@ -79,7 +81,9 @@ function RankList({
                 transition={{ duration: 0.4, delay: delay + i * 0.06, ease: EASE }}
               >
                 <Link
-                  to={`/schools/${s.id}/decision`}
+                  to={schoolLink.hrefOrFallback(s.id, "dashboard") ?? "#"}
+                  state={schoolLink.state}
+                  onClick={(e) => !schoolLink.hrefOrFallback(s.id, "dashboard") && e.preventDefault()}
                   aria-label={`Open ${s.name}`}
                   className="group flex items-center gap-3.5 rounded-2xl bg-slate-900/3 p-2.5 pr-3.5 transition-[background-color,transform] duration-300 hover:-translate-y-0.5 hover:bg-slate-900/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:bg-white/4 dark:hover:bg-white/7"
                 >

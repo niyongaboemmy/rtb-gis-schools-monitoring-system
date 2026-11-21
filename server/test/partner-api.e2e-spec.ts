@@ -431,6 +431,34 @@ describe('Embedded views', () => {
     ).toBe(true);
   });
 
+  it('a school opened from a district map shows its views, only inside the district', async () => {
+    const { s, link } = await openSession({
+      view: 'national-map',
+      district: home.district,
+    });
+    expect(link.drill).toEqual(
+      expect.arrayContaining(['school-map-2d', 'school-map-3d']),
+    );
+    expect(s.drill).toEqual(link.drill);
+    const auth = { Authorization: `Bearer ${s.accessToken}` };
+    await http().get(`${PREFIX}/schools/${home.id}`).set(auth).expect(200);
+    await http()
+      .get(`${PREFIX}/schools/${home.id}/buildings`)
+      .set(auth)
+      .expect(200);
+    // Outside the link's district: the scope guard refuses it.
+    const away = await http()
+      .get(`${PREFIX}/schools/${other.id}/buildings`)
+      .set(auth);
+    expect([403, 404]).toContain(away.status);
+    // Still read-only.
+    await http()
+      .patch(`${PREFIX}/schools/${home.id}`)
+      .set(auth)
+      .send({ name: 'x' })
+      .expect(403);
+  });
+
   it('a national view limited to a district alone finds its province and data', async () => {
     const { s, link } = await openSession({
       view: 'national-dashboard',

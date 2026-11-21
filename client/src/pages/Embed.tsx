@@ -1,10 +1,19 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { ArrowLeft, ExternalLink, Lock, RefreshCw, ShieldAlert, ShieldCheck } from "lucide-react";
+import { cn } from "../lib/utils";
 import { API_BASE, api } from "../lib/api";
-import { EMBED_EXPIRED_EVENT, EMBED_LINK_TOKEN } from "../lib/embed";
-import { EmbedViewContext, type EmbedView } from "../lib/embed-view";
+import type { EmbedSession } from "../lib/embed";
+import { currentEmbedSession, EMBED_EXPIRED_EVENT, EMBED_LINK_TOKEN, ensureEmbedSession, isEmbedExpired } from "../lib/embed";
+import {
+  EmbedDrillContext,
+  EmbedViewContext,
+  isSchoolEmbedView,
+  SCHOOL_EMBED_VIEWS,
+  type EmbedNavState,
+  type EmbedView,
+} from "../lib/embed-view";
 import { hasPermission, Permission, type PermissionType } from "../lib/permissions";
 import { useAuthStore, type User } from "../store/authStore";
 import { useScope } from "../hooks/useScope";
@@ -68,21 +77,24 @@ export function EmbedGate({ view, need, children }: { view: EmbedView; need: Per
   const user = useAuthStore((s) => s.user);
   const status = useAuthStore((s) => s.status);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const [state, setState] = useState<GateState>(EMBED_LINK_TOKEN ? { kind: "loading" } : { kind: "ready" });
-  const [expired, setExpired] = useState(false);
+  // A school opened from the map reuses the session the map already opened.
+  const [state, setState] = useState<GateState>(
+    EMBED_LINK_TOKEN && !currentEmbedSession() ? { kind: "loading" } : { kind: "ready" },
+  );
+  const [expired, setExpired] = useState(isEmbedExpired);
 
   useEffect(() => {
-    if (!EMBED_LINK_TOKEN) return;
+    if (!EMBED_LINK_TOKEN || currentEmbedSession()) return;
     let cancelled = false;
-    // Plain axios: no interceptors (no refresh, no redirect).
-    axios
-      .post<{ accessToken: string; user: User; expiresIn: number }>(`${API_BASE}/embed/session`, { token: EMBED_LINK_TOKEN })
-      .then(({ data }) => {
-        if (cancelled) return;
+    // Plain axios: no interceptors (no refresh, no redirect). Once per page load.
+    ensureEmbedSession<User>((token) =>
+      axios.post<EmbedSession<User>>(`${API_BASE}/embed/session`, { token }).then(({ data }) => {
         useAuthStore.setState({ token: data.accessToken, user: data.user, isAuthenticated: true, status: "ready" });
-        setState({ kind: "ready" });
-        // End the view when the session runs out, before calls start failing.
-        window.setTimeout(() => setExpired(true), Math.max(0, data.expiresIn * 1000 - 5000));
+        return data;
+      }),
+    )
+      .then(() => {
+        if (!cancelled) setState({ kind: "ready" });
       })
       .catch((err) => {
         if (cancelled) return;
@@ -141,9 +153,25 @@ export function EmbedGate({ view, need, children }: { view: EmbedView; need: Per
       />
     );
 
+  // School views a school opened from a national view may show: the link's
+  // (partner key) in link mode; all of them with a signed-in RTB GIS session
+  // (its own permissions and scope still apply).
+  const session = currentEmbedSession();
+  const drill: EmbedView[] = session
+    ? (session.drill ?? []).filter(isSchoolEmbedView)
+    : [...SCHOOL_EMBED_VIEWS];
+  const navState = location.state as EmbedNavState | null;
+  const drilled = isSchoolEmbedView(view) && (session ? !isSchoolEmbedView(session.view) : !!navState?.embedFrom);
+  const backTo =
+    navState?.embedFrom ?? (session?.view === "national-dashboard" ? "/embed/dashboard" : "/embed/map");
+
   return (
     <EmbedViewContext.Provider value={view}>
-      {children}
+      <EmbedDrillContext.Provider value={drill}>
+        {drilled && <DrillBar view={view} views={drill} backTo={backTo} />}
+        {drilled && view === "school-dashboard" && <div className="h-14" aria-hidden />}
+        {children}
+      </EmbedDrillContext.Provider>
       <ScopeChip view={view} />
       {expired && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background/85 backdrop-blur-sm" role="alertdialog" aria-label="View expired">
@@ -151,6 +179,59 @@ export function EmbedGate({ view, need, children }: { view: EmbedView; need: Per
         </div>
       )}
     </EmbedViewContext.Provider>
+  );
+}
+
+const DRILL_TABS: { view: EmbedView; label: string; path: string }[] = [
+  { view: "school-dashboard", label: "Overview", path: "dashboard" },
+  { view: "school-map-2d", label: "2D map", path: "map-2d" },
+  { view: "school-map-3d", label: "3D model", path: "map-3d" },
+];
+
+/**
+ * A school opened from the embedded national map: back to the map, and the
+ * school's other views the link allows. Floats top-centre (the embedded
+ * viewers keep that spot free) above the full-screen 2D viewer.
+ */
+function DrillBar({ view, views, backTo }: { view: EmbedView; views: readonly EmbedView[]; backTo: string }) {
+  const { pathname } = useLocation();
+  const id = pathname.split("/")[3] ?? "";
+  const tabs = DRILL_TABS.filter((t) => views.includes(t.view));
+  const state: EmbedNavState = { embedFrom: backTo };
+  return (
+    <nav
+      aria-label="School views"
+      className="fixed left-1/2 top-3 z-[70] flex max-w-[calc(100vw-1.5rem)] -translate-x-1/2 items-center gap-1 rounded-full bg-white/80 p-1 shadow-[0_8px_24px_-12px_rgb(15_23_42/0.45)] ring-1 ring-slate-900/10 backdrop-blur-xl dark:bg-[hsl(224_40%_8%)]/85 dark:ring-white/10"
+    >
+      <Link
+        to={backTo}
+        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-900/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 dark:text-white/80 dark:hover:bg-white/10"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> {backTo.startsWith("/embed/dashboard") ? "Dashboard" : "Map"}
+      </Link>
+      {tabs.length > 1 && <span className="h-5 w-px shrink-0 bg-slate-900/10 dark:bg-white/10" aria-hidden />}
+      {tabs.length > 1 &&
+        tabs.map((t) => {
+          const on = t.view === view;
+          return (
+            <Link
+              key={t.view}
+              to={`/embed/schools/${id}/${t.path}`}
+              state={state}
+              replace
+              aria-current={on ? "page" : undefined}
+              className={cn(
+                "inline-flex h-8 shrink-0 items-center rounded-full px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+                on
+                  ? "bg-primary text-primary-foreground"
+                  : "text-slate-600 hover:bg-slate-900/5 hover:text-slate-900 dark:text-white/65 dark:hover:bg-white/10 dark:hover:text-white",
+              )}
+            >
+              {t.label}
+            </Link>
+          );
+        })}
+    </nav>
   );
 }
 

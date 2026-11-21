@@ -961,6 +961,11 @@ function DevelopersPage() {
               access level.
             </P>
             <P>
+              <strong className="text-foreground">Opening a school from the map.</strong> From a national-map or national-dashboard link, viewers
+              can open a school inside the link&apos;s area in the school views your key allows (overview, 2D map, 3D model), with a way back to
+              the map. The link response lists those views in <C>drill</C>; a key without school views keeps the map on its own.
+            </P>
+            <P>
               <strong className="text-foreground">The area comes from your key, not from the request.</strong> For the national map and
               dashboard you may <em>narrow</em> the area with <C>province</C> / <C>district</C>, never widen it. The response&apos;s{" "}
               <C>scope</C> says what the link really covers, and the view shows it in its corner (&ldquo;Showing: Muhanga District&rdquo;).

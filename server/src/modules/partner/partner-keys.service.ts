@@ -23,6 +23,7 @@ import {
 } from './entities/partner-api-key.entity';
 import {
   clamp,
+  drillViews,
   EMBED_LINK_TTL,
   EMBED_SESSION_MINUTES,
   embedPath,
@@ -399,10 +400,13 @@ export class PartnerKeysService {
         name: school.name,
       };
     } else {
+      // A school opened from the map / dashboard may show the key's school views.
+      const drill = drillViews(req.view, access.views);
       claims = {
         pk: key.id,
         view: req.view,
         loc: await this.mapArea(access, req),
+        ...(drill.length ? { drill } : {}),
       };
     }
     const ttl = clamp(req.ttlSeconds, EMBED_LINK_TTL);
@@ -426,6 +430,7 @@ export class PartnerKeysService {
       sessionMinutes: smin,
       scope: claims.loc,
       school: schoolSummary,
+      drill: claims.drill ?? [],
     };
   }
 
@@ -545,11 +550,16 @@ export class PartnerKeysService {
         message: 'The partner account is not active.',
       });
 
+    // Drill-down only to views the key still allows (it may have been narrowed).
+    const drill = drillViews(link.view, accessOf(key).views).filter((v) =>
+      (link.drill ?? []).includes(v),
+    );
     const emb: EmbedClaims = {
       pk: link.pk,
       view: link.view,
       sid: link.sid,
       loc: link.loc,
+      ...(drill.length ? { drill } : {}),
     };
     const smin = clamp(link.smin, EMBED_SESSION_MINUTES);
     const accessToken = await this.jwt.signAsync(

@@ -8,6 +8,8 @@ const render = (ui: ReactElement) => rtlRender(<MemoryRouter initialEntries={["/
 const axiosPost = vi.fn();
 vi.mock("axios", () => ({ default: { post: (...a: unknown[]) => axiosPost(...a), create: () => ({ interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } } }) } }));
 let linkToken: string | null = "signed.link.token";
+// The page's one shared embed session (lib/embed keeps it per page load).
+let embSession: { view: string; drill?: string[] } | null = null;
 vi.mock("../lib/embed", () => ({
   get EMBED_LINK_TOKEN() {
     return linkToken;
@@ -15,6 +17,13 @@ vi.mock("../lib/embed", () => ({
   EMBED_EXPIRED_EVENT: "rtb:embed-expired",
   isEmbedLinkMode: () => linkToken !== null,
   memoryOnlyStorage: { getItem: () => null, setItem: () => undefined, removeItem: () => undefined },
+  ensureEmbedSession: (exchange: (t: string) => Promise<{ view: string }>) =>
+    exchange(linkToken ?? "").then((s) => {
+      embSession = s;
+      return s;
+    }),
+  currentEmbedSession: () => embSession,
+  isEmbedExpired: () => false,
 }));
 vi.mock("../lib/api", () => ({ API_BASE: "/api/v1", api: { get: vi.fn() } }));
 vi.mock("./SchoolDecisionDashboard", () => ({ default: () => <div>dashboard</div> }));
@@ -35,6 +44,7 @@ const partnerUser = {
 beforeEach(() => {
   axiosPost.mockReset();
   linkToken = "signed.link.token";
+  embSession = null;
   useAuthStore.setState({ token: null, user: null, isAuthenticated: false, status: "ready" });
   localStorage.clear();
 });
@@ -108,5 +118,55 @@ describe("EmbedGate keeps the iframe on its one view", () => {
     });
     render(<EmbedGate view="national-map" need={Permission.VIEW_MAP}><div>the view</div></EmbedGate>);
     expect(await screen.findByText("Showing: Muhanga District")).toBeInTheDocument();
+  });
+});
+
+describe("a school opened from the embedded national map", () => {
+  const mapUser = {
+    ...partnerUser,
+    role: { ...partnerUser.role, permissions: [Permission.VIEW_MAP, Permission.SCHOOL_VIEW_2D3D_MAP] },
+    location: { tier: "district", province: "Southern Province", district: "Huye" },
+  };
+  const signedIn = (session: { view: string; drill?: string[] }) => {
+    embSession = session;
+    useAuthStore.setState({ token: "t", user: mapUser as never, isAuthenticated: true, status: "ready" });
+  };
+  const at = (path: string, ui: ReactElement) => rtlRender(<MemoryRouter initialEntries={[path]}>{ui}</MemoryRouter>);
+
+  it("reuses the map's session, shows a way back and only the views the link allows", async () => {
+    signedIn({ view: "national-map", drill: ["school-map-2d", "school-map-3d"] });
+    at("/embed/schools/s9/map-2d", <EmbedGate view="school-map-2d" need={Permission.SCHOOL_VIEW_2D3D_MAP}><div>the map</div></EmbedGate>);
+    expect(await screen.findByText("the map")).toBeInTheDocument();
+    expect(axiosPost).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: /Map/ })).toHaveAttribute("href", "/embed/map");
+    expect(screen.getByRole("link", { name: "3D model" })).toHaveAttribute("href", "/embed/schools/s9/map-3d");
+    expect(screen.getByRole("link", { name: "2D map" })).toHaveAttribute("aria-current", "page");
+    expect(screen.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
+  });
+
+  it("school links inside the map stay in the iframe, only for views the link allows", async () => {
+    const { useSchoolLink } = await import("../lib/embed-view");
+    signedIn({ view: "national-map", drill: ["school-map-3d"] });
+    function Links() {
+      const l = useSchoolLink();
+      return (
+        <>
+          <span>3d: {l.href("s9", "map-3d") ?? "none"}</span>
+          <span>overview: {l.href("s9", "dashboard") ?? "none"}</span>
+          <span>open: {l.hrefOrFallback("s9", "dashboard") ?? "none"}</span>
+        </>
+      );
+    }
+    at("/embed/map", <EmbedGate view="national-map" need={Permission.VIEW_MAP}><Links /></EmbedGate>);
+    expect(await screen.findByText("3d: /embed/schools/s9/map-3d")).toBeInTheDocument();
+    expect(screen.getByText("overview: none")).toBeInTheDocument();
+    expect(screen.getByText("open: /embed/schools/s9/map-3d")).toBeInTheDocument();
+  });
+
+  it("a school view opened from its own link has no back bar", async () => {
+    signedIn({ view: "school-map-2d" });
+    at("/embed/schools/s9/map-2d", <EmbedGate view="school-map-2d" need={Permission.SCHOOL_VIEW_2D3D_MAP}><div>the map</div></EmbedGate>);
+    expect(await screen.findByText("the map")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "School views" })).not.toBeInTheDocument();
   });
 });
