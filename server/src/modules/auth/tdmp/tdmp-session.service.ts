@@ -19,14 +19,19 @@ import {
 import { TdmpIdentityService } from './tdmp-identity.service';
 import { TdmpSignInRefused } from './tdmp-identity';
 import type { RequestMeta } from '../request-meta';
+import type { TdmpUserInfo } from '../../tdmp/tdmp.types';
 
 const KEY_ID = 'tdmp1';
 
 /**
  * Keeps a `tdmp` session honest after sign-in. On our refresh (every ~15
- * minutes) it uses the stored TDMP refresh token to confirm the account still
- * exists in TDMP and re-applies its role and scope. TDMP saying no ends our
- * session; TDMP being unreachable is tolerated for TDMP_OFFLINE_GRACE_MINUTES.
+ * minutes) it swaps the stored TDMP refresh token for new tokens — TDMP
+ * rotates it and treats a reused one as stolen (SSO guide §7), so the new
+ * one is saved before anything else — then refreshes the profile. TDMP
+ * refusing the token ends our session; TDMP being unreachable is tolerated
+ * for TDMP_OFFLINE_GRACE_MINUTES. A refresh token keeps working after a TDMP
+ * account is deactivated, so TDMP sessions also end after
+ * TDMP_SESSION_MAX_HOURS (set when the session is created).
  */
 @Injectable()
 export class TdmpSessionService {
@@ -99,21 +104,18 @@ export class TdmpSessionService {
 
     try {
       const tokens = await this.oauth.refresh(stored);
-      const scope = await this.oauth.accessScope(tokens.access_token);
-      const fresh = await this.identity.resync(user, {
-        tdmpUserId: user.tdmpUserId ?? String(scope.userId),
-        email: scope.email?.trim().toLowerCase() || null,
-        emailVerified: true,
-        name: null,
-        scope,
-      });
+      // Save the rotated token first: the old one is now dead at TDMP, and
+      // presenting it again would cancel all of the user's TDMP tokens.
+      const nextEnc = tokens.refresh_token
+        ? this.encrypt(tokens.refresh_token)
+        : session.externalRefreshTokenEnc;
       await this.sessions.update(session.id, {
-        externalRefreshTokenEnc: tokens.refresh_token
-          ? this.encrypt(tokens.refresh_token)
-          : session.externalRefreshTokenEnc,
+        externalRefreshTokenEnc: nextEnc,
         externalCheckedAt: new Date(),
       });
-      return fresh;
+      session.externalRefreshTokenEnc = nextEnc;
+      session.externalCheckedAt = new Date();
+      return await this.refreshProfile(user, tokens.access_token);
     } catch (err) {
       if (err instanceof TdmpUnavailableError) {
         const offlineFor = Date.now() - checkedAt;
@@ -131,6 +133,46 @@ export class TdmpSessionService {
         return this.end(session, user, `tdmp_${err.reason}`, meta);
       throw err;
     }
+  }
+
+  /**
+   * Name and email from TDMP's profile; role and area too when TDMP is their
+   * source. A profile TDMP cannot serve right now keeps the current values.
+   */
+  private async refreshProfile(
+    user: User,
+    accessToken: string,
+  ): Promise<User | null> {
+    const tdmpUserId = user.tdmpUserId;
+    if (!tdmpUserId) return null;
+    if (this.config.accessSource === 'tdmp') {
+      const scope = await this.oauth.accessScope(accessToken);
+      return this.identity.resync(user, {
+        tdmpUserId,
+        email: scope.email?.trim().toLowerCase() || null,
+        emailVerified: true,
+        scope,
+      });
+    }
+    let info: TdmpUserInfo;
+    try {
+      info = await this.oauth.userinfo(accessToken);
+    } catch (err) {
+      this.logger.warn(
+        `TDMP profile unavailable for ${tdmpUserId}: ${(err as Error).message}`,
+      );
+      return null;
+    }
+    if (info?.sub && String(info.sub) !== tdmpUserId)
+      throw new TdmpSignInRefused('not_allowed', 'TDMP profile changed owner');
+    return this.identity.resync(user, {
+      tdmpUserId,
+      email: info.email?.trim().toLowerCase() || null,
+      emailVerified: info.email_verified === true,
+      name: info.name ?? null,
+      givenName: info.given_name ?? null,
+      familyName: info.family_name ?? null,
+    });
   }
 
   private async end(

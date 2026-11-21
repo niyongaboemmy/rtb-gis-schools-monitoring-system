@@ -1,4 +1,14 @@
-import { Controller, Get, Logger, Query, Req, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  Logger,
+  Post,
+  Query,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
@@ -25,8 +35,14 @@ import {
 } from '../../../common/security/crypto';
 import { readCookie, secureCookies, setRefreshCookie } from '../refresh-cookie';
 import { requestMeta } from '../request-meta';
+import { CsrfHeaderGuard } from '../guards/csrf-header.guard';
 import { TdmpIdentityService } from './tdmp-identity.service';
 import { TdmpSignInRefused } from './tdmp-identity';
+import {
+  clearPendingTdmp,
+  readPendingTdmp,
+  setPendingTdmp,
+} from './tdmp-pending';
 
 /** Short-lived cookie carrying the PKCE verifier, state and nonce. */
 const FLOW_COOKIE = 'rtb_tdmp_flow';
@@ -74,10 +90,12 @@ export function safeNext(next: unknown): string {
 const SCHOOL_CODE_RE = /^[A-Za-z0-9._-]{1,64}$/;
 
 /**
- * "Sign in with TDMP" (OAuth 2.0 authorization code + PKCE). The browser
- * navigates here (not XHR): /start sends it to TDMP, TDMP sends it back to
- * /callback, which signs the user in with our own session cookie and sends
- * them on to the web app.
+ * "Sign in with TDMP" (OAuth 2.0 authorization code + PKCE), following the
+ * TDMP SSO integration guide (12 Nov 2026). The browser navigates here (not
+ * XHR): /start sends it to TDMP, TDMP sends it back to /callback, which
+ * signs the user in with our own session cookie and sends them on to the web
+ * app. TDMP's sign-in proves who the user is (profile + signed ID token);
+ * their role and area are decided in RTB GIS (TDMP_ACCESS_SOURCE).
  */
 @ApiTags('auth')
 @Controller('auth/tdmp')
@@ -192,30 +210,75 @@ export class TdmpAuthController {
 
     try {
       const tokens = await this.oauth.exchangeCode(code, flow.verifier);
+      // Identity: the signed ID token and/or the profile (SSO guide §6.4).
       const claims = tokens.id_token
-        ? this.oauth.checkIdToken(tokens.id_token, flow.nonce)
+        ? await this.oauth.verifyIdToken(tokens.id_token, flow.nonce)
         : null;
-      const [info, scope] = await Promise.all([
-        this.oauth
-          .userinfo(tokens.access_token)
-          .catch((): TdmpUserInfo | null => null),
-        this.oauth.accessScope(tokens.access_token),
-      ]);
-
-      const tdmpUserId = scope.userId ?? info?.sub ?? claims?.sub;
-      if (tdmpUserId == null || String(tdmpUserId) === '')
+      const info = await this.oauth
+        .userinfo(tokens.access_token)
+        .catch((err: unknown): TdmpUserInfo | null => {
+          if (!claims) throw err;
+          return null;
+        });
+      const sub = info?.sub ?? claims?.sub;
+      if (sub == null || String(sub) === '')
         return this.fail(res, 'failed', meta, 'TDMP returned no user id');
-      const email = (info?.email ?? claims?.email ?? scope.email ?? '')
+      if (info?.sub && claims?.sub && String(info.sub) !== String(claims.sub))
+        return this.fail(res, 'failed', meta, 'profile and ID token disagree');
+
+      // Role and area from TDMP only when it provides them (§8, §12).
+      const scope =
+        this.tdmp.accessSource === 'tdmp'
+          ? await this.oauth.accessScope(tokens.access_token)
+          : null;
+      const email = (info?.email ?? claims?.email ?? scope?.email ?? '')
         .trim()
         .toLowerCase();
-      const user = await this.identity.signIn({
-        tdmpUserId: String(tdmpUserId),
+      const { user, requested } = await this.identity.signIn({
+        tdmpUserId: String(sub),
         email: email || null,
         emailVerified:
           (info?.email_verified ?? claims?.email_verified) === true,
         name: info?.name ?? claims?.name ?? null,
+        givenName: info?.given_name ?? claims?.given_name ?? null,
+        familyName: info?.family_name ?? claims?.family_name ?? null,
         scope,
       });
+      if (requested)
+        this.audit.record({
+          action: 'auth.tdmp_access_requested',
+          actor: { id: user.id, email: user.email },
+          targetType: 'user',
+          targetId: user.id,
+          targetLabel: user.email,
+          subjectUserId: user.id,
+          meta: { tdmpUserId: user.tdmpUserId },
+          request: meta,
+        });
+
+      let next = flow.next;
+      let notice: string | null = null;
+      if (flow.school && !user.accessPending) {
+        const school = await this.schools.findOne({
+          where: [{ tdmpSchoolCode: flow.school }, { code: flow.school }],
+          select: ['id', 'province', 'district', 'sector'],
+        });
+        if (school && schoolMatchesScope(school, resolveAccessScope(user)))
+          next = `/schools/${school.id}`;
+        else notice = 'school_not_found';
+      }
+
+      // Privileged roles still use our second factor (TDMP sends no `amr`).
+      if (this.authService.tdmpNeedsSecondFactor(user)) {
+        setPendingTdmp(res, this.config, {
+          userId: user.id,
+          refreshToken: tokens.refresh_token,
+        });
+        const login = new URL(`${this.tdmp.appPublicUrl}/login`);
+        login.searchParams.set('sso_mfa', '1');
+        login.searchParams.set('next', next);
+        return res.redirect(302, login.toString());
+      }
 
       const session = await this.authService.issueTdmpSession(
         user,
@@ -230,16 +293,7 @@ export class TdmpAuthController {
       );
 
       const target = new URL(`${this.tdmp.appPublicUrl}/sso/tdmp/complete`);
-      let next = flow.next;
-      if (flow.school) {
-        const school = await this.schools.findOne({
-          where: [{ tdmpSchoolCode: flow.school }, { code: flow.school }],
-          select: ['id', 'province', 'district', 'sector'],
-        });
-        if (school && schoolMatchesScope(school, resolveAccessScope(user)))
-          next = `/schools/${school.id}`;
-        else target.searchParams.set('notice', 'school_not_found');
-      }
+      if (notice) target.searchParams.set('notice', notice);
       target.searchParams.set('next', next);
       return res.redirect(302, target.toString());
     } catch (err) {
@@ -250,6 +304,34 @@ export class TdmpAuthController {
       this.logger.error(`TDMP sign-in failed: ${(err as Error).message}`);
       return this.fail(res, 'failed', meta, (err as Error).message);
     }
+  }
+
+  /**
+   * Second step of a TDMP sign-in that needs our 2FA (the login page calls
+   * this when it arrives with ?sso_mfa=1). Answers like password sign-in: a
+   * 2FA challenge, an enrolment, or the session.
+   */
+  @Post('mfa')
+  @HttpCode(200)
+  @UseGuards(CsrfHeaderGuard)
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @ApiOperation({ summary: 'Continue a TDMP sign-in that needs 2FA' })
+  async mfa(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const pending = readPendingTdmp(req, this.config);
+    const result = await this.authService.startTdmpSecondFactor(
+      pending,
+      requestMeta(req),
+    );
+    if (!('refreshToken' in result)) return result;
+    clearPendingTdmp(res, this.config);
+    const { refreshToken, sessionId: _sid, ...body } = result;
+    setRefreshCookie(
+      res,
+      this.config,
+      refreshToken,
+      this.sessionsService.refreshTtlMs,
+    );
+    return body;
   }
 
   private readFlow(req: Request): FlowState | null {

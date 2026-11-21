@@ -182,6 +182,7 @@ const MFA_STEPS: { icon: LucideIcon; label: string }[] = [
 function TwoFactorSection({ index, className }: { index: number; className?: string }) {
   const toast = useToast();
   const { updateUser } = useAuthStore();
+  const tdmpAccount = isTdmpUser(useAuthStore((s) => s.user));
   const [status, setStatus] = useState<MfaStatus | null>(null);
   const [mode, setMode] = useState<"none" | "enrol" | "disable" | "regenerate">("none");
   const [password, setPassword] = useState("");
@@ -299,7 +300,8 @@ function TwoFactorSection({ index, className }: { index: number; className?: str
             <Button variant="outline" onClick={() => setMode("regenerate")} className={pillButton}>
               <RefreshCw className="h-3.5 w-3.5" aria-hidden /> New recovery codes
             </Button>
-            {!status.required && (
+            {/* Turning it off asks for the password, which TDMP accounts don't have here. */}
+            {!status.required && !tdmpAccount && (
               <Button
                 variant="ghost"
                 onClick={() => setMode("disable")}
@@ -309,6 +311,9 @@ function TwoFactorSection({ index, className }: { index: number; className?: str
               </Button>
             )}
           </div>
+          {!status.required && tdmpAccount && (
+            <p className="text-xs text-muted-foreground">To turn it off, ask an administrator to reset it.</p>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
@@ -703,7 +708,7 @@ function GoogleSection({ index, className }: { index: number; className?: string
   );
 }
 
-/** TDMP accounts: password and 2FA live in TDMP, not here. */
+/** TDMP accounts: the password lives in TDMP; RTB GIS's own 2FA still applies. */
 function TdmpSignInSection({ index, className }: { index: number; className?: string }) {
   return (
     <SecurityCard
@@ -711,12 +716,11 @@ function TdmpSignInSection({ index, className }: { index: number; className?: st
       className={className}
       icon={KeyRound}
       title="Sign-in"
-      subtitle="Password and two-factor authentication"
+      subtitle="Password"
       status={<StatusPill tone="primary">TDMP</StatusPill>}
     >
       <p className="text-sm text-muted-foreground">
-        Your sign-in is managed by TDMP. Change your password or two-factor settings in TDMP; they apply here the
-        next time you sign in.
+        You sign in with your TDMP account, so there is no RTB GIS password. Change your password in TDMP.
       </p>
     </SecurityCard>
   );
@@ -726,10 +730,17 @@ function TdmpSignInSection({ index, className }: { index: number; className?: st
 export function SecuritySettings() {
   const tdmp = isTdmpUser(useAuthStore((s) => s.user));
   if (tdmp) {
+    // No password or Google link here; two-factor (required for some roles)
+    // and devices work as for everyone else.
     return (
       <div className="grid items-start gap-6 xl:grid-cols-2">
-        <TdmpSignInSection index={0} />
-        <SessionsSection index={1} />
+        <div className="contents xl:flex xl:flex-col xl:gap-6">
+          <TdmpSignInSection index={0} className="order-1 xl:order-none" />
+          <SessionsSection index={2} className="order-3 xl:order-none" />
+        </div>
+        <div className="contents xl:flex xl:flex-col xl:gap-6">
+          <TwoFactorSection index={1} className="order-2 xl:order-none" />
+        </div>
       </div>
     );
   }

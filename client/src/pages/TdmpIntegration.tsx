@@ -33,6 +33,7 @@ import {
   fieldsLabel,
   overallCoverage,
   progressLabel,
+  signInReady,
   totalsSummary,
   triggerLabel,
   type ConnectionReport,
@@ -582,6 +583,26 @@ export default function TdmpIntegration() {
           explain: `TDMP has no GPS for these schools: give each a location.${waitingForLocation.length ? ` ${formatNumber(waitingForLocation.length)} left.` : ""}`,
           done: !!lastSync && waitingForLocation.length === 0,
           action: { label: "Add locations", onClick: () => setModal({ kind: "locations" }) },
+        },
+        {
+          id: "sign-in",
+          short: "Sign-in",
+          title: "Sign in with TDMP",
+          explain: connection?.signIn
+            ? `People sign in with their TDMP account. TDMP registers RTB GIS with the redirect URI ${connection.signIn.redirectUri} and the launch URL ${connection.signIn.launchUrl}.`
+            : "People sign in with their TDMP account once TDMP registers RTB GIS.",
+          done: signInReady(connection?.signIn),
+          blockedNote: !connection?.signIn?.clientConfigured
+            ? "Waiting for TDMP's registration (R6): add TDMP_OAUTH_CLIENT_ID and TDMP_OAUTH_CLIENT_SECRET on the server"
+            : connection.signIn.credentials === "rejected"
+              ? "TDMP refuses the client ID or secret: check both on the server"
+              : connection.signIn.issuerMatches === false
+                ? "TDMP's issuer differs from TDMP_BASE_URL: set TDMP_ISSUER on the server"
+                : undefined,
+          action:
+            connection?.signIn?.clientConfigured && connection.signIn.credentials !== "rejected"
+              ? { label: "Check again", onClick: () => void checkConnection(true), busy: checking }
+              : undefined,
         },
         {
           id: "auto",

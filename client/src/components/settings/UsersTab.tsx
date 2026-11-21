@@ -16,6 +16,8 @@ import { useAuthStore } from "../../store/authStore";
 import { useSchoolsStore } from "../../store/schoolsStore";
 import { resolveDistrictName, resolveProvinceName } from "../../lib/rwanda-locations";
 import { useAuthProviders } from "../../hooks/useAuthProviders";
+import { useAuthorization } from "../../hooks/useAuthorization";
+import { Permission } from "../../lib/permissions";
 import { isTdmpUser } from "../../lib/tdmp";
 import {
   Send,
@@ -36,6 +38,8 @@ import {
   LogIn,
   CircleDot,
   Info,
+  Clock,
+  UserPlus,
 } from "lucide-react";
 import { formatDate, formatDateTime, formatNumber } from "../../lib/format";
 import { titleCase } from "../../lib/labels";
@@ -102,6 +106,16 @@ function SourceBadge({ user }: { user: ManagedUser }) {
   );
 }
 
+/** Signed in with TDMP, waiting for an administrator to give access. */
+function WaitingBadge({ user }: { user: ManagedUser }) {
+  if (!user.accessPending || !user.isActive) return null;
+  return (
+    <StatusPill tone="warn" className="shrink-0">
+      Waiting
+    </StatusPill>
+  );
+}
+
 /** 2FA / pending-password markers next to the email. */
 function SecurityMarkers({ user }: { user: ManagedUser }) {
   if (!user.totpEnabled && !user.mustChangePassword) return null;
@@ -130,6 +144,7 @@ function SecurityMarkers({ user }: { user: ManagedUser }) {
 }
 
 function ScopeCell({ user }: { user: ManagedUser }) {
+  if (user.accessPending) return <span className="text-xs text-muted-foreground/70">No access yet</span>;
   const lvl: string | undefined = user.role?.accessLevel?.name;
   if (!lvl) return <span className="text-xs text-muted-foreground/70">National</span>;
   const loc = scopeLocation(user.location);
@@ -165,9 +180,14 @@ export function UsersTab() {
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
+  // "Give access" to someone waiting, or "Add expected TDMP user".
+  const [grantAccess, setGrantAccess] = useState(false);
+  const [formMode, setFormMode] = useState<"default" | "tdmp-expected">("default");
   const [previewUser, setPreviewUser] = useState<ManagedUser | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [pendingDeactivate, setPendingDeactivate] = useState<{ id: string; name: string } | null>(null);
+  const [pendingDeactivate, setPendingDeactivate] = useState<{ id: string; name: string; decline?: boolean } | null>(
+    null,
+  );
 
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
   const setAL = (key: string, val: boolean) => setActionLoading((prev) => ({ ...prev, [key]: val }));
@@ -175,8 +195,13 @@ export function UsersTab() {
 
   const { user: currentUser } = useAuthStore();
   const toast = useToast();
-  // TDMP mode: accounts come from TDMP, so no adding, importing or resets here.
-  const tdmpMode = useAuthProviders()?.authMode === "tdmp";
+  const providers = useAuthProviders();
+  // TDMP mode: people sign in with TDMP, so no password accounts, imports or resets here.
+  const tdmpMode = providers?.authMode === "tdmp";
+  // TDMP sign-in is on: administrators can add the people they expect.
+  const tdmpSignIn = !!providers?.tdmp;
+  const tdmpAccess = providers?.tdmpAccess ?? "local";
+  const canManage = useAuthorization().isAuthorized(Permission.MANAGE_USERS);
   const fetchPromise = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
@@ -211,9 +236,10 @@ export function UsersTab() {
     setAL(key, true);
     try {
       await api.delete(`/users/${id}`);
+      const declined = pendingDeactivate?.decline;
       setPendingDeactivate(null);
       fetchInitialData();
-      toast.success(`User "${name}" deactivated and signed out`);
+      toast.success(declined ? `Access declined for ${name}` : `User "${name}" deactivated and signed out`);
     } catch (err) {
       toast.error(apiErrorMessage(err, `Could not deactivate ${name}.`));
     } finally {
@@ -291,18 +317,34 @@ export function UsersTab() {
   const share = (n: number, of: number) => (of > 0 ? (n / of) * 100 : null);
   const fmt = (n: number | null) => formatNumber(n);
 
-  const openEdit = (u: ManagedUser) => {
+  const openEdit = (u: ManagedUser, grant = false) => {
     setEditingUser(u);
+    setGrantAccess(grant);
+    setFormMode("default");
     setIsModalOpen(true);
   };
 
+  const openCreate = (mode: "default" | "tdmp-expected") => {
+    setEditingUser(null);
+    setGrantAccess(false);
+    setFormMode(mode);
+    setIsModalOpen(true);
+  };
+
+  /** People who signed in with TDMP and wait for a role and area. */
+  const waiting = useMemo(() => users.filter((u) => u.accessPending && u.isActive), [users]);
+
   const rowActions = (u: ManagedUser) => {
-    // TDMP accounts: name, email, role and scope come from TDMP.
+    // TDMP accounts: name and email come from TDMP; role and area are set here.
     const fromTdmp = isTdmpUser(u);
     return (
       <>
         <IconAction label={`View ${u.firstName} ${u.lastName}`} icon={Eye} onClick={() => setPreviewUser(u)} />
-        {!fromTdmp && <IconAction label={`Edit ${u.firstName} ${u.lastName}`} icon={Edit2} onClick={() => openEdit(u)} />}
+        <IconAction
+          label={u.accessPending ? `Give ${u.email} access` : `Edit ${u.firstName} ${u.lastName}`}
+          icon={u.accessPending ? UserCheck : Edit2}
+          onClick={() => openEdit(u, !!u.accessPending)}
+        />
         {!fromTdmp && !tdmpMode && (
           <IconAction
             label={`Send ${u.email} a password reset code`}
@@ -396,8 +438,49 @@ export function UsersTab() {
       {tdmpMode && (
         <p role="note" className="flex items-start gap-2.5 rounded-2xl bg-primary/8 px-4 py-3 text-sm text-foreground ring-1 ring-inset ring-primary/15">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
-          Users come from TDMP. They appear here after their first sign-in.
+          People sign in with TDMP. Add the people you expect with their role and area, or give access to those
+          waiting.
         </p>
+      )}
+
+      {!loading && waiting.length > 0 && (
+        <SettingsPanel
+          index={1}
+          title="Waiting for access"
+          subtitle={`${formatNumber(waiting.length)} ${waiting.length === 1 ? "person is" : "people are"} waiting for access`}
+          icon={Clock}
+          tone="warn"
+        >
+          <ul className="divide-y divide-border/30 px-4 pb-3 min-[400px]:px-5 sm:px-6" aria-label="People waiting for access">
+            {waiting.map((u) => (
+              <li key={u.id} className="flex flex-col gap-2 py-3 @xl:flex-row @xl:items-center @xl:justify-between">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <PersonIcon className="h-7 w-7" />
+                  <div className="min-w-0">
+                    <p className="truncate text-[15px] leading-5 text-foreground">{fullName(u)}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {u.email} · signed in {formatDate(u.createdAt)}
+                    </p>
+                  </div>
+                </div>
+                {canManage && (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button
+                      variant="outline"
+                      className={PILL_BUTTON.small}
+                      onClick={() => setPendingDeactivate({ id: u.id, name: fullName(u), decline: true })}
+                    >
+                      Decline
+                    </Button>
+                    <Button className={PILL_BUTTON.small} onClick={() => openEdit(u, true)}>
+                      <UserCheck className="h-3.5 w-3.5" aria-hidden /> Give access
+                    </Button>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </SettingsPanel>
       )}
 
       <SettingsPanel
@@ -407,18 +490,23 @@ export function UsersTab() {
         subtitle="Accounts, roles and scope"
         icon={Users2}
         actions={
-          tdmpMode ? undefined : (
+          tdmpMode ? (
+            tdmpSignIn && canManage ? (
+              <Button className={PILL_BUTTON.primary} onClick={() => openCreate("tdmp-expected")}>
+                <UserPlus className="h-4 w-4" aria-hidden /> Add expected TDMP user
+              </Button>
+            ) : undefined
+          ) : (
             <>
               <Button variant="outline" className={PILL_BUTTON.secondary} onClick={() => setIsUploadModalOpen(true)}>
                 <UploadCloud className="h-4 w-4" aria-hidden /> Import users
               </Button>
-              <Button
-                className={PILL_BUTTON.primary}
-                onClick={() => {
-                  setEditingUser(null);
-                  setIsModalOpen(true);
-                }}
-              >
+              {tdmpSignIn && canManage && (
+                <Button variant="outline" className={PILL_BUTTON.secondary} onClick={() => openCreate("tdmp-expected")}>
+                  <UserPlus className="h-4 w-4" aria-hidden /> Add expected TDMP user
+                </Button>
+              )}
+              <Button className={PILL_BUTTON.primary} onClick={() => openCreate("default")}>
                 <Plus className="h-4 w-4" aria-hidden /> Add user
               </Button>
             </>
@@ -475,7 +563,7 @@ export function UsersTab() {
               hasFilters
                 ? "Try another name, email, role or status."
                 : tdmpMode
-                  ? "People appear here after their first TDMP sign-in."
+                  ? "People appear here after their first TDMP sign-in, or when you add them as expected users."
                   : "Add a user or import a spreadsheet."
             }
             action={
@@ -509,6 +597,7 @@ export function UsersTab() {
                           {u.firstName} {u.lastName}
                         </p>
                         <SourceBadge user={u} />
+                        <WaitingBadge user={u} />
                         <SecurityMarkers user={u} />
                       </div>
                     </Td>
@@ -544,6 +633,7 @@ export function UsersTab() {
                         <ActiveStatus active={!!u.isActive} />
                         <RoleChip role={u.role} />
                         <SourceBadge user={u} />
+                        <WaitingBadge user={u} />
                         <SecurityMarkers user={u} />
                       </div>
                     </div>
@@ -588,6 +678,7 @@ export function UsersTab() {
               <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
                 <RoleChip role={previewUser.role} />
                 <SourceBadge user={previewUser} />
+                <WaitingBadge user={previewUser} />
                 <SecurityMarkers user={previewUser} />
               </div>
             </div>
@@ -623,6 +714,9 @@ export function UsersTab() {
         editingUser={editingUser}
         roles={roles}
         schools={allSchools}
+        mode={formMode}
+        grantAccess={grantAccess}
+        tdmpAccess={tdmpAccess}
       />
 
       <BulkUploadModal
@@ -635,9 +729,13 @@ export function UsersTab() {
         isOpen={pendingDeactivate !== null}
         onClose={() => setPendingDeactivate(null)}
         onConfirm={() => pendingDeactivate && handleDeleteUser(pendingDeactivate.id, pendingDeactivate.name)}
-        title="Deactivate user"
-        description={`Deactivate ${pendingDeactivate?.name ?? "this user"}? They will be signed out and can no longer sign in.`}
-        confirmLabel="Deactivate"
+        title={pendingDeactivate?.decline ? "Decline access" : "Deactivate user"}
+        description={
+          pendingDeactivate?.decline
+            ? `Decline access for ${pendingDeactivate.name}? Their account is turned off and they can't sign in to RTB GIS.`
+            : `Deactivate ${pendingDeactivate?.name ?? "this user"}? They will be signed out and can no longer sign in.`
+        }
+        confirmLabel={pendingDeactivate?.decline ? "Decline" : "Deactivate"}
         isLoading={pendingDeactivate ? isAL(`del-user-${pendingDeactivate.id}`) : false}
       />
     </div>

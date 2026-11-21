@@ -45,6 +45,7 @@ import {
   setRefreshCookie,
 } from './refresh-cookie';
 import { TdmpConfig } from '../tdmp/tdmp.config';
+import { clearPendingTdmp, readPendingTdmp } from './tdmp/tdmp-pending';
 import { requestMeta } from './request-meta';
 
 type AuthedRequest = ExpressRequest & { user: any };
@@ -71,6 +72,8 @@ export class AuthController {
         !!this.configService.get<string>('GOOGLE_CLIENT_ID'),
       tdmp: t.loginEnabled,
       breakGlass: !t.passwordLoginOpen && t.localLoginAllowlist.length > 0,
+      // Where TDMP users' role and area come from (TDMP_ACCESS_SOURCE).
+      tdmpAccess: t.accessSource,
     };
   }
 
@@ -120,10 +123,15 @@ export class AuthController {
     @Req() req: ExpressRequest,
     @Res({ passthrough: true }) res: Response,
   ) {
-    return this.respond(
-      res,
-      await this.authService.verifyMfa(dto, requestMeta(req)),
+    // A TDMP sign-in finishing with our 2FA carries its pending cookie.
+    const pending = readPendingTdmp(req, this.configService);
+    const result = await this.authService.verifyMfa(
+      dto,
+      requestMeta(req),
+      pending,
     );
+    if (pending) clearPendingTdmp(res, this.configService);
+    return this.respond(res, result);
   }
 
   @Post('2fa/email')
@@ -155,14 +163,15 @@ export class AuthController {
     @Req() req: ExpressRequest,
     @Res({ passthrough: true }) res: Response,
   ) {
-    return this.respond(
-      res,
-      await this.authService.confirmMfaEnrolment(
-        dto.mfaToken,
-        dto.code,
-        requestMeta(req),
-      ),
+    const pending = readPendingTdmp(req, this.configService);
+    const result = await this.authService.confirmMfaEnrolment(
+      dto.mfaToken,
+      dto.code,
+      requestMeta(req),
+      pending,
     );
+    if (pending) clearPendingTdmp(res, this.configService);
+    return this.respond(res, result);
   }
 
   // ── Session cookie ────────────────────────────────────────────────────────
@@ -270,7 +279,6 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Start authenticator set-up (QR code + key)' })
   setupMfa(@Request() req: AuthedRequest) {
-    this.authService.assertLocalAccount(req.user);
     return this.authService.setupMfa(req.user.id);
   }
 

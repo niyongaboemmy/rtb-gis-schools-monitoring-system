@@ -85,9 +85,10 @@ export class EventsGateway
       const loaded = await this.authService.validateUser(payload.sub);
       // Embed sessions only reach rooms inside the link's scope; a partner
       // account without an embed claim is refused.
+      // A TDMP user still waiting for access gets no live updates either.
       const user = payload.emb
         ? applyEmbedClaims(loaded, payload.emb)
-        : loaded.authSource === 'partner'
+        : loaded.authSource === 'partner' || loaded.accessPending
           ? null
           : loaded;
       if (!user) return null;

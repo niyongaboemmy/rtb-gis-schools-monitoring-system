@@ -43,13 +43,18 @@ export function TdmpSsoEntry() {
         window.location.assign(tdmpStartUrl(school ? { school } : {}));
         return;
       }
-      if (!school) return navigate("/", { replace: true });
+      // No school link, or an account still waiting for access (the app then
+      // shows the waiting page): straight in.
+      if (!school || useAuthStore.getState().user?.accessPending) return navigate("/", { replace: true });
       try {
         const { data } = await api.get<{ id: string }>(`/tdmp/schools/resolve/${encodeURIComponent(school)}`);
         navigate(`/schools/${data.id}`, { replace: true });
       } catch (err) {
-        const status = (err as { response?: { status?: number } })?.response?.status;
-        if (status === 404) toast.warning(SCHOOL_NOT_FOUND);
+        const res = (err as { response?: { status?: number; data?: { code?: string } } })?.response;
+        const status = res?.status;
+        if (res?.data?.code === "ACCESS_PENDING") {
+          /* the waiting page explains it */
+        } else if (status === 404) toast.warning(SCHOOL_NOT_FOUND);
         else if (status === 403) toast.warning("This school is outside your access area.");
         else toast.error("Could not open that school. Please try again.");
         navigate("/", { replace: true });

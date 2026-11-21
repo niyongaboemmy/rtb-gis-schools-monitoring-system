@@ -64,6 +64,40 @@ describe('validateEnv', () => {
   });
 });
 
+describe('validateEnv – TDMP sign-in', () => {
+  const dev = { JWT_SECRET: 'dev', JWT_REFRESH_SECRET: 'dev2' };
+
+  it('needs the TDMP client for AUTH_MODE both / tdmp', () => {
+    expect(() => validateEnv({ ...dev, AUTH_MODE: 'both' })).toThrow(
+      /TDMP_OAUTH_CLIENT_ID is required/,
+    );
+    expect(() =>
+      validateEnv({
+        ...dev,
+        AUTH_MODE: 'tdmp',
+        TDMP_OAUTH_CLIENT_ID: 'id',
+        TDMP_OAUTH_CLIENT_SECRET: 'secret',
+      }),
+    ).not.toThrow();
+  });
+
+  it('refuses unknown access sources and bad session lengths', () => {
+    expect(() => validateEnv({ ...dev, TDMP_ACCESS_SOURCE: 'roles' })).toThrow(
+      /TDMP_ACCESS_SOURCE must be local or tdmp/,
+    );
+    expect(() => validateEnv({ ...dev, TDMP_SESSION_MAX_HOURS: '0' })).toThrow(
+      /TDMP_SESSION_MAX_HOURS/,
+    );
+    expect(() =>
+      validateEnv({
+        ...dev,
+        TDMP_ACCESS_SOURCE: 'tdmp',
+        TDMP_SESSION_MAX_HOURS: '12',
+      }),
+    ).not.toThrow();
+  });
+});
+
 describe('requireSecret', () => {
   it('returns the trimmed value or throws', () => {
     expect(requireSecret(() => ' s ', 'JWT_SECRET')).toBe('s');

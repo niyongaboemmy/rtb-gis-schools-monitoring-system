@@ -132,7 +132,7 @@ describe("TDMP integration dashboard", () => {
     renderPage();
     const h = await screen.findByRole("region", { name: "TDMP integration" });
     // connect, preview, first sync done · link, locate, automate open
-    expect(await within(h).findByRole("button", { name: /Setup: 3\/6/ })).toBeInTheDocument();
+    expect(await within(h).findByRole("button", { name: /Setup: 3\/7/ })).toBeInTheDocument();
     expect(within(h).getByRole("button", { name: /Data coverage: \d+%/ })).toBeInTheDocument();
     expect(within(h).getByText("374 / 375")).toBeInTheDocument();
     expect(within(h).getByText("Paused")).toBeInTheDocument();
@@ -180,7 +180,7 @@ describe("TDMP integration dashboard", () => {
     patch.mockResolvedValue({ data: {} });
     renderPage();
     const stepper = await screen.findByRole("region", { name: "Setup progress" });
-    fireEvent.click(within(stepper).getByRole("button", { name: /Step 6: Turn on automatic sync/ }));
+    fireEvent.click(within(stepper).getByRole("button", { name: /Step 7: Turn on automatic sync/ }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/Checks TDMP every hour/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Turn on" }));

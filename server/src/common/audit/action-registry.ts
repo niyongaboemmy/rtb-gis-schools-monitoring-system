@@ -175,6 +175,13 @@ export const AUDIT_ACTION_REGISTRY: Record<string, AuditSpec> = {
     subject: { response: 'id' },
   },
   'UsersController.update': { action: 'user.update', ...USER },
+  'UsersController.createTdmpUser': {
+    action: 'user.tdmp_preregister',
+    target: 'user',
+    idFromResponse: 'id',
+    labelFrom: ['email'],
+    subject: { response: 'id' },
+  },
   'UsersController.deactivate': { action: 'user.deactivate', ...USER },
   'UsersController.uploadUsers': { action: 'user.bulk_create', target: 'user' },
   'UsersController.createBulkJson': {
@@ -341,6 +348,7 @@ export const AUDIT_SKIP_HANDLERS = new Set<string>([
   // TDMP sign-in records auth.tdmp_login / auth.tdmp_login_failed itself.
   'TdmpAuthController.start',
   'TdmpAuthController.callback',
+  'TdmpAuthController.mfa',
   // Records partner.embed_session itself (with partner, view and scope).
   'EmbedController.openSession',
 ]);

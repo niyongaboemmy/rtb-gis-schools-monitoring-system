@@ -64,3 +64,36 @@ export class CreateUserDto {
   @MaxLength(150)
   department?: string;
 }
+
+/**
+ * An expected TDMP user: they get this role and area the first time they
+ * sign in with TDMP using this email. No password — TDMP signs them in.
+ */
+export class CreateTdmpUserDto {
+  @ApiProperty()
+  @IsEmail()
+  @MaxLength(255)
+  email: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  firstName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  lastName?: string;
+
+  @ApiProperty()
+  @IsUUID()
+  roleId: string;
+
+  @ApiPropertyOptional({ type: UserLocationDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UserLocationDto)
+  location?: UserLocationDto;
+}

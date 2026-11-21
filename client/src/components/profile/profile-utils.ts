@@ -103,8 +103,8 @@ export function setupChecklist(user: User | null | undefined): ChecklistItem[] {
       done: !!user?.department?.trim(),
       action: "department",
     },
-    // TDMP accounts set up 2FA in TDMP, not here.
-    ...(user?.authSource === "tdmp"
+    // TDMP accounts: our 2FA only when their role requires it.
+    ...(user?.authSource === "tdmp" && !user?.mfaRequired
       ? []
       : [
           {

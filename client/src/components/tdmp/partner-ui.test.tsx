@@ -50,7 +50,7 @@ describe("RequestsGuide", () => {
     fireEvent.click(screen.getByRole("button", { name: /OAuth client for RTB 3D GIS/ }));
     expect(await screen.findByRole("heading", { name: "OAuth client for RTB 3D GIS" })).toBeInTheDocument();
     // The previous panel may still be animating out.
-    expect(screen.getAllByLabelText("Example").some((el) => /redirectUris/.test(el.textContent ?? ""))).toBe(true);
+    expect(screen.getAllByLabelText("Example").some((el) => /Launch URL/.test(el.textContent ?? ""))).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     const list = screen.getByRole("list", { name: "Requests" });

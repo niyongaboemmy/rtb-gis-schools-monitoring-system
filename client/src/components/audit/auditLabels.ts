@@ -40,6 +40,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   // Users & access
   "user.create": "Created user",
   "user.update": "Updated user",
+  "user.tdmp_preregister": "Added an expected TDMP user",
+  "user.access_granted": "Gave access",
   "user.deactivate": "Deactivated user",
   "user.bulk_create": "Bulk-imported users",
   "user.profile_update": "Updated own profile",
@@ -92,6 +94,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "auth.tdmp_login": "Signed in with TDMP",
   "auth.tdmp_login_failed": "TDMP sign-in failed",
   "auth.tdmp_session_ended": "Session ended by TDMP",
+  "auth.tdmp_access_requested": "Asked for access via TDMP",
 
   // TDMP integration
   "tdmp.sync": "Ran TDMP school sync",

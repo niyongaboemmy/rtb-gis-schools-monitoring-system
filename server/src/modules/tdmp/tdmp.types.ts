@@ -67,7 +67,20 @@ export interface TdmpUserInfo {
   email?: string;
   email_verified?: boolean;
   name?: string;
+  given_name?: string;
+  family_name?: string;
   preferred_username?: string;
+  updated_at?: number;
+}
+
+/** A key from TDMP's JWKS (`/oauth/.well-known/jwks.json`). */
+export interface TdmpJwk {
+  kty: string;
+  kid?: string;
+  alg?: string;
+  use?: string;
+  n?: string;
+  e?: string;
 }
 
 /** `data` of GET /auth/me/access-scope. */

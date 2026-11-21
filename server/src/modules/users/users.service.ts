@@ -24,7 +24,7 @@ import {
   checkPasswordPolicy,
   describePasswordFailures,
 } from '../../common/security/password-policy';
-import { CreateUserDto } from './dto/create-user.dto';
+import { CreateTdmpUserDto, CreateUserDto } from './dto/create-user.dto';
 import { UpdateProfileDto, UpdateUserDto } from './dto/update-user.dto';
 
 /** Fields an admin edit is allowed to change, for the audit diff. */
@@ -77,8 +77,57 @@ export class UsersService {
         'totpEnabled',
         'authSource',
         'tdmpUserId',
+        'accessPending',
       ],
     });
+  }
+
+  /**
+   * Pre-registers someone who will sign in with TDMP: on their first TDMP
+   * sign-in with this (verified) email they get this role and area instead
+   * of waiting for access. Works in every AUTH_MODE; the account has no
+   * usable password (password sign-in and reset refuse TDMP accounts).
+   */
+  async createTdmpUser(
+    dto: CreateTdmpUserDto,
+    actor?: AuditActor,
+    meta: RequestMeta = {},
+  ) {
+    const email = dto.email.trim().toLowerCase();
+    const existing = await this.userRepository.findOne({ where: { email } });
+    if (existing)
+      throw new ConflictException(`User with email ${email} already exists`);
+    const role = await this.roleRepository.findOne({
+      where: { id: dto.roleId },
+    });
+    if (!role) throw new NotFoundException('Role not found');
+
+    const saved = await this.userRepository.save(
+      this.userRepository.create({
+        email,
+        firstName: dto.firstName?.trim() || email.split('@')[0],
+        lastName: dto.lastName?.trim() ?? '',
+        password: this.randomPassword(),
+        role,
+        location: dto.location ?? null,
+        authSource: 'tdmp',
+        tdmpUserId: null,
+        accessPending: false,
+        mustChangePassword: false,
+        isActive: true,
+      } as Partial<User>),
+    );
+    this.auditService.record({
+      action: 'user.tdmp_preregister',
+      actor: actor ?? null,
+      targetType: 'user',
+      targetId: saved.id,
+      targetLabel: saved.email,
+      subjectUserId: saved.id,
+      meta: { roleId: role.id, role: role.name },
+      request: meta,
+    });
+    return this.authService.publicUser(saved);
   }
 
   async findOne(id: string) {
@@ -146,19 +195,43 @@ export class UsersService {
     meta: RequestMeta = {},
   ) {
     const user = await this.findOne(id);
-    // Name, email, role and location of a TDMP user are refreshed from TDMP
-    // at every sign-in; only switching the account off is local.
+    // A TDMP user's name and email follow TDMP at every sign-in. Role and
+    // area are set here, unless TDMP is their source (TDMP_ACCESS_SOURCE).
     if (user.authSource === 'tdmp') {
+      const owned = ['firstName', 'lastName', 'email'];
+      if (this.tdmpConfig.accessSource === 'tdmp')
+        owned.push('roleId', 'location');
+      const current = user as unknown as Record<string, unknown>;
       const edited = Object.entries(dto)
-        .filter(([k, v]) => v !== undefined && k !== 'isActive')
+        .filter(
+          ([k, v]) =>
+            owned.includes(k) &&
+            v !== undefined &&
+            !(k === 'email'
+              ? String(v).trim().toLowerCase() === user.email
+              : k === 'roleId'
+                ? v === user.role?.id
+                : k === 'location'
+                  ? false
+                  : v === current[k]),
+        )
         .map(([k]) => k);
       if (edited.length)
         throw tdmpManaged(
-          `Managed in TDMP: ${edited.join(', ')}. Only "active" can be changed here.`,
+          `Managed in TDMP: ${edited.join(', ')}. Change it in TDMP.`,
         );
     }
     const changes: Record<string, [unknown, unknown]> = {};
     const { roleId, email, ...rest } = dto;
+    // Giving a waiting TDMP user a role is what lets them in. Without a new
+    // area they take the role's own reach, not the waiting placeholder.
+    const grantsAccess = user.accessPending && !!roleId;
+    if (grantsAccess) {
+      changes.accessPending = [true, false];
+      user.accessPending = false;
+      if (rest.location === undefined)
+        user.location = null as unknown as User['location'];
+    }
 
     if (email !== undefined) {
       const normalised = email.trim().toLowerCase();
@@ -197,7 +270,8 @@ export class UsersService {
     const saved = await this.userRepository.save(user);
 
     // Deactivation or a role change takes effect on every device now.
-    if (rest.isActive === false || changes.role)
+    // (Granting a waiting user access takes nothing away: keep their session.)
+    if (rest.isActive === false || (changes.role && !grantsAccess))
       await this.sessionsService.revokeAll(
         id,
         rest.isActive === false ? 'deactivated' : 'role_change',
@@ -205,7 +279,11 @@ export class UsersService {
 
     if (Object.keys(changes).length)
       this.auditService.record({
-        action: changes.role ? 'user.role_change' : 'user.update',
+        action: grantsAccess
+          ? 'user.access_granted'
+          : changes.role
+            ? 'user.role_change'
+            : 'user.update',
         actor: actor ?? null,
         targetType: 'user',
         targetId: id,
@@ -398,7 +476,7 @@ export class UsersService {
   }
 
   async resetMfa(id: string, actor: AuditActor, meta: RequestMeta = {}) {
-    this.authService.assertLocalAccount(await this.findOne(id));
+    // TDMP users use our 2FA too (privileged roles), so an admin may reset it.
     return this.authService.adminResetMfa(id, actor, meta);
   }
 

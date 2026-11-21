@@ -1,6 +1,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { EMBED_EXPIRED_EVENT, isEmbedLinkMode } from "./embed";
 import { LEGACY_REFRESH_KEY, useAuthStore, type User } from "../store/authStore";
+import { returnToTdmpIfSessionLost } from "./tdmp";
 
 export const API_BASE = import.meta.env.VITE_API_URL || "/api/v1";
 
@@ -30,7 +31,8 @@ export const fileApi = axios.create({
 
 /**
  * Header the server requires on the cookie-authenticated routes (refresh,
- * logout) as CSRF protection; a cross-site page cannot add it.
+ * logout, the TDMP sign-in second factor) as CSRF protection; a cross-site
+ * page cannot add it.
  */
 export const CSRF_HEADERS = { "X-Requested-With": "XMLHttpRequest" } as const;
 
@@ -80,6 +82,37 @@ export function refreshSession(): Promise<string> {
   return refreshInFlight;
 }
 
+/**
+ * The session could not be renewed. A TDMP user goes straight back through
+ * TDMP sign-in (TDMP usually still knows them); everyone else is signed out
+ * locally. Resolves true when the browser is on its way to TDMP.
+ */
+let leavingForTdmp = false;
+
+async function endLostSession(): Promise<boolean> {
+  // Already on the way to TDMP: later failures must not redirect to /login.
+  if (leavingForTdmp) return true;
+  // Read before clearing: the remembered profile says who this was.
+  const previous = useAuthStore.getState().user;
+  const path = window.location.pathname + window.location.search;
+  let sentToTdmp = false;
+  try {
+    sentToTdmp = await returnToTdmpIfSessionLost(previous, path, { embed: isEmbedLinkMode() });
+  } catch {
+    /* fall back to the login page */
+  }
+  if (sentToTdmp) {
+    leavingForTdmp = true;
+    // Keep the splash up while the browser leaves for TDMP: dropping the
+    // profile now would flash the login page first. /sso/tdmp/complete
+    // replaces it with whoever signs in.
+    useAuthStore.setState({ token: null, status: "restoring" });
+  } else {
+    useAuthStore.getState().clearSession();
+  }
+  return sentToTdmp;
+}
+
 let restoreInFlight: Promise<void> | null = null;
 
 /**
@@ -88,17 +121,22 @@ let restoreInFlight: Promise<void> | null = null;
  */
 export function restoreSession(): Promise<void> {
   restoreInFlight ??= refreshSession()
-    .then(() => undefined)
-    .catch(() => useAuthStore.getState().clearSession())
+    .then(() => false)
+    .catch(() => endLostSession())
+    .then((sentToTdmp) => {
+      if (!sentToTdmp) useAuthStore.getState().setStatus("ready");
+    })
     .finally(() => {
-      useAuthStore.getState().setStatus("ready");
       restoreInFlight = null;
     });
   return restoreInFlight;
 }
 
 /** Routes that must never trigger the refresh-and-retry logic. */
-const NO_REFRESH = /\/auth\/(login|refresh|logout|providers|google$|2fa\/(verify|email|enroll)|forgot-password|verify-otp|reset-password)/;
+const NO_REFRESH = /\/auth\/(login|refresh|logout|providers|google$|2fa\/(verify|email|enroll)|tdmp\/mfa|forgot-password|verify-otp|reset-password)/;
+
+/** Cookie-authenticated routes that need the CSRF header. */
+const CSRF_ROUTES = /\/auth\/(refresh|logout|tdmp\/mfa)/;
 
 api.interceptors.request.use(
   async (config) => {
@@ -112,7 +150,7 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    if (/\/auth\/(refresh|logout)/.test(config.url ?? "")) {
+    if (CSRF_ROUTES.test(config.url ?? "")) {
       Object.assign(config.headers, CSRF_HEADERS);
     }
     return config;
@@ -146,6 +184,13 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    // A TDMP account no administrator has given access to yet: the app shows
+    // the waiting page (AuthGate) instead of failing pages.
+    if (error.response?.status === 403 && error.response.data?.code === "ACCESS_PENDING") {
+      useAuthStore.getState().updateUser({ accessPending: true });
+      return Promise.reject(error);
+    }
+
     // Skip refresh on auth routes to prevent loops during failed sign-in.
     if (NO_REFRESH.test(originalRequest.url ?? "")) {
       return Promise.reject(error);
@@ -164,8 +209,8 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return api(originalRequest);
       } catch (refreshError) {
-        useAuthStore.getState().clearSession();
-        if (!window.location.pathname.startsWith("/login")) {
+        const sentToTdmp = await endLostSession();
+        if (!sentToTdmp && !window.location.pathname.startsWith("/login")) {
           window.location.href = "/login";
         }
         return Promise.reject(refreshError);
