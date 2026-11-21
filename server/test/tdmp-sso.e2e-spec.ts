@@ -164,7 +164,9 @@ async function fakeTdmp(url: URL, init?: RequestInit): Promise<Response> {
       return json(401, { error: 'invalid_client' });
     if (!/x-www-form-urlencoded/.test(headers.get('content-type') ?? ''))
       return json(400, { error: 'unsupported_grant_type' });
-    const form = new URLSearchParams(String(init?.body ?? ''));
+    const form = new URLSearchParams(
+      typeof init?.body === 'string' ? init.body : '',
+    );
 
     if (path === '/oauth/revoke') {
       const t = refreshTokens.get(form.get('token') ?? '');
@@ -280,7 +282,7 @@ async function signInWithTdmp(
     .set('Cookie', cookieHeader(jar));
   expect(callback.status).toBe(302);
   cookiesFrom(callback, jar);
-  return { location: callback.headers.location as string, jar };
+  return { location: callback.headers.location, jar };
 }
 
 async function refresh(jar: Map<string, string>) {
@@ -432,7 +434,10 @@ describe('TDMP sign-in (SSO guide)', () => {
         `SELECT 1 FROM audit_logs WHERE action = 'auth.tdmp_access_requested' AND target_label = $1`,
         [aline.email],
       );
-      if (!audit.length) await new Promise((r) => setTimeout(r, 100));
+      if (!audit.length)
+        await new Promise<void>((resolve) => {
+          setTimeout(() => resolve(), 100);
+        });
     }
     expect(audit.length).toBe(1);
 
@@ -588,11 +593,7 @@ describe('TDMP sign-in (SSO guide)', () => {
     expect(jar.has('rtb_tdmp_pending')).toBe(true);
 
     // Without the pending cookie there is nothing to continue.
-    await http()
-      .post(`${PREFIX}/auth/tdmp/mfa`)
-      .set(CSRF)
-      .send({})
-      .expect(401);
+    await http().post(`${PREFIX}/auth/tdmp/mfa`).set(CSRF).send({}).expect(401);
 
     const step = await http()
       .post(`${PREFIX}/auth/tdmp/mfa`)
@@ -670,7 +671,9 @@ describe('TDMP sign-in (SSO guide)', () => {
       .set(CSRF)
       .set('Cookie', cookieHeader(jar))
       .expect(200);
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise<void>((resolve) => {
+      setTimeout(() => resolve(), 200);
+    });
     expect(tdmpCalls.filter((c) => c === 'POST /oauth/revoke').length).toBe(
       before + 1,
     );
