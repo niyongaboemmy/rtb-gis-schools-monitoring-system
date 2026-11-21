@@ -4,7 +4,7 @@ import { api, refreshSession } from "../lib/api";
 import { useAuthStore } from "../store/authStore";
 import { useToast } from "../components/ui/toast";
 import { SessionSplash } from "../components/auth/AuthGate";
-import { safeNextPath, tdmpStartUrl } from "../lib/tdmp";
+import { fetchAuthProviders, safeNextPath, tdmpStartUrl } from "../lib/tdmp";
 
 const SCHOOL_NOT_FOUND = "That school is not in RTB GIS yet.";
 
@@ -40,6 +40,13 @@ export function TdmpSsoEntry() {
     started.current = true;
     void (async () => {
       if (!(await ensureSession())) {
+        // TDMP sign-in off (AUTH_MODE=local): the normal sign-in page, then
+        // back here to open the school.
+        if (!(await fetchAuthProviders()).tdmp) {
+          const back = school ? `/sso/tdmp?school=${encodeURIComponent(school)}` : "/";
+          navigate(`/login?next=${encodeURIComponent(back)}`, { replace: true });
+          return;
+        }
         window.location.assign(tdmpStartUrl(school ? { school } : {}));
         return;
       }

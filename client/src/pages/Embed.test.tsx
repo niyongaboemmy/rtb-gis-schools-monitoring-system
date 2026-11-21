@@ -163,6 +163,26 @@ describe("a school opened from the embedded national map", () => {
     expect(screen.getByText("open: /embed/schools/s9/map-3d")).toBeInTheDocument();
   });
 
+  it("when the link allows no school view, a school opens in RTB GIS in a new tab", async () => {
+    const { useSchoolLink } = await import("../lib/embed-view");
+    signedIn({ view: "national-map" });
+    function Links() {
+      const t = useSchoolLink().open({ id: "s9", code: "TSS-SOU-001" }, "dashboard");
+      const none = useSchoolLink().open({ id: "s9" }, "dashboard");
+      return (
+        <>
+          <span>to: {t?.to}</span>
+          <span>new tab: {String(t?.newTab)}</span>
+          <span>no code: {none === null ? "none" : "link"}</span>
+        </>
+      );
+    }
+    at("/embed/map", <EmbedGate view="national-map" need={Permission.VIEW_MAP}><Links /></EmbedGate>);
+    expect(await screen.findByText(`to: ${window.location.origin}/sso/tdmp?school=TSS-SOU-001`)).toBeInTheDocument();
+    expect(screen.getByText("new tab: true")).toBeInTheDocument();
+    expect(screen.getByText("no code: none")).toBeInTheDocument();
+  });
+
   it("a school view opened from its own link has no back bar", async () => {
     signedIn({ view: "school-map-2d" });
     at("/embed/schools/s9/map-2d", <EmbedGate view="school-map-2d" need={Permission.SCHOOL_VIEW_2D3D_MAP}><div>the map</div></EmbedGate>);
