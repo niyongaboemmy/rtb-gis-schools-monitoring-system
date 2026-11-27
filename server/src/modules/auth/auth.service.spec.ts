@@ -1603,9 +1603,30 @@ describe('AuthService – TDMP sign-in', () => {
     );
   });
 
-  it('refuses password-only flows for TDMP accounts', async () => {
-    const { service } = await makeService();
-    expect(() => service.assertLocalAccount(tdmpUser())).toThrow();
-    expect(() => service.assertLocalAccount(buildUser())).not.toThrow();
+  it('lets a TDMP-linked account keep password / Google unless AUTH_MODE=tdmp', async () => {
+    const both = await makeService({}, { AUTH_MODE: 'both' });
+    expect(() => both.service.assertLocalAccount(tdmpUser())).not.toThrow();
+    expect(() => both.service.assertLocalAccount(buildUser())).not.toThrow();
+
+    const tdmpOnly = await makeService({}, { AUTH_MODE: 'tdmp' });
+    expect(() => tdmpOnly.service.assertLocalAccount(tdmpUser())).toThrow();
+  });
+
+  it('signs a TDMP-linked account in with its password (then 2FA as usual)', async () => {
+    const user = tdmpUser({
+      validatePassword: jest.fn().mockResolvedValue(true),
+    });
+    const { service, mfaService, jwtService } = await makeService(
+      { findOne: jest.fn().mockResolvedValue(user) },
+      { AUTH_MODE: 'both' },
+    );
+    mfaService.isRequiredFor.mockReturnValue(true);
+    jwtService.signAsync.mockResolvedValueOnce('enrol-token');
+    await expect(
+      service.login({ email: user.email, password: 'pw' }),
+    ).resolves.toEqual({
+      mfaEnrollmentRequired: true,
+      mfaToken: 'enrol-token',
+    });
   });
 });
