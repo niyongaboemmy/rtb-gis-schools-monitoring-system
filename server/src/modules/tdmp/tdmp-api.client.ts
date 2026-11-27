@@ -45,10 +45,26 @@ export interface TdmpEndpointCheck {
 export class TdmpApiClient {
   private readonly logger = new Logger(TdmpApiClient.name);
 
+  /** Another TDMP base for this client (sign-in on tdmptest); see forSignIn. */
+  private baseOverride?: string;
+  private sendApiKey = true;
+
   constructor(private readonly config: TdmpConfig) {}
 
+  /**
+   * The same client for TDMP sign-in at `base` (TDMP_OAUTH_BASE_URL). It
+   * never sends our partner API key: sign-in uses the user's token or our
+   * client credentials, and the key must not reach another environment.
+   */
+  forSignIn(base?: string): TdmpApiClient {
+    const c = new TdmpApiClient(this.config);
+    c.baseOverride = base || undefined;
+    c.sendApiKey = false;
+    return c;
+  }
+
   url(path: string, query?: Query): string {
-    const url = new URL(`${this.config.baseUrl}${path}`);
+    const url = new URL(`${this.baseOverride ?? this.config.baseUrl}${path}`);
     for (const [k, v] of Object.entries(query ?? {}))
       if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
     return url.toString();
@@ -58,7 +74,9 @@ export class TdmpApiClient {
   async get<T>(path: string, query?: Query, bearer?: string): Promise<T> {
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (bearer) headers.Authorization = `Bearer ${bearer}`;
-    else if (this.config.apiKeyHeader === 'x-api-key')
+    else if (!this.sendApiKey) {
+      /* sign-in client: no partner key */
+    } else if (this.config.apiKeyHeader === 'x-api-key')
       headers['X-API-Key'] = this.config.apiKey;
     else headers.Authorization = `ApiKey ${this.config.apiKey}`;
     return this.request<T>(path, { method: 'GET', headers }, query);

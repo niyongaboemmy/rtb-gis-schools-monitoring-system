@@ -402,15 +402,27 @@ describe('Embedded views', () => {
 
     const natMap = await as('national-map');
     await http().get(`${PREFIX}/analytics/overview`).set(natMap).expect(200);
-    await http().get(`${PREFIX}/schools/${home.id}`).set(natMap).expect(403);
+    // A school opened from the map: the key's school views (drill) only.
+    await http().get(`${PREFIX}/schools/${home.id}`).set(natMap).expect(200);
+    expect(
+      (
+        await http()
+          .get(`${PREFIX}/schools/${home.id}/site-features/export.csv`)
+          .set(natMap)
+          .expect(403)
+      ).body.code,
+    ).toBe('EMBED_VIEW_DENIED');
 
     const natDash = await as('national-dashboard');
     await http().get(`${PREFIX}/analytics/overview`).set(natDash).expect(200);
     await http().get(`${PREFIX}/analytics/hierarchy`).set(natDash).expect(200);
+    // A school opened from the dashboard may show its overview figures...
     await http()
       .get(`${PREFIX}/analytics/schools/${home.id}/metrics`)
       .set(natDash)
-      .expect(403);
+      .expect(200);
+    // ...but nothing outside the key's views.
+    await http().get(`${PREFIX}/analytics/export`).set(natDash).expect(403);
   });
 
   it('the national map link can be limited to one district', async () => {
