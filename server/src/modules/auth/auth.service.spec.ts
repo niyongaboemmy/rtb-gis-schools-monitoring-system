@@ -776,7 +776,10 @@ describe('AuthService.loginWithGoogle – hardening', () => {
   it('refuses self-registration outside GOOGLE_ALLOWED_DOMAINS', async () => {
     const { service, userRepo, auditService } = await makeService(
       {},
-      { GOOGLE_ALLOWED_DOMAINS: 'rtb.gov.rw' },
+      {
+        GOOGLE_ALLOWED_DOMAINS: 'rtb.gov.rw',
+        GOOGLE_ALLOW_SELF_REGISTER: 'true',
+      },
     );
 
     await expect(service.loginWithGoogle({ idToken: 't' })).rejects.toThrow(
@@ -799,7 +802,10 @@ describe('AuthService.loginWithGoogle – hardening', () => {
     });
     const { service, userRepo } = await makeService(
       {},
-      { GOOGLE_ALLOWED_DOMAINS: 'rtb.gov.rw, other.rw' },
+      {
+        GOOGLE_ALLOWED_DOMAINS: 'rtb.gov.rw, other.rw',
+        GOOGLE_ALLOW_SELF_REGISTER: 'true',
+      },
     );
 
     await expect(
@@ -808,7 +814,7 @@ describe('AuthService.loginWithGoogle – hardening', () => {
     expect(userRepo.save).toHaveBeenCalled();
   });
 
-  it('refuses any self-registration when GOOGLE_ALLOW_SELF_REGISTER=false', async () => {
+  it('refuses any self-registration when GOOGLE_ALLOW_SELF_REGISTER=false (or unset)', async () => {
     const { service } = await makeService(
       {},
       { GOOGLE_ALLOW_SELF_REGISTER: 'false' },
@@ -945,12 +951,34 @@ describe('AuthService.loginWithGoogle', () => {
     });
   });
 
-  it('self-registers an unknown address with no access, waiting for an administrator', async () => {
-    const { service, userRepo, roleRepo, auditService } = await makeService({
+  it('refuses an unknown address by default: no account is created', async () => {
+    const { service, userRepo, auditService } = await makeService({
       findOne: jest.fn().mockResolvedValue(null),
-      create: jest.fn((dto: Partial<User>) => ({ id: 'new-id', ...dto })),
-      save: jest.fn((entity: User) => Promise.resolve(entity)),
     });
+
+    await expect(
+      service.loginWithGoogle({ idToken: 'id-token' }),
+    ).rejects.toThrow(/No account exists for this Google address/);
+    expect(userRepo.create).not.toHaveBeenCalled();
+    expect(userRepo.save).not.toHaveBeenCalled();
+    expect(auditService.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'auth.google_register_denied',
+        outcome: 'denied',
+        meta: { email: 'alice@rtb.gov.rw', reason: 'self_register_disabled' },
+      }),
+    );
+  });
+
+  it('with GOOGLE_ALLOW_SELF_REGISTER=true, self-registers with no access, waiting for an administrator', async () => {
+    const { service, userRepo, roleRepo, auditService } = await makeService(
+      {
+        findOne: jest.fn().mockResolvedValue(null),
+        create: jest.fn((dto: Partial<User>) => ({ id: 'new-id', ...dto })),
+        save: jest.fn((entity: User) => Promise.resolve(entity)),
+      },
+      { GOOGLE_ALLOW_SELF_REGISTER: 'true' },
+    );
 
     const result = (await service.loginWithGoogle({
       idToken: 'id-token',
@@ -988,7 +1016,10 @@ describe('AuthService.loginWithGoogle', () => {
         create: jest.fn((dto: Partial<User>) => ({ id: 'new-id', ...dto })),
         save: jest.fn((entity: User) => Promise.resolve(entity)),
       },
-      { GOOGLE_DEFAULT_ROLE: 'super_admin' },
+      {
+        GOOGLE_DEFAULT_ROLE: 'super_admin',
+        GOOGLE_ALLOW_SELF_REGISTER: 'true',
+      },
     );
     roleRepo.findOne.mockResolvedValue({
       id: 'r-super',
