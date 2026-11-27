@@ -138,7 +138,7 @@ export class TdmpAuthController {
   }
 
   /** New flow cookie (state, nonce, PKCE verifier) and off to TDMP. */
-  private redirectToTdmp(
+  private async redirectToTdmp(
     res: Response,
     opts: { next: string; school?: string; silent: boolean },
   ) {
@@ -164,15 +164,18 @@ export class TdmpAuthController {
         maxAge: FLOW_TTL_MS,
       },
     );
-    return res.redirect(
-      302,
-      this.oauth.authorizeUrl({
-        state: flow.state,
-        challenge,
-        nonce: flow.nonce,
-        prompt: opts.silent ? 'none' : undefined,
-      }),
-    );
+    const authorize = this.oauth.authorizeUrl({
+      state: flow.state,
+      challenge,
+      nonce: flow.nonce,
+      prompt: opts.silent ? 'none' : undefined,
+    });
+    // Interactive sign-in only: a silent attempt must not show a page.
+    const target =
+      this.tdmp.signinOrigin && !opts.silent
+        ? await this.oauth.signinUrl(authorize, this.tdmp.signinOrigin)
+        : authorize;
+    return res.redirect(302, target);
   }
 
   @Get('callback')

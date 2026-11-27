@@ -11,6 +11,10 @@ export const CLIENT_SECRET = 'e2e-client-secret';
 process.env.SCOPE_ENFORCEMENT = process.env.SCOPE_ENFORCEMENT ?? 'true';
 process.env.AUTH_MODE = 'both';
 process.env.TDMP_BASE_URL = TDMP;
+// Pin the sign-in base too, so a developer's TDMP_OAUTH_BASE_URL (tdmptest)
+// in server/.env cannot send these tests elsewhere; the workaround stays off.
+process.env.TDMP_OAUTH_BASE_URL = TDMP;
+process.env.TDMP_SIGNIN_ORIGIN = '';
 process.env.TDMP_ISSUER = TDMP;
 process.env.TDMP_OAUTH_CLIENT_ID = CLIENT_ID;
 process.env.TDMP_OAUTH_CLIENT_SECRET = CLIENT_SECRET;

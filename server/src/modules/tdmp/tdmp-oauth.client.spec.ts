@@ -271,3 +271,57 @@ describe('sign-in on another TDMP environment (TDMP_OAUTH_BASE_URL)', () => {
     );
   });
 });
+
+describe('signinUrl (TDMP_SIGNIN_ORIGIN workaround for tdmptest)', () => {
+  const AUTH =
+    'https://tdmptest.rtb.gov.rw/api/v1/oauth/authorize?client_id=x&state=s';
+  const client = new TdmpOAuthClient(
+    { baseUrl: ISSUER, timeoutMs: 1000 } as never,
+    new TdmpApiClient({ baseUrl: ISSUER } as never),
+  );
+  const realFetch = global.fetch;
+  const answer = (status: number, location?: string) => {
+    global.fetch = jest.fn(() =>
+      Promise.resolve(
+        new Response(null, { status, headers: location ? { location } : {} }),
+      ),
+    ) as never;
+  };
+  afterAll(() => {
+    global.fetch = realFetch;
+  });
+
+  it("moves TDMP's sign-in page onto the configured origin, keeping the flow", async () => {
+    answer(302, 'https://tdmp.rtb.gov.rw/signin?flow=1763');
+    await expect(
+      client.signinUrl(AUTH, 'https://tdmptest.rtb.gov.rw'),
+    ).resolves.toBe('https://tdmptest.rtb.gov.rw/signin?flow=1763');
+    expect((global.fetch as jest.Mock).mock.calls[0][1]).toMatchObject({
+      redirect: 'manual',
+    });
+  });
+
+  it('leaves any other answer to the browser (e.g. straight back to us)', async () => {
+    answer(302, 'https://rtb.aerovyntech.com/auth/tdmp/callback?code=c');
+    await expect(
+      client.signinUrl(AUTH, 'https://tdmptest.rtb.gov.rw'),
+    ).resolves.toBe(AUTH);
+    answer(400);
+    await expect(
+      client.signinUrl(AUTH, 'https://tdmptest.rtb.gov.rw'),
+    ).resolves.toBe(AUTH);
+  });
+
+  it('falls back to the authorize URL when TDMP cannot be reached', async () => {
+    global.fetch = jest.fn(() => Promise.reject(new Error('down'))) as never;
+    await expect(
+      client.signinUrl(AUTH, 'https://tdmptest.rtb.gov.rw'),
+    ).resolves.toBe(AUTH);
+  });
+
+  it('does nothing when the workaround is off', async () => {
+    global.fetch = jest.fn() as never;
+    await expect(client.signinUrl(AUTH, '')).resolves.toBe(AUTH);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
