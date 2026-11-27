@@ -195,13 +195,9 @@ export class AuthService {
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
-    // An account taken over by TDMP keeps its old hash; it no longer counts
-    // unless the account is on the break-glass allowlist.
-    if (
-      user.authSource === 'tdmp' &&
-      !this.tdmpConfig.localLoginAllowlist.includes(email)
-    )
-      throw new UnauthorizedException(TDMP_MANAGED);
+    // An account linked to TDMP keeps its own password: "Sign in with TDMP"
+    // is an extra way in, not a replacement. Only AUTH_MODE=tdmp (checked
+    // above, with its break-glass allowlist) turns password sign-in off.
 
     return this.completePrimaryAuth(user, 'password', meta);
   }
@@ -650,9 +646,9 @@ export class AuthService {
         throw new ForbiddenException(
           'This account is deactivated. Contact an administrator to restore access.',
         );
-      // TDMP accounts (including pre-registered and waiting ones) only sign
-      // in through TDMP; Google must not be a way around it.
-      if (user.authSource === 'tdmp' || user.authSource === 'partner')
+      // Partner embed accounts never sign in. TDMP-linked accounts may use
+      // Google like any registered account (AUTH_MODE=tdmp is refused above).
+      if (user.authSource === 'partner')
         throw new ForbiddenException(TDMP_MANAGED);
       if (user.googleUnlinkedAt)
         throw new ForbiddenException(
@@ -801,11 +797,6 @@ export class AuthService {
     const user = await this.userRepository.findOne({
       where: { email: normalised },
     });
-    if (
-      user?.authSource === 'tdmp' &&
-      !this.tdmpConfig.localLoginAllowlist.includes(normalised)
-    )
-      throw new BadRequestException(TDMP_MANAGED);
     if (!user) {
       if (generic) return genericBody;
       throw new NotFoundException(
@@ -1286,9 +1277,15 @@ export class AuthService {
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  /** Passwords and Google links only exist for local accounts. */
-  assertLocalAccount(user: Pick<User, 'authSource'>) {
-    if (user?.authSource === 'tdmp')
+  /**
+   * Passwords and Google links: any registered account, TDMP-linked ones
+   * included, except under AUTH_MODE=tdmp (break-glass allowlist aside).
+   */
+  assertLocalAccount(user: Pick<User, 'authSource' | 'email'>) {
+    if (
+      user?.authSource === 'tdmp' &&
+      !this.tdmpConfig.mayUsePassword(user.email ?? '')
+    )
       throw new BadRequestException(TDMP_MANAGED);
     if (user?.authSource === 'partner')
       throw new BadRequestException('Partner accounts cannot sign in.');
