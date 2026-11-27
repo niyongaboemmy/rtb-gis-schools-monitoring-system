@@ -118,6 +118,30 @@ export class TdmpOAuthClient {
     this.api = api.forSignIn(config.oauthBaseUrl);
   }
 
+  /**
+   * TDMP_SIGNIN_ORIGIN workaround: asks /oauth/authorize for its redirect
+   * (TDMP keeps the flow on its server; no cookie is set) and moves a
+   * `/signin` page onto `origin`. Any other answer, or any error, returns the
+   * authorize URL unchanged, so the browser simply goes there as before.
+   */
+  async signinUrl(authorizeUrl: string, origin: string): Promise<string> {
+    if (!origin) return authorizeUrl;
+    try {
+      const res = await fetch(authorizeUrl, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(this.config.timeoutMs),
+      });
+      const location = res.headers.get('location');
+      if (res.status < 300 || res.status >= 400 || !location)
+        return authorizeUrl;
+      const to = new URL(location, authorizeUrl);
+      if (!to.pathname.startsWith('/signin')) return authorizeUrl;
+      return `${origin}${to.pathname}${to.search}`;
+    } catch {
+      return authorizeUrl;
+    }
+  }
+
   /** `prompt: 'none'` = come straight back if TDMP already has a session. */
   authorizeUrl(p: {
     state: string;

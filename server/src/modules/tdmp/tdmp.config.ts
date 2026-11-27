@@ -86,6 +86,23 @@ export class TdmpConfig {
     return this.str('TDMP_OAUTH_SILENT').toLowerCase() === 'true';
   }
 
+  /**
+   * Workaround (empty = off): tdmptest's /oauth/authorize sends the browser to
+   * the PRODUCTION sign-in page (tdmp.rtb.gov.rw/signin?flow=…). When set
+   * (e.g. https://tdmptest.rtb.gov.rw), our start route asks /oauth/authorize
+   * for that redirect itself and sends the browser to the same sign-in page on
+   * this origin instead. Remove once TDMP fixes their test environment.
+   */
+  get signinOrigin(): string {
+    const raw = this.str('TDMP_SIGNIN_ORIGIN');
+    if (!raw) return '';
+    try {
+      return new URL(raw).origin;
+    } catch {
+      return '';
+    }
+  }
+
   /** Public URL of the web app (where the browser is sent after sign-in). */
   get appPublicUrl(): string {
     const explicit = this.str('APP_PUBLIC_URL');
