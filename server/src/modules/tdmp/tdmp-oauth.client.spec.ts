@@ -204,3 +204,70 @@ describe('TdmpOAuthClient.checkClientCredentials', () => {
     await expect(client().checkClientCredentials()).resolves.toBe('rejected');
   });
 });
+
+describe('sign-in on another TDMP environment (TDMP_OAUTH_BASE_URL)', () => {
+  const TEST = 'https://tdmptest.rtb.gov.rw/api/v1';
+  const base = {
+    baseUrl: ISSUER,
+    clientId: 'rtb-gis',
+    redirectUri: 'https://rtb.aerovyntech.com/auth/tdmp/callback',
+    scopes: 'openid email profile',
+    apiKey: 'rtbgis-prod-key',
+    apiKeyHeader: 'authorization',
+    timeoutMs: 1000,
+  };
+  const p = { state: 's', challenge: 'c', nonce: 'n' };
+  const calls: { url: string; headers: Record<string, string> }[] = [];
+  const realFetch = global.fetch;
+  beforeEach(() => {
+    calls.length = 0;
+    global.fetch = jest.fn((url: string, init?: RequestInit) => {
+      calls.push({
+        url: String(url),
+        headers: (init?.headers ?? {}) as Record<string, string>,
+      });
+      return Promise.resolve(
+        new Response(JSON.stringify({ keys: [], sub: '7' }), { status: 200 }),
+      );
+    }) as never;
+  });
+  afterAll(() => {
+    global.fetch = realFetch;
+  });
+
+  it('sends sign-in to the test environment, data calls stay on production', async () => {
+    const config = { ...base, oauthBaseUrl: TEST };
+    const api = new TdmpApiClient(config as never);
+    const client = new TdmpOAuthClient(config as never, api);
+    expect(client.authorizeUrl(p)).toMatch(
+      new RegExp(`^${TEST}/oauth/authorize\\?`),
+    );
+    await client.userinfo('user-token');
+    expect(calls[0].url).toBe(`${TEST}/oauth/userinfo`);
+    expect(api.url('/schools')).toBe(`${ISSUER}/schools`);
+  });
+
+  it('never sends our partner API key to the sign-in endpoints', async () => {
+    const config = { ...base, oauthBaseUrl: TEST };
+    const client = new TdmpOAuthClient(
+      config as never,
+      new TdmpApiClient(config as never),
+    );
+    await client.userinfo('user-token');
+    await (client as unknown as { keys: () => Promise<unknown> }).keys();
+    for (const c of calls) {
+      expect(JSON.stringify(c.headers)).not.toContain('rtbgis-prod-key');
+    }
+    expect(calls[0].headers.Authorization).toBe('Bearer user-token');
+  });
+
+  it('without it, sign-in uses the data API base as before', () => {
+    const client = new TdmpOAuthClient(
+      base as never,
+      new TdmpApiClient(base as never),
+    );
+    expect(client.authorizeUrl(p)).toMatch(
+      new RegExp(`^${ISSUER}/oauth/authorize\\?`),
+    );
+  });
+});

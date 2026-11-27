@@ -108,10 +108,15 @@ export function checkIdToken(
 export class TdmpOAuthClient {
   private jwks: { keys: TdmpJwk[]; at: number } | null = null;
 
+  /** TDMP's sign-in endpoints (TDMP_OAUTH_BASE_URL, e.g. tdmptest), no API key. */
+  private readonly api: TdmpApiClient;
+
   constructor(
     private readonly config: TdmpConfig,
-    private readonly api: TdmpApiClient,
-  ) {}
+    api: TdmpApiClient,
+  ) {
+    this.api = api.forSignIn(config.oauthBaseUrl);
+  }
 
   /** `prompt: 'none'` = come straight back if TDMP already has a session. */
   authorizeUrl(p: {

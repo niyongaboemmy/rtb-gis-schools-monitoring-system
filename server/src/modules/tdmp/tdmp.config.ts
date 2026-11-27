@@ -39,9 +39,21 @@ export class TdmpConfig {
     );
   }
 
-  /** OIDC issuer; TDMP's discovery document uses the API base URL. */
+  /**
+   * Where "Sign in with TDMP" goes (authorize, token, JWKS, userinfo,
+   * revoke). Defaults to the data API; set it to TDMP's test environment
+   * (tdmptest) to try sign-in while the school sync stays on production.
+   */
+  get oauthBaseUrl(): string {
+    return (this.str('TDMP_OAUTH_BASE_URL') || this.baseUrl).replace(
+      /\/+$/,
+      '',
+    );
+  }
+
+  /** OIDC issuer; TDMP's discovery document uses the sign-in base URL. */
   get issuer(): string {
-    return this.str('TDMP_ISSUER') || this.baseUrl;
+    return this.str('TDMP_ISSUER') || this.oauthBaseUrl;
   }
 
   // ── Login ─────────────────────────────────────────────────────────────────

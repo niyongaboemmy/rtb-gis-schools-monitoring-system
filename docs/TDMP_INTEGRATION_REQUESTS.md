@@ -1,11 +1,17 @@
 # RTB 3D GIS ↔ TDMP: Integration Requests
 
-**From:** RTB 3D GIS backend team · **To:** TDMP technical team · **First sent:** 2026-11-12 · **Updated:** 2026-11-12 (after go-live)
+**From:** RTB 3D GIS backend team · **To:** TDMP technical team · **First sent:** 2026-11-12 · **Updated:** 2026-11-27
 **Context:** RTB 3D GIS monitors TVET school infrastructure. It uses TDMP as the source of truth for school profile, enrolment, teacher totals and (soon) user sign-in. The school sync has been **live in production since 2026-11-12**. The exchange now goes both ways: RTB 3D GIS also **provides** TDMP with embeddable dashboards and maps (see "What RTB GIS provides to TDMP"). This document gives the status and lists what we still need from you.
 
 Both directions are **read-only**: we never write to TDMP, and TDMP's key cannot change RTB GIS data.
 
 **We only ask for data that plans school infrastructure:** how many learners each site serves, in which programmes, against how many seats, so classrooms, workshops, sanitation and dormitories can be sized. We do not ask for learner or teacher records, staff details, contacts or results.
+
+## What changed since the last update
+
+- **Embedded views are in use:** TDMP shows our national map on its School Maps page (R15).
+- **Opening a school from the embedded map (live since 21 Nov):** users can open a school inside the map and switch between its overview, 2D map and 3D model, with a button back to the map. If a key does not allow those school views, the school opens in RTB 3D GIS in a new tab instead. The embedded map itself never leaves the page.
+- **Single sign-on** is deployed on our live site and switched off, waiting only for registration (R6). We ask for the **tdmptest** registration first and test against it; the production registration follows when we go live. The **API key** still needs rotating (R12).
 
 ## Status at a glance
 
@@ -16,16 +22,16 @@ Both directions are **read-only**: we never write to TDMP, and TDMP's key cannot
 | R3 | Extra fields on `/schools` list rows | P2 | ⏳ Waiting |
 | R4 | Data quality on `/schools` | P2 | ⏳ Waiting: details below, including one possible duplicate |
 | R5 | Change feed (`updatedSince` / webhook) | P3 | Optional: our freshness check covers it |
-| R6 | Register RTB 3D GIS for "Sign in with TDMP" (production + test) | P1 | ⏳ Waiting: the only thing single sign-on still needs |
+| R6 | Register RTB 3D GIS for "Sign in with TDMP" on tdmptest now, production at go-live | P1 | ⏳ Waiting: the only thing single sign-on still needs (deployed on our side, switched off until we have the client credentials) |
 | R7 | Role at sign-in | P2 | To agree (guide §12). No longer blocking: roles are set in RTB 3D GIS until then |
 | R8 | Area (province / district / school) at sign-in | P2 | To agree (guide §12). No longer blocking: areas are set in RTB 3D GIS until then |
 | R9 | `amr` claim | P3 | Not provided (guide §6.4); our 2FA stays on for privileged roles |
-| R10 | Test environment and test accounts | P2 | ⏳ Waiting: the guide says a test environment exists; please send test registration details |
+| R10 | Test accounts on tdmptest | P2 | ⏳ Waiting: one per access level, to test sign-in end to end |
 | R17 | Tell connected systems when an account is deactivated | P2 | To agree (guide §12). Until then our TDMP sessions last at most 24 h |
 | R18 | Open a specific school from the TDMP launcher | P3 | To agree (guide §12) |
 | R12 | Rotate the API key; separate keys per environment | P1 | ⏳ Waiting: production key now installed, please rotate |
-| **R15** | **Embed RTB GIS dashboards and maps in TDMP** | **P2** | **Ready on our side: partner key issued to TDMP** |
-| **R16** | **TDMP sites allowed to show embedded views** | **P2** | **⏳ Waiting: list of TDMP origins** |
+| **R15** | **Embed RTB GIS dashboards and maps in TDMP** | **P2** | **✅ Live: TDMP shows our national map; schools open from it since 21 Nov** |
+| **R16** | **TDMP sites allowed to show embedded views** | **P2** | **⏳ Waiting: please confirm every origin (production and test)** |
 
 Our admin page re-checks these automatically: when you grant an endpoint, it appears as met on our side without any change from us. R15 ticks itself off when TDMP first opens an embedded view.
 
@@ -37,7 +43,7 @@ Everything below is live and documented, with copy-ready code and a "try it" con
 |---|---|---|
 | **Partner key** | Issued by an RTB GIS administrator (TDMP integration page ▸ Shared with TDMP); shown once | Send as `Authorization: ApiKey rtbgis_pk_…` (or `X-API-Key`). Stored hashed on our side, revocable at any time |
 | **School list / one school** | `GET /api/v1/partner/schools`, `GET /api/v1/partner/schools/{schoolCode}` | Condition score, priority, and which views have imagery / a 3D model |
-| **Embedded views** | `POST /api/v1/partner/embed-links` → put the returned `url` in an iframe | `school-dashboard`, `school-map-2d`, `school-map-3d`, `national-map`, `national-dashboard` (national views optionally one province / district). **One link opens one view only** |
+| **Embedded views** | `POST /api/v1/partner/embed-links` → put the returned `url` in an iframe | `school-dashboard`, `school-map-2d`, `school-map-3d`, `national-map`, `national-dashboard` (national views optionally one province / district). **One link opens one view**; from a national view, a school inside its area can be opened (see below) |
 | **Key check** | `GET /api/v1/partner/ping` | Returns the partner and scopes |
 
 How access is controlled:
@@ -45,6 +51,7 @@ How access is controlled:
 - **Access level per key**, set by RTB GIS: **national**, one **province**, one **district**, or a **list of schools**, plus which embedded views it may open. Every endpoint applies it: lists only contain schools within it, a school outside it answers 404, and embed links can never cover more (a wider area or a view not allowed answers `403 PARTNER_ACCESS_DENIED`). Narrowing a key ends the views opened under the old access. `GET /partner/ping` shows the key's level. TDMP's production key is national with all views.
 - **Embedded views are read-only and scoped.** A link covers one school (or one area for the national map). It expires in minutes (60–3600 s), and the view it opens lasts the session length you choose (5–480 min). The token travels in the URL fragment, so it is never sent to servers or in Referer headers.
 - **One link, one view:** a dashboard link shows only the dashboard, a 2D link only the 2D map, a 3D link only the model, a national-map link only the national map, a national-dashboard link only the national dashboard. The session cannot reach any other view's data (`403 EMBED_VIEW_DENIED`).
+- **Opening a school from a national view:** from a national-map or national-dashboard link, a viewer can open a school **inside the link's area** in the school views the key allows (overview, 2D map, 3D model), with a button back to the map. The link response lists those views in `drill`. A key without school views opens the school in RTB 3D GIS in a new tab, so the iframe never navigates away (that tab needs an RTB 3D GIS sign-in, or "Sign in with TDMP" once R6 is done).
 - **Revocation is immediate:** revoking a key ends every embedded view opened with it.
 - **Everything is audited.** Each embedded view opened is recorded with partner, view and scope.
 - **Framing is restricted** to the sites registered with the key (R16).
@@ -61,7 +68,7 @@ RTB GIS users with an account can also open the same views directly (`/embed/sch
 | Teachers | Teacher totals | P1: staff rooms and staff housing needs |
 | User identity and access | Verified user identity, role, account status and authorised geographic or school scope, for single sign-on | P1: enable secure access through TDMP identity services |
 
-## What is live (production, 2026-11-12)
+## What is live (production, updated 2026-11-27)
 
 | Data area | From | In RTB GIS today |
 |---|---|---|
@@ -69,6 +76,7 @@ RTB GIS users with an account can also open the same views directly (`/embed/sch
 | Enrolment / staffing totals | `counts.students`, `counts.teachers`, `tradeNames` | ✅ Learner and teacher totals, programme codes |
 | Sync | Your daily refresh (we observe ~06:00 Kigali) | ✅ Automatic: a freshness check at an interval we set (15 min–6 h) plus a full run daily at 07:15; unchanged schools are skipped |
 | User identity | Code + PKCE, JWKS-verified ID token, `/oauth/userinfo`, rotating refresh tokens, revoke at sign-out (per the TDMP SSO guide) | ✅ Built on our side; waiting on R6 (registration) to switch on |
+| Embedded views in TDMP | Partner key + `POST /partner/embed-links` | ✅ National map shown on TDMP's School Maps page; schools open from it (overview, 2D map, 3D model) since 21 Nov |
 
 First sync: 391 schools read, 373 added, 2 matched to existing RTB GIS schools, 0 failures, in 32 seconds. The next scheduled run found all schools unchanged and rewrote nothing.
 
@@ -145,7 +153,7 @@ Content-Type: application/json
         allow="fullscreen" referrerpolicy="no-referrer"></iframe>
 ```
 
-Views: `school-dashboard`, `school-map-2d`, `school-map-3d`, `national-map`, `national-dashboard` (add `province` / `district` to limit a national view). Each link opens that one view only. Try a live preview with your key at https://rtb.aerovyntech.com/developers#embed.
+Views: `school-dashboard`, `school-map-2d`, `school-map-3d`, `national-map`, `national-dashboard` (add `province` / `district` to limit a national view). Each link opens that one view. From a national view, a school inside the link's area can be opened in the school views your key allows (listed in the response as `drill`), with a way back to the map; nothing extra is needed on TDMP's side. Try a live preview with your key at https://rtb.aerovyntech.com/developers#embed.
 
 #### R16 (P2, new): TDMP sites allowed to show embedded views
 
@@ -169,7 +177,7 @@ Thank you for the **"Sign in with TDMP: integration guide"** (12 Nov 2026). RTB 
 | Launch URL | `https://rtb.aerovyntech.com/sso/tdmp` (starts sign-in at once; for a tile on the TDMP sign-in page) |
 | Technical contact | *to fill in: name and email* |
 
-Please also create a **test registration** on your test environment with the redirect URI `http://localhost:5173/auth/tdmp/callback`. We will send the later production domain (under `rtb.gov.rw`) as an addition. Please send the client secrets over a secure channel.
+**While we are testing, please register us on your test environment (tdmptest)** with the values above. Sign-in is already deployed on our live site and switched off until we receive the client ID and secret. We will point it at tdmptest (our school data keeps coming from TDMP production) and test with the tdmptest accounts (R10): the "Sign in with TDMP" button appears next to password sign-in, and only users we have pre-registered get access. **When we go live**, we will ask for the same registration on TDMP production. We will send the later production domain (under `rtb.gov.rw`) as an addition. Please share the client secret privately (not in a plain email).
 
 #### R7 / R8 (P2): Role and area at sign-in (guide §12)
 
@@ -200,9 +208,9 @@ Our draft mapping, for when roles arrive:
 
 The guide lists no `amr` claim, so RTB 3D GIS keeps asking privileged roles for its own second factor after TDMP sign-in. If TDMP adds `amr` (e.g. `["pwd","otp"]`), we can stop asking twice.
 
-#### R10 (P2): Test environment and test accounts
+#### R10 (P2): Test accounts on tdmptest
 
-The guide mentions a separate test environment. Please send the test registration (R6) and one test account per access level: national, province, district, school, and none.
+Please create one tdmptest account per access level (national, province, district, school, and none) that we can use to test sign-in after R6.
 
 #### R17 (P2): Deactivated accounts (guide §9, §12)
 
