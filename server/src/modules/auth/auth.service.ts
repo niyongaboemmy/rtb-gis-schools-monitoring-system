@@ -608,10 +608,12 @@ export class AuthService {
    * Signs in with a Google ID token. The token is verified against Google's
    * public keys and our client id, so the client cannot forge an identity.
    *
-   * Unknown addresses may self-register only when GOOGLE_ALLOW_SELF_REGISTER
-   * is not "false" and the domain is in GOOGLE_ALLOWED_DOMAINS (when set) —
-   * and even then they get no role: the account waits for an administrator
-   * (`accessPending`). Users with 2FA still pass the second factor afterwards.
+   * Only accounts that already exist (created or pre-registered by an
+   * administrator) may sign in with Google. An unknown address is refused
+   * unless GOOGLE_ALLOW_SELF_REGISTER is explicitly "true" (off by default)
+   * and its domain is in GOOGLE_ALLOWED_DOMAINS (when set) — and even then it
+   * gets no role: the account waits for an administrator (`accessPending`).
+   * Users with 2FA still pass the second factor afterwards.
    */
   async loginWithGoogle(
     credential: GoogleCredential,
@@ -726,11 +728,13 @@ export class AuthService {
   }
 
   private assertGoogleSelfRegistration(email: string, meta: RequestMeta) {
+    // Deny by default: anyone with a Google account must not get an account
+    // here just by signing in. Self-registration is an explicit opt-in.
     const allowSelf =
       this.configService
         .get<string>('GOOGLE_ALLOW_SELF_REGISTER')
         ?.trim()
-        .toLowerCase() !== 'false';
+        .toLowerCase() === 'true';
     const domains = (
       this.configService.get<string>('GOOGLE_ALLOWED_DOMAINS') ?? ''
     )
